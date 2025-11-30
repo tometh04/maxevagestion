@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
-    const { agencyId } = body
+    const { agencyId, forceFullSync = false } = body
 
     if (!agencyId) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
@@ -25,17 +25,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No hay configuración de Trello" }, { status: 400 })
     }
 
-    // Get all cards from board (basic info first, then fetch full details)
     const settings = trelloSettings as any
+    const lastSyncAt = settings.last_sync_at
+    const isIncrementalSync = !forceFullSync && lastSyncAt
+
+    console.log(`🔄 Iniciando sincronización ${isIncrementalSync ? 'incremental' : 'completa'}`)
+    if (isIncrementalSync) {
+      console.log(`📅 Última sincronización: ${lastSyncAt}`)
+    }
+
+    // Get cards from board
+    // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
+    // La API de Trello no tiene un parámetro directo "since", así que obtenemos todas y filtramos
     const cardsResponse = await fetch(
-      `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name`
+      `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity`
     )
 
     if (!cardsResponse.ok) {
       return NextResponse.json({ error: "Error al obtener tarjetas de Trello" }, { status: 400 })
     }
 
-    const cards = await cardsResponse.json()
+    let allCards = await cardsResponse.json()
+    
+    // Filtrar cards para sincronización incremental
+    if (isIncrementalSync) {
+      const lastSyncDate = new Date(lastSyncAt)
+      allCards = allCards.filter((card: any) => {
+        if (!card.dateLastActivity) return true // Si no tiene fecha, sincronizar por seguridad
+        const cardDate = new Date(card.dateLastActivity)
+        return cardDate >= lastSyncDate
+      })
+      console.log(`📊 Cards a sincronizar: ${allCards.length} de ${(await cardsResponse.json()).length} totales`)
+    } else {
+      console.log(`📊 Sincronizando todas las cards: ${allCards.length}`)
+    }
+
+    const cards = allCards
     
     const trelloSettingsForSync = {
       agency_id: agencyId,
@@ -140,6 +165,20 @@ export async function POST(request: Request) {
       }
     }
 
+    // Actualizar checkpoint de última sincronización solo si fue exitosa
+    if (synced > 0 || errors === 0) {
+      const now = new Date().toISOString()
+      const { error: updateError } = await (supabase.from("settings_trello") as any)
+        .update({ last_sync_at: now })
+        .eq("agency_id", agencyId)
+
+      if (updateError) {
+        console.error("⚠️ Error actualizando last_sync_at:", updateError)
+      } else {
+        console.log(`✅ Checkpoint actualizado: ${now}`)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       summary: {
@@ -149,6 +188,8 @@ export async function POST(request: Request) {
         errors,
         rateLimited,
         totalCards: cards.length,
+        incremental: isIncrementalSync,
+        lastSyncAt: isIncrementalSync ? lastSyncAt : null,
       },
     })
   } catch (error) {

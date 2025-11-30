@@ -51,8 +51,10 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
   const [lists, setLists] = useState<Array<{ id: string; name: string }>>([])
   const [statusMapping, setStatusMapping] = useState<Record<string, string>>({})
   const [regionMapping, setRegionMapping] = useState<Record<string, string>>({})
-  const [syncResult, setSyncResult] = useState<{ total: number; created: number; updated: number } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ total: number; created: number; updated: number; incremental?: boolean; lastSyncAt?: string | null } | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [forceFullSync, setForceFullSync] = useState(false)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
   const [webhooks, setWebhooks] = useState<Array<{ id: string; callbackURL: string; active: boolean; description: string }>>([])
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookLoading, setWebhookLoading] = useState(false)
@@ -101,6 +103,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
         })
         setStatusMapping((data.settings.list_status_mapping as Record<string, string>) || {})
         setRegionMapping((data.settings.list_region_mapping as Record<string, string>) || {})
+        setLastSyncAt(data.settings.last_sync_at || null)
 
         // Load lists if we have credentials
         if (data.settings.trello_api_key && data.settings.trello_token && data.settings.board_id) {
@@ -214,11 +217,17 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
       const res = await fetch("/api/trello/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agencyId }),
+        body: JSON.stringify({ agencyId, forceFullSync }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
         setSyncResult(data.summary)
+        // Actualizar lastSyncAt si está disponible
+        if (data.summary.lastSyncAt !== undefined) {
+          setLastSyncAt(data.summary.lastSyncAt)
+        }
+        // Recargar settings para obtener el nuevo last_sync_at
+        await loadSettings()
       } else {
         setSyncResult({ total: 0, created: 0, updated: 0 })
       }
@@ -623,21 +632,41 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
             <CardHeader>
               <CardTitle>Sincronización Manual</CardTitle>
               <CardDescription>
-                Ejecuta la sincronización manual con Trello. Esto traerá todas las tarjetas del tablero y las convertirá en leads.
+                {lastSyncAt 
+                  ? `Sincronización incremental: solo se actualizarán las tarjetas modificadas desde ${new Date(lastSyncAt).toLocaleString('es-AR')}`
+                  : "Ejecuta la sincronización manual con Trello. La primera vez sincronizará todas las tarjetas. Las siguientes serán incrementales (solo cambios)."
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="forceFullSync"
+                  checked={forceFullSync}
+                  onChange={(e) => setForceFullSync(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <label htmlFor="forceFullSync" className="text-sm font-medium">
+                  Forzar sincronización completa (ignorar checkpoint)
+                </label>
+              </div>
               <Button onClick={handleSync} disabled={syncing}>
-                {syncing ? "Sincronizando..." : "Ejecutar Sincronización"}
+                {syncing ? "Sincronizando..." : forceFullSync ? "Ejecutar Sincronización Completa" : "Ejecutar Sincronización"}
               </Button>
               {syncResult && (
                 <Alert>
                   <AlertDescription>
                     <div className="space-y-1">
-                      <div>✅ Sincronización completada</div>
+                      <div>✅ Sincronización {syncResult.incremental ? "incremental" : "completa"} completada</div>
                       <div className="text-sm">
                         Total: {syncResult.total} | Creados: {syncResult.created} | Actualizados: {syncResult.updated}
                       </div>
+                      {syncResult.incremental && syncResult.lastSyncAt && (
+                        <div className="text-xs text-muted-foreground">
+                          Última sincronización: {new Date(syncResult.lastSyncAt).toLocaleString('es-AR')}
+                        </div>
+                      )}
                     </div>
                   </AlertDescription>
                 </Alert>

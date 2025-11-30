@@ -97,7 +97,7 @@ export function LeadsPageClient({
     await loadLeads(selectedAgencyId)
   }
 
-  const handleSyncTrello = async () => {
+  const handleSyncTrello = async (forceFullSync = false) => {
     if (!selectedAgencyId || selectedAgencyId === "ALL") {
       toast.error("Selecciona una agencia específica para sincronizar con Trello")
       return
@@ -108,14 +108,15 @@ export function LeadsPageClient({
       const response = await fetch("/api/trello/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agencyId: selectedAgencyId }),
+        body: JSON.stringify({ agencyId: selectedAgencyId, forceFullSync }),
       })
 
       const data = await response.json()
 
       if (response.ok && data.success) {
+        const syncType = data.summary.incremental ? "incremental" : "completa"
         toast.success(
-          `Sincronización completada: ${data.summary.total} tarjetas (${data.summary.created} nuevas, ${data.summary.updated} actualizadas)`
+          `Sincronización ${syncType} completada: ${data.summary.total} tarjetas (${data.summary.created} nuevas, ${data.summary.updated} actualizadas)`
         )
         // Recargar leads después de sincronizar
         await loadLeads(selectedAgencyId)
@@ -201,7 +202,7 @@ export function LeadsPageClient({
           {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && (
             <Button
               variant="outline"
-              onClick={handleSyncTrello}
+              onClick={() => handleSyncTrello(false)}
               disabled={syncingTrello}
             >
               {syncingTrello ? (
