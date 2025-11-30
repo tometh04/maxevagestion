@@ -40,21 +40,40 @@ function detectToolsFromMessage(message: string): any[] {
   const lowerMessage = message.toLowerCase()
   const tools: any[] = []
 
-  // Detectar consultas de ventas
+  // Detectar años en el mensaje (ej: "2021", "2024", "año 2023")
+  const yearMatch = lowerMessage.match(/(?:año|year)?\s*(\d{4})/)
+  const detectedYear = yearMatch ? parseInt(yearMatch[1]) : null
+
+  // Detectar consultas de ventas (mejorado para capturar más variaciones)
   if (
     lowerMessage.includes("venta") ||
     lowerMessage.includes("vendimos") ||
     lowerMessage.includes("ventas") ||
-    lowerMessage.includes("ingreso")
+    lowerMessage.includes("ingreso") ||
+    lowerMessage.includes("operacion") ||
+    lowerMessage.includes("operaciones") ||
+    lowerMessage.includes("cuanto") ||
+    lowerMessage.includes("cuánto") ||
+    detectedYear !== null
   ) {
-    const today = new Date()
-    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+    let from: string | undefined
+    let to: string | undefined
+
+    if (detectedYear) {
+      // Si detectó un año específico, buscar ventas de ese año
+      from = `${detectedYear}-01-01`
+      to = `${detectedYear}-12-31`
+    } else {
+      // Por defecto, mes actual
+      const today = new Date()
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+      from = firstDay.toISOString().split("T")[0]
+      to = today.toISOString().split("T")[0]
+    }
+
     tools.push({
       name: "getSalesSummary",
-      params: {
-        from: firstDay.toISOString().split("T")[0],
-        to: today.toISOString().split("T")[0],
-      },
+      params: { from, to },
     })
   }
 
@@ -209,8 +228,50 @@ export async function POST(request: Request) {
       }
 
       if (Object.keys(toolResults).length === 0) {
-        response =
-          "No pude identificar qué información necesitas. Por favor, configura la API key de OpenAI en .env.local para usar el asistente completo."
+        // Si no detectó herramientas pero pregunta sobre ventas/años, intentar consultar todos los años disponibles
+        const lowerMessage = message.toLowerCase()
+        if (lowerMessage.includes("venta") || lowerMessage.includes("año") || lowerMessage.match(/\d{4}/)) {
+          // Consultar ventas de los últimos años para encontrar el año con más ventas
+          const currentYear = new Date().getFullYear()
+          const yearsToCheck = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4, currentYear - 5]
+          
+          const yearResults: any[] = []
+          for (const year of yearsToCheck) {
+            try {
+              const yearSummary = await getSalesSummary(
+                user,
+                `${year}-01-01`,
+                `${year}-12-31`,
+                agencyId
+              )
+              if (yearSummary.operationsCount > 0) {
+                yearResults.push({ year, ...yearSummary })
+              }
+            } catch (error) {
+              console.error(`Error getting sales for year ${year}:`, error)
+            }
+          }
+
+          if (yearResults.length > 0) {
+            const bestYear = yearResults.reduce((best, current) => 
+              current.totalSales > best.totalSales ? current : best
+            )
+            response = `**Año con más ventas:** ${bestYear.year}\n\n`
+            response += `**Ventas en ${bestYear.year}:**\n`
+            response += `- Total: $${bestYear.totalSales.toLocaleString("es-AR")}\n`
+            response += `- Operaciones: ${bestYear.operationsCount}\n`
+            response += `- Margen: $${bestYear.totalMargin.toLocaleString("es-AR")}\n\n`
+            response += `**Resumen de todos los años:**\n`
+            yearResults.forEach((yr) => {
+              response += `- ${yr.year}: $${yr.totalSales.toLocaleString("es-AR")} (${yr.operationsCount} operaciones)\n`
+            })
+          } else {
+            response = "No encontré ventas registradas en los últimos años. Verifica que haya operaciones en la base de datos."
+          }
+        } else {
+          response =
+            "No pude identificar qué información necesitas. Por favor, configura la API key de OpenAI en las variables de entorno para usar el asistente completo."
+        }
       }
 
       return NextResponse.json({ response })

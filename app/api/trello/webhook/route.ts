@@ -93,24 +93,54 @@ export async function POST(request: Request) {
     const boardId = webhook.model?.idBoard || 
                     webhook.action?.data?.board?.id || 
                     webhook.action?.data?.list?.idBoard ||
+                    webhook.action?.data?.card?.idBoard ||
                     webhook.model?.id
     
     console.log("🔍 Looking for board:", boardId, "in", allSettings.length, "settings")
+    console.log("📋 Webhook payload structure:", {
+      model: webhook.model ? Object.keys(webhook.model) : null,
+      action: webhook.action ? { type: webhook.action.type, dataKeys: Object.keys(webhook.action.data || {}) } : null
+    })
     
     // Try exact match first
     let settings = (allSettings as any[]).find((s) => s.board_id === boardId)
     
     // If not found, try matching with short ID (first 8 chars)
     if (!settings && boardId) {
+      const shortBoardId = boardId.substring(0, 8)
       settings = (allSettings as any[]).find((s) => {
-        const shortBoardId = boardId.substring(0, 8)
-        return s.board_id?.startsWith(shortBoardId) || s.board_id?.includes(shortBoardId)
+        if (!s.board_id) return false
+        return s.board_id.startsWith(shortBoardId) || 
+               s.board_id.includes(shortBoardId) ||
+               shortBoardId.includes(s.board_id.substring(0, 8))
       })
+    }
+
+    // If still not found, try to fetch the card and get its board ID
+    if (!settings && cardId) {
+      console.log("🔍 Trying to fetch card to get board ID:", cardId)
+      try {
+        // Try with first available settings to fetch the card
+        const firstSettings = allSettings[0] as any
+        if (firstSettings?.trello_api_key && firstSettings?.trello_token) {
+          const cardResponse = await fetch(
+            `https://api.trello.com/1/cards/${cardId}?key=${firstSettings.trello_api_key}&token=${firstSettings.trello_token}`
+          )
+          if (cardResponse.ok) {
+            const cardData = await cardResponse.json()
+            const cardBoardId = cardData.idBoard
+            console.log("✅ Found board ID from card:", cardBoardId)
+            settings = (allSettings as any[]).find((s) => s.board_id === cardBoardId)
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching card:", error)
+      }
     }
 
     if (!settings) {
       console.error("❌ No settings found for board:", boardId, "Available boards:", allSettings.map((s: any) => s.board_id))
-      return NextResponse.json({ received: true, skipped: true, reason: "Board not found" })
+      return NextResponse.json({ received: true, skipped: true, reason: "Board not found", boardId, availableBoards: allSettings.map((s: any) => s.board_id) })
     }
     
     console.log("✅ Found settings for board:", settings.board_id)
