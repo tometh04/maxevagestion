@@ -122,44 +122,101 @@ export async function POST(request: Request) {
     console.log("🔍 Looking for board:", boardId, "in", allSettings.length, "settings")
     console.log("📋 Available board IDs in settings:", allSettings.map((s: any) => s.board_id))
     
-    // Try exact match first
-    let settings = (allSettings as any[]).find((s) => s.board_id === boardId)
+    // Helper function to normalize board IDs (Trello can use short or long IDs)
+    const normalizeBoardId = (id: string): string => {
+      if (!id) return ""
+      // Trello IDs can be in different formats, try to normalize
+      return id.trim()
+    }
     
-    // If not found, try matching with short ID (first 8 chars)
+    // Helper function to check if two board IDs match (handles short/long ID variations)
+    const boardIdsMatch = (id1: string, id2: string): boolean => {
+      if (!id1 || !id2) return false
+      // Exact match
+      if (id1 === id2) return true
+      // Check if one is contained in the other (for short/long ID variations)
+      if (id1.includes(id2) || id2.includes(id1)) return true
+      // Check first 8 characters (common short ID length)
+      if (id1.length >= 8 && id2.length >= 8) {
+        if (id1.substring(0, 8) === id2.substring(0, 8)) return true
+      }
+      return false
+    }
+    
+    // Try exact match first
+    let settings = (allSettings as any[]).find((s) => boardIdsMatch(s.board_id, boardId || ""))
+    
+    // If not found, try to fetch the board info from Trello to get the full ID
     if (!settings && boardId) {
-      const shortBoardId = boardId.substring(0, 8)
-      settings = (allSettings as any[]).find((s) => {
-        if (!s.board_id) return false
-        return s.board_id.startsWith(shortBoardId) || 
-               s.board_id.includes(shortBoardId) ||
-               shortBoardId.includes(s.board_id.substring(0, 8))
-      })
+      console.log("🔍 Board not found with exact match, trying to fetch board info from Trello:", boardId)
+      try {
+        // Try with ALL available settings to fetch the board (to get full ID)
+        for (const testSettings of allSettings as any[]) {
+          if (testSettings?.trello_api_key && testSettings?.trello_token) {
+            try {
+              const boardResponse = await fetch(
+                `https://api.trello.com/1/boards/${boardId}?key=${testSettings.trello_api_key}&token=${testSettings.trello_token}&fields=id,shortLink`
+              )
+              if (boardResponse.ok) {
+                const boardData = await boardResponse.json()
+                const fullBoardId = boardData.id
+                const shortLink = boardData.shortLink
+                console.log("✅ Fetched board info:", { fullBoardId, shortLink, originalId: boardId })
+                
+                // Now try to match with the full ID
+                settings = (allSettings as any[]).find((s) => 
+                  boardIdsMatch(s.board_id, fullBoardId) || 
+                  boardIdsMatch(s.board_id, shortLink) ||
+                  (boardId ? boardIdsMatch(s.board_id, boardId) : false)
+                )
+                if (settings) {
+                  console.log("✅ Found matching settings using fetched board info")
+                  break
+                }
+              }
+            } catch (fetchError: any) {
+              // Continue to next settings
+              console.log("⚠️ Could not fetch board with these settings:", fetchError.message)
+              continue
+            }
+          }
+        }
+      } catch (error) {
+        console.error("❌ Error fetching board info:", error)
+      }
     }
 
     // If still not found, try to fetch the card and get its board ID
     if (!settings && cardId) {
-      console.log("🔍 Board not found in settings, fetching card to get board ID:", cardId)
+      console.log("🔍 Board still not found, fetching card to get board ID:", cardId)
       try {
         // Try with ALL available settings to fetch the card (maybe the card is from a different board)
         for (const testSettings of allSettings as any[]) {
           if (testSettings?.trello_api_key && testSettings?.trello_token) {
             try {
               const cardResponse = await fetch(
-                `https://api.trello.com/1/cards/${cardId}?key=${testSettings.trello_api_key}&token=${testSettings.trello_token}`
+                `https://api.trello.com/1/cards/${cardId}?key=${testSettings.trello_api_key}&token=${testSettings.trello_token}&fields=idBoard,idBoardShort`
               )
               if (cardResponse.ok) {
                 const cardData = await cardResponse.json()
                 const cardBoardId = cardData.idBoard
-                console.log("✅ Found board ID from card:", cardBoardId)
+                const cardBoardShort = cardData.idBoardShort
+                console.log("✅ Found board ID from card:", { cardBoardId, cardBoardShort, originalBoardId: boardId })
+                
                 // Now find settings for this board
-                settings = (allSettings as any[]).find((s) => s.board_id === cardBoardId)
+                settings = (allSettings as any[]).find((s) => 
+                  boardIdsMatch(s.board_id, cardBoardId) || 
+                  boardIdsMatch(s.board_id, cardBoardShort) ||
+                  boardIdsMatch(s.board_id, boardId || "")
+                )
                 if (settings) {
-                  console.log("✅ Found matching settings for board:", cardBoardId)
+                  console.log("✅ Found matching settings for board from card data")
                   break
                 }
               }
-            } catch (fetchError) {
+            } catch (fetchError: any) {
               // Continue to next settings
+              console.log("⚠️ Could not fetch card with these settings:", fetchError.message)
               continue
             }
           }
@@ -170,8 +227,19 @@ export async function POST(request: Request) {
     }
 
     if (!settings) {
-      console.error("❌ No settings found for board:", boardId, "Available boards:", allSettings.map((s: any) => s.board_id))
-      return NextResponse.json({ received: true, skipped: true, reason: "Board not found", boardId, availableBoards: allSettings.map((s: any) => s.board_id) })
+      // This is not a fatal error - just log it and skip
+      // The webhook might be from a board that's not configured in our system
+      console.warn("⚠️ No settings found for board:", boardId)
+      console.warn("⚠️ Available boards:", allSettings.map((s: any) => s.board_id))
+      console.warn("⚠️ This webhook will be ignored (board not configured)")
+      // Return 200 to prevent Trello from retrying
+      return NextResponse.json({ 
+        received: true, 
+        skipped: true, 
+        reason: "Board not configured in system", 
+        boardId, 
+        availableBoards: allSettings.map((s: any) => s.board_id) 
+      })
     }
     
     console.log("✅ Found settings for board:", settings.board_id)
