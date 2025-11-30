@@ -13,6 +13,25 @@ import {
   getOverdueOperatorPayments,
   getOperationMargin,
 } from "@/lib/ai/tools"
+import {
+  getSalesThisWeek,
+  getTopSellers,
+  getMonthComparison,
+  getNegativeMarginOperations,
+  getSalesByChannel,
+  getConversionRate,
+  getCustomerDuePaymentsToday,
+  getOperationsWithPendingPaymentBeforeTravel,
+  getOperationsTravelingThisWeek,
+  getMyCommissions,
+  getFinancialHealth,
+  getSharedCommissions,
+  getMarginByProductType,
+  getOperatorPaymentsDueThisWeek,
+  getOperationsWithPendingHotelPayment,
+  getSellerProfitability,
+  getMonthSummary,
+} from "@/lib/ai/tools-extended"
 import { withRateLimit, RATE_LIMIT_CONFIGS } from "@/lib/rate-limit"
 import { validateRequest, aiCopilotSchema } from "@/lib/validation"
 import { createAuditLog, getRequestMetadata } from "@/lib/audit-log"
@@ -21,130 +40,31 @@ import { createServerClient } from "@/lib/supabase/server"
 // Helper para limpiar JSON de markdown
 function cleanJsonString(jsonString: string): string {
   if (!jsonString) return "{}"
-  // Remover markdown code blocks
   let cleaned = jsonString.trim()
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.substring(7)
-  }
-  if (cleaned.startsWith("```")) {
-    cleaned = cleaned.substring(3)
-  }
-  if (cleaned.endsWith("```")) {
-    cleaned = cleaned.substring(0, cleaned.length - 3)
-  }
+  if (cleaned.startsWith("```json")) cleaned = cleaned.substring(7)
+  if (cleaned.startsWith("```")) cleaned = cleaned.substring(3)
+  if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length - 3)
   return cleaned.trim()
-}
-
-// Fallback: detección de keywords para llamar herramientas sin OpenAI
-function detectToolsFromMessage(message: string): any[] {
-  const lowerMessage = message.toLowerCase()
-  const tools: any[] = []
-
-  // Detectar años en el mensaje (ej: "2021", "2024", "año 2023")
-  const yearMatch = lowerMessage.match(/(?:año|year)?\s*(\d{4})/)
-  const detectedYear = yearMatch ? parseInt(yearMatch[1]) : null
-
-  // Detectar consultas de ventas (mejorado para capturar más variaciones)
-  if (
-    lowerMessage.includes("venta") ||
-    lowerMessage.includes("vendimos") ||
-    lowerMessage.includes("ventas") ||
-    lowerMessage.includes("ingreso") ||
-    lowerMessage.includes("operacion") ||
-    lowerMessage.includes("operaciones") ||
-    lowerMessage.includes("cuanto") ||
-    lowerMessage.includes("cuánto") ||
-    detectedYear !== null
-  ) {
-    let from: string | undefined
-    let to: string | undefined
-
-    // Detectar "mes pasado" o "last month"
-    const isLastMonth = lowerMessage.includes("mes pasado") || 
-                       lowerMessage.includes("mes anterior") ||
-                       lowerMessage.includes("last month") ||
-                       lowerMessage.includes("mes previo")
-
-    if (detectedYear) {
-      // Si detectó un año específico, buscar ventas de ese año
-      from = `${detectedYear}-01-01`
-      to = `${detectedYear}-12-31`
-    } else if (isLastMonth) {
-      // Mes pasado: primer día del mes pasado hasta el último día del mes pasado
-      const today = new Date()
-      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-      const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
-      from = lastMonth.toISOString().split("T")[0]
-      to = lastDayOfLastMonth.toISOString().split("T")[0]
-    } else {
-      // Por defecto, mes actual
-      const today = new Date()
-      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
-      from = firstDay.toISOString().split("T")[0]
-      to = today.toISOString().split("T")[0]
-    }
-
-    tools.push({
-      name: "getSalesSummary",
-      params: { from, to },
-    })
-  }
-
-  // Detectar consultas de pagos
-  if (
-    lowerMessage.includes("pago") ||
-    lowerMessage.includes("vencido") ||
-    lowerMessage.includes("pendiente")
-  ) {
-    tools.push({ name: "getDuePayments", params: {} })
-  }
-
-  // Detectar consultas de operadores
-  if (lowerMessage.includes("operador") || lowerMessage.includes("balance")) {
-    tools.push({ name: "getOperatorBalances", params: { onlyOverdue: false } })
-  }
-
-  // Detectar consultas de IVA
-  if (lowerMessage.includes("iva") || lowerMessage.includes("impuesto")) {
-    const today = new Date()
-    tools.push({
-      name: "getIVAStatus",
-      params: { year: today.getFullYear(), month: today.getMonth() + 1 },
-    })
-  }
-
-  // Detectar consultas de caja
-  if (lowerMessage.includes("caja") || lowerMessage.includes("saldo")) {
-    tools.push({ name: "getCashBalances", params: {} })
-  }
-
-  return tools
 }
 
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     
-    // Rate limiting: 10 requests por minuto por usuario
+    // Rate limiting
     try {
       withRateLimit(user.id, "/api/ai", RATE_LIMIT_CONFIGS.AI_COPILOT)
     } catch (error: any) {
       if (error.statusCode === 429) {
         return NextResponse.json(
           { error: "Demasiadas solicitudes. Por favor, espera un momento." },
-          {
-            status: 429,
-            headers: {
-              "Retry-After": "60",
-              "X-RateLimit-Reset": String(error.resetTime),
-            },
-          }
+          { status: 429, headers: { "Retry-After": "60" } }
         )
       }
       throw error
     }
 
-    // Validar request body
+    // Validar request
     let validatedBody
     try {
       validatedBody = await validateRequest(request, aiCopilotSchema)
@@ -159,91 +79,113 @@ export async function POST(request: Request) {
     const metadata = getRequestMetadata(request)
     await createAuditLog(supabase, {
       user_id: user.id,
-      action: "SYNC_TRELLO", // Acción temporal, agregar "AI_COPILOT_QUERY" después
+      action: "AI_COPILOT_QUERY",
       entity_type: "ai_copilot",
-      details: { message_length: message.length, has_agency: !!agencyId },
+      details: { message_length: message.length, has_agency: !!agencyId, query: message },
       ...metadata,
     })
 
-    // Validar API key de OpenAI - OBLIGATORIA
+    // Validar API key de OpenAI
     const openaiApiKey = process.env.OPENAI_API_KEY
-    const lowerMessage = message.toLowerCase()
-    
-    // SIEMPRE intentar detectar si es una pregunta sobre ventas/años, incluso sin OpenAI
-    const isSalesQuestion = lowerMessage.includes("venta") || 
-                           lowerMessage.includes("vendimos") || 
-                           lowerMessage.includes("ventas") || 
-                           lowerMessage.includes("operacion") || 
-                           lowerMessage.includes("operaciones") ||
-                           lowerMessage.includes("año") ||
-                           lowerMessage.includes("year") ||
-                           /\d{4}/.test(message)
-    
-    // SI NO HAY OPENAI API KEY, ERROR CLARO
     if (!openaiApiKey || openaiApiKey === "tu_openai_api_key_aqui" || openaiApiKey.trim() === "") {
       return NextResponse.json({ 
-        error: "OpenAI API Key no configurada. El AI Copilot requiere OpenAI para funcionar correctamente. Por favor, configura OPENAI_API_KEY en las variables de entorno de Vercel." 
+        error: "OpenAI API Key no configurada. Configura OPENAI_API_KEY en Vercel." 
       }, { status: 500 })
     }
-    
-    // OpenAI API Key es OBLIGATORIA - si no está, ya retornamos error arriba
 
-    const openai = new OpenAI({
-      apiKey: openaiApiKey,
-    })
+    const openai = new OpenAI({ apiKey: openaiApiKey })
 
-    // Calcular fecha actual para el prompt
+    // Calcular fechas
     const today = new Date()
     const currentYear = today.getFullYear()
-    const currentMonth = today.getMonth() + 1 // 1-12
+    const currentMonth = today.getMonth() + 1
     const currentDay = today.getDate()
     
-    // Calcular mes pasado
     const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
     const lastMonthLastDay = new Date(today.getFullYear(), today.getMonth(), 0)
     const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}-01`
     const lastMonthEnd = `${lastMonthLastDay.getFullYear()}-${String(lastMonthLastDay.getMonth() + 1).padStart(2, '0')}-${String(lastMonthLastDay.getDate()).padStart(2, '0')}`
     
-    // Calcular mes actual
     const currentMonthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
     const currentMonthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
 
-    // First, let OpenAI decide which tools to use
-    const toolsPrompt = `Analiza la siguiente pregunta del usuario y determina qué herramientas necesitas usar.
+    // Prompt mejorado para decidir herramientas
+    const toolsPrompt = `Eres un asistente de una agencia de viajes argentina. Analiza la pregunta y determina qué herramientas usar.
 
-FECHA ACTUAL: ${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}
-MES PASADO: ${lastMonthStart} hasta ${lastMonthEnd}
-MES ACTUAL: ${currentMonthStart} hasta ${currentMonthEnd}
+FECHA HOY: ${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}
+MES PASADO: ${lastMonthStart} a ${lastMonthEnd}
+MES ACTUAL (hasta hoy): ${currentMonthStart} a ${currentMonthEnd}
 
-Herramientas disponibles:
-1. getSalesSummary(from?, to?, agencyId?) - Resumen de ventas. Parámetros: from (YYYY-MM-DD), to (YYYY-MM-DD)
-2. getDuePayments(date?, type?) - Pagos vencidos o próximos (type: "CUSTOMER" o "OPERATOR")
-3. getSellerPerformance(sellerId, from?, to?) - Performance de un vendedor
-4. getTopDestinations(from?, to?, limit?) - Top destinos
-5. getOperatorBalances(onlyOverdue?) - Balances de operadores
-6. getIVAStatus(year?, month?) - Estado de IVA para un período
-7. getCashBalances() - Balances de todas las cuentas financieras
-8. getFXStatus(days?) - Estado de ganancias/pérdidas cambiarias
-9. getOverdueOperatorPayments() - Pagos a operadores vencidos
-10. getOperationMargin(operationId) - Margen detallado de una operación
+HERRAMIENTAS DISPONIBLES:
 
-INSTRUCCIONES IMPORTANTES:
-- Si la pregunta menciona "mes pasado", "mes anterior", "last month", usa las fechas del MES PASADO mostradas arriba
-- Si la pregunta menciona "este mes", "mes actual", usa las fechas del MES ACTUAL mostradas arriba
-- Si menciona un año específico (ej: "2024"), usa ese año completo: from="2024-01-01", to="2024-12-31"
-- Si menciona un mes específico (ej: "enero", "enero 2024"), calcula las fechas de ese mes
-- SIEMPRE usa el formato YYYY-MM-DD para las fechas
+📊 VENTAS Y RENDIMIENTO:
+1. getSalesSummary(from?, to?, agencyId?) - Resumen de ventas (total, margen, operaciones)
+2. getSalesThisWeek() - Ventas de esta semana
+3. getMonthSummary() - Resumen del mes actual
+4. getTopSellers(from?, to?, limit?) - Top vendedores por ventas
+5. getSellerProfitability(from?, to?) - Rentabilidad promedio por vendedor
+6. getMonthComparison() - Comparar mes actual vs mes pasado a la misma fecha
+7. getTopDestinations(from?, to?, limit?) - Destinos más vendidos
+8. getMarginByProductType(from?, to?) - Margen por tipo de producto (aéreos, hoteles, paquetes)
+9. getNegativeMarginOperations() - Operaciones con margen negativo
+10. getSalesByChannel(from?, to?) - Ventas por canal (Instagram, WhatsApp, etc.)
+11. getConversionRate(from?, to?) - Tasa de conversión de lead a venta
+12. getSellerPerformance(sellerId, from?, to?) - Performance de un vendedor específico
+
+💰 PAGOS Y COBRANZAS:
+13. getDuePayments(date?, type?) - Pagos vencidos (type: "CUSTOMER" o "OPERATOR")
+14. getCustomerDuePaymentsToday() - Clientes con pagos vencidos HOY
+15. getOperatorPaymentsDueThisWeek() - Pagos a operadores vencidos esta semana
+16. getOperationsWithPendingPaymentBeforeTravel() - Operaciones con cobro pendiente antes del viaje
+17. getOperationsWithPendingHotelPayment(days?) - Operaciones con hotelería pendiente de pago (próximos X días)
+
+📈 CONTABILIDAD:
+18. getIVAStatus(year?, month?) - Estado de IVA (débito fiscal, crédito fiscal, a pagar)
+19. getCashBalances() - Saldos de caja (ARS, USD, MP, bancos)
+20. getFXStatus(days?) - Ganancias/pérdidas por tipo de cambio
+21. getOperatorBalances(onlyOverdue?) - Balances de operadores
+22. getOverdueOperatorPayments() - Pagos vencidos a operadores
+23. getOperationMargin(operationId) - Margen detallado de una operación
+
+🧳 OPERACIONES:
+24. getOperationsTravelingThisWeek() - Operaciones que viajan esta semana
+
+💵 COMISIONES:
+25. getMyCommissions(from?, to?) - Mis comisiones del período
+26. getSharedCommissions(from?, to?) - Comisiones compartidas entre vendedores
+
+🏥 SALUD GENERAL:
+27. getFinancialHealth() - Resumen completo de salud financiera
+
+INSTRUCCIONES DE MAPEO:
+- "¿cuánto vendimos esta semana?" → getSalesThisWeek
+- "¿cuánto llevamos vendido este mes?" → getMonthSummary
+- "¿qué vendedor vendió más?" → getTopSellers
+- "¿cuál es el margen total?" → getSalesSummary o getMonthSummary
+- "¿cómo estamos vs el mes pasado?" → getMonthComparison
+- "¿cuáles destinos fueron los más vendidos?" → getTopDestinations
+- "¿qué productos tienen mejor margen?" → getMarginByProductType
+- "operaciones con margen negativo" → getNegativeMarginOperations
+- "¿cuántas por Instagram/WhatsApp?" → getSalesByChannel
+- "tasa de conversión" → getConversionRate
+- "¿qué clientes tienen pagos vencidos hoy?" → getCustomerDuePaymentsToday
+- "¿qué operadores tienen pagos vencidos?" → getOverdueOperatorPayments o getOperatorPaymentsDueThisWeek
+- "operaciones con cobro pendiente antes del viaje" → getOperationsWithPendingPaymentBeforeTravel
+- "¿cuánto tengo que pagar de IVA?" → getIVAStatus
+- "saldo de caja" → getCashBalances
+- "diferencias de tipo de cambio" → getFXStatus
+- "pagos a proveedores próximos 7 días" → getOperatorPaymentsDueThisWeek
+- "operaciones que viajan esta semana" → getOperationsTravelingThisWeek
+- "hotelería pendiente de pago" → getOperationsWithPendingHotelPayment
+- "mi comisión" → getMyCommissions
+- "comisiones compartidas" → getSharedCommissions
+- "salud financiera" → getFinancialHealth
+- "rentabilidad por vendedor" → getSellerProfitability
 
 Pregunta del usuario: "${message}"
 
-Responde SOLO con un JSON que indique qué herramientas usar y con qué parámetros. Ejemplo:
-{
-  "tools": [
-    {"name": "getSalesSummary", "params": {"from": "${lastMonthStart}", "to": "${lastMonthEnd}"}}
-  ]
-}
-
-Si no necesitas ninguna herramienta, responde: {"tools": []}`
+Responde ÚNICAMENTE con JSON válido (sin markdown):
+{"tools": [{"name": "nombreHerramienta", "params": {...}}]}`
 
     let toolCalls: any[] = []
 
@@ -251,200 +193,128 @@ Si no necesitas ninguna herramienta, responde: {"tools": []}`
       const toolDecision = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          {
-            role: "system",
-            content: "Eres un asistente que decide qué herramientas usar. Responde SOLO con JSON válido, sin markdown, sin explicaciones.",
-          },
-          {
-            role: "user",
-            content: toolsPrompt,
-          },
+          { role: "system", content: "Responde SOLO con JSON válido, sin markdown ni explicaciones." },
+          { role: "user", content: toolsPrompt },
         ],
-        temperature: 0.3,
+        temperature: 0.1,
       })
 
       const toolDecisionText = toolDecision.choices[0]?.message?.content || "{}"
       const cleanedText = cleanJsonString(toolDecisionText)
-      
-      console.log(`[AI Copilot] Respuesta de OpenAI sobre herramientas:`, cleanedText.substring(0, 500))
+      console.log(`[AI] Herramientas decididas:`, cleanedText.substring(0, 500))
 
       try {
         const parsed = JSON.parse(cleanedText)
         toolCalls = parsed.tools || []
-        console.log(`[AI Copilot] Herramientas parseadas:`, JSON.stringify(toolCalls))
       } catch (e) {
-        console.error("[AI Copilot] Error parsing tool decision:", e, "Text:", cleanedText)
-        // Fallback a detección de keywords
-        console.log("[AI Copilot] Usando fallback detectToolsFromMessage")
-        toolCalls = detectToolsFromMessage(message)
-        console.log(`[AI Copilot] Fallback detectó:`, JSON.stringify(toolCalls))
+        console.error("[AI] Error parsing tools:", e)
       }
     } catch (openaiError: any) {
-      console.error("OpenAI API error:", openaiError)
-      // Si OpenAI falla, usar fallback
-      toolCalls = detectToolsFromMessage(message)
+      console.error("[AI] OpenAI error:", openaiError)
     }
 
-    // Execute tools
+    // Ejecutar herramientas
     const toolResults: any = {}
-
-    console.log(`[AI Copilot] Ejecutando ${toolCalls.length} herramienta(s):`, toolCalls.map(t => t.name))
+    console.log(`[AI] Ejecutando ${toolCalls.length} herramientas:`, toolCalls.map((t: any) => t.name))
 
     for (const toolCall of toolCalls) {
       try {
-        console.log(`[AI Copilot] Ejecutando herramienta: ${toolCall.name}`, toolCall.params)
+        const p = toolCall.params || {}
         switch (toolCall.name) {
           case "getSalesSummary":
-            toolResults.salesSummary = await getSalesSummary(
-              user,
-              toolCall.params?.from,
-              toolCall.params?.to,
-              agencyId || toolCall.params?.agencyId,
-            )
+            toolResults.salesSummary = await getSalesSummary(user, p.from, p.to, agencyId || p.agencyId)
+            break
+          case "getSalesThisWeek":
+            toolResults.salesThisWeek = await getSalesThisWeek(user, agencyId)
+            break
+          case "getMonthSummary":
+            toolResults.monthSummary = await getMonthSummary(user, agencyId)
+            break
+          case "getTopSellers":
+            toolResults.topSellers = await getTopSellers(user, p.from, p.to, p.limit || 5)
+            break
+          case "getSellerProfitability":
+            toolResults.sellerProfitability = await getSellerProfitability(user, p.from, p.to)
+            break
+          case "getMonthComparison":
+            toolResults.monthComparison = await getMonthComparison(user, agencyId)
             break
           case "getDuePayments":
-            toolResults.duePayments = await getDuePayments(
-              user,
-              toolCall.params?.date,
-              toolCall.params?.type,
-            )
+            toolResults.duePayments = await getDuePayments(user, p.date, p.type)
+            break
+          case "getCustomerDuePaymentsToday":
+            toolResults.customerDuePaymentsToday = await getCustomerDuePaymentsToday(user)
+            break
+          case "getOperatorPaymentsDueThisWeek":
+            toolResults.operatorPaymentsDueThisWeek = await getOperatorPaymentsDueThisWeek(user)
             break
           case "getSellerPerformance":
-            if (toolCall.params?.sellerId) {
-              toolResults.sellerPerformance = await getSellerPerformance(
-                user,
-                toolCall.params.sellerId,
-                toolCall.params?.from,
-                toolCall.params?.to,
-              )
-            }
+            if (p.sellerId) toolResults.sellerPerformance = await getSellerPerformance(user, p.sellerId, p.from, p.to)
             break
           case "getTopDestinations":
-            toolResults.topDestinations = await getTopDestinations(
-              user,
-              toolCall.params?.from,
-              toolCall.params?.to,
-              toolCall.params?.limit || 5,
-            )
+            toolResults.topDestinations = await getTopDestinations(user, p.from, p.to, p.limit || 5)
+            break
+          case "getMarginByProductType":
+            toolResults.marginByProductType = await getMarginByProductType(user, p.from, p.to)
             break
           case "getOperatorBalances":
-            toolResults.operatorBalances = await getOperatorBalances(
-              user,
-              toolCall.params?.onlyOverdue || false,
-            )
+            toolResults.operatorBalances = await getOperatorBalances(user, p.onlyOverdue || false)
             break
           case "getIVAStatus":
-            toolResults.ivaStatus = await getIVAStatus(
-              user,
-              toolCall.params?.year,
-              toolCall.params?.month,
-            )
+            toolResults.ivaStatus = await getIVAStatus(user, p.year, p.month)
             break
           case "getCashBalances":
             toolResults.cashBalances = await getCashBalances(user)
             break
           case "getFXStatus":
-            toolResults.fxStatus = await getFXStatus(
-              user,
-              toolCall.params?.days || 30,
-            )
+            toolResults.fxStatus = await getFXStatus(user, p.days || 30)
             break
           case "getOverdueOperatorPayments":
             toolResults.overdueOperatorPayments = await getOverdueOperatorPayments(user)
             break
           case "getOperationMargin":
-            if (toolCall.params?.operationId) {
-              toolResults.operationMargin = await getOperationMargin(
-                user,
-                toolCall.params.operationId,
-              )
-            }
+            if (p.operationId) toolResults.operationMargin = await getOperationMargin(user, p.operationId)
+            break
+          case "getNegativeMarginOperations":
+            toolResults.negativeMarginOperations = await getNegativeMarginOperations(user, agencyId)
+            break
+          case "getSalesByChannel":
+            toolResults.salesByChannel = await getSalesByChannel(user, p.from, p.to)
+            break
+          case "getConversionRate":
+            toolResults.conversionRate = await getConversionRate(user, p.from, p.to)
+            break
+          case "getOperationsWithPendingPaymentBeforeTravel":
+            toolResults.pendingBeforeTravel = await getOperationsWithPendingPaymentBeforeTravel(user)
+            break
+          case "getOperationsWithPendingHotelPayment":
+            toolResults.pendingHotelPayment = await getOperationsWithPendingHotelPayment(user, p.days || 30)
+            break
+          case "getOperationsTravelingThisWeek":
+            toolResults.travelingThisWeek = await getOperationsTravelingThisWeek(user)
+            break
+          case "getMyCommissions":
+            toolResults.myCommissions = await getMyCommissions(user, p.from, p.to)
+            break
+          case "getFinancialHealth":
+            toolResults.financialHealth = await getFinancialHealth(user)
+            break
+          case "getSharedCommissions":
+            toolResults.sharedCommissions = await getSharedCommissions(user, p.from, p.to)
             break
         }
-        console.log(`[AI Copilot] Herramienta ${toolCall.name} completada exitosamente`)
+        console.log(`[AI] ✅ ${toolCall.name} completado`)
       } catch (error) {
-        console.error(`[AI Copilot] Error ejecutando herramienta ${toolCall.name}:`, error)
-        // Agregar información del error a los resultados para que el AI sepa qué pasó
-        toolResults[`${toolCall.name}_error`] = {
-          error: error instanceof Error ? error.message : String(error),
-          tool: toolCall.name,
-        }
+        console.error(`[AI] ❌ Error en ${toolCall.name}:`, error)
+        toolResults[`${toolCall.name}_error`] = { error: String(error) }
       }
     }
 
-    console.log(`[AI Copilot] Resultados de herramientas:`, Object.keys(toolResults))
-
-    // Format results for LLM
     const resultsText = JSON.stringify(toolResults, null, 2)
-    
-    console.log(`[AI Copilot] Datos a enviar al LLM (primeros 500 chars):`, resultsText.substring(0, 500))
+    console.log(`[AI] Resultados (preview):`, resultsText.substring(0, 500))
 
-    // Generate natural language response
+    // Generar respuesta
     let response = "No pude procesar tu consulta."
-
-    // Crear prompt detallado sobre la estructura de la base de datos
-    const databaseSchemaPrompt = `
-ESTRUCTURA DE LA BASE DE DATOS SUPABASE:
-
-TABLA: operations (operaciones/ventas)
-- Campos clave para ventas:
-  * sale_amount_total: Monto total de la venta (NUMERIC)
-  * margin_amount: Margen de ganancia (NUMERIC)
-  * margin_percentage: Porcentaje de margen (NUMERIC)
-  * operator_cost: Costo del operador (NUMERIC)
-  * currency: Moneda (ARS, USD)
-  * created_at: Fecha de creación (TIMESTAMP) - USA ESTE CAMPO PARA FILTRAR POR AÑO/MES
-  * destination: Destino del viaje
-  * status: Estado (PRE_RESERVATION, RESERVED, CONFIRMED, CANCELLED, TRAVELLED, CLOSED)
-  * agency_id: ID de la agencia
-  * seller_id: ID del vendedor
-
-TABLA: payments (pagos)
-- Campos clave:
-  * amount: Monto del pago (NUMERIC)
-  * date_due: Fecha de vencimiento (DATE)
-  * date_paid: Fecha de pago (DATE, nullable)
-  * status: Estado (PENDING, PAID, OVERDUE)
-  * payer_type: Tipo de pagador (CUSTOMER, OPERATOR)
-  * direction: Dirección (INCOME, EXPENSE)
-  * operation_id: ID de la operación relacionada
-
-TABLA: leads (prospectos)
-- Campos clave:
-  * status: Estado (NEW, IN_PROGRESS, QUOTED, WON, LOST)
-  * destination: Destino
-  * created_at: Fecha de creación
-  * agency_id: ID de la agencia
-
-INSTRUCCIONES PARA INTERPRETAR DATOS:
-1. Para preguntas sobre VENTAS por AÑO:
-   - Los datos vienen de la tabla "operations"
-   - El campo "created_at" contiene la fecha - extrae el AÑO de ahí
-   - Suma todos los "sale_amount_total" del año consultado
-   - Cuenta las operaciones (operationsCount)
-   - Calcula el margen total sumando "margin_amount"
-
-2. Para preguntas sobre "año con más ventas":
-   - Compara los totales de ventas (totalSales) de cada año
-   - El año con mayor totalSales es el que tiene más ventas
-
-3. Para preguntas sobre operaciones:
-   - operationsCount = cantidad de operaciones
-   - Cada operación tiene un sale_amount_total
-
-4. Formato de respuesta:
-   - Montos: $1.234.567,89 (formato argentino con punto para miles y coma para decimales)
-   - Fechas: DD/MM/YYYY
-   - Siempre incluye números exactos de la base de datos
-   - Si no hay datos, di claramente "No hay datos registrados para [período]"
-
-IMPORTANTE:
-- Los datos que recibes YA fueron consultados de Supabase usando las herramientas
-- NO necesitas consultar Supabase directamente, usa los datos que te proporcionan
-- Los datos son REALES y vienen de la base de datos
-- Si operationsCount es 0, significa que NO HAY operaciones en ese período
-- Si totalSales es 0, significa que NO HAY ventas en ese período
-`
 
     try {
       const completion = await openai.chat.completions.create({
@@ -452,60 +322,61 @@ IMPORTANTE:
         messages: [
           {
             role: "system",
-            content: `Eres un asistente de negocio experto para una agencia de viajes llamada MAXEVA GESTION. 
-            
-${databaseSchemaPrompt}
+            content: `Eres el asistente ejecutivo de MAXEVA GESTION, una agencia de viajes argentina con sede en Rosario y Madero.
 
-Tu trabajo es:
-1. Analizar la pregunta del usuario
-2. Interpretar los datos proporcionados (que YA fueron consultados de Supabase)
-3. Dar una respuesta clara, precisa y profesional en español
-4. SIEMPRE usar los números exactos de los datos proporcionados
-5. Si los datos muestran 0 operaciones o 0 ventas, di claramente que no hay datos para ese período
-6. Formatea montos en formato argentino: $1.234.567,89
-7. El usuario tiene rol: ${user.role}
+CONTEXTO DEL NEGOCIO:
+- Vendemos paquetes turísticos, aéreos, hoteles y servicios de viaje
+- Trabajamos con operadores mayoristas
+- Cobramos a clientes y pagamos a operadores
+- Ganamos por el margen entre precio de venta y costo del operador
+- Manejamos ARS y USD
 
-IMPORTANTE: Los datos que recibes son REALES y vienen directamente de Supabase. Si operationsCount es 0, significa que NO HAY operaciones registradas. Si totalSales es 0, significa que NO HAY ventas registradas.`,
+FORMATO DE RESPUESTA:
+1. Responde siempre en español argentino
+2. Montos en formato argentino: $1.234.567,89 (punto para miles, coma para decimales)
+3. Fechas en formato DD/MM/YYYY
+4. Sé conciso pero completo
+5. Usa emojis para destacar información importante:
+   - 📈 para datos positivos
+   - 📉 para datos negativos
+   - ⚠️ para alertas
+   - 💰 para montos
+   - 📊 para estadísticas
+6. Si hay riesgos o alertas, menciónalos claramente
+7. Si no hay datos suficientes, dilo honestamente
+8. Incluye números exactos de los datos
+
+USUARIO ACTUAL:
+- Rol: ${user.role}
+- Puede ver datos según su nivel de acceso
+
+Los datos que recibes son REALES de la base de datos Supabase de producción.`,
           },
           {
             role: "user",
-            content: `Pregunta del usuario: "${message}"
+            content: `Pregunta: "${message}"
 
-Datos obtenidos de Supabase (ya consultados):
+Datos consultados de la base de datos:
 ${resultsText}
 
-INSTRUCCIONES:
-- Analiza los datos proporcionados
-- Responde la pregunta usando los números EXACTOS de los datos
-- Si operationsCount es 0, di que no hay operaciones registradas
-- Si totalSales es 0, di que no hay ventas registradas
-- Formatea los montos en formato argentino
-- Sé específico y preciso con los números
-
-Responde la pregunta del usuario:`,
+Responde la pregunta de forma clara y profesional usando estos datos:`,
           },
         ],
-        temperature: 0.3, // Reducido para más precisión
+        temperature: 0.3,
+        max_tokens: 2000,
       })
 
       response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
     } catch (openaiError: any) {
-      console.error("OpenAI completion error:", openaiError)
-      // Si falla la generación de respuesta, crear una respuesta básica con los datos
+      console.error("[AI] Error generando respuesta:", openaiError)
       if (Object.keys(toolResults).length > 0) {
-        response = "Aquí tienes la información solicitada:\n\n"
-        response += JSON.stringify(toolResults, null, 2)
-      } else {
-        response = "No pude obtener datos para responder tu consulta. Verifica que la API key de OpenAI esté configurada correctamente."
+        response = "Aquí tienes los datos:\n\n" + JSON.stringify(toolResults, null, 2)
       }
     }
 
     return NextResponse.json({ response })
   } catch (error: any) {
-    console.error("AI error:", error)
-    const errorMessage =
-      error?.message || "Error al procesar la consulta. Verifica la configuración de OpenAI."
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    console.error("[AI] Error general:", error)
+    return NextResponse.json({ error: error?.message || "Error al procesar la consulta" }, { status: 500 })
   }
 }
-
