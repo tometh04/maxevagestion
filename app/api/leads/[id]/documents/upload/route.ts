@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 
 export async function POST(
@@ -10,7 +11,22 @@ export async function POST(
   try {
     const { user } = await getCurrentUser()
     const { id: leadId } = await params
-    const supabase = await createServerClient()
+    
+    // Usar service role key para bypass RLS (ya validamos autenticación arriba)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("❌ Faltan variables de entorno para Supabase")
+      return NextResponse.json({ error: "Error de configuración del servidor" }, { status: 500 })
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
 
     // Verificar que el lead existe
     const { data: lead, error: leadError } = await supabase
