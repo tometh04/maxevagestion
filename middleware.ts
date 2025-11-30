@@ -2,6 +2,11 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
+  // Permitir webhooks de Trello sin autenticación
+  if (req.nextUrl.pathname === '/api/trello/webhook') {
+    return NextResponse.next()
+  }
+
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
     return NextResponse.next()
