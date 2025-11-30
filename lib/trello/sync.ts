@@ -442,6 +442,12 @@ export async function fetchTrelloCard(
       }
       const errorText = await response.text()
       console.error(`❌ Trello API error (${response.status}):`, errorText)
+      
+      // Si es rate limit, lanzar error específico para que se maneje con retry
+      if (response.status === 429) {
+        throw new Error(`Trello API error: Too Many Requests (429) - ${errorText}`)
+      }
+      
       throw new Error(`Trello API error: ${response.statusText}`)
     }
 

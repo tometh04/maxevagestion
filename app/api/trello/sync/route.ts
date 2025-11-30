@@ -50,16 +50,53 @@ export async function POST(request: Request) {
     let created = 0
     let updated = 0
     let errors = 0
+    let rateLimited = 0
+
+    // Helper para hacer delay
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    // Helper para retry con backoff exponencial
+    const fetchCardWithRetry = async (cardId: string, retries = 3): Promise<any> => {
+      for (let attempt = 0; attempt < retries; attempt++) {
+        try {
+          const fullCard = await fetchTrelloCard(
+            cardId,
+            trelloSettingsForSync.trello_api_key,
+            trelloSettingsForSync.trello_token
+          )
+          return fullCard
+        } catch (error: any) {
+          // Si es rate limit, esperar más tiempo
+          if (error.message?.includes("429") || error.message?.includes("Rate limit") || error.message?.includes("Too Many Requests")) {
+            rateLimited++
+            const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000) // Max 10 segundos
+            console.log(`⚠️ Rate limit detectado para card ${cardId}, esperando ${waitTime}ms antes de reintentar...`)
+            await delay(waitTime)
+            continue
+          }
+          // Si no es rate limit y es el último intento, lanzar el error
+          if (attempt === retries - 1) {
+            throw error
+          }
+          // Esperar un poco antes de reintentar
+          await delay(500 * (attempt + 1))
+        }
+      }
+      return null
+    }
 
     // Sync each card using the proper function that fetches ALL information
-    for (const card of cards) {
+    // Procesar en batches para evitar rate limits
+    const BATCH_SIZE = 10
+    const DELAY_BETWEEN_CARDS = 100 // 100ms entre cada card
+    const DELAY_BETWEEN_BATCHES = 2000 // 2 segundos entre batches
+
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i]
+      
       try {
-        // Fetch full card details with ALL information
-        const fullCard = await fetchTrelloCard(
-          card.id,
-          trelloSettingsForSync.trello_api_key,
-          trelloSettingsForSync.trello_token
-        )
+        // Fetch full card details with ALL information (con retry)
+        const fullCard = await fetchCardWithRetry(card.id)
 
         if (!fullCard) {
           console.error(`Card ${card.id} not found or deleted`)
@@ -77,13 +114,29 @@ export async function POST(request: Request) {
         }
         synced++
 
-        // Log progress every 50 cards
-        if (synced % 50 === 0) {
-          console.log(`Procesadas ${synced}/${cards.length} tarjetas...`)
+        // Log progress every 25 cards
+        if (synced % 25 === 0) {
+          console.log(`📊 Progreso: ${synced}/${cards.length} tarjetas procesadas (${created} nuevas, ${updated} actualizadas, ${errors} errores, ${rateLimited} rate limits)`)
+        }
+
+        // Delay entre cards para evitar rate limits
+        if (i < cards.length - 1) {
+          await delay(DELAY_BETWEEN_CARDS)
+        }
+
+        // Delay más largo entre batches
+        if ((i + 1) % BATCH_SIZE === 0 && i < cards.length - 1) {
+          console.log(`⏸️ Pausa de ${DELAY_BETWEEN_BATCHES}ms después de procesar batch de ${BATCH_SIZE} tarjetas...`)
+          await delay(DELAY_BETWEEN_BATCHES)
         }
       } catch (error: any) {
-        console.error(`Error sincronizando tarjeta ${card.id}:`, error.message)
+        console.error(`❌ Error sincronizando tarjeta ${card.id}:`, error.message)
         errors++
+        // Si hay muchos rate limits seguidos, esperar más
+        if (rateLimited > 5 && rateLimited % 5 === 0) {
+          console.log(`⚠️ Muchos rate limits detectados, esperando 5 segundos antes de continuar...`)
+          await delay(5000)
+        }
       }
     }
 
@@ -94,6 +147,8 @@ export async function POST(request: Request) {
         created,
         updated,
         errors,
+        rateLimited,
+        totalCards: cards.length,
       },
     })
   } catch (error) {
