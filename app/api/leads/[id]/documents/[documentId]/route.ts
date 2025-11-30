@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
-import { createClient } from "@supabase/supabase-js"
 
 /**
  * DELETE /api/leads/[id]/documents/[documentId]
