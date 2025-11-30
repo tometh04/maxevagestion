@@ -120,7 +120,7 @@ export async function PATCH(
     // Los campos principales deben editarse desde Trello para mantener la sincronización
     if (lead.source === "Trello" && lead.external_id) {
       // Solo permitir editar campos que no afectan la sincronización
-      const allowedFields = ["assigned_seller_id", "notes", "quoted_price", "has_deposit", "deposit_amount", "deposit_currency", "deposit_method", "deposit_date"]
+      const allowedFields = ["assigned_seller_id", "notes", "quoted_price", "has_deposit", "deposit_amount", "deposit_currency", "deposit_method", "deposit_date", "deposit_account_id"]
       const updateData: any = {}
       
       for (const field of allowedFields) {
@@ -146,6 +146,7 @@ export async function PATCH(
       const depositCurrency = updateData.deposit_currency
       const depositDate = updateData.deposit_date
       const depositMethod = updateData.deposit_method
+      const depositAccountId = updateData.deposit_account_id
       const previousHasDeposit = lead.has_deposit
 
       const depositChanged = 
@@ -165,17 +166,20 @@ export async function PATCH(
 
         if (hasDeposit && depositAmount && depositCurrency && depositDate) {
           try {
-            // Determinar tipo de cuenta según método de pago y moneda
-            const accountType = getAccountTypeForDeposit(
-              depositMethod,
-              depositCurrency as "ARS" | "USD"
-            )
-            const defaultAccountId = await getOrCreateDefaultAccount(
-              accountType,
-              depositCurrency as "ARS" | "USD",
-              user.id,
-              supabase
-            )
+            // Usar la cuenta seleccionada por el usuario, o buscar una por defecto
+            let finalAccountId = depositAccountId
+            if (!finalAccountId) {
+              const accountType = getAccountTypeForDeposit(
+                depositMethod,
+                depositCurrency as "ARS" | "USD"
+              )
+              finalAccountId = await getOrCreateDefaultAccount(
+                accountType,
+                depositCurrency as "ARS" | "USD",
+                user.id,
+                supabase
+              )
+            }
 
             let exchangeRate: number | null = null
             if (depositCurrency === "USD") {
@@ -210,6 +214,7 @@ export async function PATCH(
                   exchange_rate: exchangeRate,
                   amount_ars_equivalent: amountArsEquivalent,
                   method: method,
+                  account_id: finalAccountId,
                   notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
                 })
                 .eq("id", (existingMovement as any).id)
@@ -230,7 +235,7 @@ export async function PATCH(
                   exchange_rate: exchangeRate,
                   amount_ars_equivalent: amountArsEquivalent,
                   method: method,
-                  account_id: defaultAccountId,
+                  account_id: finalAccountId,
                   seller_id: lead.assigned_seller_id || (user.role === "SELLER" ? user.id : null),
                   receipt_number: null,
                   notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
@@ -293,6 +298,7 @@ export async function PATCH(
     const depositCurrency = updateData.deposit_currency
     const depositDate = updateData.deposit_date
     const depositMethod = updateData.deposit_method
+    const depositAccountId = updateData.deposit_account_id
     const previousHasDeposit = lead.has_deposit
 
     // Verificar si hay cambios en el depósito
@@ -300,7 +306,8 @@ export async function PATCH(
       hasDeposit !== previousHasDeposit ||
       depositAmount !== lead.deposit_amount ||
       depositCurrency !== lead.deposit_currency ||
-      depositDate !== lead.deposit_date
+      depositDate !== lead.deposit_date ||
+      depositAccountId !== lead.deposit_account_id
 
     if (depositChanged) {
       // Buscar ledger movement existente para este lead
@@ -314,17 +321,20 @@ export async function PATCH(
       if (hasDeposit && depositAmount && depositCurrency && depositDate) {
         // Crear o actualizar ledger movement
         try {
-          // Determinar tipo de cuenta según método de pago y moneda
-          const accountType = getAccountTypeForDeposit(
-            depositMethod,
-            depositCurrency as "ARS" | "USD"
-          )
-          const defaultAccountId = await getOrCreateDefaultAccount(
-            accountType,
-            depositCurrency as "ARS" | "USD",
-            user.id,
-            supabase
-          )
+          // Usar la cuenta seleccionada por el usuario, o buscar una por defecto
+          let finalAccountId = depositAccountId
+          if (!finalAccountId) {
+            const accountType = getAccountTypeForDeposit(
+              depositMethod,
+              depositCurrency as "ARS" | "USD"
+            )
+            finalAccountId = await getOrCreateDefaultAccount(
+              accountType,
+              depositCurrency as "ARS" | "USD",
+              user.id,
+              supabase
+            )
+          }
 
           // Calcular ARS equivalent
           let exchangeRate: number | null = null
@@ -361,6 +371,7 @@ export async function PATCH(
                 exchange_rate: exchangeRate,
                 amount_ars_equivalent: amountArsEquivalent,
                 method: method,
+                account_id: finalAccountId,
                 notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
               })
               .eq("id", (existingMovement as any).id)
@@ -382,7 +393,7 @@ export async function PATCH(
                 exchange_rate: exchangeRate,
                 amount_ars_equivalent: amountArsEquivalent,
                 method: method,
-                account_id: defaultAccountId,
+                account_id: finalAccountId,
                 seller_id: lead.assigned_seller_id || (user.role === "SELLER" ? user.id : null),
                 receipt_number: null,
                 notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,

@@ -34,7 +34,8 @@ import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
-const leadSchema = z.object({
+// Esquema base para leads normales
+const baseLeadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
   source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Other", "Trello"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
@@ -52,10 +53,38 @@ const leadSchema = z.object({
   deposit_currency: z.enum(["ARS", "USD"]).optional().nullable().or(z.literal("none")),
   deposit_method: z.string().optional().nullable(),
   deposit_date: z.date().optional().nullable(),
+  deposit_account_id: z.string().optional().nullable().or(z.literal("none")),
   estimated_checkin_date: z.date().optional().nullable(),
   estimated_departure_date: z.date().optional().nullable(),
   follow_up_date: z.date().optional().nullable(),
 })
+
+// Esquema para leads de Trello (campos de contacto opcionales porque vienen de Trello)
+const trelloLeadSchema = z.object({
+  agency_id: z.string().optional(),
+  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Other", "Trello"]).optional(),
+  status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]).optional(),
+  region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]).optional(),
+  destination: z.string().optional(),
+  contact_name: z.string().optional(),
+  contact_phone: z.string().optional(), // No requerido para Trello
+  contact_email: z.string().optional(),
+  contact_instagram: z.string().optional(),
+  assigned_seller_id: z.string().optional().nullable().or(z.literal("none")),
+  notes: z.string().optional(),
+  quoted_price: z.coerce.number().min(0).optional().nullable(),
+  has_deposit: z.boolean().default(false),
+  deposit_amount: z.coerce.number().min(0).optional().nullable(),
+  deposit_currency: z.enum(["ARS", "USD"]).optional().nullable().or(z.literal("none")),
+  deposit_method: z.string().optional().nullable(),
+  deposit_date: z.date().optional().nullable(),
+  deposit_account_id: z.string().optional().nullable().or(z.literal("none")),
+  estimated_checkin_date: z.date().optional().nullable(),
+  estimated_departure_date: z.date().optional().nullable(),
+  follow_up_date: z.date().optional().nullable(),
+})
+
+const leadSchema = baseLeadSchema
 
 type LeadFormValues = z.infer<typeof leadSchema>
 
@@ -80,9 +109,17 @@ interface Lead {
   deposit_currency?: string | null
   deposit_method?: string | null
   deposit_date?: string | null
+  deposit_account_id?: string | null
   estimated_checkin_date?: string | null
   estimated_departure_date?: string | null
   follow_up_date?: string | null
+}
+
+interface FinancialAccount {
+  id: string
+  name: string
+  currency: string
+  type: string
 }
 
 interface EditLeadDialogProps {
@@ -103,10 +140,30 @@ export function EditLeadDialog({
   sellers,
 }: EditLeadDialogProps) {
   const [loading, setLoading] = useState(false)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const isFromTrello = lead ? (lead.source === "Trello" && lead.trello_url) : false
 
+  // Cargar cuentas financieras
+  useEffect(() => {
+    async function loadAccounts() {
+      try {
+        const response = await fetch("/api/cash/accounts")
+        if (response.ok) {
+          const data = await response.json()
+          setFinancialAccounts(data.accounts || [])
+        }
+      } catch (error) {
+        console.error("Error loading financial accounts:", error)
+      }
+    }
+    if (open) {
+      loadAccounts()
+    }
+  }, [open])
+
+  // Usar el esquema de Trello si es un lead de Trello
   const form = useForm<LeadFormValues>({
-    resolver: zodResolver(leadSchema) as any,
+    resolver: zodResolver(isFromTrello ? trelloLeadSchema : leadSchema) as any,
     defaultValues: {
       agency_id: "",
       source: "Other",
@@ -125,6 +182,7 @@ export function EditLeadDialog({
       deposit_currency: null,
       deposit_method: null,
       deposit_date: null,
+      deposit_account_id: null,
       estimated_checkin_date: null,
       estimated_departure_date: null,
       follow_up_date: null,
@@ -170,6 +228,7 @@ export function EditLeadDialog({
           deposit_currency: (lead.deposit_currency as any) || "none",
           deposit_method: lead.deposit_method || null,
           deposit_date: depositDate,
+          deposit_account_id: lead.deposit_account_id || "none",
           estimated_checkin_date: lead.estimated_checkin_date ? new Date(lead.estimated_checkin_date as string) : null,
           estimated_departure_date: lead.estimated_departure_date ? new Date(lead.estimated_departure_date as string) : null,
           follow_up_date: lead.follow_up_date ? new Date(lead.follow_up_date as string) : null,
@@ -197,9 +256,14 @@ export function EditLeadDialog({
         follow_up_date: values.follow_up_date ? (values.follow_up_date instanceof Date ? values.follow_up_date.toISOString().split("T")[0] : values.follow_up_date) : null,
       }
 
+      // Procesar deposit_account_id
+      if (updateData.deposit_account_id === "none") {
+        updateData.deposit_account_id = null
+      }
+
       // Si es de Trello, solo enviar campos permitidos
       if (isFromTrello) {
-        const allowedFields = ["assigned_seller_id", "notes", "quoted_price", "has_deposit", "deposit_amount", "deposit_currency", "deposit_method", "deposit_date"]
+        const allowedFields = ["assigned_seller_id", "notes", "quoted_price", "has_deposit", "deposit_amount", "deposit_currency", "deposit_method", "deposit_date", "deposit_account_id"]
         const filteredData: any = {}
         for (const field of allowedFields) {
           if (updateData[field] !== undefined) {
@@ -623,19 +687,52 @@ export function EditLeadDialog({
                       />
                     </div>
 
-                    <FormField
-                      control={form.control}
-                      name="deposit_method"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Método de Pago</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Ej: Transferencia, Efectivo, Mercado Pago, etc." {...field} value={field.value || ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="deposit_method"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Método de Pago</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Ej: Transferencia, Efectivo, Mercado Pago, etc." {...field} value={field.value || ""} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="deposit_account_id"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cuenta donde ingresó 💰</FormLabel>
+                            <Select 
+                              onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
+                              value={field.value || "none"}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar cuenta" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="none">Seleccionar cuenta</SelectItem>
+                                {financialAccounts
+                                  .filter(acc => !form.watch("deposit_currency") || form.watch("deposit_currency") === "none" || acc.currency === form.watch("deposit_currency"))
+                                  .map((account) => (
+                                    <SelectItem key={account.id} value={account.id}>
+                                      {account.name} ({account.currency})
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   </div>
                 )}
               </CardContent>
