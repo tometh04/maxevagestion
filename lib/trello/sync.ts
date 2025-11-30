@@ -347,12 +347,19 @@ export async function syncTrelloCardToLead(
     .eq("external_id", card.id)
     .maybeSingle()
 
+  // CRÍTICO: Asegurar que tenemos el idList correcto
+  const trelloListId = card.idList || card.list?.id || null
+  if (!trelloListId) {
+    console.error("⚠️ Card sin idList, no se puede sincronizar:", card.id, card.name)
+    throw new Error(`Card ${card.id} no tiene idList`)
+  }
+  
   const leadData: any = {
     agency_id: settings.agency_id,
     source: "Trello" as const,
     external_id: card.id,
     trello_url: card.url || card.shortUrl,
-    trello_list_id: card.idList, // Guardar el ID de la lista de Trello
+    trello_list_id: trelloListId, // Guardar el ID de la lista de Trello - CRÍTICO
     trello_full_data: trelloFullData, // Guardar TODA la información en JSONB
     status,
     region,
@@ -452,6 +459,16 @@ export async function fetchTrelloCard(
     }
 
     const card = await response.json()
+    
+    // CRÍTICO: Asegurar que idList esté presente (puede venir como idList o list.id)
+    if (!card.idList && card.list?.id) {
+      card.idList = card.list.id
+    }
+    
+    // Log para debugging
+    if (!card.idList) {
+      console.error("⚠️ Card sin idList:", card.id, card.name)
+    }
     
     // Guardar la respuesta completa en _raw para referencia
     const rawCard = JSON.parse(JSON.stringify(card))

@@ -101,10 +101,23 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
   }, [agencyId])
 
   // Agrupar leads por lista de Trello
+  // CRÍTICO: Mostrar EXACTAMENTE las mismas listas que hay en Trello, con las cards en cada lista
   const leadsByList = lists.reduce((acc, list) => {
-    acc[list.id] = leads.filter((lead) => lead.trello_list_id === list.id)
+    // Filtrar leads que pertenecen a esta lista específica
+    acc[list.id] = leads.filter((lead) => {
+      // Solo leads de Trello que tienen este trello_list_id
+      return lead.source === "Trello" && lead.trello_list_id === list.id
+    })
     return acc
   }, {} as Record<string, Lead[]>)
+  
+  // DEBUG: Log para verificar
+  console.log("📊 Leads por lista:", Object.entries(leadsByList).map(([listId, leads]) => {
+    const listName = lists.find(l => l.id === listId)?.name || "Unknown"
+    return `${listName}: ${leads.length}`
+  }))
+  console.log("📊 Total leads de Trello:", leads.filter(l => l.source === "Trello").length)
+  console.log("📊 Leads con trello_list_id:", leads.filter(l => l.trello_list_id).length)
 
   // Filtrar listas según el selector
   const filteredLists = selectedListId === "ALL" 

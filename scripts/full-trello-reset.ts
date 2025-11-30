@@ -68,15 +68,25 @@ async function clearAllLeads() {
   
   console.log(`📊 Leads antes: ${beforeCount || 0}`)
   
-  // Borrar en batches
+  // Borrar en batches más pequeños para evitar problemas
   let deleted = 0
   let hasMore = true
+  let attempts = 0
+  const maxAttempts = 100 // Máximo 100 batches (100,000 leads)
   
-  while (hasMore) {
-    const { data: batch } = await supabase
+  while (hasMore && attempts < maxAttempts) {
+    attempts++
+    
+    // Obtener batch de IDs
+    const { data: batch, error: fetchError } = await supabase
       .from("leads")
       .select("id")
-      .limit(1000)
+      .limit(500) // Batches más pequeños
+    
+    if (fetchError) {
+      console.error("❌ Error al obtener batch:", fetchError)
+      throw fetchError
+    }
     
     if (!batch || batch.length === 0) {
       hasMore = false
@@ -84,18 +94,36 @@ async function clearAllLeads() {
     }
     
     const ids = batch.map((l: any) => l.id)
-    const { error } = await supabase
+    
+    // Borrar el batch
+    const { error: deleteError } = await supabase
       .from("leads")
       .delete()
       .in("id", ids)
     
-    if (error) {
-      console.error("❌ Error al borrar batch:", error)
-      throw error
+    if (deleteError) {
+      console.error("❌ Error al borrar batch:", deleteError)
+      // Intentar borrar uno por uno como fallback
+      console.log("⚠️ Intentando borrar uno por uno...")
+      for (const id of ids) {
+        const { error: singleError } = await supabase
+          .from("leads")
+          .delete()
+          .eq("id", id)
+        if (singleError) {
+          console.error(`⚠️ No se pudo borrar lead ${id}:`, singleError.message)
+        } else {
+          deleted++
+        }
+      }
+    } else {
+      deleted += ids.length
     }
     
-    deleted += ids.length
     console.log(`🗑️  Borrados ${deleted} leads...`)
+    
+    // Pequeño delay entre batches
+    await delay(100)
   }
   
   const { count: afterCount } = await supabase
