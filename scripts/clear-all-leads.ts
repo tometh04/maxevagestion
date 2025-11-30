@@ -72,11 +72,6 @@ async function clearAllLeads() {
     console.log(`🗑️  Borrados ${deleted} leads...`)
   }
   
-  if (error) {
-    console.error("❌ Error al borrar leads:", error)
-    process.exit(1)
-  }
-  
   // Verificar que se borraron
   const { count: afterCount } = await supabase
     .from("leads")

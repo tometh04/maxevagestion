@@ -62,9 +62,14 @@ const fetchCardWithRetry = async (
 async function clearAllLeads() {
   console.log("\n🗑️  PASO 1: Borrando TODOS los leads...")
   
-  const { count: beforeCount } = await supabase
+  const { count: beforeCount, error: countError } = await supabase
     .from("leads")
     .select("*", { count: "exact", head: true })
+  
+  if (countError) {
+    console.error("❌ Error al contar leads:", countError)
+    throw countError
+  }
   
   console.log(`📊 Leads antes: ${beforeCount || 0}`)
   
@@ -126,11 +131,15 @@ async function clearAllLeads() {
     await delay(100)
   }
   
-  const { count: afterCount } = await supabase
+  const { count: afterCount, error: afterCountError } = await supabase
     .from("leads")
     .select("*", { count: "exact", head: true })
   
-  console.log(`✅ Leads después: ${afterCount || 0}`)
+  if (afterCountError) {
+    console.error("❌ Error al contar leads después:", afterCountError)
+  } else {
+    console.log(`✅ Leads después: ${afterCount || 0}`)
+  }
   console.log(`✅ Total borrados: ${deleted} leads\n`)
 }
 
@@ -196,59 +205,69 @@ async function massImport(agencyId: string) {
     .eq("agency_id", agencyId)
 
   console.log(`📊 Board ID: ${settings.board_id}`)
+  console.log(`🔑 API Key: ${settings.trello_api_key.substring(0, 10)}...`)
+  console.log(`🔑 Token: ${settings.trello_token.substring(0, 10)}...`)
 
-  // Obtener TODAS las cards usando paginación correcta de Trello
-  // Trello usa paginación con 'before' basado en el ID de la card
+  // Obtener TODAS las cards del board específico
+  // La API de Trello devuelve todas las cards del board en una sola llamada (hasta el límite de la API)
+  console.log("🔄 Obteniendo cards del board específico...")
+  
   let allCards: any[] = []
-  const limit = 1000
-  let before: string | null = null
-  let hasMore = true
-  let totalFetched = 0
-
-  console.log("🔄 Obteniendo cards del board (esto puede tardar con muchos cards)...")
-
-  while (hasMore) {
+  let retries = 0
+  const maxRetries = 3
+  
+  while (retries < maxRetries) {
     try {
-      let url = `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity&limit=${limit}`
-      if (before) {
-        url += `&before=${before}`
-      }
-
-      const cardsResponse = await fetch(url)
+      // Obtener todas las cards del board en una sola llamada
+      // IMPORTANTE: Usar el board_id, api_key y token de la configuración
+      const cardsResponse = await fetch(
+        `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList,idBoard`
+      )
 
       if (!cardsResponse.ok) {
         if (cardsResponse.status === 429) {
           console.log("⚠️ Rate limit, esperando 10 segundos...")
           await delay(10000)
+          retries++
           continue
         }
-        throw new Error(`Error: ${cardsResponse.statusText}`)
+        const errorText = await cardsResponse.text()
+        throw new Error(`Error ${cardsResponse.status}: ${errorText}`)
       }
 
-      const cards = await cardsResponse.json()
+      allCards = await cardsResponse.json()
       
-      if (cards.length === 0) {
-        hasMore = false
-      } else {
-        allCards = [...allCards, ...cards]
-        totalFetched += cards.length
-        // Usar el ID de la última card como 'before' para la siguiente página
-        before = cards[cards.length - 1].id
-        hasMore = cards.length === limit
-        console.log(`📥 Obtenidas ${totalFetched} cards...`)
-        if (hasMore) await delay(500)
+      // VERIFICAR que todas las cards pertenecen al board correcto
+      const cardsFromCorrectBoard = allCards.filter((card: any) => {
+        // Verificar que el idBoard coincida exactamente
+        return card.idBoard === settings.board_id
+      })
+      
+      if (cardsFromCorrectBoard.length !== allCards.length) {
+        console.warn(`⚠️ Algunas cards no pertenecen al board ${settings.board_id}`)
+        console.warn(`   Cards del board correcto: ${cardsFromCorrectBoard.length} de ${allCards.length}`)
+        // Usar solo las cards del board correcto
+        allCards = cardsFromCorrectBoard
       }
+      
+      console.log(`✅ Total de cards obtenidas del board ${settings.board_id}: ${allCards.length}`)
+      break // Salir del loop si fue exitoso
     } catch (error: any) {
-      if (error.message?.includes("429")) {
-        await delay(15000)
-        continue
+      retries++
+      if (retries >= maxRetries) {
+        console.error("❌ Error obteniendo cards después de varios intentos:", error)
+        throw error
       }
-      throw error
+      console.log(`⚠️ Error, reintentando (${retries}/${maxRetries})...`)
+      await delay(5000)
     }
   }
 
-  console.log(`\n✅ Total de cards obtenidas: ${allCards.length}`)
-  console.log(`🚀 Iniciando sincronización...\n`)
+  if (allCards.length === 0) {
+    throw new Error("No se obtuvieron cards del board. Verifica el board_id, api_key y token.")
+  }
+
+  console.log(`🚀 Iniciando sincronización de ${allCards.length} cards...\n`)
 
   const trelloSettingsForSync = {
     agency_id: agencyId,
