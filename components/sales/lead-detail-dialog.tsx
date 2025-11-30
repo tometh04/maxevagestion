@@ -140,6 +140,7 @@ interface Lead {
   source: string
   trello_url: string | null
   trello_list_id: string | null
+  trello_full_data?: Record<string, any> | null
   assigned_seller_id: string | null
   agency_id?: string
   created_at: string
@@ -335,6 +336,147 @@ export function LeadDetailDialog({
                 </div>
                 <div className="bg-muted/50 rounded-lg p-4">
                   <DescriptionWithLinks text={lead.notes} />
+                </div>
+              </div>
+              <Separator />
+            </>
+          )}
+
+          {/* Información completa de Trello */}
+          {lead.trello_full_data && (
+            <>
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                  <ExternalLink className="h-4 w-4" />
+                  Información Completa de Trello
+                </h3>
+                <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+                  {/* Checklists */}
+                  {lead.trello_full_data.checklists && Array.isArray(lead.trello_full_data.checklists) && lead.trello_full_data.checklists.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">📋 Checklists</h4>
+                      {lead.trello_full_data.checklists.map((checklist: any, idx: number) => {
+                        const total = checklist.checkItems?.length || 0
+                        const completed = checklist.checkItems?.filter((item: any) => item.state === "complete").length || 0
+                        return (
+                          <div key={idx} className="mb-2">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium">{checklist.name}</span>
+                              <span className="text-muted-foreground">{completed}/{total}</span>
+                            </div>
+                            {checklist.checkItems && checklist.checkItems.length > 0 && (
+                              <ul className="ml-4 mt-1 space-y-1">
+                                {checklist.checkItems.map((item: any, itemIdx: number) => (
+                                  <li key={itemIdx} className="text-xs flex items-center gap-2">
+                                    <span>{item.state === "complete" ? "✅" : "⬜"}</span>
+                                    <span className={item.state === "complete" ? "line-through text-muted-foreground" : ""}>
+                                      {item.name}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* Attachments */}
+                  {lead.trello_full_data.attachments && Array.isArray(lead.trello_full_data.attachments) && lead.trello_full_data.attachments.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">📎 Attachments</h4>
+                      <div className="space-y-1">
+                        {lead.trello_full_data.attachments.map((att: any, idx: number) => (
+                          <a
+                            key={idx}
+                            href={att.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-primary hover:underline flex items-center gap-2"
+                          >
+                            <ExternalLink className="h-3 w-3" />
+                            {att.name} {att.bytes ? `(${(att.bytes / 1024).toFixed(1)} KB)` : ""}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Custom Fields */}
+                  {lead.trello_full_data.customFieldsData && Object.keys(lead.trello_full_data.customFieldsData).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">🏷️ Custom Fields</h4>
+                      <div className="space-y-1">
+                        {Object.entries(lead.trello_full_data.customFieldsData).map(([fieldId, value]: [string, any]) => (
+                          <div key={fieldId} className="text-sm">
+                            <span className="text-muted-foreground">Field {fieldId}:</span>{" "}
+                            <span className="font-medium">
+                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Labels */}
+                  {lead.trello_full_data.labels && Array.isArray(lead.trello_full_data.labels) && lead.trello_full_data.labels.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">🏷️ Labels</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {lead.trello_full_data.labels.map((label: any, idx: number) => (
+                          <Badge
+                            key={idx}
+                            variant="outline"
+                            style={{ backgroundColor: label.color ? `#${label.color}` : undefined }}
+                            className={label.color ? "text-white border-0" : ""}
+                          >
+                            {label.name || label.color}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Members */}
+                  {lead.trello_full_data.members && Array.isArray(lead.trello_full_data.members) && lead.trello_full_data.members.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">👥 Members</h4>
+                      <div className="space-y-1">
+                        {lead.trello_full_data.members.map((member: any, idx: number) => (
+                          <div key={idx} className="text-sm">
+                            {member.fullName || member.username || member.id}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Comments/Actions */}
+                  {lead.trello_full_data.actions && Array.isArray(lead.trello_full_data.actions) && lead.trello_full_data.actions.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">💬 Comments ({lead.trello_full_data.actions.length})</h4>
+                      <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {lead.trello_full_data.actions
+                          .filter((action: any) => action.type === "commentCard")
+                          .slice(0, 5)
+                          .map((action: any, idx: number) => (
+                            <div key={idx} className="text-xs bg-background rounded p-2">
+                              <div className="font-medium mb-1">
+                                {action.memberCreator?.fullName || action.memberCreator?.username || "Unknown"}
+                              </div>
+                              <div className="text-muted-foreground">{action.data?.text || ""}</div>
+                              {action.date && (
+                                <div className="text-xs text-muted-foreground mt-1">
+                                  {format(new Date(action.date), "PPp")}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <Separator />

@@ -91,9 +91,11 @@ export interface Database {
         Row: {
           id: string
           agency_id: string
-          source: 'Instagram' | 'WhatsApp' | 'Meta Ads' | 'Other'
+          source: 'Instagram' | 'WhatsApp' | 'Meta Ads' | 'Other' | 'Trello'
           external_id: string | null
           trello_url: string | null
+          trello_list_id: string | null
+          trello_full_data: Record<string, any> | null
           status: 'NEW' | 'IN_PROGRESS' | 'QUOTED' | 'WON' | 'LOST'
           region: 'ARGENTINA' | 'CARIBE' | 'BRASIL' | 'EUROPA' | 'EEUU' | 'OTROS' | 'CRUCEROS'
           destination: string
@@ -115,9 +117,11 @@ export interface Database {
         Insert: {
           id?: string
           agency_id: string
-          source?: 'Instagram' | 'WhatsApp' | 'Meta Ads' | 'Other'
+          source?: 'Instagram' | 'WhatsApp' | 'Meta Ads' | 'Other' | 'Trello'
           external_id?: string | null
           trello_url?: string | null
+          trello_list_id?: string | null
+          trello_full_data?: Record<string, any> | null
           status?: 'NEW' | 'IN_PROGRESS' | 'QUOTED' | 'WON' | 'LOST'
           region: 'ARGENTINA' | 'CARIBE' | 'BRASIL' | 'EUROPA' | 'EEUU' | 'OTROS' | 'CRUCEROS'
           destination: string
