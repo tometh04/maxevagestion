@@ -154,10 +154,62 @@ export async function POST(request: Request) {
 
     // Validar API key de OpenAI
     const openaiApiKey = process.env.OPENAI_API_KEY
+    const lowerMessage = message.toLowerCase()
+    
+    // SIEMPRE intentar detectar si es una pregunta sobre ventas/años, incluso sin OpenAI
+    const isSalesQuestion = lowerMessage.includes("venta") || 
+                           lowerMessage.includes("vendimos") || 
+                           lowerMessage.includes("ventas") || 
+                           lowerMessage.includes("operacion") || 
+                           lowerMessage.includes("operaciones") ||
+                           lowerMessage.includes("año") ||
+                           lowerMessage.includes("year") ||
+                           /\d{4}/.test(message)
+    
     if (!openaiApiKey || openaiApiKey === "tu_openai_api_key_aqui" || openaiApiKey.trim() === "") {
       // Fallback: usar detección de keywords
       console.log("⚠️ OpenAI API key no configurada, usando fallback")
-      const toolCalls = detectToolsFromMessage(message)
+      let toolCalls = detectToolsFromMessage(message)
+      
+      // Si es pregunta sobre ventas/años pero no detectó herramientas, forzar consulta
+      if (isSalesQuestion && toolCalls.length === 0) {
+        const yearMatch = lowerMessage.match(/(?:año|year)?\s*(\d{4})/)
+        const detectedYear = yearMatch ? parseInt(yearMatch[1]) : null
+        
+        if (detectedYear) {
+          toolCalls.push({
+            name: "getSalesSummary",
+            params: {
+              from: `${detectedYear}-01-01`,
+              to: `${detectedYear}-12-31`,
+            },
+          })
+        } else if (lowerMessage.includes("año con más") || lowerMessage.includes("mejor año") || lowerMessage.includes("más ventas")) {
+          // Si pregunta sobre el año con más ventas, consultar todos los años
+          const currentYear = new Date().getFullYear()
+          for (let year = currentYear; year >= currentYear - 5; year--) {
+            toolCalls.push({
+              name: "getSalesSummary",
+              params: {
+                from: `${year}-01-01`,
+                to: `${year}-12-31`,
+              },
+            })
+          }
+        } else {
+          // Por defecto, consultar mes actual
+          const today = new Date()
+          const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+          toolCalls.push({
+            name: "getSalesSummary",
+            params: {
+              from: firstDay.toISOString().split("T")[0],
+              to: today.toISOString().split("T")[0],
+            },
+          })
+        }
+      }
+      
       const toolResults: any = {}
 
       for (const toolCall of toolCalls) {
@@ -227,9 +279,8 @@ export async function POST(request: Request) {
         response += `**Cuentas financieras:** ${toolResults.cashBalances.length}\n\n`
       }
 
-      if (Object.keys(toolResults).length === 0) {
+      if (Object.keys(toolResults).length === 0 && isSalesQuestion) {
         // Si no detectó herramientas pero pregunta sobre ventas/años, intentar consultar todos los años disponibles
-        const lowerMessage = message.toLowerCase()
         if (lowerMessage.includes("venta") || lowerMessage.includes("año") || lowerMessage.match(/\d{4}/)) {
           // Consultar ventas de los últimos años para encontrar el año con más ventas
           const currentYear = new Date().getFullYear()
