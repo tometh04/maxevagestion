@@ -60,9 +60,56 @@ Después de ejecutar el script, deberías ver:
 
 ## Verificar Webhooks Registrados
 
-Puedes verificar los webhooks registrados desde la aplicación:
+### Opción 1: Script de Verificación (Recomendado)
+
+Ejecuta el script de verificación para ver el estado completo:
+
+```bash
+npx tsx scripts/verify-trello-webhooks.ts
+```
+
+Este script te mostrará:
+- ✅ Todos los webhooks registrados para cada agencia
+- ✅ Estado de cada webhook (activo/inactivo)
+- ✅ URL del callback
+- ✅ Si la URL es accesible desde internet
+- ⚠️ Si hay problemas de configuración
+
+### Opción 2: Desde la Interfaz
+
 1. Ve a **Settings > Trello**
 2. Selecciona una agencia
 3. Ve a la pestaña **Webhooks**
 4. Deberías ver los webhooks listados con su estado
+
+## ⚠️ IMPORTANTE: URL del Webhook
+
+**El campo "Allowed origins" en la configuración de la API key de Trello NO es para webhooks.**
+
+Los webhooks se registran directamente usando la API de Trello. La URL que necesitas es:
+
+```
+https://tu-dominio.com/api/trello/webhook
+```
+
+O si estás en Vercel:
+```
+https://maxevagestion.vercel.app/api/trello/webhook
+```
+
+Esta URL debe ser:
+- ✅ Pública y accesible desde internet
+- ✅ Terminar en `/api/trello/webhook`
+- ✅ Responder a requests POST de Trello
+- ✅ No requerir autenticación (el endpoint es público)
+
+## Verificar que el Endpoint Funciona
+
+Puedes probar manualmente si el endpoint responde:
+
+```bash
+curl -X HEAD https://maxevagestion.vercel.app/api/trello/webhook
+```
+
+Debería responder con un status 200 o 405 (Method Not Allowed es normal para HEAD).
 
