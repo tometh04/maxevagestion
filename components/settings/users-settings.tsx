@@ -26,6 +26,18 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+import { Trash2 } from "lucide-react"
 
 const inviteSchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
@@ -122,9 +134,36 @@ export function UsersSettings() {
         setEditOpen(false)
         setEditingUser(null)
         loadUsers()
+      } else {
+        const data = await res.json()
+        alert(data.error || "Error al actualizar usuario")
       }
     } catch (error) {
       console.error("Error updating user:", error)
+      alert("Error al actualizar usuario")
+    }
+  }
+
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!confirm(`¿Estás seguro de que quieres eliminar a ${userName}? Esta acción no se puede deshacer.`)) {
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/settings/users/${userId}`, {
+        method: "DELETE",
+      })
+      const data = await res.json()
+      
+      if (res.ok) {
+        loadUsers()
+        alert("Usuario eliminado correctamente")
+      } else {
+        alert(data.error || "Error al eliminar usuario")
+      }
+    } catch (error) {
+      console.error("Error deleting user:", error)
+      alert("Error al eliminar usuario")
     }
   }
 
@@ -310,9 +349,38 @@ export function UsersSettings() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
-                      Editar
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(user)}>
+                        Editar
+                      </Button>
+                      {user.role !== "SUPER_ADMIN" && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>¿Eliminar usuario?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Esta acción eliminará permanentemente a <strong>{user.name}</strong> ({user.email}).
+                                Esta acción no se puede deshacer.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteUser(user.id, user.name)}
+                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              >
+                                Eliminar
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
