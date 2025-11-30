@@ -1,50 +1,225 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import OpenAI from "openai"
-import {
-  getSalesSummary,
-  getDuePayments,
-  getSellerPerformance,
-  getTopDestinations,
-  getOperatorBalances,
-  getIVAStatus,
-  getCashBalances,
-  getFXStatus,
-  getOverdueOperatorPayments,
-  getOperationMargin,
-} from "@/lib/ai/tools"
-import {
-  getSalesThisWeek,
-  getTopSellers,
-  getMonthComparison,
-  getNegativeMarginOperations,
-  getSalesByChannel,
-  getConversionRate,
-  getCustomerDuePaymentsToday,
-  getOperationsWithPendingPaymentBeforeTravel,
-  getOperationsTravelingThisWeek,
-  getMyCommissions,
-  getFinancialHealth,
-  getSharedCommissions,
-  getMarginByProductType,
-  getOperatorPaymentsDueThisWeek,
-  getOperationsWithPendingHotelPayment,
-  getSellerProfitability,
-  getMonthSummary,
-} from "@/lib/ai/tools-extended"
 import { withRateLimit, RATE_LIMIT_CONFIGS } from "@/lib/rate-limit"
 import { validateRequest, aiCopilotSchema } from "@/lib/validation"
 import { createAuditLog, getRequestMetadata } from "@/lib/audit-log"
 import { createServerClient } from "@/lib/supabase/server"
 
-// Helper para limpiar JSON de markdown
+// Esquema completo de la base de datos para que el AI lo entienda
+const DATABASE_SCHEMA = `
+## ESQUEMA DE BASE DE DATOS - MAXEVA GESTION (Agencia de Viajes)
+
+### TABLA: users (Usuarios del sistema)
+- id: UUID (PK)
+- auth_id: UUID (ID de Supabase Auth)
+- name: TEXT (Nombre completo)
+- email: TEXT (Email único)
+- role: TEXT ('SUPER_ADMIN', 'ADMIN', 'SELLER', 'CONTABLE', 'VIEWER')
+- is_active: BOOLEAN
+- commission_percentage: NUMERIC (% de comisión del vendedor)
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: agencies (Agencias/Sucursales)
+- id: UUID (PK)
+- name: TEXT (Nombre: "Rosario", "Madero")
+- city: TEXT
+- timezone: TEXT
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: user_agencies (Relación usuarios-agencias)
+- id: UUID (PK)
+- user_id: UUID (FK → users)
+- agency_id: UUID (FK → agencies)
+
+### TABLA: operators (Operadores mayoristas/proveedores)
+- id: UUID (PK)
+- name: TEXT (Nombre del operador)
+- contact_name, contact_email, contact_phone: TEXT
+- credit_limit: NUMERIC
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: customers (Clientes/Pasajeros)
+- id: UUID (PK)
+- first_name, last_name: TEXT
+- phone, email: TEXT
+- instagram_handle: TEXT
+- document_type: TEXT (DNI, PASAPORTE, etc)
+- document_number: TEXT
+- date_of_birth: DATE
+- nationality: TEXT
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: leads (Leads/Consultas de potenciales clientes)
+- id: UUID (PK)
+- agency_id: UUID (FK → agencies)
+- source: TEXT ('Instagram', 'WhatsApp', 'Meta Ads', 'Trello', 'Web', 'Referido', 'Other')
+- external_id: TEXT (ID de Trello si viene de ahí)
+- trello_url: TEXT
+- trello_list_id: TEXT (ID de la lista de Trello)
+- status: TEXT ('NEW', 'IN_PROGRESS', 'QUOTED', 'WON', 'LOST')
+- region: TEXT ('ARGENTINA', 'CARIBE', 'BRASIL', 'EUROPA', 'EEUU', 'OTROS', 'CRUCEROS')
+- destination: TEXT (Destino consultado)
+- contact_name, contact_phone, contact_email, contact_instagram: TEXT
+- assigned_seller_id: UUID (FK → users, vendedor asignado)
+- notes: TEXT
+- has_deposit: BOOLEAN (Si dejó seña)
+- deposit_amount: NUMERIC
+- deposit_currency: TEXT
+- travel_date, return_date: DATE
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: operations (Operaciones/Ventas cerradas) ⭐ TABLA MÁS IMPORTANTE
+- id: UUID (PK)
+- file_code: TEXT (Código único: "OP-20250115-abc123")
+- agency_id: UUID (FK → agencies)
+- lead_id: UUID (FK → leads, lead que originó la venta)
+- seller_id: UUID (FK → users, vendedor principal)
+- seller_secondary_id: UUID (FK → users, vendedor secundario para comisiones compartidas)
+- operator_id: UUID (FK → operators, operador/proveedor)
+- customer_id: UUID (FK → customers, cliente principal)
+- type: TEXT ('FLIGHT', 'HOTEL', 'PACKAGE', 'CRUISE', 'TRANSFER', 'MIXED')
+- product_type: TEXT ('AEREO', 'HOTEL', 'PAQUETE', 'CRUCERO', 'OTRO')
+- origin, destination: TEXT
+- departure_date, return_date: DATE (Fechas del viaje)
+- checkin_date, checkout_date: DATE (Para hoteles)
+- adults, children, infants: INTEGER
+- status: TEXT ('PRE_RESERVATION', 'RESERVED', 'CONFIRMED', 'CANCELLED', 'TRAVELLED', 'CLOSED')
+- sale_amount_total: NUMERIC (Precio de venta al cliente) 💰
+- sale_currency: TEXT ('ARS', 'USD')
+- operator_cost: NUMERIC (Costo que nos cobra el operador) 💰
+- operator_cost_currency: TEXT ('ARS', 'USD')
+- margin_amount: NUMERIC (Ganancia = sale_amount_total - operator_cost) 💰
+- margin_percentage: NUMERIC (% de margen)
+- commission_amount: NUMERIC (Comisión del vendedor)
+- commission_paid: BOOLEAN
+- passengers: JSONB (Info de pasajeros)
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: payments (Pagos - cobros a clientes y pagos a operadores)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- payer_type: TEXT ('CUSTOMER' = cliente nos paga, 'OPERATOR' = nosotros pagamos al operador)
+- direction: TEXT ('INCOME' = entra dinero, 'EXPENSE' = sale dinero)
+- method: TEXT ('CASH', 'TRANSFER', 'CREDIT_CARD', 'DEBIT_CARD', 'MP', 'CHECK')
+- amount: NUMERIC 💰
+- currency: TEXT ('ARS', 'USD')
+- date_due: DATE (Fecha de vencimiento)
+- date_paid: DATE (Fecha en que se pagó)
+- status: TEXT ('PENDING', 'PAID', 'OVERDUE')
+- reference: TEXT
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: financial_accounts (Cuentas financieras/Cajas)
+- id: UUID (PK)
+- name: TEXT (Nombre: "Caja ARS", "Banco Galicia USD", etc)
+- type: TEXT ('CASH', 'BANK', 'MERCADOPAGO', 'CRYPTO')
+- currency: TEXT ('ARS', 'USD')
+- initial_balance: NUMERIC
+- agency_id: UUID (FK → agencies)
+- is_active: BOOLEAN
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: ledger_movements (Movimientos contables)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- payment_id: UUID (FK → payments)
+- account_id: UUID (FK → financial_accounts)
+- type: TEXT ('INCOME', 'EXPENSE', 'TRANSFER', 'FX_GAIN', 'FX_LOSS', 'OPERATOR_PAYMENT')
+- amount: NUMERIC
+- currency: TEXT
+- amount_ars_equivalent: NUMERIC (Equivalente en ARS)
+- description: TEXT
+- movement_date: TIMESTAMP
+- created_at: TIMESTAMP
+
+### TABLA: quotations (Cotizaciones/Presupuestos)
+- id: UUID (PK)
+- quotation_number: TEXT (Número de cotización)
+- lead_id: UUID (FK → leads)
+- agency_id: UUID (FK → agencies)
+- seller_id: UUID (FK → users)
+- customer_name, customer_email, customer_phone: TEXT
+- destination: TEXT
+- departure_date, return_date: DATE
+- adults, children, infants: INTEGER
+- total_amount: NUMERIC
+- currency: TEXT
+- status: TEXT ('DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED')
+- valid_until: DATE
+- notes: TEXT
+- items: JSONB (Detalle de items)
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: alerts (Alertas del sistema)
+- id: UUID (PK)
+- operation_id, customer_id, user_id: UUID (FKs opcionales)
+- type: TEXT ('PAYMENT_DUE', 'OPERATOR_DUE', 'UPCOMING_TRIP', 'MISSING_DOC', 'GENERIC')
+- description: TEXT
+- date_due: TIMESTAMP
+- status: TEXT ('PENDING', 'DONE', 'IGNORED')
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: exchange_rates (Tipos de cambio)
+- id: UUID (PK)
+- date: DATE
+- currency_from, currency_to: TEXT
+- rate: NUMERIC
+- source: TEXT
+- created_at: TIMESTAMP
+
+### TABLA: documents (Documentos/Archivos)
+- id: UUID (PK)
+- operation_id, customer_id, lead_id: UUID (FKs opcionales)
+- type: TEXT ('PASSPORT', 'VOUCHER', 'TICKET', 'INVOICE', 'OTHER')
+- file_name, file_url, storage_path: TEXT
+- uploaded_by: UUID (FK → users)
+- uploaded_at: TIMESTAMP
+
+### RELACIONES CLAVE:
+- Una OPERACIÓN tiene un VENDEDOR (seller_id), un OPERADOR (operator_id), y un CLIENTE (customer_id)
+- Una OPERACIÓN puede tener muchos PAGOS (INCOME de clientes, EXPENSE a operadores)
+- Un LEAD puede convertirse en una OPERACIÓN cuando se concreta la venta
+- Los PAGOS tienen estado PENDING/PAID/OVERDUE
+
+### MÉTRICAS DE NEGOCIO:
+- VENTA TOTAL = sale_amount_total (lo que paga el cliente)
+- COSTO = operator_cost (lo que pagamos al operador)
+- MARGEN = margin_amount = sale_amount_total - operator_cost (nuestra ganancia)
+- COMISIÓN = commission_amount (lo que gana el vendedor)
+- CONVERSIÓN = leads WON / leads totales
+`
+
+// Helper para limpiar JSON
 function cleanJsonString(jsonString: string): string {
   if (!jsonString) return "{}"
   let cleaned = jsonString.trim()
   if (cleaned.startsWith("```json")) cleaned = cleaned.substring(7)
+  if (cleaned.startsWith("```sql")) cleaned = cleaned.substring(6)
   if (cleaned.startsWith("```")) cleaned = cleaned.substring(3)
   if (cleaned.endsWith("```")) cleaned = cleaned.substring(0, cleaned.length - 3)
   return cleaned.trim()
+}
+
+// Ejecutar consulta SQL de forma segura (solo SELECT)
+async function executeQuery(supabase: any, query: string): Promise<any> {
+  // Validar que sea solo SELECT (seguridad)
+  const normalizedQuery = query.trim().toUpperCase()
+  if (!normalizedQuery.startsWith("SELECT")) {
+    throw new Error("Solo se permiten consultas SELECT")
+  }
+  
+  // Ejecutar usando rpc si existe, o directamente
+  const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: query })
+  
+  if (error) {
+    // Si no existe la función RPC, intentar consulta directa limitada
+    console.log("[AI] RPC no disponible, usando consulta directa")
+    return { error: error.message, note: "Función RPC no configurada" }
+  }
+  
+  return data
 }
 
 export async function POST(request: Request) {
@@ -95,223 +270,237 @@ export async function POST(request: Request) {
 
     const openai = new OpenAI({ apiKey: openaiApiKey })
 
-    // Calcular fechas
+    // Obtener contexto actual
     const today = new Date()
+    const currentDate = today.toISOString().split('T')[0]
     const currentYear = today.getFullYear()
     const currentMonth = today.getMonth() + 1
-    const currentDay = today.getDate()
     
-    const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
-    const lastMonthLastDay = new Date(today.getFullYear(), today.getMonth(), 0)
-    const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}-01`
-    const lastMonthEnd = `${lastMonthLastDay.getFullYear()}-${String(lastMonthLastDay.getMonth() + 1).padStart(2, '0')}-${String(lastMonthLastDay.getDate()).padStart(2, '0')}`
+    // Calcular fechas útiles
+    const startOfMonth = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
+    const startOfWeek = new Date(today)
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1) // Lunes
+    const startOfWeekStr = startOfWeek.toISOString().split('T')[0]
     
-    const currentMonthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
-    const currentMonthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+    const lastMonthStart = new Date(currentYear, currentMonth - 2, 1)
+    const lastMonthEnd = new Date(currentYear, currentMonth - 1, 0)
+    const lastMonthStartStr = lastMonthStart.toISOString().split('T')[0]
+    const lastMonthEndStr = lastMonthEnd.toISOString().split('T')[0]
 
-    // Prompt mejorado para decidir herramientas
-    const toolsPrompt = `Eres un asistente de una agencia de viajes argentina. Analiza la pregunta y determina qué herramientas usar.
+    // Obtener datos relevantes del contexto actual
+    const contextData: any = {}
 
-FECHA HOY: ${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}
-MES PASADO: ${lastMonthStart} a ${lastMonthEnd}
-MES ACTUAL (hasta hoy): ${currentMonthStart} a ${currentMonthEnd}
+    // 1. Resumen de ventas del mes actual
+    const { data: salesThisMonth } = await supabase
+      .from("operations")
+      .select("sale_amount_total, margin_amount, operator_cost, status, product_type, seller_id")
+      .gte("created_at", startOfMonth)
 
-HERRAMIENTAS DISPONIBLES:
-
-📊 VENTAS Y RENDIMIENTO:
-1. getSalesSummary(from?, to?, agencyId?) - Resumen de ventas (total, margen, operaciones)
-2. getSalesThisWeek() - Ventas de esta semana
-3. getMonthSummary() - Resumen del mes actual
-4. getTopSellers(from?, to?, limit?) - Top vendedores por ventas
-5. getSellerProfitability(from?, to?) - Rentabilidad promedio por vendedor
-6. getMonthComparison() - Comparar mes actual vs mes pasado a la misma fecha
-7. getTopDestinations(from?, to?, limit?) - Destinos más vendidos
-8. getMarginByProductType(from?, to?) - Margen por tipo de producto (aéreos, hoteles, paquetes)
-9. getNegativeMarginOperations() - Operaciones con margen negativo
-10. getSalesByChannel(from?, to?) - Ventas por canal (Instagram, WhatsApp, etc.)
-11. getConversionRate(from?, to?) - Tasa de conversión de lead a venta
-12. getSellerPerformance(sellerId, from?, to?) - Performance de un vendedor específico
-
-💰 PAGOS Y COBRANZAS:
-13. getDuePayments(date?, type?) - Pagos vencidos (type: "CUSTOMER" o "OPERATOR")
-14. getCustomerDuePaymentsToday() - Clientes con pagos vencidos HOY
-15. getOperatorPaymentsDueThisWeek() - Pagos a operadores vencidos esta semana
-16. getOperationsWithPendingPaymentBeforeTravel() - Operaciones con cobro pendiente antes del viaje
-17. getOperationsWithPendingHotelPayment(days?) - Operaciones con hotelería pendiente de pago (próximos X días)
-
-📈 CONTABILIDAD:
-18. getIVAStatus(year?, month?) - Estado de IVA (débito fiscal, crédito fiscal, a pagar)
-19. getCashBalances() - Saldos de caja (ARS, USD, MP, bancos)
-20. getFXStatus(days?) - Ganancias/pérdidas por tipo de cambio
-21. getOperatorBalances(onlyOverdue?) - Balances de operadores
-22. getOverdueOperatorPayments() - Pagos vencidos a operadores
-23. getOperationMargin(operationId) - Margen detallado de una operación
-
-🧳 OPERACIONES:
-24. getOperationsTravelingThisWeek() - Operaciones que viajan esta semana
-
-💵 COMISIONES:
-25. getMyCommissions(from?, to?) - Mis comisiones del período
-26. getSharedCommissions(from?, to?) - Comisiones compartidas entre vendedores
-
-🏥 SALUD GENERAL:
-27. getFinancialHealth() - Resumen completo de salud financiera
-
-INSTRUCCIONES DE MAPEO:
-- "¿cuánto vendimos esta semana?" → getSalesThisWeek
-- "¿cuánto llevamos vendido este mes?" → getMonthSummary
-- "¿qué vendedor vendió más?" → getTopSellers
-- "¿cuál es el margen total?" → getSalesSummary o getMonthSummary
-- "¿cómo estamos vs el mes pasado?" → getMonthComparison
-- "¿cuáles destinos fueron los más vendidos?" → getTopDestinations
-- "¿qué productos tienen mejor margen?" → getMarginByProductType
-- "operaciones con margen negativo" → getNegativeMarginOperations
-- "¿cuántas por Instagram/WhatsApp?" → getSalesByChannel
-- "tasa de conversión" → getConversionRate
-- "¿qué clientes tienen pagos vencidos hoy?" → getCustomerDuePaymentsToday
-- "¿qué operadores tienen pagos vencidos?" → getOverdueOperatorPayments o getOperatorPaymentsDueThisWeek
-- "operaciones con cobro pendiente antes del viaje" → getOperationsWithPendingPaymentBeforeTravel
-- "¿cuánto tengo que pagar de IVA?" → getIVAStatus
-- "saldo de caja" → getCashBalances
-- "diferencias de tipo de cambio" → getFXStatus
-- "pagos a proveedores próximos 7 días" → getOperatorPaymentsDueThisWeek
-- "operaciones que viajan esta semana" → getOperationsTravelingThisWeek
-- "hotelería pendiente de pago" → getOperationsWithPendingHotelPayment
-- "mi comisión" → getMyCommissions
-- "comisiones compartidas" → getSharedCommissions
-- "salud financiera" → getFinancialHealth
-- "rentabilidad por vendedor" → getSellerProfitability
-
-Pregunta del usuario: "${message}"
-
-Responde ÚNICAMENTE con JSON válido (sin markdown):
-{"tools": [{"name": "nombreHerramienta", "params": {...}}]}`
-
-    let toolCalls: any[] = []
-
-    try {
-      const toolDecision = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "Responde SOLO con JSON válido, sin markdown ni explicaciones." },
-          { role: "user", content: toolsPrompt },
-        ],
-        temperature: 0.1,
-      })
-
-      const toolDecisionText = toolDecision.choices[0]?.message?.content || "{}"
-      const cleanedText = cleanJsonString(toolDecisionText)
-      console.log(`[AI] Herramientas decididas:`, cleanedText.substring(0, 500))
-
-      try {
-        const parsed = JSON.parse(cleanedText)
-        toolCalls = parsed.tools || []
-      } catch (e) {
-        console.error("[AI] Error parsing tools:", e)
-      }
-    } catch (openaiError: any) {
-      console.error("[AI] OpenAI error:", openaiError)
+    contextData.ventasMesActual = {
+      total: (salesThisMonth || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
+      margen: (salesThisMonth || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
+      cantidadOperaciones: (salesThisMonth || []).length,
     }
 
-    // Ejecutar herramientas
-    const toolResults: any = {}
-    console.log(`[AI] Ejecutando ${toolCalls.length} herramientas:`, toolCalls.map((t: any) => t.name))
+    // 2. Ventas de esta semana
+    const { data: salesThisWeek } = await supabase
+      .from("operations")
+      .select("sale_amount_total, margin_amount")
+      .gte("created_at", startOfWeekStr)
 
-    for (const toolCall of toolCalls) {
-      try {
-        const p = toolCall.params || {}
-        switch (toolCall.name) {
-          case "getSalesSummary":
-            toolResults.salesSummary = await getSalesSummary(user, p.from, p.to, agencyId || p.agencyId)
-            break
-          case "getSalesThisWeek":
-            toolResults.salesThisWeek = await getSalesThisWeek(user, agencyId)
-            break
-          case "getMonthSummary":
-            toolResults.monthSummary = await getMonthSummary(user, agencyId)
-            break
-          case "getTopSellers":
-            toolResults.topSellers = await getTopSellers(user, p.from, p.to, p.limit || 5)
-            break
-          case "getSellerProfitability":
-            toolResults.sellerProfitability = await getSellerProfitability(user, p.from, p.to)
-            break
-          case "getMonthComparison":
-            toolResults.monthComparison = await getMonthComparison(user, agencyId)
-            break
-          case "getDuePayments":
-            toolResults.duePayments = await getDuePayments(user, p.date, p.type)
-            break
-          case "getCustomerDuePaymentsToday":
-            toolResults.customerDuePaymentsToday = await getCustomerDuePaymentsToday(user)
-            break
-          case "getOperatorPaymentsDueThisWeek":
-            toolResults.operatorPaymentsDueThisWeek = await getOperatorPaymentsDueThisWeek(user)
-            break
-          case "getSellerPerformance":
-            if (p.sellerId) toolResults.sellerPerformance = await getSellerPerformance(user, p.sellerId, p.from, p.to)
-            break
-          case "getTopDestinations":
-            toolResults.topDestinations = await getTopDestinations(user, p.from, p.to, p.limit || 5)
-            break
-          case "getMarginByProductType":
-            toolResults.marginByProductType = await getMarginByProductType(user, p.from, p.to)
-            break
-          case "getOperatorBalances":
-            toolResults.operatorBalances = await getOperatorBalances(user, p.onlyOverdue || false)
-            break
-          case "getIVAStatus":
-            toolResults.ivaStatus = await getIVAStatus(user, p.year, p.month)
-            break
-          case "getCashBalances":
-            toolResults.cashBalances = await getCashBalances(user)
-            break
-          case "getFXStatus":
-            toolResults.fxStatus = await getFXStatus(user, p.days || 30)
-            break
-          case "getOverdueOperatorPayments":
-            toolResults.overdueOperatorPayments = await getOverdueOperatorPayments(user)
-            break
-          case "getOperationMargin":
-            if (p.operationId) toolResults.operationMargin = await getOperationMargin(user, p.operationId)
-            break
-          case "getNegativeMarginOperations":
-            toolResults.negativeMarginOperations = await getNegativeMarginOperations(user, agencyId)
-            break
-          case "getSalesByChannel":
-            toolResults.salesByChannel = await getSalesByChannel(user, p.from, p.to)
-            break
-          case "getConversionRate":
-            toolResults.conversionRate = await getConversionRate(user, p.from, p.to)
-            break
-          case "getOperationsWithPendingPaymentBeforeTravel":
-            toolResults.pendingBeforeTravel = await getOperationsWithPendingPaymentBeforeTravel(user)
-            break
-          case "getOperationsWithPendingHotelPayment":
-            toolResults.pendingHotelPayment = await getOperationsWithPendingHotelPayment(user, p.days || 30)
-            break
-          case "getOperationsTravelingThisWeek":
-            toolResults.travelingThisWeek = await getOperationsTravelingThisWeek(user)
-            break
-          case "getMyCommissions":
-            toolResults.myCommissions = await getMyCommissions(user, p.from, p.to)
-            break
-          case "getFinancialHealth":
-            toolResults.financialHealth = await getFinancialHealth(user)
-            break
-          case "getSharedCommissions":
-            toolResults.sharedCommissions = await getSharedCommissions(user, p.from, p.to)
-            break
-        }
-        console.log(`[AI] ✅ ${toolCall.name} completado`)
-      } catch (error) {
-        console.error(`[AI] ❌ Error en ${toolCall.name}:`, error)
-        toolResults[`${toolCall.name}_error`] = { error: String(error) }
-      }
+    contextData.ventasEstaSemana = {
+      total: (salesThisWeek || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
+      margen: (salesThisWeek || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
+      cantidadOperaciones: (salesThisWeek || []).length,
     }
 
-    const resultsText = JSON.stringify(toolResults, null, 2)
-    console.log(`[AI] Resultados (preview):`, resultsText.substring(0, 500))
+    // 3. Pagos vencidos
+    const { data: overduePayments } = await supabase
+      .from("payments")
+      .select(`
+        id, amount, currency, date_due, direction, payer_type,
+        operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
+      `)
+      .eq("status", "PENDING")
+      .lt("date_due", currentDate)
+
+    contextData.pagosVencidos = {
+      cantidad: (overduePayments || []).length,
+      detalles: (overduePayments || []).slice(0, 10).map((p: any) => ({
+        monto: p.amount,
+        moneda: p.currency,
+        vencimiento: p.date_due,
+        tipo: p.payer_type === 'CUSTOMER' ? 'Cobrar a cliente' : 'Pagar a operador',
+        operacion: p.operations?.file_code || p.operations?.destination,
+        cliente: p.operations?.customers ? `${p.operations.customers.first_name} ${p.operations.customers.last_name}` : null,
+      })),
+    }
+
+    // 4. Pagos que vencen hoy
+    const { data: paymentsDueToday } = await supabase
+      .from("payments")
+      .select(`
+        id, amount, currency, direction, payer_type,
+        operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
+      `)
+      .eq("status", "PENDING")
+      .eq("date_due", currentDate)
+
+    contextData.pagosVencenHoy = {
+      cantidad: (paymentsDueToday || []).length,
+      detalles: (paymentsDueToday || []).map((p: any) => ({
+        monto: p.amount,
+        moneda: p.currency,
+        tipo: p.payer_type === 'CUSTOMER' ? 'Cobrar a cliente' : 'Pagar a operador',
+        operacion: p.operations?.file_code || p.operations?.destination,
+        cliente: p.operations?.customers ? `${p.operations.customers.first_name} ${p.operations.customers.last_name}` : null,
+      })),
+    }
+
+    // 5. Próximos viajes (esta semana)
+    const endOfWeek = new Date(today)
+    endOfWeek.setDate(today.getDate() + 7)
+    const { data: upcomingTrips } = await supabase
+      .from("operations")
+      .select(`
+        id, file_code, destination, departure_date, status,
+        customers:customer_id(first_name, last_name, phone),
+        users:seller_id(name)
+      `)
+      .gte("departure_date", currentDate)
+      .lte("departure_date", endOfWeek.toISOString().split('T')[0])
+      .order("departure_date", { ascending: true })
+
+    contextData.viajesProximos = {
+      cantidad: (upcomingTrips || []).length,
+      detalles: (upcomingTrips || []).map((t: any) => ({
+        codigo: t.file_code,
+        destino: t.destination,
+        fechaSalida: t.departure_date,
+        estado: t.status,
+        cliente: t.customers ? `${t.customers.first_name} ${t.customers.last_name}` : null,
+        telefono: t.customers?.phone,
+        vendedor: t.users?.name,
+      })),
+    }
+
+    // 6. Top vendedores del mes
+    const { data: operations } = await supabase
+      .from("operations")
+      .select("seller_id, sale_amount_total, margin_amount, users:seller_id(name)")
+      .gte("created_at", startOfMonth)
+
+    const sellerStats: Record<string, any> = {}
+    for (const op of (operations || [])) {
+      const sellerId = op.seller_id
+      const sellerName = (op.users as any)?.name || "Sin vendedor"
+      if (!sellerStats[sellerId]) {
+        sellerStats[sellerId] = { nombre: sellerName, ventas: 0, margen: 0, operaciones: 0 }
+      }
+      sellerStats[sellerId].ventas += op.sale_amount_total || 0
+      sellerStats[sellerId].margen += op.margin_amount || 0
+      sellerStats[sellerId].operaciones += 1
+    }
+    contextData.topVendedores = Object.values(sellerStats)
+      .sort((a: any, b: any) => b.ventas - a.ventas)
+      .slice(0, 5)
+
+    // 7. Leads activos
+    const { data: activeLeads } = await supabase
+      .from("leads")
+      .select("id, status, source, region, destination")
+      .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
+
+    const leadsByStatus: Record<string, number> = {}
+    for (const lead of (activeLeads || [])) {
+      leadsByStatus[lead.status] = (leadsByStatus[lead.status] || 0) + 1
+    }
+    contextData.leadsActivos = {
+      total: (activeLeads || []).length,
+      porEstado: leadsByStatus,
+    }
+
+    // 8. Cuentas financieras
+    const { data: accounts } = await supabase
+      .from("financial_accounts")
+      .select("name, type, currency, initial_balance")
+      .eq("is_active", true)
+
+    contextData.cuentasFinancieras = accounts || []
+
+    // Convertir contexto a texto
+    const contextText = JSON.stringify(contextData, null, 2)
+
+    // PROMPT PRINCIPAL - El cerebro del AI Copilot
+    const systemPrompt = `Eres el ASISTENTE EJECUTIVO INTELIGENTE de MAXEVA GESTION, una agencia de viajes argentina con sucursales en Rosario y Madero.
+
+## TU ROL
+Eres un experto en el negocio de agencias de viajes. Conocés perfectamente:
+- Cómo funciona una agencia de viajes (vendemos viajes, cobramos a clientes, pagamos a operadores)
+- El flujo de un cliente: Lead → Cotización → Operación/Venta → Viaje → Cierre
+- Métricas de negocio: ventas, márgenes, comisiones, cobros, pagos, IVA
+- Operadores mayoristas (proveedores que nos venden los servicios)
+- Gestión de leads desde Instagram, WhatsApp, Trello
+
+## ESQUEMA DE BASE DE DATOS
+${DATABASE_SCHEMA}
+
+## CONTEXTO ACTUAL (${currentDate})
+Hoy es ${new Date().toLocaleDateString('es-AR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.
+Semana actual: desde ${startOfWeekStr}
+Mes actual: ${new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })}
+Mes pasado: ${lastMonthStartStr} a ${lastMonthEndStr}
+
+## DATOS EN TIEMPO REAL
+${contextText}
+
+## REGLAS DE RESPUESTA
+1. **Idioma**: Siempre en español argentino
+2. **Formato moneda**: $1.234.567,89 (punto para miles, coma para decimales)
+3. **Formato fecha**: DD/MM/YYYY
+4. **Sé conciso pero completo**
+5. **Usa emojis para destacar**:
+   - 📈 datos positivos
+   - 📉 datos negativos  
+   - ⚠️ alertas importantes
+   - 💰 montos
+   - 📊 estadísticas
+   - ✅ confirmaciones
+   - ❌ problemas
+6. **Si hay alertas o riesgos, mencionalos**
+7. **Si necesitás más contexto, preguntá**
+8. **Respondé con los datos que tenés, no inventes**
+
+## USUARIO ACTUAL
+- Nombre: ${user.name}
+- Email: ${user.email}
+- Rol: ${user.role}
+
+## EJEMPLOS DE PREGUNTAS Y CÓMO RESPONDER
+
+**"¿Cuánto vendimos esta semana?"**
+→ Usar datos de ventasEstaSemana
+
+**"¿Qué pagos vencen hoy?"** o **"¿Qué cobros tengo hoy?"**
+→ Usar datos de pagosVencenHoy
+
+**"¿Qué viajes salen esta semana?"**
+→ Usar datos de viajesProximos
+
+**"¿Quién vendió más este mes?"**
+→ Usar datos de topVendedores
+
+**"¿Cómo estamos vs el mes pasado?"**
+→ Comparar ventasMesActual con mes pasado
+
+**"en que fecha cae el próximo?"** (pregunta ambigua)
+→ Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, o próximo vencimiento?"
+
+## IMPORTANTE
+- Si la pregunta es ambigua, pedí aclaración
+- Si no tenés datos suficientes, decilo honestamente
+- Siempre intentá dar contexto adicional útil
+- Si hay riesgos (pagos vencidos, viajes sin confirmar), mencionalo`
 
     // Generar respuesta
     let response = "No pude procesar tu consulta."
@@ -320,58 +509,19 @@ Responde ÚNICAMENTE con JSON válido (sin markdown):
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          {
-            role: "system",
-            content: `Eres el asistente ejecutivo de MAXEVA GESTION, una agencia de viajes argentina con sede en Rosario y Madero.
-
-CONTEXTO DEL NEGOCIO:
-- Vendemos paquetes turísticos, aéreos, hoteles y servicios de viaje
-- Trabajamos con operadores mayoristas
-- Cobramos a clientes y pagamos a operadores
-- Ganamos por el margen entre precio de venta y costo del operador
-- Manejamos ARS y USD
-
-FORMATO DE RESPUESTA:
-1. Responde siempre en español argentino
-2. Montos en formato argentino: $1.234.567,89 (punto para miles, coma para decimales)
-3. Fechas en formato DD/MM/YYYY
-4. Sé conciso pero completo
-5. Usa emojis para destacar información importante:
-   - 📈 para datos positivos
-   - 📉 para datos negativos
-   - ⚠️ para alertas
-   - 💰 para montos
-   - 📊 para estadísticas
-6. Si hay riesgos o alertas, menciónalos claramente
-7. Si no hay datos suficientes, dilo honestamente
-8. Incluye números exactos de los datos
-
-USUARIO ACTUAL:
-- Rol: ${user.role}
-- Puede ver datos según su nivel de acceso
-
-Los datos que recibes son REALES de la base de datos Supabase de producción.`,
-          },
-          {
-            role: "user",
-            content: `Pregunta: "${message}"
-
-Datos consultados de la base de datos:
-${resultsText}
-
-Responde la pregunta de forma clara y profesional usando estos datos:`,
-          },
+          { role: "system", content: systemPrompt },
+          { role: "user", content: message },
         ],
-        temperature: 0.3,
+        temperature: 0.4,
         max_tokens: 2000,
       })
 
       response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
     } catch (openaiError: any) {
-      console.error("[AI] Error generando respuesta:", openaiError)
-      if (Object.keys(toolResults).length > 0) {
-        response = "Aquí tienes los datos:\n\n" + JSON.stringify(toolResults, null, 2)
-      }
+      console.error("[AI] Error OpenAI:", openaiError)
+      return NextResponse.json({ 
+        error: "Error al conectar con OpenAI: " + openaiError.message 
+      }, { status: 500 })
     }
 
     return NextResponse.json({ response })
