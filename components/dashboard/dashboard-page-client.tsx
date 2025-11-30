@@ -61,14 +61,18 @@ export function DashboardPageClient({
         params.set("sellerId", filters.sellerId)
       }
 
-      // Fetch all data in parallel
+      // Fetch all data in parallel with cache headers
+      const fetchOptions = { 
+        next: { revalidate: 30 } // Cache por 30 segundos
+      }
+      
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, paymentsRes] = await Promise.all([
-        fetch(`/api/analytics/sales?${params.toString()}`),
-        fetch(`/api/analytics/sellers?${params.toString()}`),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=5`),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=10`),
-        fetch(`/api/analytics/cashflow?${params.toString()}`),
-        fetch(`/api/payments?${params.toString()}&status=PENDING`),
+        fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
+        fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
+        fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
+        fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
+        fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
+        fetch(`/api/payments?${params.toString()}&status=PENDING`, fetchOptions),
       ])
 
       const salesData = await salesRes.json()
@@ -106,7 +110,8 @@ export function DashboardPageClient({
 
   useEffect(() => {
     fetchDashboardData()
-  }, [fetchDashboardData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId])
 
   return (
     <div className="flex-1 space-y-4 pt-4 md:pt-6">

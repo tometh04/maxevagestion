@@ -12,12 +12,12 @@ Ve a tu dashboard de Vercel y copia la URL de producción. Debería ser algo com
 
 ```bash
 cd erplozada
-npx tsx scripts/register-trello-webhooks-production.ts https://tu-url-de-vercel.vercel.app
+npx tsx scripts/register-trello-webhooks-production.ts https://vercel.com/tomassanchez04-5347s-projects/maxevagestion-v5/74chr1KaumybiTn5BiEhiu3SpMwD
 ```
 
 **Ejemplo:**
 ```bash
-npx tsx scripts/register-trello-webhooks-production.ts https://maxevagestion.vercel.app
+npx tsx scripts/register-trello-webhooks-production.ts https://vercel.com/tomassanchez04-5347s-projects/maxevagestion-v5/74chr1KaumybiTn5BiEhiu3SpMwD
 ```
 
 El script automáticamente:

@@ -53,46 +53,18 @@ export async function GET(request: Request) {
       query = query.eq("agency_id", agencyId)
     }
 
-    // Add pagination
-    // Si el límite es muy alto (>= 10000), cargar todos sin paginación usando múltiples queries
+    // Add pagination with reasonable limits
     const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    const limit = requestedLimit >= 10000 ? 10000 : requestedLimit
+    // Limitar a máximo 500 para mejor rendimiento
+    const limit = Math.min(requestedLimit, 500)
     const offset = parseInt(searchParams.get("offset") || "0")
     
-    let leads: any[] = []
-    let error: any = null
+    const result = await query
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
     
-    if (requestedLimit >= 10000) {
-      // Cargar todos los leads con múltiples queries (Supabase limita a 1000 por defecto)
-      let currentOffset = 0
-      const batchSize = 1000
-      let hasMore = true
-      
-      while (hasMore) {
-        const result = await query
-          .order("created_at", { ascending: false })
-          .range(currentOffset, currentOffset + batchSize - 1)
-        
-        if (result.error) {
-          error = result.error
-          break
-        }
-        
-        if (result.data && result.data.length > 0) {
-          leads = [...leads, ...result.data]
-          currentOffset += batchSize
-          hasMore = result.data.length === batchSize
-        } else {
-          hasMore = false
-        }
-      }
-    } else {
-      const result = await query
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1)
-      leads = result.data || []
-      error = result.error
-    }
+    const leads = result.data || []
+    const error = result.error
 
     if (error) {
       console.error("Error fetching leads:", error)

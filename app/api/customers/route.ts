@@ -49,8 +49,9 @@ export async function GET(request: Request) {
       )
     }
 
-    // Add pagination
-    const limit = parseInt(searchParams.get("limit") || "100")
+    // Add pagination with reasonable limits
+    const requestedLimit = parseInt(searchParams.get("limit") || "100")
+    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = parseInt(searchParams.get("offset") || "0")
     
     const { data: customers, error } = await query

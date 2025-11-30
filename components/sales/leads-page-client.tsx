@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { LeadsKanban } from "@/components/sales/leads-kanban"
 import { LeadsKanbanTrello } from "@/components/sales/leads-kanban-trello"
 import { LeadsTable } from "@/components/sales/leads-table"
@@ -75,11 +75,12 @@ export function LeadsPageClient({
   const loadLeads = async (agencyId: string) => {
     setLoading(true)
     try {
-      // Cargar todos los leads (sin límite) para Trello
-      // Si es "ALL", no enviamos agencyId para obtener todos
+      // Cargar leads con límite razonable (200) para mejor rendimiento
+      // Si hay Trello leads, cargar más para el Kanban, pero con límite
+      const limit = hasTrelloLeads ? 500 : 200
       const url = agencyId === "ALL"
-        ? `/api/leads?limit=10000`
-        : `/api/leads?agencyId=${agencyId}&limit=10000`
+        ? `/api/leads?limit=${limit}`
+        : `/api/leads?agencyId=${agencyId}&limit=${limit}`
       const response = await fetch(url)
       const data = await response.json()
       setLeads(data.leads || [])
@@ -99,7 +100,11 @@ export function LeadsPageClient({
 
   // SIEMPRE usar Trello Kanban si hay leads con trello_list_id
   // Verificar si hay leads con trello_list_id (independientemente del source)
-  const trelloLeads = filteredLeads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined)
+  // Usar useMemo para evitar recalcular en cada render
+  const trelloLeads = useMemo(
+    () => filteredLeads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined),
+    [filteredLeads]
+  )
   const hasTrelloLeadsInState = trelloLeads.length > 0
   
   // Usar la agencia seleccionada o la primera disponible
