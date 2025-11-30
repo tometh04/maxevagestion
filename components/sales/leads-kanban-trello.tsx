@@ -135,24 +135,34 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
     const lead = leads.find((l) => l.id === draggedLead)
     if (!lead) return
 
-    // Actualizar el lead moviéndolo a la nueva lista
-    // Esto actualizará el trello_list_id y también el status/region según el mapeo
+    // No hacer nada si se suelta en la misma lista
+    if (lead.trello_list_id === listId) {
+      setDraggedLead(null)
+      return
+    }
+
+    // Mover la tarjeta en Trello (el endpoint ahora mueve en Trello + actualiza BD)
     try {
-      // Primero necesitamos obtener el mapeo de listas para determinar el nuevo status
-      const response = await fetch(`/api/trello/lists?agencyId=${agencyId}`)
-      const data = await response.json()
-      
-      // Por ahora, solo actualizamos el trello_list_id
-      // El webhook de Trello se encargará de actualizar el status cuando se mueva la tarjeta en Trello
-      await fetch("/api/leads/update-status", {
+      const response = await fetch("/api/leads/update-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadId: draggedLead, trelloListId: listId }),
       })
       
-      window.location.reload()
+      const data = await response.json()
+      
+      if (response.ok && data.success) {
+        // La actualización llegará por Realtime, pero refrescamos por si acaso
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        console.error("Error moviendo lead:", data.error)
+        alert("Error al mover la tarjeta: " + (data.error || "Error desconocido"))
+      }
     } catch (error) {
       console.error("Error updating lead list:", error)
+      alert("Error al mover la tarjeta")
     } finally {
       setDraggedLead(null)
     }
