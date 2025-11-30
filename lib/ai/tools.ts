@@ -48,12 +48,28 @@ export async function getSalesSummary(
     query = query.eq("agency_id", agencyId)
   }
 
-  const { data: operations } = await query
+  const { data: operations, error: operationsError } = await query
+
+  if (operationsError) {
+    console.error("[getSalesSummary] Error fetching operations:", operationsError)
+    return {
+      totalSales: 0,
+      totalMargin: 0,
+      totalCost: 0,
+      operationsCount: 0,
+      avgMarginPercent: 0,
+      error: operationsError.message,
+    }
+  }
+
+  console.log(`[getSalesSummary] Encontradas ${(operations || []).length} operaciones para período ${from || "sin inicio"} - ${to || "sin fin"}`)
 
   const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
   const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
   const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
   const operationsCount = (operations || []).length
+
+  console.log(`[getSalesSummary] Resumen: ${operationsCount} operaciones, $${totalSales} ventas, $${totalMargin} margen`)
 
   return {
     totalSales,
