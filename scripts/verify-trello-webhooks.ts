@@ -103,13 +103,23 @@ async function verifyWebhooks() {
         // Verificar si la URL es accesible
         if (webhook.callbackURL) {
           try {
+            // Crear AbortController para timeout manual
+            const controller = new AbortController()
+            const timeoutId = setTimeout(() => controller.abort(), 5000)
+            
             const testResponse = await fetch(webhook.callbackURL, {
               method: "HEAD",
-              signal: AbortSignal.timeout(5000),
+              signal: controller.signal,
             })
+            
+            clearTimeout(timeoutId)
             console.log(`      Accesibilidad: ${testResponse.ok ? "✅ Accesible" : "⚠️ No responde correctamente"}`)
-          } catch (error) {
-            console.log(`      Accesibilidad: ❌ No accesible (${(error as Error).message})`)
+          } catch (error: any) {
+            if (error.name === 'AbortError') {
+              console.log(`      Accesibilidad: ❌ Timeout (no responde en 5 segundos)`)
+            } else {
+              console.log(`      Accesibilidad: ❌ No accesible (${error.message})`)
+            }
           }
         }
         console.log("")
