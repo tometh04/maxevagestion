@@ -53,10 +53,15 @@ export async function GET(request: Request) {
       query = query.eq("agency_id", agencyId)
     }
 
+    const trelloListId = searchParams.get("trelloListId")
+    if (trelloListId && trelloListId !== "ALL") {
+      query = query.eq("trello_list_id", trelloListId)
+    }
+
     // Add pagination with reasonable limits
     const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    // Limitar a máximo 500 para mejor rendimiento
-    const limit = Math.min(requestedLimit, 500)
+    // Aumentar límite para poder cargar todos los leads (máximo 10000 para evitar problemas de memoria)
+    const limit = Math.min(requestedLimit, 10000)
     const offset = parseInt(searchParams.get("offset") || "0")
     
     const result = await query
