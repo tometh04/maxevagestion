@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { LeadsKanban } from "@/components/sales/leads-kanban"
 import { LeadsKanbanTrello } from "@/components/sales/leads-kanban-trello"
 import { LeadsTable } from "@/components/sales/leads-table"
@@ -15,8 +15,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, RefreshCw, Loader2 } from "lucide-react"
+import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from "lucide-react"
 import { toast } from "sonner"
+import { createBrowserClient } from "@supabase/ssr"
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
 
 interface Lead {
   id: string
@@ -60,6 +62,81 @@ export function LeadsPageClient({
   const [loading, setLoading] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
   const [syncingTrello, setSyncingTrello] = useState(false)
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
+  const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
+
+  // Inicializar Supabase client para Realtime
+  useEffect(() => {
+    if (!supabaseRef.current) {
+      supabaseRef.current = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+    }
+  }, [])
+
+  // 🔄 SUPABASE REALTIME - Actualización automática sin recargar
+  useEffect(() => {
+    const supabase = supabaseRef.current
+    if (!supabase) return
+
+    console.log("🔌 Conectando a Supabase Realtime...")
+
+    // Suscribirse a cambios en la tabla leads
+    const channel = supabase
+      .channel('leads-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'leads',
+        },
+        (payload: RealtimePostgresChangesPayload<Lead>) => {
+          console.log('📥 Cambio en tiempo real:', payload.eventType, payload.new || payload.old)
+          
+          if (payload.eventType === 'INSERT') {
+            const newLead = payload.new as Lead
+            // Solo agregar si coincide con el filtro de agencia actual
+            if (selectedAgencyId === "ALL" || newLead.agency_id === selectedAgencyId) {
+              setLeads((prev) => {
+                // Evitar duplicados
+                if (prev.some(l => l.id === newLead.id)) return prev
+                toast.success(`🆕 Nuevo lead: ${newLead.contact_name}`, { duration: 3000 })
+                return [newLead, ...prev]
+              })
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedLead = payload.new as Lead
+            setLeads((prev) => 
+              prev.map((lead) => 
+                lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
+              )
+            )
+            // toast.info(`✏️ Lead actualizado: ${updatedLead.contact_name}`, { duration: 2000 })
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id
+            if (deletedId) {
+              setLeads((prev) => prev.filter((lead) => lead.id !== deletedId))
+              toast.info(`🗑️ Lead eliminado`, { duration: 2000 })
+            }
+          }
+        }
+      )
+      .subscribe((status: string) => {
+        console.log('📡 Estado de Realtime:', status)
+        setRealtimeConnected(status === 'SUBSCRIBED')
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Conectado a Supabase Realtime')
+        }
+      })
+
+    // Cleanup al desmontar
+    return () => {
+      console.log('🔌 Desconectando de Supabase Realtime...')
+      supabase.removeChannel(channel)
+    }
+  }, [selectedAgencyId])
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
@@ -195,9 +272,32 @@ export function LeadsPageClient({
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Leads</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Leads</h1>
+            {/* Indicador de conexión en tiempo real */}
+            <div 
+              className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
+                realtimeConnected 
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+              }`}
+              title={realtimeConnected ? "Conectado - Los cambios se actualizan automáticamente" : "Conectando..."}
+            >
+              {realtimeConnected ? (
+                <>
+                  <Wifi className="h-3 w-3" />
+                  <span>En vivo</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="h-3 w-3" />
+                  <span>Conectando...</span>
+                </>
+              )}
+            </div>
+          </div>
           <p className="text-muted-foreground">
-            {shouldUseTrelloKanban ? "Leads sincronizados desde Trello" : "Gestiona tus leads y oportunidades"}
+            {shouldUseTrelloKanban ? "Leads sincronizados desde Trello • Actualización automática" : "Gestiona tus leads y oportunidades"}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
