@@ -6,14 +6,93 @@ export interface TrelloCard {
   name: string
   desc: string
   url: string
+  shortUrl: string
   idList: string
-  labels?: Array<{ id: string; name: string; color: string }>
+  idBoard: string
+  idShort: number
+  pos: number
+  closed: boolean
+  dateLastActivity: string
+  labels?: Array<{ id: string; name: string; color: string; idBoard?: string }>
   idMembers?: string[]
   members?: Array<{ id: string; fullName?: string; username?: string; email?: string }>
   due?: string | null
   dueComplete?: boolean
-  attachments?: Array<{ id: string; name: string; url: string }>
-  checklists?: Array<{ id: string; name: string; checkItems: Array<{ id: string; name: string; state: string }> }>
+  start?: string | null
+  attachments?: Array<{ 
+    id: string
+    name: string
+    url: string
+    mimeType?: string
+    bytes?: number
+    date?: string
+  }>
+  checklists?: Array<{ 
+    id: string
+    name: string
+    idBoard: string
+    idCard: string
+    checkItems: Array<{ 
+      id: string
+      name: string
+      state: string
+      pos: number
+    }>
+  }>
+  customFieldItems?: Array<{
+    id: string
+    idValue?: string
+    idCustomField: string
+    value?: {
+      text?: string
+      number?: number
+      date?: string
+      checked?: boolean
+    }
+  }>
+  badges?: {
+    votes: number
+    attachmentsByType: {
+      trello: {
+        board: number
+        card: number
+      }
+    }
+    viewingMemberVoted: boolean
+    subscribed: boolean
+    fogbugz: string
+    checkItems: number
+    checkItemsChecked: number
+    comments: number
+    attachments: number
+    description: boolean
+    due?: string | null
+    dueComplete?: boolean
+    start?: string | null
+  }
+  actions?: Array<{
+    id: string
+    type: string
+    date: string
+    data: any
+    memberCreator?: {
+      id: string
+      fullName?: string
+      username?: string
+    }
+  }>
+  board?: {
+    id: string
+    name: string
+    url: string
+  }
+  list?: {
+    id: string
+    name: string
+    pos: number
+  }
+  // Guardar toda la información completa en formato JSON
+  _raw?: any
 }
 
 export interface TrelloSettings {
@@ -159,6 +238,108 @@ export async function syncTrelloCardToLead(
     }
   }
 
+  // Extraer información adicional de Custom Fields de Trello
+  let customFieldsData: Record<string, any> = {}
+  if (card.customFieldItems && Array.isArray(card.customFieldItems)) {
+    for (const fieldItem of card.customFieldItems) {
+      if (fieldItem.value) {
+        // El nombre del campo se obtiene del customField, pero aquí solo tenemos el ID
+        // Guardamos el valor con el ID del campo
+        customFieldsData[fieldItem.idCustomField] = fieldItem.value
+      }
+    }
+  }
+
+  // Extraer información de checklists (tareas completadas/totales)
+  let checklistsInfo = ""
+  if (card.checklists && Array.isArray(card.checklists)) {
+    checklistsInfo = card.checklists.map((cl: any) => {
+      const total = cl.checkItems?.length || 0
+      const completed = cl.checkItems?.filter((item: any) => item.state === "complete").length || 0
+      return `${cl.name}: ${completed}/${total}`
+    }).join("; ")
+  }
+
+  // Extraer información de attachments
+  let attachmentsInfo = ""
+  if (card.attachments && Array.isArray(card.attachments)) {
+    attachmentsInfo = card.attachments.map((att: any) => att.name).join(", ")
+  }
+
+  // Construir notas completas con TODA la información de Trello
+  let fullNotes = card.desc || ""
+  
+  // Agregar información de checklists si existe
+  if (checklistsInfo) {
+    fullNotes += (fullNotes ? "\n\n" : "") + `📋 Checklists: ${checklistsInfo}`
+  }
+  
+  // Agregar información de attachments si existe
+  if (attachmentsInfo) {
+    fullNotes += (fullNotes ? "\n\n" : "") + `📎 Attachments: ${attachmentsInfo}`
+  }
+  
+  // Agregar información de due date si existe
+  if (card.due) {
+    const dueDate = new Date(card.due)
+    fullNotes += (fullNotes ? "\n\n" : "") + `📅 Due Date: ${dueDate.toLocaleDateString()} ${card.dueComplete ? "✅ Completed" : ""}`
+  }
+  
+  // Agregar información de labels si existen
+  if (card.labels && card.labels.length > 0) {
+    const labelsNames = card.labels.map((l: any) => l.name).join(", ")
+    fullNotes += (fullNotes ? "\n\n" : "") + `🏷️ Labels: ${labelsNames}`
+  }
+
+  // Preparar datos completos de Trello para guardar en JSONB
+  const trelloFullData = {
+    // Información básica
+    id: card.id,
+    name: card.name,
+    desc: card.desc,
+    url: card.url,
+    shortUrl: card.shortUrl,
+    idList: card.idList,
+    idBoard: card.idBoard,
+    closed: card.closed,
+    dateLastActivity: card.dateLastActivity,
+    
+    // Labels completos
+    labels: card.labels || [],
+    
+    // Members completos
+    members: card.members || [],
+    idMembers: card.idMembers || [],
+    
+    // Due dates
+    due: card.due,
+    dueComplete: card.dueComplete,
+    start: card.start,
+    
+    // Attachments completos
+    attachments: card.attachments || [],
+    
+    // Checklists completos
+    checklists: card.checklists || [],
+    
+    // Custom Fields
+    customFieldItems: card.customFieldItems || [],
+    customFieldsData: customFieldsData,
+    
+    // Badges (contadores)
+    badges: card.badges || {},
+    
+    // Actions (comentarios y cambios recientes)
+    actions: card.actions || [],
+    
+    // Board y List info
+    board: card.board || null,
+    list: card.list || null,
+    
+    // Fecha de sincronización
+    syncedAt: new Date().toISOString(),
+  }
+
   // Check if lead exists
   const { data: existingLead } = await supabase
     .from("leads")
@@ -166,12 +347,13 @@ export async function syncTrelloCardToLead(
     .eq("external_id", card.id)
     .maybeSingle()
 
-  const leadData = {
+  const leadData: any = {
     agency_id: settings.agency_id,
     source: "Trello" as const,
     external_id: card.id,
-    trello_url: card.url,
+    trello_url: card.url || card.shortUrl,
     trello_list_id: card.idList, // Guardar el ID de la lista de Trello
+    trello_full_data: trelloFullData, // Guardar TODA la información en JSONB
     status,
     region,
     destination,
@@ -180,7 +362,7 @@ export async function syncTrelloCardToLead(
     contact_email: email,
     contact_instagram: instagram,
     assigned_seller_id,
-    notes: card.desc || null, // Descripción completa tal cual está
+    notes: fullNotes || null, // Notas completas con toda la información
     updated_at: new Date().toISOString(),
   }
 
@@ -207,6 +389,8 @@ export async function syncTrelloCardToLead(
 
 /**
  * Fetch a single card from Trello by ID
+ * Obtiene TODA la información disponible según la documentación oficial de Trello
+ * https://developer.atlassian.com/cloud/trello/guides/rest-api/api-introduction/
  */
 export async function fetchTrelloCard(
   cardId: string,
@@ -214,17 +398,38 @@ export async function fetchTrelloCard(
   token: string
 ): Promise<TrelloCard | null> {
   try {
-    // Fetch card with all relevant fields including members
-    // Usar URLSearchParams para construir la URL correctamente
+    // Según la documentación de Trello, obtener TODOS los campos disponibles
+    // Usar parámetros de la API para obtener información completa
     const params = new URLSearchParams({
       key: apiKey,
       token: token,
-      fields: "name,desc,url,idList,labels,idMembers,due,dueComplete",
+      // Obtener todos los campos básicos
+      fields: "all",
+      // Obtener miembros completos
       members: "true",
-      member_fields: "fullName,username,email",
+      member_fields: "all",
+      // Obtener todos los attachments
       attachments: "true",
+      attachment_fields: "all",
+      // Obtener todos los checklists
       checklists: "all",
-      checklist_fields: "name,checkItems",
+      checklist_fields: "all",
+      // Obtener custom fields (campos personalizados)
+      customFieldItems: "true",
+      // Obtener badges (contadores, etc.)
+      badges: "true",
+      // Obtener stickers
+      stickers: "true",
+      // Obtener actions (comentarios, cambios, etc.) - limitado a 1000
+      actions: "commentCard,updateCard,addAttachmentToCard,addChecklistToCard,addMemberToCard",
+      actions_limit: "100",
+      actions_fields: "all",
+      // Obtener board info
+      board: "true",
+      board_fields: "name,url",
+      // Obtener list info
+      list: "true",
+      list_fields: "name,pos",
     })
 
     const response = await fetch(
@@ -236,25 +441,71 @@ export async function fetchTrelloCard(
         return null // Card deleted
       }
       const errorText = await response.text()
-      console.error(`Trello API error (${response.status}):`, errorText)
+      console.error(`❌ Trello API error (${response.status}):`, errorText)
       throw new Error(`Trello API error: ${response.statusText}`)
     }
 
     const card = await response.json()
     
+    // Guardar la respuesta completa en _raw para referencia
+    const rawCard = JSON.parse(JSON.stringify(card))
+    
     // Asegurar que los miembros estén en el formato correcto
     if (card.members && Array.isArray(card.members)) {
       card.members = card.members.map((m: any) => ({
         id: m.id,
-        fullName: m.fullName || m.fullname,
+        fullName: m.fullName || m.fullname || m.full_name,
         username: m.username,
         email: m.email,
       }))
     }
     
+    // Asegurar que los checklists tengan el formato correcto
+    if (card.checklists && Array.isArray(card.checklists)) {
+      card.checklists = card.checklists.map((cl: any) => ({
+        id: cl.id,
+        name: cl.name,
+        idBoard: cl.idBoard,
+        idCard: cl.idCard,
+        checkItems: (cl.checkItems || []).map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          state: item.state,
+          pos: item.pos || 0,
+        })),
+      }))
+    }
+    
+    // Asegurar que los attachments tengan el formato correcto
+    if (card.attachments && Array.isArray(card.attachments)) {
+      card.attachments = card.attachments.map((att: any) => ({
+        id: att.id,
+        name: att.name,
+        url: att.url,
+        mimeType: att.mimeType,
+        bytes: att.bytes,
+        date: att.date,
+      }))
+    }
+    
+    // Guardar la información completa
+    card._raw = rawCard
+    
+    console.log("✅ Card fetched with complete data:", {
+      id: card.id,
+      name: card.name,
+      hasDesc: !!card.desc,
+      membersCount: card.members?.length || 0,
+      labelsCount: card.labels?.length || 0,
+      attachmentsCount: card.attachments?.length || 0,
+      checklistsCount: card.checklists?.length || 0,
+      customFieldsCount: card.customFieldItems?.length || 0,
+      actionsCount: card.actions?.length || 0,
+    })
+    
     return card
   } catch (error) {
-    console.error("Error fetching Trello card:", error)
+    console.error("❌ Error fetching Trello card:", error)
     throw error
   }
 }
