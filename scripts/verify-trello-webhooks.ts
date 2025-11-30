@@ -79,10 +79,29 @@ async function verifyWebhooks() {
       const webhooks = await webhooksResponse.json()
 
       // Filtrar webhooks para este board
+      // Primero intentar obtener el board ID completo
+      let fullBoardId = settings.board_id
+      try {
+        const boardResponse = await fetch(
+          `https://api.trello.com/1/boards/${settings.board_id}?key=${settings.trello_api_key}&token=${settings.trello_token}`
+        )
+        if (boardResponse.ok) {
+          const boardData = await boardResponse.json()
+          fullBoardId = boardData.id
+        }
+      } catch (error) {
+        // Continuar con el board_id original
+      }
+
+      // Filtrar webhooks para este board (comparar tanto el ID corto como el completo)
       const boardWebhooks = webhooks.filter(
         (wh: any) => wh.idModel === settings.board_id || 
+                     wh.idModel === fullBoardId ||
                      wh.idModel?.startsWith(settings.board_id) ||
-                     settings.board_id?.startsWith(wh.idModel)
+                     settings.board_id?.startsWith(wh.idModel) ||
+                     wh.idModel?.startsWith(fullBoardId) ||
+                     fullBoardId?.startsWith(wh.idModel) ||
+                     wh.callbackURL?.includes("/api/trello/webhook")
       )
 
       if (boardWebhooks.length === 0) {
