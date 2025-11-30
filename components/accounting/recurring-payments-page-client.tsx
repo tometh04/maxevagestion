@@ -1,0 +1,297 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import { Plus, RefreshCw } from "lucide-react"
+import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
+import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
+import { toast } from "sonner"
+
+function formatCurrency(amount: number, currency: string = "ARS"): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: currency === "USD" ? "USD" : "ARS",
+    minimumFractionDigits: 2,
+  }).format(amount)
+}
+
+const frequencyLabels: Record<string, string> = {
+  WEEKLY: "Semanal",
+  BIWEEKLY: "Quincenal",
+  MONTHLY: "Mensual",
+  QUARTERLY: "Trimestral",
+  YEARLY: "Anual",
+}
+
+export function RecurringPaymentsPageClient() {
+  const [loading, setLoading] = useState(true)
+  const [payments, setPayments] = useState<any[]>([])
+  const [operators, setOperators] = useState<any[]>([])
+  const [isActiveFilter, setIsActiveFilter] = useState<string>("ALL")
+  const [newDialogOpen, setNewDialogOpen] = useState(false)
+  const [editingPayment, setEditingPayment] = useState<any | null>(null)
+
+  useEffect(() => {
+    fetchData()
+    fetchOperators()
+  }, [isActiveFilter])
+
+  async function fetchData() {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (isActiveFilter !== "ALL") {
+        params.append("isActive", isActiveFilter === "ACTIVE" ? "true" : "false")
+      }
+
+      const response = await fetch(`/api/recurring-payments?${params.toString()}`)
+      if (!response.ok) throw new Error("Error al obtener pagos recurrentes")
+
+      const data = await response.json()
+      setPayments(data.payments || [])
+    } catch (error) {
+      console.error("Error fetching recurring payments:", error)
+      toast.error("Error al cargar pagos recurrentes")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function fetchOperators() {
+    try {
+      const response = await fetch("/api/operators")
+      if (!response.ok) throw new Error("Error al obtener operadores")
+
+      const data = await response.json()
+      setOperators(data.operators || [])
+    } catch (error) {
+      console.error("Error fetching operators:", error)
+    }
+  }
+
+  async function handleGeneratePayments() {
+    try {
+      const response = await fetch("/api/recurring-payments/generate", {
+        method: "POST",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al generar pagos")
+      }
+
+      const result = await response.json()
+      toast.success(`Se generaron ${result.generated} pagos recurrentes`)
+      fetchData()
+    } catch (error: any) {
+      console.error("Error generating payments:", error)
+      toast.error(error.message || "Error al generar pagos recurrentes")
+    }
+  }
+
+  const activeCount = payments.filter((p) => p.is_active).length
+  const inactiveCount = payments.filter((p) => !p.is_active).length
+  const totalMonthly = payments
+    .filter((p) => p.is_active && p.frequency === "MONTHLY")
+    .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pagos Activos</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeCount}</div>
+            <p className="text-xs text-muted-foreground">
+              {inactiveCount} inactivos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Mensual</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {formatCurrency(totalMonthly, "ARS")}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Suma de pagos mensuales activos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Acciones</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={handleGeneratePayments} size="sm" variant="outline" className="w-full">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Generar Pagos Hoy
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters and Actions */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Pagos Recurrentes</CardTitle>
+              <CardDescription>Gestión de pagos automáticos a proveedores</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Filtrar por estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos</SelectItem>
+                  <SelectItem value="ACTIVE">Activos</SelectItem>
+                  <SelectItem value="INACTIVE">Inactivos</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button onClick={() => setNewDialogOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Nuevo Pago Recurrente
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {payments.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No se encontraron pagos recurrentes
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Operador</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Monto</TableHead>
+                  <TableHead>Frecuencia</TableHead>
+                  <TableHead>Próximo Vencimiento</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {payments.map((payment) => {
+                  const operator = payment.operators
+                  const daysUntilDue = Math.ceil(
+                    (new Date(payment.next_due_date).getTime() - new Date().getTime()) /
+                      (1000 * 60 * 60 * 24)
+                  )
+
+                  return (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-medium">
+                        {operator?.name || "-"}
+                      </TableCell>
+                      <TableCell>{payment.description}</TableCell>
+                      <TableCell>
+                        {formatCurrency(payment.amount, payment.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {frequencyLabels[payment.frequency] || payment.frequency}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span>
+                            {format(new Date(payment.next_due_date), "dd/MM/yyyy", {
+                              locale: es,
+                            })}
+                          </span>
+                          {daysUntilDue >= 0 && daysUntilDue <= 7 && (
+                            <span className="text-xs text-amber-600">
+                              {daysUntilDue === 0
+                                ? "Hoy"
+                                : daysUntilDue === 1
+                                ? "Mañana"
+                                : `En ${daysUntilDue} días`}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={payment.is_active ? "default" : "secondary"}>
+                          {payment.is_active ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPayment(payment)}
+                        >
+                          Editar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialogs */}
+      <NewRecurringPaymentDialog
+        open={newDialogOpen}
+        onOpenChange={setNewDialogOpen}
+        onSuccess={fetchData}
+        operators={operators}
+      />
+
+      {editingPayment && (
+        <EditRecurringPaymentDialog
+          open={!!editingPayment}
+          onOpenChange={(open) => !open && setEditingPayment(null)}
+          onSuccess={fetchData}
+          payment={editingPayment}
+          operators={operators}
+        />
+      )}
+    </div>
+  )
+}
+

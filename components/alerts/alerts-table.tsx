@@ -1,0 +1,170 @@
+"use client"
+
+import { useMemo } from "react"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import Link from "next/link"
+
+export interface Alert {
+  id: string
+  operation_id: string | null
+  customer_id: string | null
+  user_id: string | null
+  type: "PAYMENT_DUE" | "OPERATOR_DUE" | "UPCOMING_TRIP" | "MISSING_DOC" | "GENERIC"
+  description: string
+  date_due: string
+  status: "PENDING" | "DONE" | "IGNORED"
+  operations?: {
+    id: string
+    destination: string
+    agency_id: string
+    seller_id: string
+    departure_date: string
+    agencies?: {
+      id: string
+      name: string
+    } | null
+  } | null
+  customers?: {
+    id: string
+    first_name: string
+    last_name: string
+  } | null
+}
+
+interface AlertsTableProps {
+  alerts: Alert[]
+  isLoading?: boolean
+  onMarkDone?: (alertId: string) => void
+  onIgnore?: (alertId: string) => void
+  emptyMessage?: string
+}
+
+const typeLabels: Record<string, string> = {
+  PAYMENT_DUE: "Pago Pendiente",
+  OPERATOR_DUE: "Pago Operador",
+  UPCOMING_TRIP: "Viaje Próximo",
+  MISSING_DOC: "Documento Faltante",
+  GENERIC: "Genérico",
+}
+
+const statusLabels: Record<string, string> = {
+  PENDING: "Pendiente",
+  DONE: "Resuelto",
+  IGNORED: "Ignorado",
+}
+
+export function AlertsTable({
+  alerts,
+  isLoading = false,
+  onMarkDone,
+  onIgnore,
+  emptyMessage,
+}: AlertsTableProps) {
+  const rowsToRender = useMemo(() => {
+    if (isLoading) {
+      return Array.from({ length: 5 }).map((_, index) => (
+        <TableRow key={`skeleton-${index}`}>
+          <TableCell colSpan={6}>
+            <Skeleton className="h-6 w-full" />
+          </TableCell>
+        </TableRow>
+      ))
+    }
+
+    if (alerts.length === 0) {
+      return (
+        <TableRow>
+          <TableCell colSpan={6} className="text-center text-muted-foreground">
+            {emptyMessage || "No hay alertas"}
+          </TableCell>
+        </TableRow>
+      )
+    }
+
+    return alerts.map((alert) => (
+      <TableRow key={alert.id}>
+        <TableCell>
+          <Badge variant="outline">{typeLabels[alert.type] || alert.type}</Badge>
+        </TableCell>
+        <TableCell>
+          <div className="space-y-1">
+            <p className="font-medium">{alert.description}</p>
+            {alert.operations && (
+              <p className="text-xs text-muted-foreground">
+                {alert.operations.destination} - {alert.operations.agencies?.name || "Sin agencia"}
+              </p>
+            )}
+          </div>
+        </TableCell>
+        <TableCell>
+          {format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })}
+        </TableCell>
+        <TableCell>
+          <Badge
+            variant={
+              alert.status === "DONE"
+                ? "default"
+                : alert.status === "IGNORED"
+                ? "secondary"
+                : "destructive"
+            }
+          >
+            {statusLabels[alert.status] || alert.status}
+          </Badge>
+        </TableCell>
+        <TableCell>
+          {alert.operation_id && (
+            <Link href={`/operations/${alert.operation_id}`}>
+              <Button variant="link" size="sm">
+                Ver operación
+              </Button>
+            </Link>
+          )}
+        </TableCell>
+        <TableCell>
+          {alert.status === "PENDING" && (
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => onMarkDone?.(alert.id)}>
+                Resolver
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => onIgnore?.(alert.id)}>
+                Ignorar
+              </Button>
+            </div>
+          )}
+        </TableCell>
+      </TableRow>
+    ))
+  }, [alerts, isLoading, emptyMessage, onMarkDone, onIgnore])
+
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Tipo</TableHead>
+            <TableHead>Descripción</TableHead>
+            <TableHead>Fecha Vencimiento</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Operación</TableHead>
+            <TableHead>Acciones</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{rowsToRender}</TableBody>
+      </Table>
+    </div>
+  )
+}
+

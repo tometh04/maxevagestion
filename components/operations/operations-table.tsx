@@ -1,0 +1,248 @@
+"use client"
+
+import { useState, useEffect, useCallback, useMemo } from "react"
+import { ColumnDef } from "@tanstack/react-table"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import Link from "next/link"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import { DataTable } from "@/components/ui/data-table"
+import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
+import { MoreHorizontal } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+const statusLabels: Record<string, string> = {
+  PRE_RESERVATION: "Pre-reserva",
+  RESERVED: "Reservado",
+  CONFIRMED: "Confirmado",
+  CANCELLED: "Cancelado",
+  TRAVELLED: "Viajado",
+  CLOSED: "Cerrado",
+}
+
+interface Operation {
+  id: string
+  destination: string
+  departure_date: string
+  return_date: string | null
+  sellers: { name: string } | null
+  operators: { name: string } | null
+  currency: string
+  sale_amount_total: number
+  margin_amount: number
+  margin_percentage: number
+  status: string
+}
+
+interface OperationsTableProps {
+  initialFilters: {
+    status: string
+    sellerId: string
+    agencyId: string
+    dateFrom: string
+    dateTo: string
+  }
+  userRole: string
+  userId: string
+  userAgencyIds: string[]
+}
+
+export function OperationsTable({
+  initialFilters,
+  userRole,
+  userId,
+  userAgencyIds,
+}: OperationsTableProps) {
+  const [operations, setOperations] = useState<Operation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filters, setFilters] = useState(initialFilters)
+
+  const fetchOperations = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters.status !== "ALL") params.append("status", filters.status)
+      if (filters.sellerId !== "ALL") params.append("sellerId", filters.sellerId)
+      if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
+      if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
+      if (filters.dateTo) params.append("dateTo", filters.dateTo)
+
+      const response = await fetch(`/api/operations?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOperations(data.operations || [])
+      }
+    } catch (error) {
+      console.error("Error fetching operations:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [filters])
+
+  useEffect(() => {
+    fetchOperations()
+  }, [fetchOperations])
+
+  useEffect(() => {
+    setFilters(initialFilters)
+  }, [initialFilters])
+
+  const columns: ColumnDef<Operation>[] = useMemo(
+    () => [
+      {
+        accessorKey: "id",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="ID" />
+        ),
+        cell: ({ row }) => (
+          <div className="font-mono text-xs whitespace-nowrap">{row.original.id.slice(0, 8)}</div>
+        ),
+        enableHiding: true,
+      },
+      {
+        accessorKey: "destination",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Destino" />
+        ),
+        cell: ({ row }) => (
+          <div className="min-w-[120px] break-words">{row.original.destination}</div>
+        ),
+      },
+      {
+        accessorKey: "departure_date",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Fechas" />
+        ),
+        cell: ({ row }) => (
+          <div className="text-sm whitespace-nowrap">
+            <div>
+              {format(new Date(row.original.departure_date), "dd/MM/yyyy", {
+                locale: es,
+              })}
+            </div>
+            {row.original.return_date && (
+              <div className="text-muted-foreground">
+                {format(new Date(row.original.return_date), "dd/MM/yyyy", {
+                  locale: es,
+                })}
+              </div>
+            )}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "sellers.name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Vendedor" />
+        ),
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap">{row.original.sellers?.name || "-"}</div>
+        ),
+        enableHiding: true,
+      },
+      {
+        accessorKey: "operators.name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Operador" />
+        ),
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap">{row.original.operators?.name || "-"}</div>
+        ),
+        enableHiding: true,
+      },
+      {
+        accessorKey: "sale_amount_total",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Monto Venta" />
+        ),
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap">
+            {row.original.currency}{" "}
+            {row.original.sale_amount_total.toLocaleString("es-AR", {
+              minimumFractionDigits: 2,
+            })}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "margin_amount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Margen" />
+        ),
+        cell: ({ row }) => (
+          <div className="min-w-[100px]">
+            <div className="whitespace-nowrap">
+              {row.original.currency}{" "}
+              {row.original.margin_amount.toLocaleString("es-AR", {
+                minimumFractionDigits: 2,
+              })}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {row.original.margin_percentage.toFixed(1)}%
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "status",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Estado" />
+        ),
+        cell: ({ row }) => (
+          <Badge variant="secondary">
+            {statusLabels[row.original.status] || row.original.status}
+          </Badge>
+        ),
+      },
+      {
+        id: "actions",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const operation = row.original
+
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                  <span className="sr-only">Abrir menú</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <Link href={`/operations/${operation.id}`}>Ver detalles</Link>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      },
+    ],
+    []
+  )
+
+  if (loading) {
+    return (
+      <div className="rounded-md border">
+        <div className="p-4">
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-12 w-full animate-pulse rounded bg-muted" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino..." />
+}
+

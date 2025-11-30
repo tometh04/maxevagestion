@@ -1,0 +1,84 @@
+"use client"
+
+import { useState } from "react"
+import { OperationsFilters } from "./operations-filters"
+import { OperationsTable } from "./operations-table"
+import { NewOperationDialog } from "./new-operation-dialog"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
+
+interface OperationsPageClientProps {
+  sellers: Array<{ id: string; name: string }>
+  agencies: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string }>
+  userRole: string
+  userId: string
+  userAgencyIds: string[]
+  defaultAgencyId?: string
+  defaultSellerId?: string
+}
+
+export function OperationsPageClient({
+  sellers,
+  agencies,
+  operators,
+  userRole,
+  userId,
+  userAgencyIds,
+  defaultAgencyId,
+  defaultSellerId,
+}: OperationsPageClientProps) {
+  const [filters, setFilters] = useState({
+    status: "ALL",
+    sellerId: "ALL",
+    agencyId: "ALL",
+    dateFrom: "",
+    dateTo: "",
+  })
+  const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
+
+  const handleRefresh = () => {
+    // Trigger refresh in OperationsTable
+    window.dispatchEvent(new Event("refresh-operations"))
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Operaciones</h1>
+          <p className="text-muted-foreground">Gestiona todas las operaciones de viajes</p>
+        </div>
+        <Button onClick={() => setNewOperationDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nueva Operación
+        </Button>
+      </div>
+
+      <OperationsFilters
+        sellers={sellers}
+        agencies={agencies}
+        onFilterChange={setFilters}
+      />
+
+      <OperationsTable
+        initialFilters={filters}
+        userRole={userRole}
+        userId={userId}
+        userAgencyIds={userAgencyIds}
+      />
+
+      <NewOperationDialog
+        open={newOperationDialogOpen}
+        onOpenChange={setNewOperationDialogOpen}
+        onSuccess={handleRefresh}
+        agencies={agencies}
+        sellers={sellers}
+        operators={operators}
+        defaultAgencyId={defaultAgencyId}
+        defaultSellerId={defaultSellerId}
+      />
+    </div>
+  )
+}
+
