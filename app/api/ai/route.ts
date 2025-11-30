@@ -152,7 +152,7 @@ export async function POST(request: Request) {
       ...metadata,
     })
 
-    // Validar API key de OpenAI
+    // Validar API key de OpenAI - OBLIGATORIA
     const openaiApiKey = process.env.OPENAI_API_KEY
     const lowerMessage = message.toLowerCase()
     
@@ -166,167 +166,14 @@ export async function POST(request: Request) {
                            lowerMessage.includes("year") ||
                            /\d{4}/.test(message)
     
+    // SI NO HAY OPENAI API KEY, ERROR CLARO
     if (!openaiApiKey || openaiApiKey === "tu_openai_api_key_aqui" || openaiApiKey.trim() === "") {
-      // Fallback: usar detección de keywords
-      console.log("⚠️ OpenAI API key no configurada, usando fallback")
-      let toolCalls = detectToolsFromMessage(message)
-      
-      // Si es pregunta sobre ventas/años pero no detectó herramientas, forzar consulta
-      if (isSalesQuestion && toolCalls.length === 0) {
-        const yearMatch = lowerMessage.match(/(?:año|year)?\s*(\d{4})/)
-        const detectedYear = yearMatch ? parseInt(yearMatch[1]) : null
-        
-        if (detectedYear) {
-          toolCalls.push({
-            name: "getSalesSummary",
-            params: {
-              from: `${detectedYear}-01-01`,
-              to: `${detectedYear}-12-31`,
-            },
-          })
-        } else if (lowerMessage.includes("año con más") || lowerMessage.includes("mejor año") || lowerMessage.includes("más ventas")) {
-          // Si pregunta sobre el año con más ventas, consultar todos los años
-          const currentYear = new Date().getFullYear()
-          for (let year = currentYear; year >= currentYear - 5; year--) {
-            toolCalls.push({
-              name: "getSalesSummary",
-              params: {
-                from: `${year}-01-01`,
-                to: `${year}-12-31`,
-              },
-            })
-          }
-        } else {
-          // Por defecto, consultar mes actual
-          const today = new Date()
-          const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
-          toolCalls.push({
-            name: "getSalesSummary",
-            params: {
-              from: firstDay.toISOString().split("T")[0],
-              to: today.toISOString().split("T")[0],
-            },
-          })
-        }
-      }
-      
-      const toolResults: any = {}
-
-      for (const toolCall of toolCalls) {
-        try {
-          switch (toolCall.name) {
-            case "getSalesSummary":
-              toolResults.salesSummary = await getSalesSummary(
-                user,
-                toolCall.params?.from,
-                toolCall.params?.to,
-                agencyId || toolCall.params?.agencyId,
-              )
-              break
-            case "getDuePayments":
-              toolResults.duePayments = await getDuePayments(
-                user,
-                toolCall.params?.date,
-                toolCall.params?.type,
-              )
-              break
-            case "getOperatorBalances":
-              toolResults.operatorBalances = await getOperatorBalances(
-                user,
-                toolCall.params?.onlyOverdue || false,
-              )
-              break
-            case "getIVAStatus":
-              toolResults.ivaStatus = await getIVAStatus(
-                user,
-                toolCall.params?.year,
-                toolCall.params?.month,
-              )
-              break
-            case "getCashBalances":
-              toolResults.cashBalances = await getCashBalances(user)
-              break
-          }
-        } catch (error) {
-          console.error(`Error executing tool ${toolCall.name}:`, error)
-        }
-      }
-
-      // Generar respuesta básica sin OpenAI
-      const resultsText = JSON.stringify(toolResults, null, 2)
-      let response = "Aquí tienes la información solicitada:\n\n"
-
-      if (toolResults.salesSummary) {
-        response += `**Ventas:**\n`
-        response += `- Total: $${toolResults.salesSummary.totalSales.toLocaleString("es-AR")}\n`
-        response += `- Margen: $${toolResults.salesSummary.totalMargin.toLocaleString("es-AR")}\n`
-        response += `- Operaciones: ${toolResults.salesSummary.operationsCount}\n\n`
-      }
-
-      if (toolResults.duePayments && toolResults.duePayments.length > 0) {
-        response += `**Pagos pendientes:** ${toolResults.duePayments.length}\n\n`
-      }
-
-      if (toolResults.operatorBalances && toolResults.operatorBalances.length > 0) {
-        response += `**Balances de operadores:** ${toolResults.operatorBalances.length}\n\n`
-      }
-
-      if (toolResults.ivaStatus) {
-        response += `**IVA:** $${toolResults.ivaStatus.iva_to_pay?.toLocaleString("es-AR") || 0}\n\n`
-      }
-
-      if (toolResults.cashBalances && toolResults.cashBalances.length > 0) {
-        response += `**Cuentas financieras:** ${toolResults.cashBalances.length}\n\n`
-      }
-
-      if (Object.keys(toolResults).length === 0 && isSalesQuestion) {
-        // Si no detectó herramientas pero pregunta sobre ventas/años, intentar consultar todos los años disponibles
-        if (lowerMessage.includes("venta") || lowerMessage.includes("año") || lowerMessage.match(/\d{4}/)) {
-          // Consultar ventas de los últimos años para encontrar el año con más ventas
-          const currentYear = new Date().getFullYear()
-          const yearsToCheck = [currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4, currentYear - 5]
-          
-          const yearResults: any[] = []
-          for (const year of yearsToCheck) {
-            try {
-              const yearSummary = await getSalesSummary(
-                user,
-                `${year}-01-01`,
-                `${year}-12-31`,
-                agencyId
-              )
-              if (yearSummary.operationsCount > 0) {
-                yearResults.push({ year, ...yearSummary })
-              }
-            } catch (error) {
-              console.error(`Error getting sales for year ${year}:`, error)
-            }
-          }
-
-          if (yearResults.length > 0) {
-            const bestYear = yearResults.reduce((best, current) => 
-              current.totalSales > best.totalSales ? current : best
-            )
-            response = `**Año con más ventas:** ${bestYear.year}\n\n`
-            response += `**Ventas en ${bestYear.year}:**\n`
-            response += `- Total: $${bestYear.totalSales.toLocaleString("es-AR")}\n`
-            response += `- Operaciones: ${bestYear.operationsCount}\n`
-            response += `- Margen: $${bestYear.totalMargin.toLocaleString("es-AR")}\n\n`
-            response += `**Resumen de todos los años:**\n`
-            yearResults.forEach((yr) => {
-              response += `- ${yr.year}: $${yr.totalSales.toLocaleString("es-AR")} (${yr.operationsCount} operaciones)\n`
-            })
-          } else {
-            response = "No encontré ventas registradas en los últimos años. Verifica que haya operaciones en la base de datos."
-          }
-        } else {
-          response =
-            "No pude identificar qué información necesitas. Por favor, configura la API key de OpenAI en las variables de entorno para usar el asistente completo."
-        }
-      }
-
-      return NextResponse.json({ response })
+      return NextResponse.json({ 
+        error: "OpenAI API Key no configurada. El AI Copilot requiere OpenAI para funcionar correctamente. Por favor, configura OPENAI_API_KEY en las variables de entorno de Vercel." 
+      }, { status: 500 })
     }
+    
+    // OpenAI API Key es OBLIGATORIA - si no está, ya retornamos error arriba
 
     const openai = new OpenAI({
       apiKey: openaiApiKey,
@@ -478,25 +325,110 @@ Si no necesitas ninguna herramienta, responde: {"tools": []}`
     // Generate natural language response
     let response = "No pude procesar tu consulta."
 
+    // Crear prompt detallado sobre la estructura de la base de datos
+    const databaseSchemaPrompt = `
+ESTRUCTURA DE LA BASE DE DATOS SUPABASE:
+
+TABLA: operations (operaciones/ventas)
+- Campos clave para ventas:
+  * sale_amount_total: Monto total de la venta (NUMERIC)
+  * margin_amount: Margen de ganancia (NUMERIC)
+  * margin_percentage: Porcentaje de margen (NUMERIC)
+  * operator_cost: Costo del operador (NUMERIC)
+  * currency: Moneda (ARS, USD)
+  * created_at: Fecha de creación (TIMESTAMP) - USA ESTE CAMPO PARA FILTRAR POR AÑO/MES
+  * destination: Destino del viaje
+  * status: Estado (PRE_RESERVATION, RESERVED, CONFIRMED, CANCELLED, TRAVELLED, CLOSED)
+  * agency_id: ID de la agencia
+  * seller_id: ID del vendedor
+
+TABLA: payments (pagos)
+- Campos clave:
+  * amount: Monto del pago (NUMERIC)
+  * date_due: Fecha de vencimiento (DATE)
+  * date_paid: Fecha de pago (DATE, nullable)
+  * status: Estado (PENDING, PAID, OVERDUE)
+  * payer_type: Tipo de pagador (CUSTOMER, OPERATOR)
+  * direction: Dirección (INCOME, EXPENSE)
+  * operation_id: ID de la operación relacionada
+
+TABLA: leads (prospectos)
+- Campos clave:
+  * status: Estado (NEW, IN_PROGRESS, QUOTED, WON, LOST)
+  * destination: Destino
+  * created_at: Fecha de creación
+  * agency_id: ID de la agencia
+
+INSTRUCCIONES PARA INTERPRETAR DATOS:
+1. Para preguntas sobre VENTAS por AÑO:
+   - Los datos vienen de la tabla "operations"
+   - El campo "created_at" contiene la fecha - extrae el AÑO de ahí
+   - Suma todos los "sale_amount_total" del año consultado
+   - Cuenta las operaciones (operationsCount)
+   - Calcula el margen total sumando "margin_amount"
+
+2. Para preguntas sobre "año con más ventas":
+   - Compara los totales de ventas (totalSales) de cada año
+   - El año con mayor totalSales es el que tiene más ventas
+
+3. Para preguntas sobre operaciones:
+   - operationsCount = cantidad de operaciones
+   - Cada operación tiene un sale_amount_total
+
+4. Formato de respuesta:
+   - Montos: $1.234.567,89 (formato argentino con punto para miles y coma para decimales)
+   - Fechas: DD/MM/YYYY
+   - Siempre incluye números exactos de la base de datos
+   - Si no hay datos, di claramente "No hay datos registrados para [período]"
+
+IMPORTANTE:
+- Los datos que recibes YA fueron consultados de Supabase usando las herramientas
+- NO necesitas consultar Supabase directamente, usa los datos que te proporcionan
+- Los datos son REALES y vienen de la base de datos
+- Si operationsCount es 0, significa que NO HAY operaciones en ese período
+- Si totalSales es 0, significa que NO HAY ventas en ese período
+`
+
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
             role: "system",
-            content: `Eres un asistente de negocio para una agencia de viajes. Responde preguntas sobre ventas, pagos, operaciones y métricas del negocio.
-          El usuario tiene rol: ${user.role}.
-          Responde en español de manera clara, concisa y profesional.
-          Usa los datos proporcionados para dar respuestas precisas.
-          Si hay datos numéricos, formatea los montos con formato de moneda (ej: $1.234,56).
-          Puedes sugerir navegar a páginas específicas si es relevante.`,
+            content: `Eres un asistente de negocio experto para una agencia de viajes llamada MAXEVA GESTION. 
+            
+${databaseSchemaPrompt}
+
+Tu trabajo es:
+1. Analizar la pregunta del usuario
+2. Interpretar los datos proporcionados (que YA fueron consultados de Supabase)
+3. Dar una respuesta clara, precisa y profesional en español
+4. SIEMPRE usar los números exactos de los datos proporcionados
+5. Si los datos muestran 0 operaciones o 0 ventas, di claramente que no hay datos para ese período
+6. Formatea montos en formato argentino: $1.234.567,89
+7. El usuario tiene rol: ${user.role}
+
+IMPORTANTE: Los datos que recibes son REALES y vienen directamente de Supabase. Si operationsCount es 0, significa que NO HAY operaciones registradas. Si totalSales es 0, significa que NO HAY ventas registradas.`,
           },
           {
             role: "user",
-            content: `Pregunta: ${message}\n\nDatos obtenidos:\n${resultsText}\n\nResponde la pregunta del usuario usando estos datos.`,
+            content: `Pregunta del usuario: "${message}"
+
+Datos obtenidos de Supabase (ya consultados):
+${resultsText}
+
+INSTRUCCIONES:
+- Analiza los datos proporcionados
+- Responde la pregunta usando los números EXACTOS de los datos
+- Si operationsCount es 0, di que no hay operaciones registradas
+- Si totalSales es 0, di que no hay ventas registradas
+- Formatea los montos en formato argentino
+- Sé específico y preciso con los números
+
+Responde la pregunta del usuario:`,
           },
         ],
-        temperature: 0.7,
+        temperature: 0.3, // Reducido para más precisión
       })
 
       response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
