@@ -27,15 +27,44 @@ export async function GET(
     }
 
     // Obtener documentos del lead
-    const { data: documents, error: docsError } = await supabase
-      .from("documents")
-      .select("*, users:uploaded_by_user_id(id, name, email)")
-      .eq("lead_id", leadId)
-      .order("uploaded_at", { ascending: false })
+    // Intentar primero con lead_id, si falla puede ser que la migración no se ejecutó
+    let documents: any[] = []
+    let docsError: any = null
+    
+    try {
+      const result = await supabase
+        .from("documents")
+        .select("*, users:uploaded_by_user_id(id, name, email)")
+        .eq("lead_id", leadId)
+        .order("uploaded_at", { ascending: false })
+      
+      documents = result.data || []
+      docsError = result.error
+    } catch (error: any) {
+      // Si falla, puede ser que la columna lead_id no existe
+      if (error.message?.includes("column") && error.message?.includes("lead_id")) {
+        console.warn("⚠️ Columna lead_id no existe, la migración no se ejecutó")
+        return NextResponse.json({ 
+          error: "La migración 027_add_lead_documents.sql no se ha ejecutado. Por favor, ejecútala en Supabase.",
+          documents: []
+        }, { status: 500 })
+      }
+      docsError = error
+    }
 
     if (docsError) {
-      console.error("Error fetching documents:", docsError)
-      return NextResponse.json({ error: "Error al obtener documentos" }, { status: 500 })
+      console.error("❌ Error fetching documents:", docsError)
+      // Verificar si el error es porque falta la columna lead_id
+      if (docsError.message?.includes("column") && docsError.message?.includes("lead_id")) {
+        return NextResponse.json({ 
+          error: "La migración no se ha ejecutado. Por favor, ejecuta la migración 027_add_lead_documents.sql en Supabase.",
+          documents: [] 
+        }, { status: 500 })
+      }
+      return NextResponse.json({ 
+        error: `Error al obtener documentos: ${docsError.message || "Error desconocido"}`,
+        documents: []
+      }, { status: 500 })
     }
 
     return NextResponse.json({ documents: documents || [] })

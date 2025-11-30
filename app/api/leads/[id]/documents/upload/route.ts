@@ -55,28 +55,60 @@ export async function POST(
     }
 
     // Generar nombre único para el archivo
-    const fileExt = file.name.split(".").pop()
-    const fileName = `${leadId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+    const fileExt = file.name.split(".").pop() || "jpg"
+    const timestamp = Date.now()
+    const randomStr = Math.random().toString(36).substring(2, 15)
+    const fileName = `${leadId}/${timestamp}-${randomStr}.${fileExt}`
 
     // Convertir File a ArrayBuffer
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    let fileBuffer: ArrayBuffer
+    try {
+      fileBuffer = await file.arrayBuffer()
+    } catch (error: any) {
+      console.error("❌ Error converting file to ArrayBuffer:", error)
+      return NextResponse.json({ error: "Error al procesar el archivo" }, { status: 500 })
+    }
 
     // Subir a Supabase Storage
-    const { error: uploadError } = await supabase.storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from("documents")
-      .upload(fileName, buffer, {
+      .upload(fileName, fileBuffer, {
         contentType: file.type,
         upsert: false,
       })
 
     if (uploadError) {
-      console.error("Error uploading file:", uploadError)
-      return NextResponse.json({ error: "Error al subir el archivo" }, { status: 500 })
+      console.error("❌ Error uploading file to Supabase Storage:", uploadError)
+      console.error("❌ Upload error details:", JSON.stringify(uploadError, null, 2))
+      
+      // Verificar si el error es porque el bucket no existe
+      const errorMessage = uploadError.message || JSON.stringify(uploadError)
+      if (errorMessage.includes("Bucket not found") || 
+          errorMessage.includes("not found") ||
+          errorMessage.includes("does not exist")) {
+        return NextResponse.json({ 
+          error: "El bucket 'documents' no existe en Supabase Storage. Por favor, créalo desde el dashboard de Supabase (Storage > Create bucket > nombre: 'documents' > público)." 
+        }, { status: 500 })
+      }
+      
+      return NextResponse.json({ 
+        error: `Error al subir el archivo: ${errorMessage}` 
+      }, { status: 500 })
+    }
+
+    if (!uploadData) {
+      console.error("❌ Upload data is null")
+      return NextResponse.json({ error: "Error al subir el archivo: no se recibió confirmación" }, { status: 500 })
     }
 
     // Obtener URL pública
     const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName)
+    if (!urlData) {
+      console.error("❌ Error getting public URL")
+      // Intentar eliminar el archivo subido
+      await supabase.storage.from("documents").remove([fileName])
+      return NextResponse.json({ error: "Error al obtener URL del archivo" }, { status: 500 })
+    }
     const fileUrl = urlData.publicUrl
 
     // Crear registro del documento
@@ -91,10 +123,24 @@ export async function POST(
       .single()
 
     if (docError || !document) {
-      console.error("Error creating document record:", docError)
+      console.error("❌ Error creating document record:", docError)
       // Intentar eliminar el archivo si falla la creación del registro
-      await supabase.storage.from("documents").remove([fileName])
-      return NextResponse.json({ error: "Error al crear registro del documento" }, { status: 500 })
+      try {
+        await supabase.storage.from("documents").remove([fileName])
+      } catch (removeError) {
+        console.error("Error removing file after failed insert:", removeError)
+      }
+      
+      // Verificar si el error es porque falta la columna lead_id
+      if (docError?.message?.includes("column") && docError?.message?.includes("lead_id")) {
+        return NextResponse.json({ 
+          error: "La migración no se ha ejecutado. Por favor, ejecuta la migración 027_add_lead_documents.sql en Supabase." 
+        }, { status: 500 })
+      }
+      
+      return NextResponse.json({ 
+        error: `Error al crear registro del documento: ${docError?.message || "Error desconocido"}` 
+      }, { status: 500 })
     }
 
     // Si es una imagen, procesar con IA automáticamente
@@ -122,9 +168,11 @@ export async function POST(
         scanned_data: scannedData,
       },
     })
-  } catch (error) {
-    console.error("Error in POST /api/leads/[id]/documents/upload:", error)
-    return NextResponse.json({ error: "Error al subir documento" }, { status: 500 })
+  } catch (error: any) {
+    console.error("❌ Error in POST /api/leads/[id]/documents/upload:", error)
+    return NextResponse.json({ 
+      error: `Error al subir documento: ${error.message || "Error desconocido"}` 
+    }, { status: 500 })
   }
 }
 
