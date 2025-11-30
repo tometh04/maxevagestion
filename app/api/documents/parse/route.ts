@@ -3,10 +3,6 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import OpenAI from "openai"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -17,6 +13,19 @@ export async function POST(request: Request) {
     if (!documentId) {
       return NextResponse.json({ error: "Falta documentId" }, { status: 400 })
     }
+
+    // Validar API key de OpenAI
+    const openaiApiKey = process.env.OPENAI_API_KEY
+    if (!openaiApiKey || openaiApiKey.trim() === "") {
+      return NextResponse.json(
+        { error: "OpenAI API key no configurada. Configura OPENAI_API_KEY en las variables de entorno." },
+        { status: 500 }
+      )
+    }
+
+    const openai = new OpenAI({
+      apiKey: openaiApiKey,
+    })
 
     // Get document
     const { data: document, error: docError } = await supabase
