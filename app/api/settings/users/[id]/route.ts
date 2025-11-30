@@ -4,6 +4,92 @@ import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
 
 /**
+ * PATCH /api/settings/users/[id]
+ * Actualiza un usuario (solo SUPER_ADMIN o ADMIN)
+ */
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
+    const { id: userId } = await params
+    const body = await request.json()
+
+    if (!userId) {
+      return NextResponse.json({ error: "ID de usuario requerido" }, { status: 400 })
+    }
+
+    const supabase = await createServerClient()
+
+    // Campos permitidos para actualizar
+    const allowedFields = ["is_active", "role", "name", "default_commission_percentage"]
+    const updateData: Record<string, any> = {}
+
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field]
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })
+    }
+
+    // Verificar que el usuario existe
+    const { data: existingUser, error: fetchError } = await supabase
+      .from("users")
+      .select("id, role")
+      .eq("id", userId)
+      .single()
+
+    if (fetchError || !existingUser) {
+      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+    }
+
+    // No permitir cambiar el rol de un SUPER_ADMIN si no eres SUPER_ADMIN
+    if ((existingUser as any).role === "SUPER_ADMIN" && user.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "No puedes modificar un usuario SUPER_ADMIN" }, { status: 403 })
+    }
+
+    // Actualizar usuario
+    const usersTable = supabase.from("users") as any
+    const { data: updatedUser, error: updateError } = await usersTable
+      .update(updateData)
+      .eq("id", userId)
+      .select()
+      .single()
+
+    if (updateError) {
+      console.error("Error updating user:", updateError)
+      return NextResponse.json({ error: "Error al actualizar usuario" }, { status: 500 })
+    }
+
+    // Log de auditoría
+    try {
+      await (supabase.from("audit_logs") as any).insert({
+        user_id: user.id,
+        action: "UPDATE_USER",
+        entity_type: "user",
+        entity_id: userId,
+        details: { changes: updateData },
+      })
+    } catch (e) {
+      // No fallar si no existe la tabla
+    }
+
+    return NextResponse.json({ success: true, user: updatedUser })
+  } catch (error: any) {
+    console.error("Error in update user:", error)
+    return NextResponse.json({ error: error.message || "Error al actualizar usuario" }, { status: 500 })
+  }
+}
+
+/**
  * DELETE /api/settings/users/[id]
  * Elimina un usuario (solo SUPER_ADMIN)
  */
