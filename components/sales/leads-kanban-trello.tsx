@@ -216,25 +216,33 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
 
         // Mostrar TODAS las listas, incluso si no tienen leads
         return (
-          <div key={list.id} className="flex min-w-[280px] flex-col">
+          <div 
+            key={list.id} 
+            className="flex min-w-[280px] flex-col"
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.add('bg-primary/10')
+            }}
+            onDragLeave={(e) => {
+              e.currentTarget.classList.remove('bg-primary/10')
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              e.currentTarget.classList.remove('bg-primary/10')
+              handleDrop(list.id)
+            }}
+          >
             <div className="rounded-t-lg bg-muted p-3">
               <h3 className="font-semibold">{list.name}</h3>
               <span className="text-sm text-muted-foreground">{listLeads.length} leads</span>
             </div>
             <ScrollArea className="h-[calc(100vh-250px)] rounded-b-lg border bg-muted/30">
-              <div
-                className="p-2"
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault()
-                  handleDrop(list.id)
-                }}
-              >
+              <div className="p-2 min-h-[100px]">
                 {listLeads.length > 0 ? (
                   listLeads.map((lead) => (
                     <Card
                       key={lead.id}
-                      className="mb-2 cursor-pointer hover:bg-muted/50 transition-colors"
+                      className="mb-2 cursor-grab active:cursor-grabbing hover:bg-muted/50 transition-colors border-2 border-transparent hover:border-primary/30"
                       onClick={(e) => {
                         // Solo abrir el dialog si no se está arrastrando
                         if (!draggedLead) {
@@ -243,8 +251,13 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                           setDialogOpen(true)
                         }
                       }}
-                      draggable
-                      onDragStart={() => handleDragStart(lead.id)}
+                      draggable={true}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', lead.id)
+                        handleDragStart(lead.id)
+                      }}
+                      onDragEnd={() => setDraggedLead(null)}
                     >
                       <CardContent className="p-4">
                         <div className="space-y-2">
