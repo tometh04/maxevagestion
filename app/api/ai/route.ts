@@ -59,10 +59,23 @@ function detectToolsFromMessage(message: string): any[] {
     let from: string | undefined
     let to: string | undefined
 
+    // Detectar "mes pasado" o "last month"
+    const isLastMonth = lowerMessage.includes("mes pasado") || 
+                       lowerMessage.includes("mes anterior") ||
+                       lowerMessage.includes("last month") ||
+                       lowerMessage.includes("mes previo")
+
     if (detectedYear) {
       // Si detectó un año específico, buscar ventas de ese año
       from = `${detectedYear}-01-01`
       to = `${detectedYear}-12-31`
+    } else if (isLastMonth) {
+      // Mes pasado: primer día del mes pasado hasta el último día del mes pasado
+      const today = new Date()
+      const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+      const lastDayOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0)
+      from = lastMonth.toISOString().split("T")[0]
+      to = lastDayOfLastMonth.toISOString().split("T")[0]
     } else {
       // Por defecto, mes actual
       const today = new Date()
@@ -179,11 +192,31 @@ export async function POST(request: Request) {
       apiKey: openaiApiKey,
     })
 
+    // Calcular fecha actual para el prompt
+    const today = new Date()
+    const currentYear = today.getFullYear()
+    const currentMonth = today.getMonth() + 1 // 1-12
+    const currentDay = today.getDate()
+    
+    // Calcular mes pasado
+    const lastMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    const lastMonthLastDay = new Date(today.getFullYear(), today.getMonth(), 0)
+    const lastMonthStart = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}-01`
+    const lastMonthEnd = `${lastMonthLastDay.getFullYear()}-${String(lastMonthLastDay.getMonth() + 1).padStart(2, '0')}-${String(lastMonthLastDay.getDate()).padStart(2, '0')}`
+    
+    // Calcular mes actual
+    const currentMonthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`
+    const currentMonthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`
+
     // First, let OpenAI decide which tools to use
     const toolsPrompt = `Analiza la siguiente pregunta del usuario y determina qué herramientas necesitas usar.
-    
+
+FECHA ACTUAL: ${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}
+MES PASADO: ${lastMonthStart} hasta ${lastMonthEnd}
+MES ACTUAL: ${currentMonthStart} hasta ${currentMonthEnd}
+
 Herramientas disponibles:
-1. getSalesSummary(from?, to?, agencyId?) - Resumen de ventas
+1. getSalesSummary(from?, to?, agencyId?) - Resumen de ventas. Parámetros: from (YYYY-MM-DD), to (YYYY-MM-DD)
 2. getDuePayments(date?, type?) - Pagos vencidos o próximos (type: "CUSTOMER" o "OPERATOR")
 3. getSellerPerformance(sellerId, from?, to?) - Performance de un vendedor
 4. getTopDestinations(from?, to?, limit?) - Top destinos
@@ -194,13 +227,19 @@ Herramientas disponibles:
 9. getOverdueOperatorPayments() - Pagos a operadores vencidos
 10. getOperationMargin(operationId) - Margen detallado de una operación
 
+INSTRUCCIONES IMPORTANTES:
+- Si la pregunta menciona "mes pasado", "mes anterior", "last month", usa las fechas del MES PASADO mostradas arriba
+- Si la pregunta menciona "este mes", "mes actual", usa las fechas del MES ACTUAL mostradas arriba
+- Si menciona un año específico (ej: "2024"), usa ese año completo: from="2024-01-01", to="2024-12-31"
+- Si menciona un mes específico (ej: "enero", "enero 2024"), calcula las fechas de ese mes
+- SIEMPRE usa el formato YYYY-MM-DD para las fechas
+
 Pregunta del usuario: "${message}"
 
 Responde SOLO con un JSON que indique qué herramientas usar y con qué parámetros. Ejemplo:
 {
   "tools": [
-    {"name": "getSalesSummary", "params": {"from": "2024-01-01", "to": "2024-01-31"}},
-    {"name": "getDuePayments", "params": {}}
+    {"name": "getSalesSummary", "params": {"from": "${lastMonthStart}", "to": "${lastMonthEnd}"}}
   ]
 }
 
@@ -226,14 +265,19 @@ Si no necesitas ninguna herramienta, responde: {"tools": []}`
 
       const toolDecisionText = toolDecision.choices[0]?.message?.content || "{}"
       const cleanedText = cleanJsonString(toolDecisionText)
+      
+      console.log(`[AI Copilot] Respuesta de OpenAI sobre herramientas:`, cleanedText.substring(0, 500))
 
       try {
         const parsed = JSON.parse(cleanedText)
         toolCalls = parsed.tools || []
+        console.log(`[AI Copilot] Herramientas parseadas:`, JSON.stringify(toolCalls))
       } catch (e) {
-        console.error("Error parsing tool decision:", e, "Text:", cleanedText)
+        console.error("[AI Copilot] Error parsing tool decision:", e, "Text:", cleanedText)
         // Fallback a detección de keywords
+        console.log("[AI Copilot] Usando fallback detectToolsFromMessage")
         toolCalls = detectToolsFromMessage(message)
+        console.log(`[AI Copilot] Fallback detectó:`, JSON.stringify(toolCalls))
       }
     } catch (openaiError: any) {
       console.error("OpenAI API error:", openaiError)
