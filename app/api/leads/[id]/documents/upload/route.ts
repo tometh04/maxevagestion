@@ -219,24 +219,44 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
     // Determinar el prompt según el tipo de documento
     let prompt = ""
     if (documentType === "PASSPORT") {
-      prompt = `Analiza este pasaporte y extrae TODA la información disponible. Devuelve un JSON con los siguientes campos:
+      prompt = `Analiza este pasaporte cuidadosamente y extrae TODA la información disponible. 
+
+INSTRUCCIONES IMPORTANTES:
+- Lee TODOS los campos visibles en el pasaporte
+- Para fechas, conviértelas al formato YYYY-MM-DD (ejemplo: "09 ENE 87" = "1987-01-09", "06 DIC 16" = "2016-12-06")
+- Para nombres, respeta exactamente como aparecen (mayúsculas, acentos, etc.)
+- El número de pasaporte está en el campo "Número / Number"
+- El DNI/Personal Number puede estar en un campo separado
+- La autoridad emisora puede ser RENAPER, Policía Federal, etc.
+- Lee las líneas MRZ (Machine Readable Zone) en la parte inferior si están visibles
+
+Devuelve un JSON con los siguientes campos:
 {
   "document_type": "PASSPORT",
-  "document_number": "número del pasaporte",
-  "first_name": "nombre",
-  "last_name": "apellido",
-  "full_name": "nombre completo tal como aparece",
-  "date_of_birth": "YYYY-MM-DD",
-  "nationality": "nacionalidad",
-  "place_of_birth": "lugar de nacimiento",
+  "document_number": "número completo del pasaporte (ej: AAE422895)",
+  "first_name": "nombre(s) de pila (ej: LUCAS ALEJANDRO)",
+  "last_name": "apellido(s) (ej: SANCHEZ)",
+  "full_name": "nombre completo tal como aparece en el pasaporte",
+  "date_of_birth": "YYYY-MM-DD (convertir formato del pasaporte)",
+  "nationality": "código de nacionalidad (ej: ARG, ARGENTINA)",
+  "place_of_birth": "lugar de nacimiento completo o código",
   "sex": "M/F/X",
-  "expiration_date": "YYYY-MM-DD",
-  "issue_date": "YYYY-MM-DD",
-  "issuing_authority": "autoridad emisora",
-  "mrz_line1": "línea MRZ 1 si está visible",
-  "mrz_line2": "línea MRZ 2 si está visible"
+  "expiration_date": "YYYY-MM-DD (fecha de vencimiento)",
+  "issue_date": "YYYY-MM-DD (fecha de emisión)",
+  "issuing_authority": "autoridad emisora (ej: RENAPER, Policía Federal)",
+  "personal_number": "número de documento/DNI si está visible",
+  "mrz_line1": "primera línea MRZ completa si está visible",
+  "mrz_line2": "segunda línea MRZ completa si está visible"
 }
-Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el JSON, sin texto adicional.`
+
+IMPORTANTE: 
+- Convierte TODAS las fechas al formato YYYY-MM-DD
+- Si ves "09 ENE 87" significa 9 de enero de 1987 = "1987-01-09"
+- Si ves "06 DIC 16" significa 6 de diciembre de 2016 = "2016-12-06"
+- Si ves "06 DIC 26" significa 6 de diciembre de 2026 = "2026-12-06"
+- Extrae el número de pasaporte completo (puede tener letras y números)
+- Si algún campo no está disponible o no es legible, usa null
+- Devuelve SOLO el JSON válido, sin texto adicional, sin markdown, sin comentarios`
     } else if (documentType === "DNI") {
       prompt = `Analiza este DNI argentino y extrae TODA la información disponible. Devuelve un JSON con los siguientes campos:
 {
