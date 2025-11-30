@@ -197,17 +197,24 @@ async function massImport(agencyId: string) {
 
   console.log(`📊 Board ID: ${settings.board_id}`)
 
-  // Obtener TODAS las cards
+  // Obtener TODAS las cards usando paginación correcta de Trello
+  // Trello usa paginación con 'before' basado en el ID de la card
   let allCards: any[] = []
-  let offset = 0
   const limit = 1000
+  let before: string | null = null
   let hasMore = true
+  let totalFetched = 0
+
+  console.log("🔄 Obteniendo cards del board (esto puede tardar con muchos cards)...")
 
   while (hasMore) {
     try {
-      const cardsResponse = await fetch(
-        `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity&limit=${limit}`
-      )
+      let url = `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity&limit=${limit}`
+      if (before) {
+        url += `&before=${before}`
+      }
+
+      const cardsResponse = await fetch(url)
 
       if (!cardsResponse.ok) {
         if (cardsResponse.status === 429) {
@@ -224,9 +231,11 @@ async function massImport(agencyId: string) {
         hasMore = false
       } else {
         allCards = [...allCards, ...cards]
-        offset += cards.length
+        totalFetched += cards.length
+        // Usar el ID de la última card como 'before' para la siguiente página
+        before = cards[cards.length - 1].id
         hasMore = cards.length === limit
-        console.log(`📥 Obtenidas ${allCards.length} cards...`)
+        console.log(`📥 Obtenidas ${totalFetched} cards...`)
         if (hasMore) await delay(500)
       }
     } catch (error: any) {
@@ -238,7 +247,8 @@ async function massImport(agencyId: string) {
     }
   }
 
-  console.log(`\n✅ Total de cards a importar: ${allCards.length}\n`)
+  console.log(`\n✅ Total de cards obtenidas: ${allCards.length}`)
+  console.log(`🚀 Iniciando sincronización...\n`)
 
   const trelloSettingsForSync = {
     agency_id: agencyId,
