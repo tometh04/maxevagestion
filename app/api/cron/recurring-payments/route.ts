@@ -31,9 +31,9 @@ export async function POST(request: Request) {
       .eq("role", "SUPER_ADMIN")
       .eq("is_active", true)
       .limit(1)
-      .single()
+      .maybeSingle()
 
-    const userId = adminUser?.id || "system"
+    const userId = (adminUser as { id: string } | null)?.id || "system"
 
     const result = await generateAllRecurringPayments(supabase, userId)
 
