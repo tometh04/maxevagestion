@@ -18,12 +18,11 @@ USING (
     lead_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM leads
+      INNER JOIN user_agencies ON user_agencies.agency_id = leads.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE leads.id = documents.lead_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = auth.uid()::text::uuid
-        AND user_agencies.agency_id = leads.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
   OR
@@ -32,12 +31,11 @@ USING (
     operation_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM operations
+      INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE operations.id = documents.operation_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = auth.uid()::text::uuid
-        AND user_agencies.agency_id = operations.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
   OR
@@ -47,18 +45,20 @@ USING (
     EXISTS (
       SELECT 1 FROM operation_customers
       INNER JOIN operations ON operations.id = operation_customers.operation_id
+      INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE operation_customers.customer_id = documents.customer_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = auth.uid()::text::uuid
-        AND user_agencies.agency_id = operations.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
   OR
   -- Si el usuario subió el documento, puede leerlo
-  uploaded_by_user_id = (
-    SELECT id FROM users WHERE auth_id = auth.uid()
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE users.id = documents.uploaded_by_user_id
+    AND users.auth_id = auth.uid()
+    AND users.is_active = true
   )
 );
 
@@ -69,7 +69,7 @@ ON documents
 FOR INSERT
 TO authenticated
 WITH CHECK (
-  -- Verificar que el usuario existe y está activo
+  -- Verificar que el usuario existe, está activo y es quien está subiendo
   EXISTS (
     SELECT 1 FROM users
     WHERE users.id = documents.uploaded_by_user_id
@@ -83,14 +83,11 @@ WITH CHECK (
       lead_id IS NOT NULL AND
       EXISTS (
         SELECT 1 FROM leads
+        INNER JOIN user_agencies ON user_agencies.agency_id = leads.agency_id
+        INNER JOIN users ON users.id = user_agencies.user_id
         WHERE leads.id = documents.lead_id
-        AND EXISTS (
-          SELECT 1 FROM user_agencies
-          WHERE user_agencies.user_id = (
-            SELECT id FROM users WHERE auth_id = auth.uid()
-          )
-          AND user_agencies.agency_id = leads.agency_id
-        )
+        AND users.auth_id = auth.uid()
+        AND users.is_active = true
       )
     )
     OR
@@ -99,14 +96,11 @@ WITH CHECK (
       operation_id IS NOT NULL AND
       EXISTS (
         SELECT 1 FROM operations
+        INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+        INNER JOIN users ON users.id = user_agencies.user_id
         WHERE operations.id = documents.operation_id
-        AND EXISTS (
-          SELECT 1 FROM user_agencies
-          WHERE user_agencies.user_id = (
-            SELECT id FROM users WHERE auth_id = auth.uid()
-          )
-          AND user_agencies.agency_id = operations.agency_id
-        )
+        AND users.auth_id = auth.uid()
+        AND users.is_active = true
       )
     )
     OR
@@ -116,14 +110,11 @@ WITH CHECK (
       EXISTS (
         SELECT 1 FROM operation_customers
         INNER JOIN operations ON operations.id = operation_customers.operation_id
+        INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+        INNER JOIN users ON users.id = user_agencies.user_id
         WHERE operation_customers.customer_id = documents.customer_id
-        AND EXISTS (
-          SELECT 1 FROM user_agencies
-          WHERE user_agencies.user_id = (
-            SELECT id FROM users WHERE auth_id = auth.uid()
-          )
-          AND user_agencies.agency_id = operations.agency_id
-        )
+        AND users.auth_id = auth.uid()
+        AND users.is_active = true
       )
     )
   )
@@ -137,8 +128,11 @@ FOR UPDATE
 TO authenticated
 USING (
   -- Si el usuario subió el documento, puede actualizarlo
-  uploaded_by_user_id = (
-    SELECT id FROM users WHERE auth_id = auth.uid()
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE users.id = documents.uploaded_by_user_id
+    AND users.auth_id = auth.uid()
+    AND users.is_active = true
   )
   OR
   -- O si tiene acceso a la agencia del lead/operation asociado
@@ -146,14 +140,11 @@ USING (
     lead_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM leads
+      INNER JOIN user_agencies ON user_agencies.agency_id = leads.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE leads.id = documents.lead_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = (
-          SELECT id FROM users WHERE auth_id = auth.uid()
-        )
-        AND user_agencies.agency_id = leads.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
   OR
@@ -161,35 +152,32 @@ USING (
     operation_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM operations
+      INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE operations.id = documents.operation_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = (
-          SELECT id FROM users WHERE auth_id = auth.uid()
-        )
-        AND user_agencies.agency_id = operations.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
 )
 WITH CHECK (
   -- Mismas condiciones para WITH CHECK
-  uploaded_by_user_id = (
-    SELECT id FROM users WHERE auth_id = auth.uid()
+  EXISTS (
+    SELECT 1 FROM users
+    WHERE users.id = documents.uploaded_by_user_id
+    AND users.auth_id = auth.uid()
+    AND users.is_active = true
   )
   OR
   (
     lead_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM leads
+      INNER JOIN user_agencies ON user_agencies.agency_id = leads.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE leads.id = documents.lead_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = (
-          SELECT id FROM users WHERE auth_id = auth.uid()
-        )
-        AND user_agencies.agency_id = leads.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
   OR
@@ -197,14 +185,11 @@ WITH CHECK (
     operation_id IS NOT NULL AND
     EXISTS (
       SELECT 1 FROM operations
+      INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+      INNER JOIN users ON users.id = user_agencies.user_id
       WHERE operations.id = documents.operation_id
-      AND EXISTS (
-        SELECT 1 FROM user_agencies
-        WHERE user_agencies.user_id = (
-          SELECT id FROM users WHERE auth_id = auth.uid()
-        )
-        AND user_agencies.agency_id = operations.agency_id
-      )
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
   )
 );
@@ -226,8 +211,11 @@ USING (
   AND
   (
     -- Si el usuario subió el documento, puede eliminarlo
-    uploaded_by_user_id = (
-      SELECT id FROM users WHERE auth_id = auth.uid()
+    EXISTS (
+      SELECT 1 FROM users
+      WHERE users.id = documents.uploaded_by_user_id
+      AND users.auth_id = auth.uid()
+      AND users.is_active = true
     )
     OR
     -- O si tiene acceso a la agencia del lead/operation asociado
@@ -235,14 +223,11 @@ USING (
       lead_id IS NOT NULL AND
       EXISTS (
         SELECT 1 FROM leads
+        INNER JOIN user_agencies ON user_agencies.agency_id = leads.agency_id
+        INNER JOIN users ON users.id = user_agencies.user_id
         WHERE leads.id = documents.lead_id
-        AND EXISTS (
-          SELECT 1 FROM user_agencies
-          WHERE user_agencies.user_id = (
-            SELECT id FROM users WHERE auth_id = auth.uid()
-          )
-          AND user_agencies.agency_id = leads.agency_id
-        )
+        AND users.auth_id = auth.uid()
+        AND users.is_active = true
       )
     )
     OR
@@ -250,14 +235,11 @@ USING (
       operation_id IS NOT NULL AND
       EXISTS (
         SELECT 1 FROM operations
+        INNER JOIN user_agencies ON user_agencies.agency_id = operations.agency_id
+        INNER JOIN users ON users.id = user_agencies.user_id
         WHERE operations.id = documents.operation_id
-        AND EXISTS (
-          SELECT 1 FROM user_agencies
-          WHERE user_agencies.user_id = (
-            SELECT id FROM users WHERE auth_id = auth.uid()
-          )
-          AND user_agencies.agency_id = operations.agency_id
-        )
+        AND users.auth_id = auth.uid()
+        AND users.is_active = true
       )
     )
   )
