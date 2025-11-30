@@ -186,14 +186,21 @@ export async function syncTrelloCardToLead(
 
   if (existingLead) {
     const leadsTable = supabase.from("leads") as any
-    await leadsTable.update(leadData).eq("id", (existingLead as any).id)
+    const { error: updateError } = await leadsTable.update(leadData).eq("id", (existingLead as any).id)
+    if (updateError) {
+      console.error("❌ Error updating lead:", updateError)
+      throw new Error(`Error updating lead: ${updateError.message}`)
+    }
+    console.log("✅ Lead updated:", (existingLead as any).id)
     return { created: false, leadId: (existingLead as any).id }
   } else {
     const leadsTable = supabase.from("leads") as any
     const { data: newLead, error } = await leadsTable.insert(leadData).select("id").single()
     if (error) {
+      console.error("❌ Error creating lead:", error)
       throw new Error(`Error creating lead: ${error.message}`)
     }
+    console.log("✅ Lead created:", (newLead as any).id)
     return { created: true, leadId: (newLead as any).id }
   }
 }
