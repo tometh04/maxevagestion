@@ -244,8 +244,11 @@ Si no necesitas ninguna herramienta, responde: {"tools": []}`
     // Execute tools
     const toolResults: any = {}
 
+    console.log(`[AI Copilot] Ejecutando ${toolCalls.length} herramienta(s):`, toolCalls.map(t => t.name))
+
     for (const toolCall of toolCalls) {
       try {
+        console.log(`[AI Copilot] Ejecutando herramienta: ${toolCall.name}`, toolCall.params)
         switch (toolCall.name) {
           case "getSalesSummary":
             toolResults.salesSummary = await getSalesSummary(
@@ -314,13 +317,23 @@ Si no necesitas ninguna herramienta, responde: {"tools": []}`
             }
             break
         }
+        console.log(`[AI Copilot] Herramienta ${toolCall.name} completada exitosamente`)
       } catch (error) {
-        console.error(`Error executing tool ${toolCall.name}:`, error)
+        console.error(`[AI Copilot] Error ejecutando herramienta ${toolCall.name}:`, error)
+        // Agregar información del error a los resultados para que el AI sepa qué pasó
+        toolResults[`${toolCall.name}_error`] = {
+          error: error instanceof Error ? error.message : String(error),
+          tool: toolCall.name,
+        }
       }
     }
 
+    console.log(`[AI Copilot] Resultados de herramientas:`, Object.keys(toolResults))
+
     // Format results for LLM
     const resultsText = JSON.stringify(toolResults, null, 2)
+    
+    console.log(`[AI Copilot] Datos a enviar al LLM (primeros 500 chars):`, resultsText.substring(0, 500))
 
     // Generate natural language response
     let response = "No pude procesar tu consulta."

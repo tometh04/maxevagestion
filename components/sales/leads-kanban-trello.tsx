@@ -6,6 +6,14 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ExternalLink, DollarSign } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 
@@ -62,6 +70,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [selectedListId, setSelectedListId] = useState<string>("ALL")
 
   // Obtener listas de Trello - MOSTRAR TODAS LAS LISTAS en el orden EXACTO que están en Trello
   useEffect(() => {
@@ -96,6 +105,11 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
     acc[list.id] = leads.filter((lead) => lead.trello_list_id === list.id)
     return acc
   }, {} as Record<string, Lead[]>)
+
+  // Filtrar listas según el selector
+  const filteredLists = selectedListId === "ALL" 
+    ? lists 
+    : lists.filter(list => list.id === selectedListId)
 
   const handleDragStart = (leadId: string) => {
     setDraggedLead(leadId)
@@ -154,8 +168,27 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
 
   // Mostrar TODAS las listas de Trello, en el orden exacto que vienen de Trello
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
-      {lists.map((list) => {
+    <div className="space-y-4">
+      {/* Filtro de listas */}
+      <div className="flex items-center gap-2">
+        <Label htmlFor="list-filter" className="whitespace-nowrap">Filtrar por lista:</Label>
+        <Select value={selectedListId} onValueChange={setSelectedListId}>
+          <SelectTrigger id="list-filter" className="w-[250px]">
+            <SelectValue placeholder="Todas las listas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todas las listas</SelectItem>
+            {lists.map((list) => (
+              <SelectItem key={list.id} value={list.id}>
+                {list.name} ({leadsByList[list.id]?.length || 0})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex gap-4 overflow-x-auto pb-4">
+        {filteredLists.map((list) => {
         const listLeads = leadsByList[list.id] || []
 
         // Mostrar TODAS las listas, incluso si no tienen leads
@@ -269,6 +302,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
           onConvert={onRefresh}
         />
       )}
+      </div>
     </div>
   )
 }

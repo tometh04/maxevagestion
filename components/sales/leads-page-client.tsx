@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus } from "lucide-react"
+import { Plus, RefreshCw, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 
 interface Lead {
   id: string
@@ -57,6 +58,7 @@ export function LeadsPageClient({
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>(defaultAgencyId || agencies[0]?.id || "ALL")
   const [loading, setLoading] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
+  const [syncingTrello, setSyncingTrello] = useState(false)
 
   // Cargar leads cuando cambia la agencia seleccionada
   useEffect(() => {
@@ -93,6 +95,39 @@ export function LeadsPageClient({
 
   const handleRefresh = async () => {
     await loadLeads(selectedAgencyId)
+  }
+
+  const handleSyncTrello = async () => {
+    if (!selectedAgencyId || selectedAgencyId === "ALL") {
+      toast.error("Selecciona una agencia específica para sincronizar con Trello")
+      return
+    }
+
+    setSyncingTrello(true)
+    try {
+      const response = await fetch("/api/trello/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyId: selectedAgencyId }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success(
+          `Sincronización completada: ${data.summary.total} tarjetas (${data.summary.created} nuevas, ${data.summary.updated} actualizadas)`
+        )
+        // Recargar leads después de sincronizar
+        await loadLeads(selectedAgencyId)
+      } else {
+        toast.error(data.error || "Error al sincronizar con Trello")
+      }
+    } catch (error) {
+      console.error("Error syncing Trello:", error)
+      toast.error("Error al sincronizar con Trello")
+    } finally {
+      setSyncingTrello(false)
+    }
   }
 
   // Los leads ya vienen filtrados del servidor
@@ -162,6 +197,25 @@ export function LeadsPageClient({
                 </SelectContent>
               </Select>
             </div>
+          )}
+          {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && (
+            <Button
+              variant="outline"
+              onClick={handleSyncTrello}
+              disabled={syncingTrello}
+            >
+              {syncingTrello ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sincronizando...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sincronizar Trello
+                </>
+              )}
+            </Button>
           )}
           <Button onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
