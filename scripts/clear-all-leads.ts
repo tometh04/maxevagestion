@@ -39,11 +39,38 @@ async function clearAllLeads() {
   
   console.log(`📊 Leads antes: ${beforeCount || 0}`)
   
-  // Borrar todos los leads
-  const { error, count } = await supabase
-    .from("leads")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000") // Delete all (trick to delete all rows)
+  // Borrar todos los leads en batches (Supabase tiene límites)
+  let deleted = 0
+  let hasMore = true
+  
+  while (hasMore) {
+    // Obtener un batch de IDs
+    const { data: batch } = await supabase
+      .from("leads")
+      .select("id")
+      .limit(1000)
+    
+    if (!batch || batch.length === 0) {
+      hasMore = false
+      break
+    }
+    
+    const ids = batch.map(l => l.id)
+    
+    // Borrar el batch
+    const { error } = await supabase
+      .from("leads")
+      .delete()
+      .in("id", ids)
+    
+    if (error) {
+      console.error("❌ Error al borrar batch:", error)
+      throw error
+    }
+    
+    deleted += ids.length
+    console.log(`🗑️  Borrados ${deleted} leads...`)
+  }
   
   if (error) {
     console.error("❌ Error al borrar leads:", error)
@@ -56,7 +83,7 @@ async function clearAllLeads() {
     .select("*", { count: "exact", head: true })
   
   console.log(`✅ Leads después: ${afterCount || 0}`)
-  console.log(`✅ Borrados: ${(beforeCount || 0) - (afterCount || 0)} leads`)
+  console.log(`✅ Total borrados: ${deleted} leads`)
 }
 
 clearAllLeads()

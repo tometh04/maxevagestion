@@ -68,14 +68,34 @@ async function clearAllLeads() {
   
   console.log(`📊 Leads antes: ${beforeCount || 0}`)
   
-  const { error } = await supabase
-    .from("leads")
-    .delete()
-    .neq("id", "00000000-0000-0000-0000-000000000000")
+  // Borrar en batches
+  let deleted = 0
+  let hasMore = true
   
-  if (error) {
-    console.error("❌ Error al borrar leads:", error)
-    throw error
+  while (hasMore) {
+    const { data: batch } = await supabase
+      .from("leads")
+      .select("id")
+      .limit(1000)
+    
+    if (!batch || batch.length === 0) {
+      hasMore = false
+      break
+    }
+    
+    const ids = batch.map((l: any) => l.id)
+    const { error } = await supabase
+      .from("leads")
+      .delete()
+      .in("id", ids)
+    
+    if (error) {
+      console.error("❌ Error al borrar batch:", error)
+      throw error
+    }
+    
+    deleted += ids.length
+    console.log(`🗑️  Borrados ${deleted} leads...`)
   }
   
   const { count: afterCount } = await supabase
@@ -83,7 +103,7 @@ async function clearAllLeads() {
     .select("*", { count: "exact", head: true })
   
   console.log(`✅ Leads después: ${afterCount || 0}`)
-  console.log(`✅ Borrados: ${(beforeCount || 0) - (afterCount || 0)} leads\n`)
+  console.log(`✅ Total borrados: ${deleted} leads\n`)
 }
 
 async function verifyWebhook(agencyId: string, settings: any) {
