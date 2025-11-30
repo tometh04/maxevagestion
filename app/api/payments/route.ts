@@ -111,9 +111,14 @@ export async function GET(request: Request) {
       query = query.lte("date_due", dateTo)
     }
 
-    if (limit) {
-      query = query.limit(Number(limit))
-    }
+    // Add pagination with reasonable limits
+    const requestedLimit = limit ? Number(limit) : 100
+    const finalLimit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
+    const offset = parseInt(searchParams.get("offset") || "0")
+    
+    query = query
+      .order("date_due", { ascending: false })
+      .range(offset, offset + finalLimit - 1)
 
     const { data: payments, error } = await query
 
