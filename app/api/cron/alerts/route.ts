@@ -8,11 +8,16 @@ import { generateAllAlerts } from "@/lib/alerts/generate"
  */
 export async function POST(request: Request) {
   try {
-    // Verificar token de autorización
+    // Verificar autorización: Vercel Cron envía un header especial o usar CRON_SECRET
     const authHeader = request.headers.get("authorization")
-    const cronSecret = process.env.CRON_SECRET || "change-me-in-production"
+    const cronSecret = process.env.CRON_SECRET
+    const vercelCronSecret = request.headers.get("x-vercel-cron-secret")
     
-    if (authHeader !== `Bearer ${cronSecret}`) {
+    // Permitir si viene de Vercel Cron o si tiene el token correcto
+    const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
+    const hasValidToken = authHeader === `Bearer ${cronSecret}`
+    
+    if (!isVercelCron && !hasValidToken && cronSecret) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
