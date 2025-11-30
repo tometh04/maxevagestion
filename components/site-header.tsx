@@ -39,7 +39,7 @@ const getPageTitle = (pathname: string): string => {
     }
   }
 
-  return "ERP Lozada"
+  return "MAXEVA GESTION"
 }
 
 export function SiteHeader() {

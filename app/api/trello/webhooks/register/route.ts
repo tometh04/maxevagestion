@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        description: `ERP Lozada - ${settings.board_id}`,
+        description: `MAXEVA GESTION - ${settings.board_id}`,
         callbackURL: webhookUrl,
         idModel: boardIdModel, // Use full board ID
         key: settings.trello_api_key,

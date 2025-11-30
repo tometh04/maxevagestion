@@ -7,7 +7,7 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "ERP Lozada - Gestión de Agencia de Viajes",
+  title: "MAXEVA GESTION - Gestión de Agencia de Viajes",
   description: "Sistema de gestión completo para agencia de viajes",
 }
 

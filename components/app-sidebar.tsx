@@ -133,7 +133,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             >
               <a href="/dashboard">
                 <GalleryVerticalEnd className="!size-5" />
-                <span className="text-base font-semibold">ERP Lozada</span>
+                <span className="text-base font-semibold">MAXEVA GESTION</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
