@@ -59,7 +59,8 @@ export default async function LeadsPage() {
   const { data: sellers } = await sellersQuery
 
   // Get leads (including trello_list_id)
-  // Para Trello, necesitamos TODOS los leads, cargar con paginación si es necesario
+  // OPTIMIZACIÓN: Solo cargar leads necesarios para la vista inicial
+  // El cliente cargará más según sea necesario
   let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
 
   if (user.role === "SELLER") {
@@ -68,36 +69,20 @@ export default async function LeadsPage() {
     query = query.in("agency_id", agencyIds)
   }
 
-  // Cargar todos los leads con paginación (Supabase limita a 1000 por defecto)
-  // Hacer múltiples queries si es necesario para cargar todos
-  let allLeads: any[] = []
-  let offset = 0
-  const limit = 1000
-  let hasMore = true
+  // OPTIMIZACIÓN: Cargar solo los primeros 500 leads para la carga inicial
+  // Si hay más, el cliente puede cargarlos bajo demanda
+  const INITIAL_LIMIT = 500
+  const { data: leads, error: leadsError } = await query
+    .order("created_at", { ascending: false })
+    .limit(INITIAL_LIMIT)
 
-  while (hasMore) {
-    const { data: batch, error } = await query
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-    
-    if (error) {
-      console.error("Error fetching leads:", error)
-      break
-    }
-    
-    if (batch && batch.length > 0) {
-      allLeads = [...allLeads, ...batch]
-      offset += limit
-      hasMore = batch.length === limit
-    } else {
-      hasMore = false
-    }
+  if (leadsError) {
+    console.error("Error fetching leads:", leadsError)
   }
 
-  const leads = allLeads
-
-  // Check if we have Trello leads - if ANY lead is from Trello, use Trello Kanban
-  const hasTrelloLeads = leads?.some((lead: any) => lead.source === "Trello") || false
+  // Check if we have Trello leads - verificar si hay leads con trello_list_id
+  // Más eficiente: solo verificar si hay alguno con trello_list_id en lugar de buscar por source
+  const hasTrelloLeads = (leads || []).some((lead: any) => lead.trello_list_id !== null && lead.trello_list_id !== undefined) || false
 
   return (
     <LeadsPageClient
