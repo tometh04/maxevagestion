@@ -525,8 +525,10 @@ export interface Database {
           id: string
           operation_id: string | null
           customer_id: string | null
-          type: 'PASSPORT' | 'DNI' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
+          lead_id: string | null
+          type: 'PASSPORT' | 'DNI' | 'LICENSE' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
           file_url: string
+          scanned_data: Record<string, any> | null
           uploaded_by_user_id: string
           uploaded_at: string
         }
@@ -534,8 +536,10 @@ export interface Database {
           id?: string
           operation_id?: string | null
           customer_id?: string | null
-          type: 'PASSPORT' | 'DNI' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
+          lead_id?: string | null
+          type: 'PASSPORT' | 'DNI' | 'LICENSE' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
           file_url: string
+          scanned_data?: Record<string, any> | null
           uploaded_by_user_id: string
           uploaded_at?: string
         }
@@ -543,8 +547,10 @@ export interface Database {
           id?: string
           operation_id?: string | null
           customer_id?: string | null
-          type?: 'PASSPORT' | 'DNI' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
+          lead_id?: string | null
+          type?: 'PASSPORT' | 'DNI' | 'LICENSE' | 'VOUCHER' | 'INVOICE' | 'PAYMENT_PROOF' | 'OTHER'
           file_url?: string
+          scanned_data?: Record<string, any> | null
           uploaded_by_user_id?: string
           uploaded_at?: string
         }

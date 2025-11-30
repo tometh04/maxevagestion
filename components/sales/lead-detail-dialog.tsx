@@ -10,6 +10,7 @@ import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
+import { LeadDocumentsSection } from "@/components/sales/lead-documents-section"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -341,6 +342,10 @@ export function LeadDetailDialog({
               <Separator />
             </>
           )}
+
+          {/* Documentos Escaneados */}
+          <LeadDocumentsSection leadId={lead.id} />
+          <Separator />
 
           {/* Información completa de Trello */}
           {lead.trello_full_data && (
