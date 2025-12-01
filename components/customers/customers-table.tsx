@@ -14,6 +14,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
 
 interface Customer {
   id: string
@@ -25,6 +26,7 @@ interface Customer {
   document_number: string | null
   trips: number
   totalSpent: number
+  agency_id?: string
 }
 
 interface CustomersTableProps {
@@ -80,7 +82,21 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Teléfono" />
         ),
-        cell: ({ row }) => <div>{row.original.phone}</div>,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <span>{row.original.phone}</span>
+            {row.original.phone && (
+              <QuickWhatsAppButton
+                phone={row.original.phone}
+                customerName={`${row.original.first_name} ${row.original.last_name}`}
+                customerId={row.original.id}
+                agencyId={row.original.agency_id || ""}
+                variant="icon"
+                size="icon"
+              />
+            )}
+          </div>
+        ),
       },
       {
         accessorKey: "email",

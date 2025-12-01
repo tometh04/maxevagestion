@@ -11,6 +11,7 @@ import { CashflowChart } from "./cashflow-chart"
 import { PendingAlertsCard } from "./pending-alerts-card"
 import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
+import { BirthdaysTodayCard } from "./birthdays-today-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
@@ -354,6 +355,9 @@ export function DashboardPageClient({
           </CardContent>
         </Card>
       </div>
+
+      {/* Cumpleaños del día */}
+      <BirthdaysTodayCard />
 
       {/* Alertas, Próximos Viajes y Top Vendedores */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">

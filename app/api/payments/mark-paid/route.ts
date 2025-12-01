@@ -9,6 +9,7 @@ import {
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
 import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
 import { getExchangeRate } from "@/lib/accounting/exchange-rates"
+import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 
 export async function POST(request: Request) {
   try {
@@ -226,6 +227,60 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("Error calculando FX:", error)
         // No lanzamos error para no romper el flujo
+      }
+    }
+
+    // ============================================
+    // CREAR MENSAJE WHATSAPP AUTOMÁTICO
+    // ============================================
+    // Solo para pagos de cliente (INCOME), no para pagos a operadores
+    if (paymentData.direction === "INCOME" && paymentData.operation_id) {
+      try {
+        // Obtener cliente principal de la operación
+        const { data: operationCustomer } = await (supabase.from("operation_customers") as any)
+          .select(`
+            customers:customer_id (
+              id, first_name, last_name, phone
+            )
+          `)
+          .eq("operation_id", paymentData.operation_id)
+          .eq("role", "MAIN")
+          .single()
+
+        const customer = (operationCustomer as any)?.customers
+
+        if (customer?.phone) {
+          // Contar pagos pendientes restantes
+          const { count: remainingPayments } = await (supabase.from("payments") as any)
+            .select("id", { count: "exact", head: true })
+            .eq("operation_id", paymentData.operation_id)
+            .eq("direction", "CUSTOMER_TO_AGENCY")
+            .eq("status", "PENDING")
+
+          // Obtener destino de la operación
+          const { data: opData } = await (supabase.from("operations") as any)
+            .select("destination, agency_id")
+            .eq("id", paymentData.operation_id)
+            .single()
+
+          if (opData) {
+            await createPaymentReceivedMessage(
+              supabase,
+              {
+                id: paymentId,
+                amount: parseFloat(paymentData.amount),
+                currency: paymentData.currency,
+                operation_id: paymentData.operation_id,
+              },
+              customer,
+              opData,
+              remainingPayments || 0
+            )
+          }
+        }
+      } catch (error) {
+        console.error("Error creando mensaje WhatsApp:", error)
+        // No lanzamos error para no romper el flujo principal
       }
     }
 

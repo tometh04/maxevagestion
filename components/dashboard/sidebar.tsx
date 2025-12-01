@@ -25,6 +25,7 @@ import {
 import { useState } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
+import { PendingMessagesBadge } from "@/components/whatsapp/pending-messages-badge"
 
 interface NavItem {
   name: string
@@ -109,6 +110,7 @@ function NavItemComponent({ item, pathname, userRole }: { item: NavItem; pathnam
       >
         <item.icon className="h-5 w-5" />
         {item.name}
+        {item.href === "/messages" && <PendingMessagesBadge />}
       </Link>
     )
   }
