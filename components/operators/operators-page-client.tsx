@@ -53,7 +53,6 @@ export function OperatorsPageClient({ initialOperators }: OperatorsPageClientPro
         operators={operators} 
         isLoading={loading} 
         emptyMessage="No hay operadores registrados"
-        onRefresh={fetchOperators}
       />
 
       <NewOperatorDialog
