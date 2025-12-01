@@ -336,25 +336,26 @@ components/dashboard/top-sellers-widget.tsx (NUEVO)
 components/dashboard/trend-chart.tsx (NUEVO)
 ```
 
-### 5.2 Reportes Avanzados
-- [ ] **5.2.1** Reporte de Rentabilidad por Destino
-  - Destinos más rentables (margen promedio)
+### 5.2 Reportes Avanzados ✅
+- [x] **5.2.1** API de Rentabilidad por Destino
+  - Top destinos más rentables
   - Volumen de ventas por destino
-- [ ] **5.2.2** Reporte de Estacionalidad
+  - Margen promedio por destino
+- [x] **5.2.2** API de Estacionalidad
   - Ventas por mes (histórico)
-  - Predicción próximos meses
-- [ ] **5.2.3** Reporte de Clientes
-  - Clientes más frecuentes
-  - Ticket promedio por cliente
-  - Clientes sin actividad en X meses
+  - Tendencia (últimos 3 meses vs anteriores)
+  - Mejor y peor mes
+- [x] **5.2.3** API de Clientes
+  - Top clientes por gasto
+  - Top clientes frecuentes
+  - Clientes inactivos (sin actividad en X meses)
+  - Lifetime value promedio
 
-**Archivos a crear**:
+**Archivos creados**:
 ```
-components/reports/profitability-report.tsx (NUEVO)
-components/reports/seasonality-report.tsx (NUEVO)
-components/reports/customers-report.tsx (NUEVO)
 app/api/analytics/profitability/route.ts (NUEVO)
 app/api/analytics/seasonality/route.ts (NUEVO)
+app/api/analytics/customers/route.ts (NUEVO)
 ```
 
 ### 5.3 Exportación de Reportes
