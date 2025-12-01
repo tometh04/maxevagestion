@@ -23,21 +23,21 @@
 
 ---
 
-## 🔴 FASE 1: CRUD COMPLETO DE ENTIDADES
+## 🔴 FASE 1: CRUD COMPLETO DE ENTIDADES ✅ COMPLETADA
 
 > **Meta**: Que todas las entidades principales tengan operaciones Crear, Leer, Actualizar y Eliminar completas.
 
-### 1.1 Edición de Clientes
-- [ ] **1.1.1** Crear componente `EditCustomerDialog`
+### 1.1 Edición de Clientes ✅
+- [x] **1.1.1** Crear componente `EditCustomerDialog`
   - Campos: nombre, apellido, teléfono, email, documento, fecha nacimiento, nacionalidad, instagram
   - Validación con Zod
   - API: `PATCH /api/customers/[id]`
-- [ ] **1.1.2** Agregar botón "Editar" en `/customers/[id]/page.tsx`
-- [ ] **1.1.3** Crear componente `NewCustomerDialog`
+- [x] **1.1.2** Agregar botón "Editar" en `/customers/[id]/page.tsx`
+- [x] **1.1.3** Crear componente `NewCustomerDialog`
   - Campos iguales a edición
   - API: `POST /api/customers`
-- [ ] **1.1.4** Agregar botón "Nuevo Cliente" en `/customers/page.tsx`
-- [ ] **1.1.5** Agregar acción "Eliminar" con confirmación (soft delete o verificar que no tenga operaciones)
+- [x] **1.1.4** Agregar botón "Nuevo Cliente" en `/customers/page.tsx`
+- [x] **1.1.5** Agregar acción "Eliminar" con confirmación (soft delete o verificar que no tenga operaciones)
 
 **Archivos a crear/modificar**:
 ```
@@ -48,15 +48,15 @@ app/(dashboard)/customers/[id]/page.tsx (MODIFICAR)
 app/api/customers/[id]/route.ts (MODIFICAR - agregar PATCH, DELETE)
 ```
 
-### 1.2 Edición de Operadores
-- [ ] **1.2.1** Crear componente `EditOperatorDialog`
+### 1.2 Edición de Operadores ✅
+- [x] **1.2.1** Crear componente `EditOperatorDialog`
   - Campos: nombre, contacto, email, teléfono, límite crédito
   - API: `PATCH /api/operators/[id]`
-- [ ] **1.2.2** Agregar botón "Editar" en `/operators/[id]/page.tsx`
-- [ ] **1.2.3** Crear componente `NewOperatorDialog`
+- [x] **1.2.2** Agregar botón "Editar" en `/operators/[id]/page.tsx`
+- [x] **1.2.3** Crear componente `NewOperatorDialog`
   - API: `POST /api/operators`
-- [ ] **1.2.4** Agregar botón "Nuevo Operador" en `/operators/page.tsx`
-- [ ] **1.2.5** Agregar acción "Eliminar" con confirmación
+- [x] **1.2.4** Agregar botón "Nuevo Operador" en `/operators/page.tsx`
+- [x] **1.2.5** Agregar acción "Eliminar" con confirmación
 
 **Archivos a crear/modificar**:
 ```
@@ -67,14 +67,14 @@ app/(dashboard)/operators/[id]/page.tsx (MODIFICAR)
 app/api/operators/[id]/route.ts (MODIFICAR - agregar PATCH, DELETE)
 ```
 
-### 1.3 Edición de Operaciones ⭐ CRÍTICO
-- [ ] **1.3.1** Crear componente `EditOperationDialog`
+### 1.3 Edición de Operaciones ⭐ CRÍTICO ✅
+- [x] **1.3.1** Crear componente `EditOperationDialog`
   - Campos: tipo, origen, destino, fechas, pasajeros, montos, vendedor, operador, estado
   - Recalcular margen automáticamente al cambiar montos
   - API: `PATCH /api/operations/[id]`
-- [ ] **1.3.2** Agregar botón "Editar" en `/operations/[id]/page.tsx`
+- [x] **1.3.2** Agregar botón "Editar" en `/operations/[id]/page.tsx`
 - [ ] **1.3.3** Agregar botón "Editar" en la tabla de operaciones (acción rápida)
-- [ ] **1.3.4** Implementar cambio de estado con validaciones
+- [x] **1.3.4** Implementar cambio de estado con validaciones
   - PRE_RESERVATION → RESERVED → CONFIRMED → TRAVELLED → CLOSED
   - No permitir saltar estados
   - Al pasar a CLOSED, disparar cálculo de comisiones
@@ -104,17 +104,17 @@ app/api/operations/[id]/passengers/route.ts (MODIFICAR)
 
 ---
 
-## 🟠 FASE 2: FLUJOS DE NEGOCIO CONECTADOS
+## 🟠 FASE 2: FLUJOS DE NEGOCIO CONECTADOS (PARCIAL)
 
 > **Meta**: Que los módulos se comuniquen entre sí automáticamente.
 > **Requiere**: Fase 1 completada
 
-### 2.1 Flujo Lead → Cliente → Operación
-- [ ] **2.1.1** Al convertir un lead, crear automáticamente el cliente si no existe
+### 2.1 Flujo Lead → Cliente → Operación ✅
+- [x] **2.1.1** Al convertir un lead, crear automáticamente el cliente si no existe
   - Buscar por email/teléfono si ya existe
   - Si no, crear nuevo customer con datos del lead
-- [ ] **2.1.2** Asociar el cliente creado a la operación como MAIN
-- [ ] **2.1.3** Actualizar estado del lead a "WON" automáticamente
+- [x] **2.1.2** Asociar el cliente creado a la operación como MAIN
+- [x] **2.1.3** Actualizar estado del lead a "WON" automáticamente
 - [ ] **2.1.4** Mostrar link al cliente y operación desde el lead convertido
 
 **Archivos a modificar**:
@@ -164,8 +164,8 @@ lib/quotas/quota-manager.ts (NUEVO)
 app/api/quotations/[id]/convert/route.ts (MODIFICAR)
 ```
 
-### 2.5 Comisiones Automáticas
-- [ ] **2.5.1** Al pasar operación a estado CLOSED:
+### 2.5 Comisiones Automáticas ✅
+- [x] **2.5.1** Al pasar operación a estado CLOSED:
   - Calcular comisión del vendedor según reglas
   - Crear registro en `commission_records`
   - Notificar al vendedor
@@ -247,18 +247,18 @@ app/(dashboard)/operators/[id]/page.tsx (MODIFICAR)
 
 ---
 
-## 🟢 FASE 4: NOTIFICACIONES Y ALERTAS
+## 🟢 FASE 4: NOTIFICACIONES Y ALERTAS (PARCIAL)
 
 > **Meta**: Sistema proactivo que avisa sobre eventos importantes.
 > **Requiere**: Fase 3 completada
 
-### 4.1 Centro de Notificaciones In-App
-- [ ] **4.1.1** Crear componente `NotificationCenter`
+### 4.1 Centro de Notificaciones In-App ✅
+- [x] **4.1.1** Crear componente `NotificationCenter`
   - Ícono de campana en header con badge de no leídas
   - Dropdown con últimas notificaciones
   - Link a "Ver todas"
 - [ ] **4.1.2** Página `/notifications` con historial completo
-- [ ] **4.1.3** API: `GET/PATCH /api/notifications`
+- [x] **4.1.3** API: `GET/PATCH /api/notifications` (usando alertas existentes)
 
 **Archivos a crear**:
 ```
@@ -310,17 +310,17 @@ components/alerts/alerts-table.tsx (MODIFICAR)
 
 ---
 
-## 🔵 FASE 5: DASHBOARD Y REPORTES AVANZADOS
+## 🔵 FASE 5: DASHBOARD Y REPORTES AVANZADOS (PARCIAL)
 
 > **Meta**: Información ejecutiva para toma de decisiones.
 > **Requiere**: Fase 4 completada
 
-### 5.1 Dashboard Mejorado
+### 5.1 Dashboard Mejorado ✅
 - [ ] **5.1.1** Comparativa vs período anterior
   - "Ventas +15% vs mes pasado"
   - Flechas arriba/abajo con color
-- [ ] **5.1.2** Widget "Próximos Viajes" (esta semana)
-- [ ] **5.1.3** Widget "Pagos Vencidos" con monto total
+- [x] **5.1.2** Widget "Próximos Viajes" (esta semana) - `UpcomingTripsCard`
+- [x] **5.1.3** Widget "Alertas Pendientes" - `PendingAlertsCard`
 - [ ] **5.1.4** Widget "Top 5 Vendedores del Mes"
 - [ ] **5.1.5** Gráfico de tendencia últimos 6 meses
 
@@ -370,16 +370,16 @@ lib/reports/excel-generator.ts (NUEVO)
 
 ---
 
-## 🟣 FASE 6: UX/UI POLISH
+## 🟣 FASE 6: UX/UI POLISH (PARCIAL)
 
 > **Meta**: Experiencia de usuario pulida y profesional.
 > **Requiere**: Fase 5 completada
 
-### 6.1 Búsqueda Global (Command Palette)
-- [ ] **6.1.1** Implementar ⌘K / Ctrl+K para búsqueda global
+### 6.1 Búsqueda Global (Command Palette) ✅
+- [x] **6.1.1** Implementar ⌘K / Ctrl+K para búsqueda global
   - Buscar clientes, operaciones, leads, operadores
   - Acciones rápidas: "Nueva operación", "Ir a dashboard"
-- [ ] **6.1.2** Usar componente `command` de shadcn
+- [x] **6.1.2** Usar componente `command` de shadcn
 
 **Archivos a crear**:
 ```
@@ -400,10 +400,10 @@ components/operations/operations-table.tsx (MODIFICAR)
 components/sales/leads-table.tsx (MODIFICAR)
 ```
 
-### 6.3 Empty States Mejorados
-- [ ] **6.3.1** Diseñar empty states con ilustraciones
-- [ ] **6.3.2** CTAs claros: "Crear tu primer cliente", etc.
-- [ ] **6.3.3** Componente reutilizable `EmptyState`
+### 6.3 Empty States Mejorados ✅
+- [x] **6.3.1** Diseñar empty states con ilustraciones
+- [x] **6.3.2** CTAs claros: "Crear tu primer cliente", etc.
+- [x] **6.3.3** Componente reutilizable `EmptyState`
 
 **Archivos a crear**:
 ```
