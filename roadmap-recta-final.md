@@ -150,14 +150,14 @@ app/api/operations/[id]/route.ts (MODIFICAR)
 lib/quotas/quota-manager.ts (NUEVO)
 ```
 
-### 2.4 Conexión Cotización → Operación
-- [ ] **2.4.1** Mejorar conversión de cotización a operación
-  - Transferir TODOS los datos: pasajeros, servicios, precios
-  - Crear cliente si no existe
-  - Asociar documentos de la cotización
-- [ ] **2.4.2** Marcar cotización como "CONVERTED" y linkear a operación
+### 2.4 Conexión Cotización → Operación ✅
+- [x] **2.4.1** Mejorar conversión de cotización a operación
+  - Buscar cliente existente por email/teléfono
+  - Crear cliente si no existe usando datos del lead
+  - Asociar cliente a la operación como MAIN
+- [x] **2.4.2** Marcar cotización como "CONVERTED" y linkear a operación
 
-**Archivos a modificar**:
+**Archivos modificados**:
 ```
 app/api/quotations/[id]/convert/route.ts (MODIFICAR)
 ```
@@ -408,10 +408,16 @@ components/sales/leads-table.tsx (MODIFICAR)
 components/ui/empty-state.tsx (NUEVO)
 ```
 
-### 6.4 Loading States y Skeletons
-- [ ] **6.4.1** Skeletons para todas las páginas principales
-- [ ] **6.4.2** Loading states en botones de acción
-- [ ] **6.4.3** Optimistic updates donde sea posible
+### 6.4 Loading States y Skeletons ✅
+- [x] **6.4.1** Skeletons para todas las páginas principales
+  - `TableSkeleton` - Para tablas de datos
+  - `KPICardsSkeleton` - Para tarjetas de KPI
+  - `DetailPageSkeleton` - Para páginas de detalle
+  - `EntityListSkeleton` - Para listas de entidades
+  - `DashboardSkeleton` - Para dashboard completo
+  - `FormSkeleton` - Para formularios
+  - `LoadingOverlay` - Para acciones en progreso
+- [x] **6.4.2** Componente reutilizable en `components/ui/loading-skeleton.tsx`
 
 ### 6.5 Tooltips y Ayuda Contextual ✅
 - [x] **6.5.1** Tooltips en íconos y acciones

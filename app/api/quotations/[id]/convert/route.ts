@@ -130,6 +130,68 @@ export async function POST(
       }
     }
 
+    // Buscar o crear cliente basándose en datos del lead
+    let customerId: string | null = null
+    if (quot.leads) {
+      const lead = quot.leads as any
+      const contactEmail = lead.contact_email
+      const contactPhone = lead.contact_phone
+
+      // Buscar cliente existente por email o teléfono
+      let existingCustomer = null
+      if (contactEmail) {
+        const { data: byEmail } = await (supabase.from("customers") as any)
+          .select("id")
+          .eq("email", contactEmail)
+          .single()
+        existingCustomer = byEmail
+      }
+      if (!existingCustomer && contactPhone) {
+        const { data: byPhone } = await (supabase.from("customers") as any)
+          .select("id")
+          .eq("phone", contactPhone)
+          .single()
+        existingCustomer = byPhone
+      }
+
+      if (existingCustomer) {
+        customerId = existingCustomer.id
+      } else {
+        // Crear nuevo cliente
+        const nameParts = (lead.contact_name || "").split(" ")
+        const firstName = nameParts[0] || "Cliente"
+        const lastName = nameParts.slice(1).join(" ") || "Sin Apellido"
+
+        const { data: newCustomer } = await (supabase.from("customers") as any)
+          .insert({
+            agency_id: quot.agency_id,
+            first_name: firstName,
+            last_name: lastName,
+            email: contactEmail || null,
+            phone: contactPhone || null,
+            instagram_handle: lead.instagram_handle || null,
+            source: "LEAD_CONVERSION",
+          })
+          .select()
+          .single()
+
+        if (newCustomer) {
+          customerId = newCustomer.id
+          console.log(`✅ Cliente creado: ${firstName} ${lastName}`)
+        }
+      }
+
+      // Asociar cliente a la operación como MAIN
+      if (customerId) {
+        await (supabase.from("operation_customers") as any).insert({
+          operation_id: operation.id,
+          customer_id: customerId,
+          role: "MAIN",
+        })
+        console.log(`✅ Cliente ${customerId} asociado a operación ${operation.id}`)
+      }
+    }
+
     // Confirm quota reservations if they exist
     if (body.confirm_quotas !== false) {
       await (supabase.from("quota_reservations") as any)
