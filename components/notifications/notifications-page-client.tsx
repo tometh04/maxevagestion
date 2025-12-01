@@ -215,7 +215,7 @@ export function NotificationsPageClient({
       {/* Lista de notificaciones */}
       {filteredAlerts.length === 0 ? (
         <EmptyState
-          icon={<Bell className="h-12 w-12" />}
+          icon={Bell}
           title="No hay notificaciones"
           description={
             filter === "unread"
