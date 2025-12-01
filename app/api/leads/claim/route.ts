@@ -73,8 +73,8 @@ export async function POST(request: Request) {
       // Si no hay config de Trello, solo asignar en la DB sin mover en Trello
       console.log("⚠️ No Trello config, assigning only in DB")
       
-      const { error: updateError } = await supabase
-        .from("leads")
+      const { error: updateError } = await (supabase
+        .from("leads") as any)
         .update({
           assigned_seller_id: user.id,
           updated_at: new Date().toISOString(),
@@ -129,8 +129,8 @@ export async function POST(request: Request) {
       // No hay lista para este vendedor, solo asignar en DB
       console.log(`⚠️ No Trello list found for seller: ${sellerName}`)
       
-      const { error: updateError } = await supabase
-        .from("leads")
+      const { error: updateError } = await (supabase
+        .from("leads") as any)
         .update({
           assigned_seller_id: user.id,
           updated_at: new Date().toISOString(),
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
     }
 
     // 7. Actualizar la DB con assigned_seller_id y nuevo trello_list_id
-    const { error: updateError } = await supabase
-      .from("leads")
+    const { error: updateError } = await (supabase
+      .from("leads") as any)
       .update({
         assigned_seller_id: user.id,
         trello_list_id: sellerList.id,
