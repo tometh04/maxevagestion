@@ -35,8 +35,8 @@ export async function GET(
     // Si el pago está asociado a una operación con clientes, obtener el cliente principal
     let customerName = "Cliente"
     if (payment.operations?.id) {
-      const { data: mainCustomer } = await supabase
-        .from("operation_customers")
+      const { data: mainCustomer } = await (supabase
+        .from("operation_customers") as any)
         .select(`
           customers:customer_id (first_name, last_name)
         `)
