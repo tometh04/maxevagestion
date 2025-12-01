@@ -20,6 +20,7 @@ import {
   Receipt,
   Wallet,
   TrendingUp,
+  MessageSquare,
 } from "lucide-react"
 import { useState } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -70,6 +71,7 @@ const allNavigation: NavItem[] = [
       { name: "Pagos a Operadores", href: "/accounting/operator-payments", icon: Building2 },
     ],
   },
+  { name: "Mensajes", href: "/messages", icon: MessageSquare },
   { name: "Alertas", href: "/alerts", icon: AlertCircle, module: "alerts" },
   { name: "Reportes", href: "/reports", icon: FileText, module: "reports" },
   { name: "Mi Balance", href: "/my/balance", icon: DollarSign }, // Solo para vendedores

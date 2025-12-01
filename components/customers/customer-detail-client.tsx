@@ -27,6 +27,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { EditCustomerDialog } from "./edit-customer-dialog"
+import { CustomerMessagesSection } from "@/components/whatsapp/customer-messages-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -55,6 +56,7 @@ interface Customer {
   document_number?: string | null
   date_of_birth?: string | null
   nationality?: string | null
+  agency_id?: string
 }
 
 interface CustomerDetailClientProps {
@@ -126,6 +128,7 @@ export function CustomerDetailClient({
           <TabsTrigger value="operations">Operaciones ({operations.length})</TabsTrigger>
           <TabsTrigger value="payments">Pagos ({payments.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
+          <TabsTrigger value="messages">Mensajes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="space-y-4">
@@ -327,6 +330,15 @@ export function CustomerDetailClient({
 
         <TabsContent value="documents" className="space-y-4">
           <DocumentsSection documents={documents || []} customerId={customer.id} />
+        </TabsContent>
+
+        <TabsContent value="messages" className="space-y-4">
+          <CustomerMessagesSection
+            customerId={customer.id}
+            customerName={`${customer.first_name} ${customer.last_name}`}
+            customerPhone={customer.phone}
+            agencyId={customer.agency_id || ""}
+          />
         </TabsContent>
       </Tabs>
 
