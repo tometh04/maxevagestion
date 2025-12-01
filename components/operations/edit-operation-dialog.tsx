@@ -117,7 +117,7 @@ export function EditOperationDialog({
   const [isLoading, setIsLoading] = useState(false)
 
   const form = useForm<OperationFormValues>({
-    resolver: zodResolver(operationSchema),
+    resolver: zodResolver(operationSchema) as any,
     defaultValues: {
       agency_id: operation.agency_id || "",
       seller_id: operation.seller_id || "",
