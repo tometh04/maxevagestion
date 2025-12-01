@@ -40,9 +40,15 @@ export async function DELETE(
 
     const lead = currentLead as any
 
-    // Check permissions
-    if (user.role === "SELLER" && lead.assigned_seller_id !== user.id) {
-      return NextResponse.json({ error: "No puedes eliminar leads asignados a otros vendedores" }, { status: 403 })
+    // Check permissions for SELLER:
+    // - Can delete leads assigned to them
+    // - Can delete unassigned leads
+    // - Cannot delete leads assigned to OTHER sellers
+    if (user.role === "SELLER") {
+      const isAssignedToOther = lead.assigned_seller_id && lead.assigned_seller_id !== user.id
+      if (isAssignedToOther) {
+        return NextResponse.json({ error: "No puedes eliminar leads asignados a otros vendedores" }, { status: 403 })
+      }
     }
 
     // Si el lead viene de Trello, no permitir eliminarlo desde aquí
@@ -111,9 +117,18 @@ export async function PATCH(
 
     const lead = currentLead as any
 
-    // Check permissions
-    if (user.role === "SELLER" && lead.assigned_seller_id !== user.id) {
-      return NextResponse.json({ error: "No puedes editar leads asignados a otros vendedores" }, { status: 403 })
+    // Check permissions for SELLER:
+    // - Can edit leads assigned to them
+    // - Can edit unassigned leads (to claim them)
+    // - Cannot edit leads assigned to OTHER sellers
+    if (user.role === "SELLER") {
+      const isAssignedToMe = lead.assigned_seller_id === user.id
+      const isUnassigned = lead.assigned_seller_id === null || lead.assigned_seller_id === undefined
+      const isAssignedToOther = lead.assigned_seller_id && lead.assigned_seller_id !== user.id
+      
+      if (isAssignedToOther) {
+        return NextResponse.json({ error: "No puedes editar leads asignados a otros vendedores" }, { status: 403 })
+      }
     }
 
     // Si el lead viene de Trello, solo permitir editar ciertos campos

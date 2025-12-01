@@ -102,7 +102,8 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], onRefresh, cur
   }
 
   // Determinar si el usuario puede "agarrar" leads
-  const canClaimLeads = currentUserRole === "SELLER"
+  // Vendedores pueden agarrar, Admins también pueden (para asignarse o reasignar)
+  const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 

@@ -78,7 +78,8 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
 
   // Determinar si el usuario puede "agarrar" leads
-  const canClaimLeads = currentUserRole === "SELLER"
+  // Vendedores pueden agarrar, Admins también pueden (para asignarse o reasignar)
+  const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
 
   // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
