@@ -426,16 +426,16 @@ export function UsersSettings() {
                     <div className="flex items-center gap-3">
                       <Avatar className="h-9 w-9">
                         <AvatarFallback>
-                          {user.name
+                          {(user.name || "")
                             .split(" ")
                             .map((n) => n[0])
                             .join("")
                             .toUpperCase()
-                            .slice(0, 2)}
+                            .slice(0, 2) || "?"}
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="font-medium">{user.name}</p>
+                        <p className="font-medium">{user.name || "Sin nombre"}</p>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                       </div>
                     </div>

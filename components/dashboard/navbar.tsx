@@ -94,7 +94,8 @@ export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
     }
   }
 
-  const getInitials = (name: string) => {
+  const getInitials = (name: string | null | undefined) => {
+    if (!name) return "?"
     return name
       .split(" ")
       .map((n) => n[0])

@@ -342,16 +342,16 @@ export function LeadDetailDialog({
                 <div className="flex items-center gap-3">
                   <Avatar>
                     <AvatarFallback>
-                      {lead.users.name
+                      {(lead.users.name || "")
                         .split(" ")
                         .map((n) => n[0])
                         .join("")
                         .toUpperCase()
-                        .slice(0, 2)}
+                        .slice(0, 2) || "?"}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="text-sm font-medium">{lead.users.name}</p>
+                    <p className="text-sm font-medium">{lead.users.name || "Sin nombre"}</p>
                     {lead.users.email && <p className="text-xs text-muted-foreground">{lead.users.email}</p>}
                   </div>
                 </div>

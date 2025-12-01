@@ -204,15 +204,15 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], onRefresh, cur
                         <div className="flex items-center gap-2">
                           <Avatar className="h-6 w-6">
                             <AvatarFallback className="text-xs">
-                              {lead.users.name
+                              {(lead.users.name || "")
                                 .split(" ")
                                 .map((n) => n[0])
                                 .join("")
                                 .toUpperCase()
-                                .slice(0, 2)}
+                                .slice(0, 2) || "?"}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-xs text-muted-foreground">{lead.users.name}</span>
+                          <span className="text-xs text-muted-foreground">{lead.users.name || "Sin nombre"}</span>
                         </div>
                       ) : canClaimLeads ? (
                         <Button
