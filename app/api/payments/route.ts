@@ -133,3 +133,70 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
   }
 }
+
+export async function POST(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const body = await request.json()
+
+    const {
+      operation_id,
+      payer_type,
+      direction,
+      method,
+      amount,
+      currency,
+      date_due,
+      reference,
+      status,
+    } = body
+
+    // Validaciones básicas
+    if (!operation_id || !payer_type || !direction || !method || !amount || !currency || !date_due) {
+      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    // Verificar que la operación existe y el usuario tiene acceso
+    const { data: operation } = await supabase
+      .from("operations")
+      .select("id, seller_id, agency_id")
+      .eq("id", operation_id)
+      .single()
+
+    if (!operation) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
+    // Verificar permisos
+    if (user.role === "SELLER" && (operation as any).seller_id !== user.id) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
+    // Crear el pago
+    const { data: payment, error } = await (supabase.from("payments") as any)
+      .insert({
+        operation_id,
+        payer_type,
+        direction,
+        method,
+        amount: parseFloat(amount),
+        currency,
+        date_due,
+        reference: reference || null,
+        status: status || "PENDING",
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error creating payment:", error)
+      return NextResponse.json({ error: "Error al crear pago" }, { status: 500 })
+    }
+
+    return NextResponse.json({ payment }, { status: 201 })
+  } catch (error) {
+    console.error("Error in POST /api/payments:", error)
+    return NextResponse.json({ error: "Error al crear pago" }, { status: 500 })
+  }
+}

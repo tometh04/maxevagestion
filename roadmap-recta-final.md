@@ -88,12 +88,12 @@ app/(dashboard)/operations/[id]/page.tsx (MODIFICAR)
 app/api/operations/[id]/route.ts (MODIFICAR - mejorar PATCH)
 ```
 
-### 1.4 Gestión de Pasajeros en Operaciones
-- [ ] **1.4.1** En el detalle de operación, agregar sección para gestionar pasajeros
+### 1.4 Gestión de Pasajeros en Operaciones ✅
+- [x] **1.4.1** En el detalle de operación, agregar sección para gestionar pasajeros
   - Botón "Agregar Pasajero" → buscar cliente existente o crear nuevo
   - Asignar rol: MAIN o COMPANION
   - Quitar pasajero de la operación
-- [ ] **1.4.2** API: `POST/DELETE /api/operations/[id]/passengers`
+- [x] **1.4.2** API: `POST/DELETE /api/operations/[id]/customers`
 
 **Archivos a crear/modificar**:
 ```
@@ -179,14 +179,14 @@ lib/commissions/commission-calculator.ts (MODIFICAR)
 
 ---
 
-## 🟡 FASE 3: SISTEMA DE PAGOS COMPLETO
+## 🟡 FASE 3: SISTEMA DE PAGOS COMPLETO (PARCIAL)
 
 > **Meta**: Gestión completa del flujo de dinero.
 > **Requiere**: Fase 2 completada
 
-### 3.1 Crear Pagos desde Operación
-- [ ] **3.1.1** Agregar botón "Nuevo Pago" en tab Pagos del detalle de operación
-- [ ] **3.1.2** Crear `NewPaymentDialog`
+### 3.1 Crear Pagos desde Operación ✅
+- [x] **3.1.1** Agregar botón "Nuevo Pago" en tab Pagos del detalle de operación
+- [x] **3.1.2** Crear `NewPaymentDialog`
   - Tipo: Cliente o Operador
   - Dirección: Ingreso o Egreso
   - Monto, moneda, fecha vencimiento, método
