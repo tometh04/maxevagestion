@@ -121,6 +121,8 @@ export default async function LeadsPage() {
       defaultAgencyId={agencyIds[0] || undefined}
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       hasTrelloLeads={hasTrelloLeads || false}
+      currentUserId={user.id}
+      currentUserRole={user.role}
     />
   )
 }

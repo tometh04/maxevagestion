@@ -45,6 +45,8 @@ interface LeadsPageClientProps {
   defaultAgencyId?: string
   defaultSellerId?: string
   hasTrelloLeads?: boolean
+  currentUserId?: string
+  currentUserRole?: string
 }
 
 export function LeadsPageClient({
@@ -54,6 +56,8 @@ export function LeadsPageClient({
   defaultAgencyId,
   defaultSellerId,
   hasTrelloLeads = false,
+  currentUserId,
+  currentUserRole,
 }: LeadsPageClientProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
@@ -258,6 +262,8 @@ export function LeadsPageClient({
       agencies={agencies}
       sellers={sellers}
       onRefresh={handleRefresh}
+      currentUserId={currentUserId}
+      currentUserRole={currentUserRole}
     />
   ) : (
     <LeadsKanban 
@@ -265,6 +271,8 @@ export function LeadsPageClient({
       agencies={agencies}
       sellers={sellers}
       onRefresh={handleRefresh}
+      currentUserId={currentUserId}
+      currentUserRole={currentUserRole}
     />
   )
 

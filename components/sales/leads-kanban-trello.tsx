@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, DollarSign } from "lucide-react"
+import { ExternalLink, DollarSign, UserPlus, Loader2 } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
+import { toast } from "sonner"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-blue-500",
@@ -62,15 +64,58 @@ interface LeadsKanbanTrelloProps {
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
   onRefresh?: () => void
+  currentUserId?: string
+  currentUserRole?: string
 }
 
-export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], onRefresh }: LeadsKanbanTrelloProps) {
+export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanTrelloProps) {
   const [lists, setLists] = useState<TrelloList[]>([])
   const [loading, setLoading] = useState(true)
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedListId, setSelectedListId] = useState<string>("ALL")
+  const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
+
+  // Determinar si el usuario puede "agarrar" leads
+  const canClaimLeads = currentUserRole === "SELLER"
+
+  // Función para "agarrar" un lead
+  const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Evitar abrir el dialog
+    
+    setClaimingLeadId(leadId)
+    try {
+      const response = await fetch("/api/leads/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al agarrar el lead")
+        return
+      }
+
+      toast.success(data.message || "¡Lead asignado!")
+      
+      if (data.warning) {
+        toast.warning(data.warning, { duration: 5000 })
+      }
+
+      // Refrescar la lista
+      if (onRefresh) {
+        onRefresh()
+      }
+    } catch (error) {
+      console.error("Error claiming lead:", error)
+      toast.error("Error al agarrar el lead")
+    } finally {
+      setClaimingLeadId(null)
+    }
+  }
 
   // Obtener listas de Trello - MOSTRAR TODAS LAS LISTAS en el orden EXACTO que están en Trello
   useEffect(() => {
@@ -294,7 +339,8 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                               </Badge>
                             )}
                           </div>
-                          {lead.users && (
+                          {/* Mostrar vendedor asignado o botón para agarrar */}
+                          {lead.users ? (
                             <div className="flex items-center gap-2">
                               <Avatar className="h-6 w-6">
                                 <AvatarFallback className="text-xs">
@@ -308,7 +354,31 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                               </Avatar>
                               <span className="text-xs text-muted-foreground">{lead.users.name}</span>
                             </div>
-                          )}
+                          ) : canClaimLeads ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full mt-2 text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:border-orange-600 dark:hover:bg-orange-950"
+                              onClick={(e) => handleClaimLead(lead.id, e)}
+                              disabled={claimingLeadId === lead.id}
+                            >
+                              {claimingLeadId === lead.id ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                  Asignando...
+                                </>
+                              ) : (
+                                <>
+                                  <UserPlus className="h-3 w-3 mr-1" />
+                                  Agarrar Lead
+                                </>
+                              )}
+                            </Button>
+                          ) : !lead.assigned_seller_id ? (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              Sin asignar
+                            </Badge>
+                          ) : null}
                           {lead.notes && (
                             <p className="text-xs text-muted-foreground line-clamp-2">{lead.notes}</p>
                           )}
