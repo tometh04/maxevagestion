@@ -31,7 +31,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, UserPlus } from "lucide-react"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -69,6 +70,8 @@ interface ConvertLeadDialogProps {
   lead: {
     id: string
     contact_name: string
+    contact_email?: string | null
+    contact_phone?: string | null
     destination: string
     agency_id?: string
     assigned_seller_id: string | null
@@ -151,6 +154,19 @@ export function ConvertLeadDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* Info del cliente que se creará */}
+            <Alert className="bg-blue-50 border-blue-200">
+              <UserPlus className="h-4 w-4 text-blue-600" />
+              <AlertDescription className="text-blue-800">
+                <span className="font-medium">Cliente automático:</span> Se creará o asociará automáticamente un cliente con los datos del lead:
+                <ul className="mt-1 text-sm list-disc list-inside">
+                  <li><strong>Nombre:</strong> {lead.contact_name}</li>
+                  {lead.contact_email && <li><strong>Email:</strong> {lead.contact_email}</li>}
+                  {lead.contact_phone && <li><strong>Teléfono:</strong> {lead.contact_phone}</li>}
+                </ul>
+              </AlertDescription>
+            </Alert>
+
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
