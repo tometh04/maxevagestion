@@ -10,11 +10,11 @@ import Link from "next/link"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 
 const statusColumns = [
-  { id: "NEW", label: "Nuevo", color: "bg-gray-100" },
-  { id: "IN_PROGRESS", label: "En Progreso", color: "bg-blue-100" },
-  { id: "QUOTED", label: "Cotizado", color: "bg-yellow-100" },
-  { id: "WON", label: "Ganado", color: "bg-green-100" },
-  { id: "LOST", label: "Perdido", color: "bg-red-100" },
+  { id: "NEW", label: "Nuevo", color: "bg-orange-50 dark:bg-orange-950/30" },
+  { id: "IN_PROGRESS", label: "En Progreso", color: "bg-orange-100 dark:bg-orange-900/30" },
+  { id: "QUOTED", label: "Cotizado", color: "bg-amber-100 dark:bg-amber-900/30" },
+  { id: "WON", label: "Ganado", color: "bg-green-100 dark:bg-green-900/30" },
+  { id: "LOST", label: "Perdido", color: "bg-red-100 dark:bg-red-900/30" },
 ]
 
 const regionColors: Record<string, string> = {

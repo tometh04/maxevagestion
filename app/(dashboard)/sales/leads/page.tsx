@@ -61,20 +61,49 @@ export default async function LeadsPage() {
   // Get leads (including trello_list_id)
   // OPTIMIZACIÓN: Solo cargar leads necesarios para la vista inicial
   // El cliente cargará más según sea necesario
-  let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
+  
+  // Para VENDEDORES: Ver sus leads asignados + leads SIN asignar (para poder "agarrarlos")
+  // Los leads sin asignar son los que caen en listas de campañas en Trello
+  let leads: any[] = []
+  let leadsError: any = null
+  const INITIAL_LIMIT = 500
 
   if (user.role === "SELLER") {
-    query = query.eq("assigned_seller_id", user.id)
-  } else if (agencyIds.length > 0) {
-    query = query.in("agency_id", agencyIds)
-  }
+    // Vendedor ve:
+    // 1. Leads asignados a él
+    // 2. Leads SIN asignar de sus agencias (para poder agarrarlos)
+    const { data: myLeads, error: myLeadsError } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("assigned_seller_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
 
-  // OPTIMIZACIÓN: Cargar solo los primeros 500 leads para la carga inicial
-  // Si hay más, el cliente puede cargarlos bajo demanda
-  const INITIAL_LIMIT = 500
-  const { data: leads, error: leadsError } = await query
-    .order("created_at", { ascending: false })
-    .limit(INITIAL_LIMIT)
+    const { data: unassignedLeads, error: unassignedError } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .is("assigned_seller_id", null)
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
+      .order("created_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
+
+    leads = [...(myLeads || []), ...(unassignedLeads || [])]
+    leadsError = myLeadsError || unassignedError
+  } else {
+    // Admin/otros: ver todos los leads de sus agencias
+    let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
+    
+    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      query = query.in("agency_id", agencyIds)
+    }
+
+    const { data, error } = await query
+      .order("created_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
+    
+    leads = data || []
+    leadsError = error
+  }
 
   if (leadsError) {
     console.error("Error fetching leads:", leadsError)
