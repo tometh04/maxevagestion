@@ -83,7 +83,7 @@ export function QuickWhatsAppButton({
   }
 
   function replaceVariables(template: string): string {
-    const firstName = customerName.split(" ")[0]
+    const firstName = (customerName || "").split(" ")[0] || "Cliente"
     let message = template
       .replace(/{nombre}/g, firstName)
       .replace(/{destino}/g, operationDestination || "tu viaje")
@@ -217,7 +217,7 @@ export function QuickWhatsAppButton({
                 value={customMessage}
                 onChange={(e) => setCustomMessage(e.target.value)}
                 rows={5}
-                placeholder={`Hola ${customerName.split(" ")[0]}...`}
+                placeholder={`Hola ${(customerName || "").split(" ")[0] || ""}...`}
               />
             </div>
             <div className="flex gap-2">

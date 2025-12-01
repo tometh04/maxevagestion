@@ -16,10 +16,15 @@ export function PendingMessagesBadge() {
   async function fetchCount() {
     try {
       const response = await fetch("/api/whatsapp/messages?status=PENDING&limit=1")
+      if (!response.ok) {
+        setCount(0)
+        return
+      }
       const data = await response.json()
       setCount(data.counts?.PENDING || 0)
     } catch (error) {
-      console.error("Error fetching pending messages:", error)
+      // Silently fail - table might not exist yet
+      setCount(0)
     }
   }
 

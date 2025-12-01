@@ -40,14 +40,17 @@ export function BirthdaysTodayCard() {
   }
 
   function openWhatsApp(customer: BirthdayCustomer) {
-    const message = `🎂 ¡Feliz Cumpleaños ${customer.first_name}!\n\nQue este nuevo año venga con muchos viajes y aventuras increíbles ✨\n\n¡Te esperamos pronto para planear tu próximo destino! 🌎`
+    if (!customer.phone) return
+    const message = `🎂 ¡Feliz Cumpleaños ${customer.first_name || ""}!\n\nQue este nuevo año venga con muchos viajes y aventuras increíbles ✨\n\n¡Te esperamos pronto para planear tu próximo destino! 🌎`
     const cleanPhone = customer.phone.replace(/\D/g, "")
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
     window.open(url, "_blank")
   }
 
-  function getInitials(firstName: string, lastName: string) {
-    return `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase()
+  function getInitials(firstName: string | null | undefined, lastName: string | null | undefined) {
+    const first = firstName?.[0] || ""
+    const last = lastName?.[0] || ""
+    return `${first}${last}`.toUpperCase() || "?"
   }
 
   if (loading) {

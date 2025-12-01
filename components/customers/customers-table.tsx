@@ -88,7 +88,7 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
             {row.original.phone && (
               <QuickWhatsAppButton
                 phone={row.original.phone}
-                customerName={`${row.original.first_name} ${row.original.last_name}`}
+                customerName={`${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()}
                 customerId={row.original.id}
                 agencyId={row.original.agency_id || ""}
                 variant="icon"

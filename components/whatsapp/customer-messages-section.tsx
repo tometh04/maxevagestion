@@ -87,10 +87,15 @@ export function CustomerMessagesSection({
   async function fetchMessages() {
     try {
       const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}`)
+      if (!response.ok) {
+        setMessages([])
+        return
+      }
       const data = await response.json()
       setMessages(data.messages || [])
     } catch (error) {
-      console.error("Error fetching messages:", error)
+      // Silently fail - table might not exist yet
+      setMessages([])
     } finally {
       setLoading(false)
     }
@@ -99,10 +104,15 @@ export function CustomerMessagesSection({
   async function fetchTemplates() {
     try {
       const response = await fetch("/api/whatsapp/templates?isActive=true")
+      if (!response.ok) {
+        setTemplates([])
+        return
+      }
       const data = await response.json()
       setTemplates((data.templates || []).filter((t: Template) => t.category === "CUSTOM" || t.category === "MARKETING"))
     } catch (error) {
-      console.error("Error fetching templates:", error)
+      // Silently fail - table might not exist yet
+      setTemplates([])
     }
   }
 
@@ -111,7 +121,8 @@ export function CustomerMessagesSection({
     const template = templates.find((t) => t.id === templateId)
     if (template) {
       // Reemplazar variable {nombre}
-      const message = template.template.replace(/{nombre}/g, customerName.split(" ")[0])
+      const firstName = (customerName || "").split(" ")[0] || "Cliente"
+      const message = template.template.replace(/{nombre}/g, firstName)
       setCustomMessage(message)
     }
   }

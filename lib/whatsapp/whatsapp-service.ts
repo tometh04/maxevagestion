@@ -53,7 +53,7 @@ export async function createWhatsAppMessage({
     // Reemplazar variables en el template
     let message = template.template
     const allVariables = {
-      nombre: customerName.split(" ")[0],
+      nombre: (customerName || "").split(" ")[0] || "Cliente",
       ...variables,
     }
 
@@ -62,7 +62,7 @@ export async function createWhatsAppMessage({
     }
 
     // Generar link de WhatsApp
-    const cleanPhone = customerPhone.replace(/\D/g, "")
+    const cleanPhone = (customerPhone || "").replace(/\D/g, "")
     const whatsappLink = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`
 
     // Verificar si ya existe un mensaje similar reciente (últimas 24h)
@@ -139,8 +139,8 @@ export async function createPaymentReceivedMessage(
     supabase,
     triggerType: "PAYMENT_RECEIVED",
     customerId: customer.id,
-    customerName: `${customer.first_name} ${customer.last_name}`,
-    customerPhone: customer.phone,
+    customerName: `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "Cliente",
+    customerPhone: customer.phone || "",
     agencyId: operation.agency_id,
     variables: {
       monto: payment.amount.toLocaleString("es-AR"),
@@ -177,8 +177,8 @@ export async function createQuotationSentMessage(
     supabase,
     triggerType: "QUOTATION_SENT",
     customerId: customer.id,
-    customerName: `${customer.first_name} ${customer.last_name}`,
-    customerPhone: customer.phone,
+    customerName: `${customer.first_name || ""} ${customer.last_name || ""}`.trim() || "Cliente",
+    customerPhone: customer.phone || "",
     agencyId: quotation.agency_id,
     variables: {
       destino: quotation.destination,
