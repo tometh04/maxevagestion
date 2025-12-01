@@ -101,8 +101,8 @@ export async function PATCH(
     }
 
     // Update operator
-    const { data: operator, error: updateError } = await supabase
-      .from("operators")
+    const { data: operator, error: updateError } = await (supabase
+      .from("operators") as any)
       .update({
         name,
         contact_name: contact_name || null,
