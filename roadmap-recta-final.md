@@ -73,7 +73,7 @@ app/api/operators/[id]/route.ts (MODIFICAR - agregar PATCH, DELETE)
   - Recalcular margen automáticamente al cambiar montos
   - API: `PATCH /api/operations/[id]`
 - [x] **1.3.2** Agregar botón "Editar" en `/operations/[id]/page.tsx`
-- [ ] **1.3.3** Agregar botón "Editar" en la tabla de operaciones (acción rápida)
+- [x] **1.3.3** Agregar botón "Editar" en la tabla de operaciones (acción rápida)
 - [x] **1.3.4** Implementar cambio de estado con validaciones
   - PRE_RESERVATION → RESERVED → CONFIRMED → TRAVELLED → CLOSED
   - No permitir saltar estados
@@ -202,15 +202,15 @@ components/operations/payment-plan-generator.tsx (NUEVO)
 app/(dashboard)/operations/[id]/page.tsx (MODIFICAR)
 ```
 
-### 3.2 Marcar Pagos como Pagados
-- [ ] **3.2.1** En la tabla de pagos, botón "Marcar como Pagado"
+### 3.2 Marcar Pagos como Pagados ✅
+- [x] **3.2.1** En la tabla de pagos, botón "Marcar como Pagado"
   - Pedir fecha de pago real
   - Pedir referencia/comprobante
   - Actualizar estado a PAID
-- [ ] **3.2.2** Al marcar pago de cliente como pagado:
+- [x] **3.2.2** Al marcar pago de cliente como pagado:
   - Crear movimiento de caja automático (INCOME)
   - Crear asiento en libro mayor
-- [ ] **3.2.3** Al marcar pago a operador como pagado:
+- [x] **3.2.3** Al marcar pago a operador como pagado:
   - Crear movimiento de caja automático (EXPENSE)
   - Crear asiento en libro mayor
 
