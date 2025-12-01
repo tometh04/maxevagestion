@@ -4,7 +4,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { 
   sendQuotationEmail, 
   sendPaymentConfirmationEmail, 
-  sendPaymentReminderEmail 
+  sendPaymentReminderEmail,
+  sendEmail
 } from "@/lib/email/email-service"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -17,7 +18,12 @@ export async function POST(request: Request) {
 
     const { type, entityId, to } = body
 
-    if (!type || !entityId) {
+    if (!type) {
+      return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 })
+    }
+
+    // El statement no requiere entityId
+    if (type !== "statement" && !entityId) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 })
     }
 
@@ -146,6 +152,22 @@ export async function POST(request: Request) {
           payment.operations?.destination || "Viaje",
           payment.operations?.agencies?.name || "Agencia"
         )
+        break
+      }
+
+      case "statement": {
+        // Enviar estado de cuenta con HTML pre-generado
+        const { to: emailTo, customerName, html } = body
+
+        if (!emailTo || !html) {
+          return NextResponse.json({ error: "Faltan parámetros para estado de cuenta" }, { status: 400 })
+        }
+
+        result = await sendEmail({
+          to: emailTo,
+          subject: `Estado de Cuenta - ${customerName || "Cliente"}`,
+          html,
+        })
         break
       }
 
