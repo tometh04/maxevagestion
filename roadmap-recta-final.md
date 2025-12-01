@@ -429,54 +429,42 @@ components/operations/operation-hover-card.tsx (NUEVO)
 
 ---
 
-## 🟤 FASE 7: GENERACIÓN DE DOCUMENTOS
+## 🟤 FASE 7: GENERACIÓN DE DOCUMENTOS ✅ COMPLETADA
 
 > **Meta**: Documentos profesionales para clientes y gestión interna.
 > **Requiere**: Fase 6 completada
 
-### 7.1 PDF de Cotización
-- [ ] **7.1.1** Diseñar template de cotización
+### 7.1 PDF de Cotización ✅
+- [x] **7.1.1** Diseñar template de cotización
   - Logo, datos de la agencia
   - Datos del cliente
   - Detalle del viaje
   - Precios y condiciones
   - Fecha de validez
-- [ ] **7.1.2** Botón "Descargar PDF" en detalle de cotización
+- [x] **7.1.2** Botón "Descargar PDF" en detalle de cotización
 - [ ] **7.1.3** Botón "Enviar por Email" (prepara para Fase 8)
 
-**Archivos a crear**:
-```
-lib/pdf/quotation-template.tsx (NUEVO)
-app/api/quotations/[id]/pdf/route.ts (NUEVO)
-```
+**API**: `GET /api/quotations/[id]/pdf`
 
-### 7.2 Voucher de Viaje
-- [ ] **7.2.1** Diseñar template de voucher
+### 7.2 Voucher de Viaje ✅
+- [x] **7.2.1** Diseñar template de voucher
   - Datos del pasajero
   - Itinerario
   - Servicios incluidos
   - Números de emergencia
-- [ ] **7.2.2** Generar desde detalle de operación
+- [x] **7.2.2** Generar desde detalle de operación
 
-**Archivos a crear**:
-```
-lib/pdf/voucher-template.tsx (NUEVO)
-app/api/operations/[id]/voucher/route.ts (NUEVO)
-```
+**API**: `GET /api/operations/[id]/voucher`
 
-### 7.3 Recibo de Pago
-- [ ] **7.3.1** Diseñar template de recibo
+### 7.3 Recibo de Pago ✅
+- [x] **7.3.1** Diseñar template de recibo
   - Datos del pagador
   - Concepto
   - Monto y método
   - Número de recibo
-- [ ] **7.3.2** Generar al marcar pago como pagado
+- [x] **7.3.2** Generar al marcar pago como pagado
 
-**Archivos a crear**:
-```
-lib/pdf/receipt-template.tsx (NUEVO)
-app/api/payments/[id]/receipt/route.ts (NUEVO)
-```
+**API**: `GET /api/payments/[id]/receipt`
 
 ### 7.4 Estado de Cuenta
 - [ ] **7.4.1** PDF con resumen de cuenta del cliente
