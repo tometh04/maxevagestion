@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2 } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase } from "lucide-react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
@@ -155,6 +156,9 @@ interface Lead {
   deposit_date?: string | null
   users?: { name: string; email: string } | null
   agencies?: { name: string } | null
+  // Enlaces a entidades convertidas
+  operations?: Array<{ id: string; destination: string; status: string }> | null
+  customers?: Array<{ id: string; first_name: string; last_name: string }> | null
 }
 
 interface LeadDetailDialogProps {
@@ -355,6 +359,50 @@ export function LeadDetailDialog({
               <Separator />
             </>
           )}
+
+          {/* Entidades Relacionadas (cuando el lead está convertido) */}
+          {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
+            <>
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  Lead Convertido
+                </h3>
+                <div className="space-y-2">
+                  {/* Link a Operación */}
+                  {lead.operations && lead.operations.length > 0 && (
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                      <Briefcase className="h-4 w-4 text-primary" />
+                      <span className="text-sm flex-1">
+                        Operación: {lead.operations[0].destination}
+                      </span>
+                      <Link href={`/operations/${lead.operations[0].id}`}>
+                        <Button variant="ghost" size="sm">
+                          Ver <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                  
+                  {/* Link a Cliente */}
+                  {lead.customers && lead.customers.length > 0 && (
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
+                      <User className="h-4 w-4 text-primary" />
+                      <span className="text-sm flex-1">
+                        Cliente: {lead.customers[0].first_name} {lead.customers[0].last_name}
+                      </span>
+                      <Link href={`/customers/${lead.customers[0].id}`}>
+                        <Button variant="ghost" size="sm">
+                          Ver <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Separator />
+            </>
+          ) : null}
 
           {/* Descripción/Notas */}
           {lead.notes && (

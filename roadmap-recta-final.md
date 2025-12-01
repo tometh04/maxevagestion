@@ -115,7 +115,9 @@ app/api/operations/[id]/passengers/route.ts (MODIFICAR)
   - Si no, crear nuevo customer con datos del lead
 - [x] **2.1.2** Asociar el cliente creado a la operación como MAIN
 - [x] **2.1.3** Actualizar estado del lead a "WON" automáticamente
-- [ ] **2.1.4** Mostrar link al cliente y operación desde el lead convertido
+- [x] **2.1.4** Mostrar link al cliente y operación desde el lead convertido
+  - Sección "Lead Convertido" en detalle de lead
+  - Links directos a operación y cliente asociados
 
 **Archivos a modificar**:
 ```

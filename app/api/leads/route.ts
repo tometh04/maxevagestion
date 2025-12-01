@@ -27,8 +27,13 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Build query
-    let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
+    // Build query - incluir operaciones y clientes relacionados
+    let query = supabase.from("leads").select(`
+      *,
+      agencies(name),
+      users:assigned_seller_id(name, email),
+      operations(id, destination, status)
+    `)
 
     // Apply permissions-based filtering
     try {
@@ -68,12 +73,51 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
     
-    const leads = result.data || []
+    let leads = result.data || []
     const error = result.error
 
     if (error) {
       console.error("Error fetching leads:", error)
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
+    }
+
+    // Para leads convertidos (WON), obtener los clientes asociados a través de las operaciones
+    const wonLeadsWithOperations = leads.filter((l: any) => l.status === "WON" && l.operations?.length > 0)
+    if (wonLeadsWithOperations.length > 0) {
+      const operationIds = wonLeadsWithOperations.flatMap((l: any) => l.operations.map((op: any) => op.id))
+      
+      if (operationIds.length > 0) {
+        const { data: opCustomers } = await (supabase.from("operation_customers") as any)
+          .select(`
+            operation_id,
+            customers:customer_id (id, first_name, last_name)
+          `)
+          .in("operation_id", operationIds)
+          .eq("role", "MAIN")
+
+        // Asociar clientes a cada lead
+        const customersByOperation = new Map()
+        for (const oc of (opCustomers || [])) {
+          if (!customersByOperation.has(oc.operation_id)) {
+            customersByOperation.set(oc.operation_id, [])
+          }
+          if (oc.customers) {
+            customersByOperation.get(oc.operation_id).push(oc.customers)
+          }
+        }
+
+        leads = leads.map((lead: any) => {
+          if (lead.operations?.length > 0) {
+            const customers: any[] = []
+            for (const op of lead.operations) {
+              const opCustomers = customersByOperation.get(op.id) || []
+              customers.push(...opCustomers)
+            }
+            return { ...lead, customers }
+          }
+          return lead
+        })
+      }
     }
 
     // Get total count for pagination
