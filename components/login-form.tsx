@@ -33,6 +33,23 @@ export function LoginForm({
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
 
+  // Detectar tokens de invitación o recuperación en la URL y redirigir
+  React.useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hash = window.location.hash
+      if (hash && hash.includes("type=invite")) {
+        // Redirigir a la página de aceptar invitación con el hash completo
+        router.replace(`/auth/accept-invite${hash}`)
+        return
+      }
+      if (hash && hash.includes("type=recovery")) {
+        // Redirigir a la página de reset password
+        router.replace(`/auth/reset-password${hash}`)
+        return
+      }
+    }
+  }, [router])
+
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
