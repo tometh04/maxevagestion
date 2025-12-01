@@ -412,7 +412,7 @@ export async function POST(request: Request) {
       .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
 
     const leadsByStatus: Record<string, number> = {}
-    for (const lead of (activeLeads || [])) {
+    for (const lead of (activeLeads || []) as any[]) {
       leadsByStatus[lead.status] = (leadsByStatus[lead.status] || 0) + 1
     }
     contextData.leadsActivos = {
