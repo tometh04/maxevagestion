@@ -391,9 +391,9 @@ export async function POST(request: Request) {
       .gte("created_at", startOfMonth)
 
     const sellerStats: Record<string, any> = {}
-    for (const op of (operations || [])) {
+    for (const op of (operations || []) as any[]) {
       const sellerId = op.seller_id
-      const sellerName = (op.users as any)?.name || "Sin vendedor"
+      const sellerName = op.users?.name || "Sin vendedor"
       if (!sellerStats[sellerId]) {
         sellerStats[sellerId] = { nombre: sellerName, ventas: 0, margen: 0, operaciones: 0 }
       }
