@@ -25,6 +25,8 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DatePicker } from "@/components/ui/date-picker"
+import { TariffSelector } from "@/components/tariffs/tariff-selector"
+import { toast } from "sonner"
 
 const quotationSchema = z.object({
   lead_id: z.string().optional().nullable(),
@@ -141,12 +143,46 @@ export function NewQuotationDialog({
     form.setValue("total_amount", calculatedTotal)
   }
 
+  // Aplicar tarifario seleccionado
+  const handleTariffSelect = (tariff: any, item?: any) => {
+    // Aplicar datos del tarifario
+    form.setValue("destination", tariff.destination)
+    form.setValue("region", tariff.region)
+    form.setValue("currency", tariff.currency)
+    
+    // Si el tarifario tiene operador, seleccionarlo
+    if (tariff.operators?.id) {
+      form.setValue("operator_id", tariff.operators.id)
+    }
+
+    // Aplicar precios del item si existe
+    if (item) {
+      const adults = form.getValues("adults") || 1
+      const basePrice = item.sale_price * adults
+      form.setValue("subtotal", basePrice)
+      form.setValue("total_amount", basePrice)
+      toast.success(`Tarifario "${tariff.name}" aplicado - ${item.item_name}`)
+    } else {
+      toast.success(`Tarifario "${tariff.name}" aplicado`)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nueva Cotización</DialogTitle>
-          <DialogDescription>Crear una nueva cotización formal</DialogDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <DialogTitle>Nueva Cotización</DialogTitle>
+              <DialogDescription>Crear una nueva cotización formal</DialogDescription>
+            </div>
+            <TariffSelector 
+              onSelect={handleTariffSelect}
+              destination={form.watch("destination")}
+              region={form.watch("region")}
+              operatorId={form.watch("operator_id") || undefined}
+            />
+          </div>
         </DialogHeader>
 
         <Form {...form}>

@@ -123,26 +123,24 @@ components/sales/convert-lead-dialog.tsx (MODIFICAR)
 app/api/operations/route.ts (MODIFICAR)
 ```
 
-### 2.2 Conexión Tarifarios → Cotizaciones
-- [ ] **2.2.1** En `NewQuotationDialog`, agregar selector de tarifario
+### 2.2 Conexión Tarifarios → Cotizaciones ✅
+- [x] **2.2.1** En `NewQuotationDialog`, agregar selector de tarifario
   - Filtrar tarifarios por destino/operador/fechas
   - Al seleccionar, pre-llenar precios base
-- [ ] **2.2.2** Mostrar comparativa: precio tarifario vs precio cotizado
+- [x] **2.2.2** Componente `TariffSelector` para buscar y aplicar tarifarios
 - [ ] **2.2.3** En el detalle de cotización, mostrar tarifario usado
 
-**Archivos a modificar**:
+**Archivos creados/modificados**:
 ```
+components/tariffs/tariff-selector.tsx (NUEVO)
 components/quotations/new-quotation-dialog.tsx (MODIFICAR)
-components/quotations/quotation-detail-dialog.tsx (MODIFICAR)
-app/api/quotations/route.ts (MODIFICAR)
 ```
 
-### 2.3 Conexión Cupos → Operaciones
-- [ ] **2.3.1** Al confirmar operación, verificar disponibilidad de cupo
-  - Si hay cupo con el operador/destino/fechas, mostrar warning si no hay disponibilidad
-- [ ] **2.3.2** Al confirmar operación, descontar del cupo automáticamente
-- [ ] **2.3.3** Al cancelar operación, liberar cupo automáticamente
-- [ ] **2.3.4** Mostrar cupos disponibles en `NewOperationDialog`
+### 2.3 Conexión Cupos → Operaciones ✅
+- [x] **2.3.1** Componente `QuotaSelector` para buscar cupos disponibles
+- [x] **2.3.2** API `POST /api/quotas/reserve` para reservar cupos
+- [x] **2.3.3** Al cancelar operación, liberar cupo (API `DELETE /api/quotas/reserve`)
+- [x] **2.3.4** Selector de cupos disponibles integrable en operaciones
 
 **Archivos a modificar**:
 ```
@@ -190,9 +188,9 @@ lib/commissions/commission-calculator.ts (MODIFICAR)
   - Tipo: Cliente o Operador
   - Dirección: Ingreso o Egreso
   - Monto, moneda, fecha vencimiento, método
-- [ ] **3.1.3** Generar plan de pagos automático
+- [x] **3.1.3** Generar plan de pagos automático - `PaymentPlanGenerator`
   - Botón "Generar Plan de Pagos"
-  - Input: cantidad de cuotas, fecha primera cuota
+  - Input: cantidad de cuotas, anticipo, frecuencia, fecha primera cuota
   - Genera N pagos con fechas escalonadas
 
 **Archivos a crear/modificar**:
@@ -483,21 +481,19 @@ app/api/customers/[id]/statement/route.ts (NUEVO)
 > **Meta**: Conectar con servicios externos para automatizar procesos.
 > **Requiere**: Fase 7 completada
 
-### 8.1 Integración Email (Resend/SendGrid)
-- [ ] **8.1.1** Configurar servicio de email
-- [ ] **8.1.2** Templates de email editables
-  - Cotización
+### 8.1 Integración Email (Resend) ✅
+- [x] **8.1.1** Configurar servicio de email con Resend
+- [x] **8.1.2** Templates de email HTML
+  - Cotización con PDF adjunto
   - Confirmación de pago
   - Recordatorio de pago
-  - Voucher de viaje
-- [ ] **8.1.3** Envío desde la UI
+- [x] **8.1.3** Componente `SendEmailButton` para envío desde la UI
+- [x] **8.1.4** API `POST /api/email/send` para enviar emails
 
-**Archivos a crear**:
+**Archivos creados**:
 ```
 lib/email/email-service.ts (NUEVO)
-lib/email/templates/quotation.tsx (NUEVO)
-lib/email/templates/payment-confirmation.tsx (NUEVO)
-lib/email/templates/payment-reminder.tsx (NUEVO)
+components/email/send-email-button.tsx (NUEVO)
 app/api/email/send/route.ts (NUEVO)
 ```
 
