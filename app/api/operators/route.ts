@@ -100,8 +100,8 @@ export async function POST(request: Request) {
     }
 
     // Create operator
-    const { data: operator, error: createError } = await supabase
-      .from("operators")
+    const { data: operator, error: createError } = await (supabase
+      .from("operators") as any)
       .insert({
         name,
         contact_name: contact_name || null,
