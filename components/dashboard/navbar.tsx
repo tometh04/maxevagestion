@@ -17,6 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Textarea } from "@/components/ui/textarea"
 import { Bot, LogOut, User } from "lucide-react"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
@@ -122,6 +123,8 @@ export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
       </div>
 
       <div className="flex items-center gap-4">
+        <NotificationBell />
+        
         <Sheet open={aiOpen} onOpenChange={setAiOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon">
