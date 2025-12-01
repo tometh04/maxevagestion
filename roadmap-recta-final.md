@@ -415,17 +415,15 @@ components/ui/empty-state.tsx (NUEVO)
 - [ ] **6.4.2** Loading states en botones de acción
 - [ ] **6.4.3** Optimistic updates donde sea posible
 
-### 6.5 Tooltips y Ayuda Contextual
-- [ ] **6.5.1** Tooltips en íconos y acciones
-- [ ] **6.5.2** Hover cards para preview de datos
+### 6.5 Tooltips y Ayuda Contextual ✅
+- [x] **6.5.1** Tooltips en íconos y acciones
+- [x] **6.5.2** Hover cards para preview de datos
   - Hover en cliente → ver resumen
   - Hover en operación → ver estado y monto
 
-**Archivos a crear/modificar**:
-```
-components/customers/customer-hover-card.tsx (NUEVO)
-components/operations/operation-hover-card.tsx (NUEVO)
-```
+**Componentes creados**:
+- `components/customers/customer-hover-card.tsx`
+- `components/operations/operation-hover-card.tsx`
 
 ---
 
