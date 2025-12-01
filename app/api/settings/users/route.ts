@@ -10,9 +10,17 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
+    
+    // Traer usuarios con sus agencias asignadas (incluyendo el nombre de la agencia)
     const { data: users, error: usersError } = await supabase
       .from("users")
-      .select("*, user_agencies(agency_id)")
+      .select(`
+        *,
+        user_agencies(
+          agency_id,
+          agencies(id, name)
+        )
+      `)
       .order("created_at", { ascending: false })
 
     if (usersError) {
