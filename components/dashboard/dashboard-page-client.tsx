@@ -8,6 +8,8 @@ import { DestinationsChart } from "./destinations-chart"
 import { DestinationsPieChart } from "./destinations-pie-chart"
 import { RegionsRadarChart } from "./regions-radar-chart"
 import { CashflowChart } from "./cashflow-chart"
+import { PendingAlertsCard } from "./pending-alerts-card"
+import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
@@ -278,6 +280,12 @@ export function DashboardPageClient({
             )}
           </CardContent>
         </Card>
+      </div>
+
+      {/* Alertas y Próximos Viajes */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        <PendingAlertsCard />
+        <UpcomingTripsCard />
       </div>
 
       {/* Charts */}
