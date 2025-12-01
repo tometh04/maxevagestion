@@ -316,7 +316,7 @@ components/alerts/alerts-table.tsx (MODIFICAR)
 > **Requiere**: Fase 4 completada
 
 ### 5.1 Dashboard Mejorado ✅
-- [ ] **5.1.1** Comparativa vs período anterior
+- [x] **5.1.1** Comparativa vs período anterior
   - "Ventas +15% vs mes pasado"
   - Flechas arriba/abajo con color
 - [x] **5.1.2** Widget "Próximos Viajes" (esta semana) - `UpcomingTripsCard`

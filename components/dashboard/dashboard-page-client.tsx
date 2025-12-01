@@ -30,6 +30,35 @@ interface KPIs {
   pendingOperatorPayments: number
 }
 
+interface KPIComparison {
+  totalSales: number
+  totalMargin: number
+  operationsCount: number
+}
+
+function calculateChange(current: number, previous: number): { change: number; isPositive: boolean } {
+  if (previous === 0) return { change: 0, isPositive: true }
+  const change = ((current - previous) / previous) * 100
+  return { change: Math.abs(change), isPositive: change >= 0 }
+}
+
+function ComparisonBadge({ current, previous, suffix = "%" }: { current: number; previous: number; suffix?: string }) {
+  const { change, isPositive } = calculateChange(current, previous)
+  
+  if (change === 0 || previous === 0) return null
+  
+  return (
+    <span className={`inline-flex items-center text-xs font-medium ${isPositive ? "text-green-600" : "text-red-600"}`}>
+      {isPositive ? (
+        <ArrowUpIcon className="h-3 w-3 mr-0.5" />
+      ) : (
+        <ArrowDownIcon className="h-3 w-3 mr-0.5" />
+      )}
+      {change.toFixed(1)}{suffix}
+    </span>
+  )
+}
+
 export function DashboardPageClient({
   agencies,
   sellers,
@@ -44,6 +73,11 @@ export function DashboardPageClient({
     avgMarginPercent: 0,
     pendingCustomerPayments: 0,
     pendingOperatorPayments: 0,
+  })
+  const [previousKpis, setPreviousKpis] = useState<KPIComparison>({
+    totalSales: 0,
+    totalMargin: 0,
+    operationsCount: 0,
   })
   const [sellersData, setSellersData] = useState<any[]>([])
   const [destinationsData, setDestinationsData] = useState<any[]>([])
@@ -63,18 +97,39 @@ export function DashboardPageClient({
         params.set("sellerId", filters.sellerId)
       }
 
+      // Calcular período anterior (mismo rango de días, antes)
+      const dateFrom = new Date(filters.dateFrom)
+      const dateTo = new Date(filters.dateTo)
+      const daysDiff = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
+      
+      const prevDateTo = new Date(dateFrom)
+      prevDateTo.setDate(prevDateTo.getDate() - 1)
+      const prevDateFrom = new Date(prevDateTo)
+      prevDateFrom.setDate(prevDateFrom.getDate() - daysDiff)
+      
+      const prevParams = new URLSearchParams()
+      prevParams.set("dateFrom", prevDateFrom.toISOString().split("T")[0])
+      prevParams.set("dateTo", prevDateTo.toISOString().split("T")[0])
+      if (filters.agencyId !== "ALL") {
+        prevParams.set("agencyId", filters.agencyId)
+      }
+      if (filters.sellerId !== "ALL") {
+        prevParams.set("sellerId", filters.sellerId)
+      }
+
       // Fetch all data in parallel with cache headers
       const fetchOptions = { 
         next: { revalidate: 30 } // Cache por 30 segundos
       }
       
-      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, paymentsRes] = await Promise.all([
+      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, paymentsRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
         fetch(`/api/payments?${params.toString()}&status=PENDING`, fetchOptions),
+        fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
       const salesData = await salesRes.json()
@@ -83,6 +138,14 @@ export function DashboardPageClient({
       const destinationsAllData = await destinationsAllRes.json()
       const cashflowData = await cashflowRes.json()
       const paymentsData = await paymentsRes.json()
+      const prevSalesData = await prevSalesRes.json()
+
+      // Guardar datos del período anterior para comparativa
+      setPreviousKpis({
+        totalSales: prevSalesData.totalSales || 0,
+        totalMargin: prevSalesData.totalMargin || 0,
+        operationsCount: prevSalesData.operationsCount || 0,
+      })
 
       setKpis({
         totalSales: salesData.totalSales || 0,
@@ -153,11 +216,14 @@ export function DashboardPageClient({
               <Skeleton className="h-8 w-32" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl break-words">
-                  ${kpis.totalSales.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-bold sm:text-2xl break-words">
+                    ${kpis.totalSales.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {kpis.operationsCount} operaciones
+                  {kpis.operationsCount} operaciones • vs período anterior
                 </p>
               </>
             )}
@@ -176,11 +242,14 @@ export function DashboardPageClient({
               <Skeleton className="h-8 w-32" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl">
-                  {kpis.operationsCount}
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-bold sm:text-2xl">
+                    {kpis.operationsCount}
+                  </span>
+                  <ComparisonBadge current={kpis.operationsCount} previous={previousKpis.operationsCount} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Operaciones realizadas
+                  vs período anterior
                 </p>
               </>
             )}
@@ -199,8 +268,11 @@ export function DashboardPageClient({
               <Skeleton className="h-8 w-32" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl break-words">
-                  ${kpis.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="flex items-center gap-2">
+                  <span className="text-xl font-bold sm:text-2xl break-words">
+                    ${kpis.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {kpis.avgMarginPercent.toFixed(1)}% promedio
