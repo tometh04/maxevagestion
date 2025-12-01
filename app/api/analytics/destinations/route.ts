@@ -2,8 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
-// Cache por 30 segundos para mejor rendimiento
-export const revalidate = 30
+// Forzar ruta dinámica (usa cookies para autenticación)
+export const dynamic = 'force-dynamic'
 
 export async function GET(request: Request) {
   try {
