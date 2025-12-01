@@ -255,7 +255,7 @@ app/(dashboard)/operators/[id]/page.tsx (MODIFICAR)
   - Ícono de campana en header con badge de no leídas
   - Dropdown con últimas notificaciones
   - Link a "Ver todas"
-- [ ] **4.1.2** Página `/notifications` con historial completo
+- [x] **4.1.2** Página `/notifications` con historial completo
 - [x] **4.1.3** API: `GET/PATCH /api/notifications` (usando alertas existentes)
 
 **Archivos a crear**:
@@ -267,20 +267,23 @@ app/api/notifications/route.ts (NUEVO)
 supabase/migrations/034_create_notifications.sql (NUEVO)
 ```
 
-### 4.2 Generación Automática de Notificaciones
-- [ ] **4.2.1** Triggers para crear notificaciones:
+### 4.2 Generación Automática de Notificaciones ✅
+- [x] **4.2.1** Generadores de notificaciones:
   - Pago próximo a vencer (3 días antes)
   - Pago vencido
   - Viaje próximo (7 días antes)
   - Documento faltante
-  - Nueva operación asignada (para vendedor)
-  - Comisión generada
-- [ ] **4.2.2** CRON job para generar notificaciones diarias
+- [x] **4.2.2** CRON job para generar notificaciones diarias
+- [x] **4.2.3** Página `/notifications` con historial completo
+- [x] **4.2.4** API CRUD para alertas
 
-**Archivos a crear/modificar**:
+**Archivos creados**:
 ```
 lib/notifications/notification-generator.ts (NUEVO)
 app/api/cron/notifications/route.ts (NUEVO)
+app/(dashboard)/notifications/page.tsx (NUEVO)
+components/notifications/notifications-page-client.tsx (NUEVO)
+app/api/alerts/[id]/route.ts (NUEVO)
 ```
 
 ### 4.3 Preferencias de Notificaciones
