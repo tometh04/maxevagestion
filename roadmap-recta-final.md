@@ -471,15 +471,15 @@ components/ui/empty-state.tsx (NUEVO)
 
 **API**: `GET /api/payments/[id]/receipt`
 
-### 7.4 Estado de Cuenta
-- [ ] **7.4.1** PDF con resumen de cuenta del cliente
-  - Pagos realizados
-  - Saldo pendiente
-  - Próximos vencimientos
+### 7.4 Estado de Cuenta ✅
+- [x] **7.4.1** PDF/HTML con resumen de cuenta del cliente
+  - Datos del cliente
+  - Resumen: total operaciones, pagado, pendiente
+  - Detalle de movimientos con estados
+  - Diseño profesional para impresión
 
-**Archivos a crear**:
+**Archivos creados**:
 ```
-lib/pdf/account-statement-template.tsx (NUEVO)
 app/api/customers/[id]/statement/route.ts (NUEVO)
 ```
 
