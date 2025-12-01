@@ -220,8 +220,8 @@ components/cash/payments-table.tsx (MODIFICAR)
 app/api/payments/mark-paid/route.ts (MODIFICAR)
 ```
 
-### 3.3 Vista de Cuenta Corriente por Cliente
-- [ ] **3.3.1** En detalle de cliente, agregar tab "Cuenta Corriente"
+### 3.3 Vista de Cuenta Corriente por Cliente ✅
+- [x] **3.3.1** En detalle de cliente, agregar tab "Cuenta Corriente"
   - Mostrar saldo total: pagado vs adeudado
   - Historial de movimientos
   - Próximos vencimientos
