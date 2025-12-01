@@ -233,12 +233,12 @@ components/customers/customer-account-section.tsx (NUEVO)
 app/(dashboard)/customers/[id]/page.tsx (MODIFICAR)
 ```
 
-### 3.4 Vista de Cuenta Corriente por Operador
-- [ ] **3.4.1** En detalle de operador, mejorar sección financiera
+### 3.4 Vista de Cuenta Corriente por Operador ✅
+- [x] **3.4.1** En detalle de operador, mejorar sección financiera
   - Saldo total adeudado
   - Pagos próximos a vencer
   - Historial de pagos
-- [ ] **3.4.2** Alerta visual si se excede límite de crédito
+- [x] **3.4.2** Alerta visual si se excede límite de crédito
 
 **Archivos a modificar**:
 ```
