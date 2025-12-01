@@ -321,7 +321,7 @@ components/alerts/alerts-table.tsx (MODIFICAR)
   - Flechas arriba/abajo con color
 - [x] **5.1.2** Widget "Próximos Viajes" (esta semana) - `UpcomingTripsCard`
 - [x] **5.1.3** Widget "Alertas Pendientes" - `PendingAlertsCard`
-- [ ] **5.1.4** Widget "Top 5 Vendedores del Mes"
+- [x] **5.1.4** Widget "Top 5 Vendedores del Mes" - `TopSellersCard`
 - [ ] **5.1.5** Gráfico de tendencia últimos 6 meses
 
 **Archivos a modificar**:

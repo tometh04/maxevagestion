@@ -10,6 +10,7 @@ import { RegionsRadarChart } from "./regions-radar-chart"
 import { CashflowChart } from "./cashflow-chart"
 import { PendingAlertsCard } from "./pending-alerts-card"
 import { UpcomingTripsCard } from "./upcoming-trips-card"
+import { TopSellersCard } from "./top-sellers-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
@@ -354,10 +355,11 @@ export function DashboardPageClient({
         </Card>
       </div>
 
-      {/* Alertas y Próximos Viajes */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+      {/* Alertas, Próximos Viajes y Top Vendedores */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <PendingAlertsCard />
         <UpcomingTripsCard />
+        <TopSellersCard />
       </div>
 
       {/* Charts */}
