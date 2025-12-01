@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2 } from "lucide-react"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
@@ -166,6 +166,8 @@ interface LeadDetailDialogProps {
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
   onConvert?: () => void
+  canClaimLeads?: boolean
+  onClaim?: () => void
 }
 
 export function LeadDetailDialog({ 
@@ -177,13 +179,42 @@ export function LeadDetailDialog({
   onEdit,
   onDelete,
   onConvert,
+  canClaimLeads = false,
+  onClaim,
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [claiming, setClaiming] = useState(false)
 
   if (!lead) return null
+
+  const handleClaimLead = async () => {
+    setClaiming(true)
+    try {
+      const response = await fetch("/api/leads/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: lead.id }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Error al agarrar el lead")
+      }
+
+      toast.success(data.message || "Lead asignado correctamente")
+      onClaim?.()
+      onOpenChange(false)
+    } catch (error) {
+      console.error("Error claiming lead:", error)
+      toast.error(error instanceof Error ? error.message : "Error al agarrar el lead")
+    } finally {
+      setClaiming(false)
+    }
+  }
 
   const handleEdit = () => {
     setEditDialogOpen(true)
@@ -518,6 +549,22 @@ export function LeadDetailDialog({
         <Separator />
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+            {/* Botón Agarrar Lead - solo si no tiene vendedor asignado */}
+            {!lead.users && canClaimLeads && (
+              <Button
+                variant="default"
+                onClick={handleClaimLead}
+                disabled={claiming}
+                className="flex-1 sm:flex-initial bg-orange-500 hover:bg-orange-600 text-white"
+              >
+                {claiming ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <UserPlus className="mr-2 h-4 w-4" />
+                )}
+                {claiming ? "Asignando..." : "Agarrar Lead"}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleEdit}

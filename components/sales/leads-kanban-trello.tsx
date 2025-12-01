@@ -358,20 +358,17 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                           ) : canClaimLeads ? (
                             <Button
                               size="sm"
-                              variant="outline"
-                              className="w-full mt-2 text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:border-orange-600 dark:hover:bg-orange-950"
+                              variant="ghost"
+                              className="h-7 px-2 text-xs text-orange-600 hover:bg-orange-100 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
                               onClick={(e) => handleClaimLead(lead.id, e)}
                               disabled={claimingLeadId === lead.id}
                             >
                               {claimingLeadId === lead.id ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                  Asignando...
-                                </>
+                                <Loader2 className="h-3 w-3 animate-spin" />
                               ) : (
                                 <>
                                   <UserPlus className="h-3 w-3 mr-1" />
-                                  Agarrar Lead
+                                  Agarrar
                                 </>
                               )}
                             </Button>
@@ -407,6 +404,8 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
           sellers={sellers}
           onDelete={onRefresh}
           onConvert={onRefresh}
+          canClaimLeads={canClaimLeads}
+          onClaim={onRefresh}
         />
       )}
       </div>
