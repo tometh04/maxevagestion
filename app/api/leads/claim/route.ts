@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     // 1. Obtener el lead
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("*, agencies(trello_board_id)")
+      .select("id, agency_id, assigned_seller_id, external_id")
       .eq("id", leadId)
       .single()
 
@@ -51,7 +51,7 @@ export async function POST(request: Request) {
     // 3. Obtener el nombre del vendedor para buscar su lista
     const { data: seller, error: sellerError } = await supabase
       .from("users")
-      .select("name, trello_member_id")
+      .select("name")
       .eq("id", user.id)
       .single()
 
@@ -64,8 +64,8 @@ export async function POST(request: Request) {
 
     // 4. Obtener configuración de Trello de la agencia
     const { data: trelloConfig, error: configError } = await supabase
-      .from("trello_config")
-      .select("*")
+      .from("settings_trello")
+      .select("trello_api_key, trello_token, board_id")
       .eq("agency_id", (lead as any).agency_id)
       .single()
 
@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     // 5. Buscar la lista del vendedor en Trello
     // Primero obtenemos todas las listas del board
     const listsResponse = await fetch(
-      `https://api.trello.com/1/boards/${config.board_id}/lists?key=${config.api_key}&token=${config.api_token}`
+      `https://api.trello.com/1/boards/${config.board_id}/lists?key=${config.trello_api_key}&token=${config.trello_token}`
     )
 
     if (!listsResponse.ok) {
@@ -152,7 +152,7 @@ export async function POST(request: Request) {
     // 6. Mover la card en Trello a la lista del vendedor
     if ((lead as any).external_id) {
       const moveResponse = await fetch(
-        `https://api.trello.com/1/cards/${(lead as any).external_id}?key=${config.api_key}&token=${config.api_token}`,
+        `https://api.trello.com/1/cards/${(lead as any).external_id}?key=${config.trello_api_key}&token=${config.trello_token}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
