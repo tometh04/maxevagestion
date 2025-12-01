@@ -83,3 +83,93 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 }
 
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const { id: operatorId } = await params
+    const body = await request.json()
+
+    const { name, contact_name, contact_email, contact_phone, credit_limit } = body
+
+    // Validations
+    if (!name) {
+      return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
+    }
+
+    // Update operator
+    const { data: operator, error: updateError } = await supabase
+      .from("operators")
+      .update({
+        name,
+        contact_name: contact_name || null,
+        contact_email: contact_email || null,
+        contact_phone: contact_phone || null,
+        credit_limit: credit_limit || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", operatorId)
+      .select()
+      .single()
+
+    if (updateError || !operator) {
+      console.error("Error updating operator:", updateError)
+      return NextResponse.json({ error: "Error al actualizar operador" }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, operator })
+  } catch (error) {
+    console.error("Error in PATCH /api/operators/[id]:", error)
+    return NextResponse.json({ error: "Error al actualizar operador" }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const { id: operatorId } = await params
+
+    // Check if operator has operations
+    const { data: operations, error: checkError } = await supabase
+      .from("operations")
+      .select("id")
+      .eq("operator_id", operatorId)
+      .limit(1)
+
+    if (checkError) {
+      console.error("Error checking operator operations:", checkError)
+      return NextResponse.json({ error: "Error al verificar operador" }, { status: 500 })
+    }
+
+    if (operations && operations.length > 0) {
+      return NextResponse.json(
+        { error: "No se puede eliminar el operador porque tiene operaciones asociadas" },
+        { status: 400 }
+      )
+    }
+
+    // Delete operator
+    const { error: deleteError } = await supabase
+      .from("operators")
+      .delete()
+      .eq("id", operatorId)
+
+    if (deleteError) {
+      console.error("Error deleting operator:", deleteError)
+      return NextResponse.json({ error: "Error al eliminar operador" }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error in DELETE /api/operators/[id]:", error)
+    return NextResponse.json({ error: "Error al eliminar operador" }, { status: 500 })
+  }
+}
+

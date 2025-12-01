@@ -103,3 +103,55 @@ export async function PATCH(
   }
 }
 
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const { id: customerId } = await params
+
+    // Check if customer has operations
+    const { data: operationCustomers, error: checkError } = await supabase
+      .from("operation_customers")
+      .select("id")
+      .eq("customer_id", customerId)
+      .limit(1)
+
+    if (checkError) {
+      console.error("Error checking customer operations:", checkError)
+      return NextResponse.json({ error: "Error al verificar cliente" }, { status: 500 })
+    }
+
+    if (operationCustomers && operationCustomers.length > 0) {
+      return NextResponse.json(
+        { error: "No se puede eliminar el cliente porque tiene operaciones asociadas" },
+        { status: 400 }
+      )
+    }
+
+    // Delete customer documents first
+    await supabase
+      .from("documents")
+      .delete()
+      .eq("customer_id", customerId)
+
+    // Delete customer
+    const { error: deleteError } = await supabase
+      .from("customers")
+      .delete()
+      .eq("id", customerId)
+
+    if (deleteError) {
+      console.error("Error deleting customer:", deleteError)
+      return NextResponse.json({ error: "Error al eliminar cliente" }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Error in DELETE /api/customers/[id]:", error)
+    return NextResponse.json({ error: "Error al eliminar cliente" }, { status: 500 })
+  }
+}
+

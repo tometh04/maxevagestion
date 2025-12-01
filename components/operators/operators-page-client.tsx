@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { OperatorsTable, Operator } from "./operators-table"
+import { NewOperatorDialog } from "./new-operator-dialog"
 import { Button } from "@/components/ui/button"
-import Link from "next/link"
+import { Plus } from "lucide-react"
 
 interface OperatorsPageClientProps {
   initialOperators: Operator[]
@@ -12,6 +13,7 @@ interface OperatorsPageClientProps {
 export function OperatorsPageClient({ initialOperators }: OperatorsPageClientProps) {
   const [operators, setOperators] = useState<Operator[]>(initialOperators)
   const [loading, setLoading] = useState(false)
+  const [newOperatorDialogOpen, setNewOperatorDialogOpen] = useState(false)
 
   const fetchOperators = useCallback(async () => {
     setLoading(true)
@@ -30,6 +32,10 @@ export function OperatorsPageClient({ initialOperators }: OperatorsPageClientPro
     fetchOperators()
   }, [fetchOperators])
 
+  const handleOperatorCreated = useCallback(() => {
+    fetchOperators()
+  }, [fetchOperators])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -37,12 +43,24 @@ export function OperatorsPageClient({ initialOperators }: OperatorsPageClientPro
           <h1 className="text-3xl font-bold">Operadores</h1>
           <p className="text-muted-foreground">Gestiona tus operadores y mayoristas</p>
         </div>
-        <Link href="/operators/new">
-          <Button>Nuevo Operador</Button>
-        </Link>
+        <Button onClick={() => setNewOperatorDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo Operador
+        </Button>
       </div>
 
-      <OperatorsTable operators={operators} isLoading={loading} emptyMessage="No hay operadores registrados" />
+      <OperatorsTable 
+        operators={operators} 
+        isLoading={loading} 
+        emptyMessage="No hay operadores registrados"
+        onRefresh={fetchOperators}
+      />
+
+      <NewOperatorDialog
+        open={newOperatorDialogOpen}
+        onOpenChange={setNewOperatorDialogOpen}
+        onSuccess={handleOperatorCreated}
+      />
     </div>
   )
 }

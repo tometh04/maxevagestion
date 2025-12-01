@@ -86,3 +86,41 @@ export async function GET(request: Request) {
   }
 }
 
+export async function POST(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const body = await request.json()
+
+    const { name, contact_name, contact_email, contact_phone, credit_limit } = body
+
+    // Validations
+    if (!name) {
+      return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
+    }
+
+    // Create operator
+    const { data: operator, error: createError } = await supabase
+      .from("operators")
+      .insert({
+        name,
+        contact_name: contact_name || null,
+        contact_email: contact_email || null,
+        contact_phone: contact_phone || null,
+        credit_limit: credit_limit || null,
+      })
+      .select()
+      .single()
+
+    if (createError || !operator) {
+      console.error("Error creating operator:", createError)
+      return NextResponse.json({ error: "Error al crear operador" }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, operator })
+  } catch (error) {
+    console.error("Error in POST /api/operators:", error)
+    return NextResponse.json({ error: "Error al crear operador" }, { status: 500 })
+  }
+}
+
