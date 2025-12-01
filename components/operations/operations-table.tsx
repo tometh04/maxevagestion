@@ -9,14 +9,16 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Pencil, Eye } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { EditOperationDialog } from "./edit-operation-dialog"
 
 const statusLabels: Record<string, string> = {
   PRE_RESERVATION: "Pre-reserva",
@@ -63,6 +65,44 @@ export function OperationsTable({
   const [operations, setOperations] = useState<Operation[]>([])
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState(initialFilters)
+  const [editingOperation, setEditingOperation] = useState<Operation | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  
+  // Datos para el diálogo de edición (se cargarán cuando sea necesario)
+  const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
+  const [allOperators, setAllOperators] = useState<Array<{ id: string; name: string }>>([])
+  
+  // Cargar datos auxiliares para el diálogo
+  const loadDialogData = useCallback(async () => {
+    try {
+      const [agenciesRes, sellersRes, operatorsRes] = await Promise.all([
+        fetch("/api/agencies"),
+        fetch("/api/users?role=SELLER"),
+        fetch("/api/operators"),
+      ])
+      
+      const [agenciesData, sellersData, operatorsData] = await Promise.all([
+        agenciesRes.json(),
+        sellersRes.json(),
+        operatorsRes.json(),
+      ])
+      
+      setAgencies(agenciesData.agencies || [])
+      setSellers((sellersData.users || []).map((u: any) => ({ id: u.id, name: u.name })))
+      setAllOperators((operatorsData.operators || []).map((o: any) => ({ id: o.id, name: o.name })))
+    } catch (error) {
+      console.error("Error loading dialog data:", error)
+    }
+  }, [])
+  
+  const handleEditClick = useCallback(async (operation: Operation) => {
+    if (agencies.length === 0) {
+      await loadDialogData()
+    }
+    setEditingOperation(operation)
+    setEditDialogOpen(true)
+  }, [agencies.length, loadDialogData])
 
   const fetchOperations = useCallback(async () => {
     setLoading(true)
@@ -218,7 +258,15 @@ export function OperationsTable({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                 <DropdownMenuItem asChild>
-                  <Link href={`/operations/${operation.id}`}>Ver detalles</Link>
+                  <Link href={`/operations/${operation.id}`}>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Ver detalles
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleEditClick(operation)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -226,7 +274,7 @@ export function OperationsTable({
         },
       },
     ],
-    []
+    [handleEditClick]
   )
 
   if (loading) {
@@ -243,6 +291,26 @@ export function OperationsTable({
     )
   }
 
-  return <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino..." />
+  return (
+    <>
+      <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino..." />
+      
+      {editingOperation && (
+        <EditOperationDialog
+          operation={editingOperation as any}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onSuccess={() => {
+            setEditDialogOpen(false)
+            setEditingOperation(null)
+            fetchOperations()
+          }}
+          agencies={agencies}
+          sellers={sellers}
+          operators={allOperators}
+        />
+      )}
+    </>
+  )
 }
 
