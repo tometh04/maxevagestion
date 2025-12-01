@@ -73,7 +73,7 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
     
-    let leads = result.data || []
+    let leads: any[] = result.data || []
     const error = result.error
 
     if (error) {
@@ -110,8 +110,8 @@ export async function GET(request: Request) {
           if (lead.operations?.length > 0) {
             const customers: any[] = []
             for (const op of lead.operations) {
-              const opCustomers = customersByOperation.get(op.id) || []
-              customers.push(...opCustomers)
+              const opCustomersArr = customersByOperation.get(op.id) || []
+              customers.push(...opCustomersArr)
             }
             return { ...lead, customers }
           }
