@@ -22,10 +22,11 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { toast } from "sonner"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -46,18 +47,18 @@ const frequencyLabels: Record<string, string> = {
 export function RecurringPaymentsPageClient() {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
-  const [operators, setOperators] = useState<any[]>([])
   const [isActiveFilter, setIsActiveFilter] = useState<string>("ALL")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
+  const [tableError, setTableError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchData()
-    fetchOperators()
   }, [isActiveFilter])
 
   async function fetchData() {
     setLoading(true)
+    setTableError(null)
     try {
       const params = new URLSearchParams()
       if (isActiveFilter !== "ALL") {
@@ -65,27 +66,19 @@ export function RecurringPaymentsPageClient() {
       }
 
       const response = await fetch(`/api/recurring-payments?${params.toString()}`)
-      if (!response.ok) throw new Error("Error al obtener pagos recurrentes")
-
       const data = await response.json()
-      setPayments(data.payments || [])
+
+      if (data.error && data.error.includes("no existe")) {
+        setTableError(data.error)
+        setPayments([])
+      } else {
+        setPayments(data.payments || [])
+      }
     } catch (error) {
       console.error("Error fetching recurring payments:", error)
       toast.error("Error al cargar pagos recurrentes")
     } finally {
       setLoading(false)
-    }
-  }
-
-  async function fetchOperators() {
-    try {
-      const response = await fetch("/api/operators")
-      if (!response.ok) throw new Error("Error al obtener operadores")
-
-      const data = await response.json()
-      setOperators(data.operators || [])
-    } catch (error) {
-      console.error("Error fetching operators:", error)
     }
   }
 
@@ -126,6 +119,21 @@ export function RecurringPaymentsPageClient() {
 
   return (
     <div className="space-y-6">
+      {/* Error de tabla */}
+      {tableError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Migración Pendiente</AlertTitle>
+          <AlertDescription>
+            <p className="mb-2">{tableError}</p>
+            <p className="text-sm">
+              Ve a <strong>Supabase → SQL Editor</strong> y ejecuta el archivo:{" "}
+              <code className="bg-muted px-1 rounded">supabase/migrations/041_fix_recurring_payments.sql</code>
+            </p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -202,7 +210,7 @@ export function RecurringPaymentsPageClient() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Operador</TableHead>
+                  <TableHead>Proveedor</TableHead>
                   <TableHead>Descripción</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Frecuencia</TableHead>
@@ -213,7 +221,6 @@ export function RecurringPaymentsPageClient() {
               </TableHeader>
               <TableBody>
                 {payments.map((payment) => {
-                  const operator = payment.operators
                   const daysUntilDue = Math.ceil(
                     (new Date(payment.next_due_date).getTime() - new Date().getTime()) /
                       (1000 * 60 * 60 * 24)
@@ -222,7 +229,7 @@ export function RecurringPaymentsPageClient() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell className="font-medium">
-                        {operator?.name || "-"}
+                        {payment.provider_name || payment.operators?.name || "-"}
                       </TableCell>
                       <TableCell>{payment.description}</TableCell>
                       <TableCell>
@@ -279,7 +286,6 @@ export function RecurringPaymentsPageClient() {
         open={newDialogOpen}
         onOpenChange={setNewDialogOpen}
         onSuccess={fetchData}
-        operators={operators}
       />
 
       {editingPayment && (
@@ -288,10 +294,8 @@ export function RecurringPaymentsPageClient() {
           onOpenChange={(open) => !open && setEditingPayment(null)}
           onSuccess={fetchData}
           payment={editingPayment}
-          operators={operators}
         />
       )}
     </div>
   )
 }
-

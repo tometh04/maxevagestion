@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -22,13 +22,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { DatePicker } from "@/components/ui/date-picker"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
+import { Check, ChevronsUpDown, Plus, Search } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 const recurringPaymentSchema = z.object({
-  operator_id: z.string().min(1, "El operador es requerido"),
+  provider_name: z.string().min(3, "El proveedor debe tener al menos 3 caracteres"),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   frequency: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"]),
@@ -54,24 +69,26 @@ interface NewRecurringPaymentDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
-  operators: Array<{ id: string; name: string }>
 }
 
 export function NewRecurringPaymentDialog({
   open,
   onOpenChange,
   onSuccess,
-  operators,
 }: NewRecurringPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [hasEndDate, setHasEndDate] = useState(false)
+  const [providerOpen, setProviderOpen] = useState(false)
+  const [providers, setProviders] = useState<string[]>([])
+  const [providerSearch, setProviderSearch] = useState("")
+  const [loadingProviders, setLoadingProviders] = useState(false)
 
   const form = useForm<RecurringPaymentFormValues>({
-    resolver: zodResolver(recurringPaymentSchema),
+    resolver: zodResolver(recurringPaymentSchema) as any,
     defaultValues: {
-      operator_id: "",
+      provider_name: "",
       amount: 0,
-      currency: "ARS",
+      currency: "USD",
       frequency: "MONTHLY",
       start_date: new Date().toISOString().split("T")[0],
       end_date: null,
@@ -82,12 +99,81 @@ export function NewRecurringPaymentDialog({
     },
   })
 
+  // Cargar proveedores existentes
+  const fetchProviders = async () => {
+    try {
+      setLoadingProviders(true)
+      const response = await fetch("/api/recurring-payments/providers")
+      if (response.ok) {
+        const data = await response.json()
+        setProviders(data.providers || [])
+      }
+    } catch (error) {
+      console.error("Error fetching providers:", error)
+    } finally {
+      setLoadingProviders(false)
+    }
+  }
+
   useEffect(() => {
     if (open) {
       form.reset()
       setHasEndDate(false)
+      setProviderSearch("")
+      fetchProviders()
     }
   }, [open, form])
+
+  // Filtrar proveedores basado en búsqueda
+  const filteredProviders = useMemo(() => {
+    if (!providerSearch) return providers
+    return providers.filter(p => 
+      p.toLowerCase().includes(providerSearch.toLowerCase())
+    )
+  }, [providers, providerSearch])
+
+  // Verificar si el texto de búsqueda es un nuevo proveedor
+  const isNewProvider = useMemo(() => {
+    if (!providerSearch || providerSearch.length < 3) return false
+    return !providers.some(p => p.toLowerCase() === providerSearch.toLowerCase())
+  }, [providers, providerSearch])
+
+  const handleSelectProvider = (value: string) => {
+    form.setValue("provider_name", value)
+    setProviderOpen(false)
+    setProviderSearch("")
+  }
+
+  const handleCreateNewProvider = async () => {
+    if (providerSearch.length < 3) {
+      toast.error("El nombre del proveedor debe tener al menos 3 caracteres")
+      return
+    }
+
+    try {
+      // Guardar el nuevo proveedor en el backend
+      const response = await fetch("/api/recurring-payments/providers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: providerSearch }),
+      })
+
+      if (response.ok) {
+        // Agregar a la lista local
+        setProviders(prev => [providerSearch, ...prev])
+        form.setValue("provider_name", providerSearch)
+        setProviderOpen(false)
+        setProviderSearch("")
+        toast.success(`Proveedor "${providerSearch}" creado`)
+      } else {
+        const error = await response.json()
+        toast.error(error.error || "Error al crear proveedor")
+      }
+    } catch (error) {
+      console.error("Error creating provider:", error)
+      toast.error("Error al crear proveedor")
+    }
+  }
 
   const onSubmit = async (values: RecurringPaymentFormValues) => {
     setIsLoading(true)
@@ -118,6 +204,8 @@ export function NewRecurringPaymentDialog({
     }
   }
 
+  const selectedProvider = form.watch("provider_name")
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -131,26 +219,95 @@ export function NewRecurringPaymentDialog({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              {/* Proveedor con Combobox */}
               <FormField
                 control={form.control}
-                name="operator_id"
+                name="provider_name"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Operador *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar operador" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {operators.map((operator) => (
-                          <SelectItem key={operator.id} value={operator.id}>
-                            {operator.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Proveedor *</FormLabel>
+                    <Popover open={providerOpen} onOpenChange={setProviderOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={providerOpen}
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value || "Seleccionar o crear proveedor..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[300px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                          <div className="flex items-center border-b px-3">
+                            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                            <input
+                              placeholder="Buscar o crear proveedor..."
+                              value={providerSearch}
+                              onChange={(e) => setProviderSearch(e.target.value)}
+                              className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            />
+                          </div>
+                          <CommandList>
+                            {/* Opción de crear nuevo siempre arriba */}
+                            {isNewProvider && (
+                              <>
+                                <CommandGroup heading="Crear nuevo">
+                                  <CommandItem
+                                    onSelect={handleCreateNewProvider}
+                                    className="cursor-pointer"
+                                  >
+                                    <Plus className="mr-2 h-4 w-4 text-green-500" />
+                                    <span>Crear &quot;{providerSearch}&quot;</span>
+                                  </CommandItem>
+                                </CommandGroup>
+                                <CommandSeparator />
+                              </>
+                            )}
+                            
+                            {loadingProviders ? (
+                              <div className="p-4 text-center text-sm text-muted-foreground">
+                                Cargando proveedores...
+                              </div>
+                            ) : filteredProviders.length === 0 && !isNewProvider ? (
+                              <CommandEmpty>
+                                {providerSearch.length < 3 
+                                  ? "Escribe al menos 3 caracteres para crear uno nuevo"
+                                  : "No se encontraron proveedores"
+                                }
+                              </CommandEmpty>
+                            ) : (
+                              <CommandGroup heading="Proveedores existentes">
+                                {filteredProviders.map((provider) => (
+                                  <CommandItem
+                                    key={provider}
+                                    value={provider}
+                                    onSelect={() => handleSelectProvider(provider)}
+                                    className="cursor-pointer"
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        selectedProvider === provider
+                                          ? "opacity-100"
+                                          : "opacity-0"
+                                      )}
+                                    />
+                                    {provider}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            )}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -277,7 +434,7 @@ export function NewRecurringPaymentDialog({
                 <FormItem>
                   <FormLabel>Descripción *</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ej: Alquiler oficina mensual" {...field} />
+                    <Input placeholder="Ej: Servidor Vercel, Alquiler oficina" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -346,4 +503,3 @@ export function NewRecurringPaymentDialog({
     </Dialog>
   )
 }
-

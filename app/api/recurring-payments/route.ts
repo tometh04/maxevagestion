@@ -2,10 +2,6 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
-import {
-  getRecurringPayments,
-  createRecurringPayment,
-} from "@/lib/accounting/recurring-payments"
 
 export async function GET(request: Request) {
   try {
@@ -18,17 +14,37 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver pagos recurrentes" }, { status: 403 })
     }
 
-    const operatorId = searchParams.get("operatorId") || undefined
     const isActive = searchParams.get("isActive")
       ? searchParams.get("isActive") === "true"
       : undefined
 
-    const payments = await getRecurringPayments(supabase, {
-      operatorId,
-      isActive,
-    })
+    let query = (supabase.from("recurring_payments") as any)
+      .select("*")
+      .order("created_at", { ascending: false })
 
-    return NextResponse.json({ payments })
+    // Filtrar por agencia del usuario
+    if (user.agency_id) {
+      query = query.eq("agency_id", user.agency_id)
+    }
+
+    if (isActive !== undefined) {
+      query = query.eq("is_active", isActive)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      // Si la tabla no existe
+      if (error.code === "42P01") {
+        return NextResponse.json({ 
+          payments: [],
+          error: "La tabla recurring_payments no existe. Ejecuta la migración SQL."
+        })
+      }
+      throw error
+    }
+
+    return NextResponse.json({ payments: data || [] })
   } catch (error: any) {
     console.error("Error in GET /api/recurring-payments:", error)
     return NextResponse.json({ error: error.message || "Error al obtener pagos recurrentes" }, { status: 500 })
@@ -47,7 +63,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const {
-      operator_id,
+      provider_name,
       amount,
       currency,
       frequency,
@@ -60,31 +76,67 @@ export async function POST(request: Request) {
     } = body
 
     // Validar campos requeridos
-    if (!operator_id || !amount || !currency || !frequency || !start_date || !description) {
+    if (!provider_name || provider_name.length < 3) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos: operator_id, amount, currency, frequency, start_date, description" },
+        { error: "El proveedor debe tener al menos 3 caracteres" },
         { status: 400 }
       )
     }
 
-    const result = await createRecurringPayment(supabase, {
-      operator_id,
-      amount: parseFloat(amount),
-      currency: currency as "ARS" | "USD",
-      frequency: frequency as "WEEKLY" | "BIWEEKLY" | "MONTHLY" | "QUARTERLY" | "YEARLY",
-      start_date,
-      end_date: end_date || null,
-      description,
-      notes: notes || null,
-      invoice_number: invoice_number || null,
-      reference: reference || null,
-      created_by: user.id,
-    })
+    if (!amount || !currency || !frequency || !start_date || !description) {
+      return NextResponse.json(
+        { error: "Faltan campos requeridos: amount, currency, frequency, start_date, description" },
+        { status: 400 }
+      )
+    }
 
-    return NextResponse.json({ id: result.id }, { status: 201 })
+    // Calcular next_due_date basado en start_date
+    const nextDueDate = start_date
+
+    const { data, error } = await (supabase.from("recurring_payments") as any)
+      .insert({
+        provider_name,
+        amount: parseFloat(amount),
+        currency,
+        frequency,
+        start_date,
+        end_date: end_date || null,
+        next_due_date: nextDueDate,
+        is_active: true,
+        description,
+        notes: notes || null,
+        invoice_number: invoice_number || null,
+        reference: reference || null,
+        agency_id: user.agency_id,
+        created_by: user.id,
+      })
+      .select("id")
+      .single()
+
+    if (error) {
+      console.error("Error creating recurring payment:", error)
+      
+      // Si la tabla no existe
+      if (error.code === "42P01") {
+        return NextResponse.json({ 
+          error: "La tabla recurring_payments no existe. Ejecuta la migración SQL en Supabase.",
+          hint: "Ve a Supabase → SQL Editor → Ejecuta: supabase/migrations/041_fix_recurring_payments.sql"
+        }, { status: 500 })
+      }
+      
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // También guardar el proveedor en la tabla de proveedores para autocompletado
+    await (supabase.from("recurring_payment_providers") as any)
+      .upsert(
+        { name: provider_name, agency_id: user.agency_id },
+        { onConflict: "name,agency_id", ignoreDuplicates: true }
+      )
+
+    return NextResponse.json({ id: data.id }, { status: 201 })
   } catch (error: any) {
     console.error("Error in POST /api/recurring-payments:", error)
     return NextResponse.json({ error: error.message || "Error al crear pago recurrente" }, { status: 500 })
   }
 }
-

@@ -56,7 +56,6 @@ interface EditRecurringPaymentDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   payment: any
-  operators: Array<{ id: string; name: string }>
 }
 
 export function EditRecurringPaymentDialog({
@@ -64,14 +63,13 @@ export function EditRecurringPaymentDialog({
   onOpenChange,
   onSuccess,
   payment,
-  operators,
 }: EditRecurringPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [hasEndDate, setHasEndDate] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
 
   const form = useForm<RecurringPaymentFormValues>({
-    resolver: zodResolver(recurringPaymentSchema),
+    resolver: zodResolver(recurringPaymentSchema) as any,
     defaultValues: {
       amount: 0,
       currency: "ARS",
@@ -160,6 +158,9 @@ export function EditRecurringPaymentDialog({
 
   if (!payment) return null
 
+  // Obtener nombre del proveedor
+  const providerName = payment.provider_name || payment.operators?.name || "-"
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -174,7 +175,7 @@ export function EditRecurringPaymentDialog({
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <div className="p-3 bg-muted rounded-md">
-                <p className="text-sm font-medium">Operador: {payment.operators?.name || "-"}</p>
+                <p className="text-sm font-medium">Proveedor: {providerName}</p>
                 <p className="text-xs text-muted-foreground">
                   Última generación: {payment.last_generated_date
                     ? new Date(payment.last_generated_date).toLocaleDateString("es-AR")
@@ -387,7 +388,8 @@ export function EditRecurringPaymentDialog({
               <DialogFooter className="flex justify-between">
                 <Button
                   type="button"
-                  className="text-red-600"
+                  variant="ghost"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
                   onClick={() => setShowDeleteDialog(true)}
                   disabled={isLoading}
                 >
@@ -425,4 +427,3 @@ export function EditRecurringPaymentDialog({
     </>
   )
 }
-
