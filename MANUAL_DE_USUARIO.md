@@ -1,8 +1,8 @@
-# 📘 MANUAL DE USUARIO COMPLETO - ERP LOZADA
+# 📘 MANUAL DE USUARIO COMPLETO - MAXEVA GESTIÓN
 
-**Versión:** 1.0  
-**Última actualización:** 2024  
-**Sistema:** ERP Lozada - Gestión Integral de Agencia de Viajes
+**Versión:** 2.0  
+**Última actualización:** Diciembre 2025  
+**Sistema:** MAXEVA GESTIÓN - Sistema Integral de Gestión para Agencias de Viajes
 
 ---
 
@@ -28,25 +28,33 @@
     - [IVA](#iva)
     - [Cuentas Financieras](#cuentas-financieras)
     - [Pagos a Operadores](#pagos-a-operadores)
-11. [Alertas](#alertas)
-12. [Reportes](#reportes)
-13. [Configuración](#configuración)
-14. [Flujos de Trabajo Diarios](#flujos-de-trabajo-diarios)
+11. [Mensajes WhatsApp](#mensajes-whatsapp)
+12. [Alertas](#alertas)
+13. [Calendario](#calendario)
+14. [Reportes](#reportes)
+15. [Configuración](#configuración)
+16. [Funciones Avanzadas](#funciones-avanzadas)
+    - [Búsqueda Global (⌘K)](#búsqueda-global-k)
+    - [Notificaciones](#notificaciones)
+    - [Estados de Cuenta](#estados-de-cuenta)
+    - [Generación de PDFs](#generación-de-pdfs)
+    - [Importación de Datos](#importación-de-datos)
+17. [Flujos de Trabajo Diarios](#flujos-de-trabajo-diarios)
 
 ---
 
 ## 🔐 INTRODUCCIÓN
 
-### ¿Qué es ERP Lozada?
+### ¿Qué es MAXEVA GESTIÓN?
 
-ERP Lozada es un sistema integral de gestión para agencias de viajes que permite administrar todo el ciclo de vida de una venta: desde la captación del lead hasta el cierre contable y el pago de comisiones.
+MAXEVA GESTIÓN es un sistema integral de gestión para agencias de viajes que permite administrar todo el ciclo de vida de una venta: desde la captación del lead hasta el cierre contable, el pago de comisiones y la comunicación con clientes vía WhatsApp.
 
 ### Roles del Sistema
 
-- **ADMIN**: Acceso completo a todos los módulos
+- **SUPER_ADMIN**: Acceso total al sistema, gestión de agencias y usuarios
+- **ADMIN**: Acceso completo a todos los módulos de su agencia
 - **SELLER**: Acceso a leads, cotizaciones, operaciones y su propio balance/comisiones
-- **ACCOUNTANT**: Acceso a caja, contabilidad y reportes
-- **OPERATOR_MANAGER**: Acceso a operaciones y pagos a operadores
+- **VIEWER**: Solo lectura, sin permisos de modificación
 
 ---
 
@@ -54,14 +62,31 @@ ERP Lozada es un sistema integral de gestión para agencias de viajes que permit
 
 ### Pasos para Iniciar Sesión
 
-1. Ingresar a la URL del sistema (proporcionada por el administrador)
+1. Ingresar a la URL del sistema: `https://www.maxevagestion.com`
 2. Ingresar email y contraseña
 3. El sistema redirigirá automáticamente según tu rol
 
 ### Cambiar Modo Claro/Oscuro
 
-- En el **sidebar izquierdo**, arriba de "Usuario Desarrollo", encontrarás el botón de cambio de tema
+- En el **sidebar izquierdo**, en la parte inferior, encontrarás el botón de cambio de tema
 - Opciones: Claro, Oscuro, Sistema
+
+### Navegación Principal
+
+El sidebar izquierdo contiene todos los módulos:
+- 📊 Dashboard
+- 🎯 Leads
+- 📄 Cotizaciones
+- ✈️ Operaciones
+- 👥 Clientes
+- 🏨 Operadores
+- 💵 Caja
+- 📈 Contabilidad
+- 💬 Mensajes
+- 🔔 Alertas
+- 📅 Calendario
+- 📊 Reportes
+- ⚙️ Configuración
 
 ---
 
@@ -75,44 +100,56 @@ El Dashboard es la pantalla principal que muestra un resumen ejecutivo de toda l
 
 #### 1. **KPIs Principales (Tarjetas Superiores)**
 
-- **Ingresos Totales**: Suma de todos los ingresos en el período seleccionado
-- **Operaciones Realizadas**: Cantidad de operaciones completadas
+- **Ventas Totales**: Suma de todos los ingresos en el período (formato abreviado: $23.78M)
+- **Total Operaciones**: Cantidad de operaciones en el período
+- **Margen Total**: Suma de márgenes de todas las operaciones
 - **Margen Promedio**: Porcentaje promedio de margen de ganancia
-- **Operaciones Totales**: Contador total de operaciones
 
-#### 2. **Pendientes Clientes / Operadores**
+Cada KPI muestra una **comparación vs período anterior** con flechas verdes (↑ mejora) o rojas (↓ disminución).
 
-- **Pagos Pendientes de Clientes**: Total adeudado por clientes
-- **Pagos Pendientes a Operadores**: Total a pagar a operadores
+#### 2. **Pendientes**
 
-#### 3. **Gráficos**
+- **Pendientes Clientes**: Total por cobrar de clientes (color ámbar)
+- **Pendientes Operadores**: Total a pagar a operadores (color ámbar)
 
-- **Ventas por Vendedor**: Distribución de ventas y márgenes por vendedor
-- **Top Destinos**: Destinos con mayor volumen de ventas y operaciones
-- **Distribución de Ventas**: Gráfico de torta con los 5 destinos principales
-- **Ventas por Región**: Gráfico radar mostrando distribución geográfica
-- **Flujo de Caja**: Evolución de ingresos, egresos y flujo neto en el tiempo
+#### 3. **Cumpleaños del Día** 🎂
+
+Tarjeta especial que muestra clientes que cumplen años hoy:
+- Lista de clientes con su nombre y foto de perfil
+- Botón rápido de **WhatsApp** para enviar felicitación
+- Click en el cliente para ver su perfil completo
+
+#### 4. **Alertas Pendientes** 🔔
+
+Muestra las 5 alertas más urgentes:
+- **Pagos vencidos** (resaltados en ámbar)
+- **Viajes próximos**
+- **Documentos faltantes**
+- **Márgenes bajos**
+- Click en cualquier alerta para ir directamente a resolverla
+
+#### 5. **Próximos Viajes** ✈️
+
+Muestra las 5 operaciones con salidas más próximas:
+- Código de archivo y destino
+- Días restantes (badge de urgencia: rojo < 3 días, ámbar < 7 días)
+- Cantidad de pasajeros
+- Vendedor asignado
+
+#### 6. **Top Vendedores del Mes** 🏆
+
+Ranking de los 5 mejores vendedores:
+- Posición con medalla (oro, plata, bronce)
+- Cantidad de operaciones
+- Margen generado
+- Ventas totales
 
 ### Filtros del Dashboard
 
 1. **Rango de Fechas**: Selecciona el período a visualizar
-   - Puedes elegir fecha desde/hasta
-   - O usar rangos predefinidos (Este mes, Últimos 30 días, etc.)
-
 2. **Agencia**: Filtra por agencia (si tienes múltiples agencias)
-
 3. **Vendedor**: Filtra por vendedor específico
-
-4. **Destino**: Filtra por destino específico
-
-5. **Botón "Limpiar Filtros"**: Restablece todos los filtros a valores por defecto
-
-### ¿Dónde se alimenta la información?
-
-- **Ingresos**: Se calculan desde los pagos marcados como "PAGADOS" en la sección de Pagos
-- **Operaciones**: Se cuentan desde la tabla `operations` con estado `CONFIRMED`
-- **Margen**: Se calcula como: `(ingresos - costos) / ingresos * 100`
-- **Flujo de Caja**: Se genera automáticamente cuando se marcan pagos como pagados en `/cash/payments`
+4. **Botón "Reiniciar filtros"**: Restablece todos los filtros
 
 ---
 
@@ -131,7 +168,6 @@ Tienes dos formas de ver los leads:
 **a) Vista Kanban (Trello)**
 - Muestra los leads organizados por listas de Trello
 - Cada columna representa una lista de Trello
-- Los leads están agrupados por su `trello_list_id`
 - Puedes arrastrar y soltar leads entre columnas para cambiar su estado
 
 **b) Vista Tabla**
@@ -148,72 +184,46 @@ Tienes dos formas de ver los leads:
    - **Teléfono** (obligatorio)
    - **Email** (opcional)
    - **Instagram** (opcional)
-   - **Destino** (obligatorio) - Ejemplo: "París, Francia"
-   - **Región**: Selecciona de la lista (ARGENTINA, CARIBE, BRASIL, EUROPA, EEUU, OTROS, CRUCEROS)
-   - **Agencia**: Selecciona la agencia (si aplica)
-   - **Vendedor Asignado**: Selecciona quién se encargará del lead
-   - **Origen**: Dónde se obtuvo el lead (Web, Referido, Instagram, etc.)
-   - **Notas**: Información adicional sobre el lead
+   - **Destino** (obligatorio)
+   - **Región**: Selecciona de la lista
+   - **Agencia**: Selecciona la agencia
+   - **Vendedor Asignado**: Quién se encargará del lead
+   - **Origen**: Dónde se obtuvo el lead
+   - **Notas**: Información adicional
    - **Tiene depósito recibido?**: Switch para indicar si ya recibiste un pago
 3. Clic en **"Crear Lead"**
 
-**¿Dónde impacta la creación de un Lead?**
+**¿Qué sucede al crear un Lead?**
 
-- Se crea un registro en la tabla `leads`
-- Si tiene depósito recibido, se puede crear un movimiento en Caja (opcional)
-- Si está configurado Trello, se crea una tarjeta en Trello automáticamente
-- Se asigna a un vendedor, quien verá el lead en su lista
+- Se crea un registro en la base de datos
+- Si tiene depósito recibido, se puede crear un movimiento en Caja
+- Si está configurado Trello, se crea una tarjeta automáticamente
+- Se asigna a un vendedor
 
-#### 3. **Editar un Lead**
-
-1. Clic en el nombre del lead (en Kanban o Tabla)
-2. Se abrirá el diálogo de detalles
-3. Clic en el botón **"Editar"**
-4. Modifica los campos necesarios
-5. Clic en **"Guardar Cambios"**
-
-#### 4. **Cambiar Estado de un Lead**
-
-**Estados posibles:**
+#### 3. **Estados de un Lead**
 
 - **NEW**: Nuevo (recién creado)
-- **IN_PROGRESS**: En Progreso (vendedor está trabajando en él)
+- **IN_PROGRESS**: En Progreso
 - **QUOTED**: Cotizado (ya se envió una cotización)
-- **WON**: Ganado (el cliente aceptó y se convirtió en operación)
+- **WON**: Ganado (se convirtió en operación)
 - **LOST**: Perdido (el cliente no siguió adelante)
 
-**Formas de cambiar el estado:**
-
-- **Arrastrar y soltar** en la vista Kanban a otra columna
-- **Editar manualmente** en el diálogo de detalles
-
-#### 5. **Convertir Lead a Operación**
+#### 4. **Convertir Lead a Operación**
 
 Cuando un lead se convierte en venta confirmada:
 
 1. Buscar el lead en la tabla o kanban
 2. Clic en el botón **"Convertir"**
-3. Se abrirá un diálogo donde debes:
-   - Seleccionar la agencia (si aplica)
-   - Seleccionar el vendedor principal
-   - Confirmar los datos del cliente
+3. Confirmar los datos del cliente
 4. Clic en **"Convertir"**
 
 **¿Qué sucede al convertir un Lead?**
 
 - Se crea una nueva **Operación** con estado `CONFIRMED`
+- Se **crea automáticamente un Cliente** (o se asocia uno existente)
 - El lead cambia su estado a `WON`
 - Si el lead tenía depósito, se transfiere a la operación
-- Si había movimientos de caja asociados al lead, se transfieren a la operación
-- Se crea automáticamente un cliente (o se asocia uno existente)
-
-### Filtros de Leads
-
-- **Estado**: Filtra por estado del lead
-- **Vendedor**: Filtra por vendedor asignado
-- **Agencia**: Filtra por agencia
-- **Destino**: Busca por destino específico
-- **Región**: Filtra por región geográfica
+- Si había movimientos de caja asociados al lead, se transfieren
 
 ---
 
@@ -227,82 +237,61 @@ Una cotización es un documento formal que se envía a un cliente potencial con 
 
 #### 1. **Crear una Nueva Cotización**
 
-**Pasos:**
-
-1. Clic en **"+ Nueva Cotización"** (esquina superior derecha)
+1. Clic en **"+ Nueva Cotización"**
 2. Completar el formulario:
-   - **Número de Cotización**: Se genera automáticamente (formato: COT-YYYY-NNNNN)
+   - **Número de Cotización**: Se genera automáticamente
    - **Cliente**: Seleccionar cliente existente o crear uno nuevo
    - **Vendedor**: Quien está realizando la cotización
    - **Destino**: Destino del viaje
    - **Fecha de Viaje**: Fecha estimada de inicio
-   - **Fecha de Vencimiento**: Hasta cuándo es válida la cotización
+   - **Fecha de Vencimiento**: Hasta cuándo es válida
    - **Moneda**: ARS o USD
-   - **Servicios**: Agregar servicios incluidos (hotel, vuelo, excursiones, etc.)
-     - Clic en **"+ Agregar Servicio"**
-     - Completar: Descripción, Cantidad, Precio Unitario, Moneda
-   - **Descuentos**: Opcional, aplicar descuentos por porcentaje o monto fijo
-   - **Notas**: Información adicional para el cliente
-3. Clic en **"Crear Cotización"**
+   - **Seleccionar Tarifario**: Usa el **selector de tarifas** para pre-cargar precios
+   - **Servicios**: Agregar servicios incluidos
+   - **Notas**: Información adicional
 
-**Estados de Cotización:**
+#### 2. **Selector de Tarifas** 📋
 
-- **DRAFT**: Borrador (aún se está editando)
-- **SENT**: Enviada (ya se envió al cliente)
+Al crear cotizaciones, puedes usar tarifarios existentes:
+
+1. Clic en **"Seleccionar Tarifa"**
+2. Se abre un diálogo con tarifarios disponibles
+3. Selecciona el tarifario y la tarifa específica
+4. Los precios se pre-cargan automáticamente
+
+#### 3. **Estados de Cotización**
+
+- **DRAFT**: Borrador
+- **SENT**: Enviada al cliente
 - **PENDING_APPROVAL**: Pendiente de Aprobación
 - **APPROVED**: Aprobada
 - **REJECTED**: Rechazada
-- **EXPIRED**: Expirada (pasó la fecha de vencimiento)
-- **CONVERTED**: Convertida (se convirtió en operación)
+- **EXPIRED**: Expirada
+- **CONVERTED**: Convertida en operación
 
-#### 2. **Enviar Cotización al Cliente**
+#### 4. **Enviar Cotización por Email** 📧
 
-1. Buscar la cotización en la lista
-2. Clic en el menú de acciones (tres puntos)
-3. Seleccionar **"Marcar como Enviada"**
-4. El estado cambiará a `SENT`
+1. Abrir la cotización
+2. Clic en **"Enviar por Email"**
+3. Se genera automáticamente un **PDF** de la cotización
+4. El cliente recibe el email con el PDF adjunto
 
-#### 3. **Convertir Cotización en Operación**
+#### 5. **Descargar PDF de Cotización** 📑
 
-Cuando el cliente acepta la cotización:
+1. Abrir la cotización
+2. Clic en **"Descargar PDF"**
+3. Se descarga el documento con formato profesional
 
-1. Buscar la cotización (debe estar en estado `APPROVED` o `SENT`)
-2. Clic en el menú de acciones
-3. Seleccionar **"Convertir en Operación"**
-4. Confirmar los datos
-5. Clic en **"Convertir"**
+#### 6. **Convertir Cotización en Operación**
 
-**¿Qué sucede al convertir?**
-
-- Se crea una nueva **Operación** con estado `CONFIRMED`
-- La cotización cambia a estado `CONVERTED`
-- Se copian todos los servicios y precios a la operación
-- Se asocian los clientes de la cotización a la operación
-
-#### 4. **Editar Cotización**
-
-Solo se pueden editar cotizaciones en estado `DRAFT`:
-
-1. Clic en la cotización
-2. Clic en **"Editar"**
-3. Modificar los campos necesarios
-4. Clic en **"Guardar Cambios"**
-
-#### 5. **Duplicar Cotización**
-
-Para crear una cotización similar a una existente:
-
-1. Menú de acciones → **"Duplicar"**
-2. Se creará una copia en estado `DRAFT`
-3. Editar y ajustar según sea necesario
-
-### Filtros de Cotizaciones
-
-- **Estado**: Filtra por estado de cotización
-- **Vendedor**: Filtra por vendedor
-- **Cliente**: Busca por nombre de cliente
-- **Fecha de Vencimiento**: Filtra por rango de fechas
-- **Moneda**: ARS o USD
+1. Buscar la cotización (estado `APPROVED` o `SENT`)
+2. Clic en **"Convertir en Operación"**
+3. Confirmar los datos
+4. Se crea automáticamente:
+   - Una nueva operación
+   - Un cliente (si no existía)
+   - Todos los servicios copiados
+   - **Reserva de cupos** (si había cupos asociados)
 
 ---
 
@@ -317,148 +306,71 @@ Una Operación es una venta confirmada. Representa un viaje vendido que debe ser
 #### 1. **Ver Lista de Operaciones**
 
 La lista muestra:
-- **Código de Archivo**: Identificador único (ej: FILE-2024-00001)
+- **Código de Archivo**: Identificador único (ej: OP12002-2025)
 - **Estado**: CONFIRMED, CANCELLED, COMPLETED
 - **Cliente(s)**: Nombre(s) del(os) cliente(s)
 - **Destino**: Destino del viaje
 - **Fecha de Viaje**: Fecha de inicio
 - **Vendedor**: Quien realizó la venta
-- **Total de Venta**: Monto total en moneda de venta
+- **Total de Venta**: Monto total
 - **Margen**: Ganancia calculada
 
-#### 2. **Crear una Operación Manualmente**
+**Acciones Rápidas en la Tabla:**
+- **Editar**: Botón de lápiz para editar la operación rápidamente
+- **Ver**: Click en la fila para ver detalles completos
 
-Normalmente las operaciones se crean al convertir un Lead o Cotización, pero puedes crearlas manualmente:
+#### 2. **Detalle de una Operación**
 
-1. Clic en **"+ Nueva Operación"**
-2. Completar:
-   - **Tipo**: HOTEL, PACKAGE, VUELO, OTROS
-   - **Producto**: HOTEL, PAQUETE, VUELO, CRUCERO, etc.
-   - **Cliente(s)**: Agregar uno o más clientes
-   - **Vendedor Principal**: Quien realizó la venta
-   - **Destino**: Destino del viaje
-   - **Fecha de Check-in**: Fecha de inicio del viaje
-   - **Fecha de Check-out**: Fecha de finalización
-   - **Moneda de Venta**: ARS o USD
-   - **Moneda de Costo**: ARS o USD (moneda del operador)
-   - **Servicios**: Agregar servicios incluidos con sus costos
-   - **Precio de Venta Total**: Monto que paga el cliente
-   - **Costo del Operador**: Monto que se paga al operador
-3. Clic en **"Crear Operación"**
+Al hacer clic en una operación, verás:
 
-#### 3. **Ver Detalles de una Operación**
+**Información General:**
+- Tipo, estado, fechas, destino
+- **Botón Editar** (abre diálogo de edición)
 
-Clic en cualquier operación para ver:
-
-- **Información General**: Tipo, estado, fechas, destino
-- **Clientes**: Lista de pasajeros (Principal y Acompañantes)
+**Pestañas de Información:**
+- **Clientes**: Lista de pasajeros con botón WhatsApp para cada uno
 - **Servicios**: Detalle de servicios incluidos
 - **Pagos de Clientes**: Cronograma de pagos esperados
 - **Pagos a Operadores**: Cronograma de pagos a realizar
 - **Movimientos de Caja**: Movimientos asociados
-- **Información Contable**: Ingresos, gastos, márgenes, IVA
-- **Documentos**: Documentos asociados (pasaportes, reservas, etc.)
+- **Contabilidad**: Ingresos, gastos, márgenes, IVA
+- **Documentos**: Documentos asociados
+- **Mensajes**: Historial de mensajes WhatsApp enviados
+
+#### 3. **Editar una Operación**
+
+1. Abrir los detalles de la operación
+2. Clic en **"Editar"** (botón con ícono de lápiz)
+3. Se abre un **diálogo de edición** con:
+   - Información básica (destino, fechas, etc.)
+   - Precios de venta y costo
+   - **Cálculo automático de margen** en tiempo real
+4. Clic en **"Guardar Cambios"**
 
 #### 4. **Gestionar Pagos de Clientes**
 
-En la sección de pagos de la operación:
-
-**Agregar un Pago Esperado:**
-
-1. En la sección **"Pagos de Clientes"**, clic en **"+ Agregar Pago"**
-2. Completar:
-   - **Monto**: Cantidad a pagar
-   - **Moneda**: ARS o USD
-   - **Fecha de Vencimiento**: Cuándo debe pagar el cliente
-   - **Método de Pago**: Efectivo, Transferencia, Mercado Pago, etc.
-   - **Referencia**: Número de comprobante o referencia
-3. Clic en **"Agregar"**
-
 **Marcar un Pago como Pagado:**
 
-1. Buscar el pago en la lista (estado: PENDING)
-2. Clic en el botón **"Marcar como Pagado"**
+1. En la sección "Pagos de Clientes", buscar el pago pendiente
+2. Clic en **"Marcar como Pagado"**
 3. Completar:
-   - **Fecha de Pago**: Fecha real en que se recibió
-   - **Método de Pago Real**: Confirmar o cambiar el método
+   - **Fecha de Pago**: Fecha real
    - **Referencia**: Número de comprobante
 4. Clic en **"Confirmar Pago"**
 
-**¿Qué sucede al marcar un pago como pagado?**
+**¿Qué sucede automáticamente?**
 
 - El pago cambia de estado `PENDING` a `PAID`
-- Se crea automáticamente un **movimiento de caja** (INCOME) en la moneda correspondiente
-- Se crea un **movimiento contable** (ledger_movement) tipo `INCOME`
-- Si la moneda es diferente a ARS, se calcula el equivalente en ARS usando el tipo de cambio del día
-- Se actualiza el balance de la cuenta financiera correspondiente
-- Se genera un movimiento de flujo de caja visible en el Dashboard
+- Se crea un **movimiento de caja** (INCOME)
+- Se crea un **movimiento contable** (ledger_movement)
+- Se genera un **mensaje de WhatsApp** de confirmación de pago (si está activo)
+- Se puede calcular **comisión** para el vendedor
 
-#### 5. **Gestionar Pagos a Operadores**
+#### 5. **Generar Voucher PDF** 🎫
 
-En la sección de pagos a operadores:
-
-**Agregar un Pago a Realizar:**
-
-1. En la sección **"Pagos a Operadores"**, clic en **"+ Agregar Pago"**
-2. Completar:
-   - **Operador**: Seleccionar el operador
-   - **Monto**: Cantidad a pagar
-   - **Moneda**: ARS o USD
-   - **Fecha de Vencimiento**: Cuándo debe pagarse
-   - **Método de Pago**: Efectivo, Transferencia, etc.
-   - **Concepto**: Descripción del pago (ej: "Pago de hotel")
-3. Clic en **"Agregar"**
-
-**Registrar el Pago Realizado:**
-
-1. Buscar el pago pendiente
-2. Clic en **"Registrar Pago"**
-3. Completar:
-   - **Fecha de Pago**: Fecha real de pago
-   - **Método de Pago Real**: Confirmar o cambiar
-   - **Referencia**: Número de transferencia o comprobante
-   - **Caja de Origen**: Desde qué caja se pagó (si aplica)
-4. Clic en **"Registrar Pago"**
-
-**¿Qué sucede al registrar un pago a operador?**
-
-- El pago cambia a estado `PAID`
-- Se crea un **movimiento de caja** (EXPENSE) en la moneda correspondiente
-- Se crea un **movimiento contable** tipo `EXPENSE` o `OPERATOR_PAYMENT`
-- Si la moneda es diferente a ARS, se calcula el equivalente en ARS
-- Se actualiza el balance de la cuenta financiera
-- Se actualiza el flujo de caja
-
-#### 6. **Editar una Operación**
-
-Solo operaciones en estado `CONFIRMED` pueden editarse:
-
-1. Abrir los detalles de la operación
-2. Clic en **"Editar"**
-3. Modificar los campos necesarios
-4. Clic en **"Guardar Cambios"**
-
-#### 7. **Cancelar una Operación**
-
-1. En los detalles, clic en **"Cancelar Operación"**
-2. Confirmar la cancelación
-3. La operación cambiará a estado `CANCELLED`
-
-**Impacto de cancelar:**
-
-- Todos los pagos pendientes de clientes se cancelan
-- Los pagos ya recibidos pueden ser reembolsados (se debe gestionar manualmente)
-- Los pagos a operadores pendientes se cancelan
-- Se mantiene el historial para referencia
-
-### Filtros de Operaciones
-
-- **Estado**: CONFIRMED, CANCELLED, COMPLETED
-- **Vendedor**: Filtra por vendedor
-- **Cliente**: Busca por nombre de cliente
-- **Destino**: Filtra por destino
-- **Fecha de Viaje**: Rango de fechas
-- **Operador**: Filtra por operador asociado
+1. En el detalle de la operación
+2. Clic en **"Descargar Voucher"**
+3. Se genera un PDF profesional con todos los detalles del viaje
 
 ---
 
@@ -466,53 +378,12 @@ Solo operaciones en estado `CONFIRMED` pueden editarse:
 
 ### ¿Qué es un Tarifario?
 
-Un Tarifario es un catálogo de precios de servicios (hoteles, paquetes, etc.) que los operadores proporcionan a la agencia.
+Un Tarifario es un catálogo de precios de servicios que los operadores proporcionan a la agencia.
 
-### Funcionalidades de Tarifarios
+### Uso de Tarifarios
 
-#### 1. **Ver Lista de Tarifarios**
-
-La lista muestra:
-- **Nombre**: Nombre descriptivo del tarifario
-- **Operador**: Operador que proporciona el tarifario
-- **Moneda**: Moneda de los precios
-- **Fecha de Inicio/Vencimiento**: Período de validez
-- **Activo**: Si está actualmente en uso
-
-#### 2. **Crear un Nuevo Tarifario**
-
-1. Clic en **"+ Nuevo Tarifario"**
-2. Completar:
-   - **Nombre**: Ej. "Hoteles Europa 2024"
-   - **Operador**: Seleccionar operador
-   - **Moneda**: ARS o USD
-   - **Fecha de Inicio**: Desde cuándo es válido
-   - **Fecha de Vencimiento**: Hasta cuándo es válido
-   - **Tarifario Activo**: Switch para activar/desactivar
-3. Clic en **"Crear Tarifario"**
-
-**Uso de Tarifarios:**
-
-Los tarifarios se usan como referencia al crear cotizaciones y operaciones, pero los precios se ingresan manualmente en cada operación. El tarifario sirve como guía de precios disponibles.
-
-#### 3. **Editar Tarifario**
-
-1. Clic en el tarifario
-2. Clic en **"Editar"**
-3. Modificar los campos
-4. Clic en **"Guardar Cambios"**
-
-#### 4. **Activar/Desactivar Tarifario**
-
-- Switch en el listado o en el detalle
-- Solo los tarifarios activos aparecen como opciones al crear operaciones
-
-### Filtros de Tarifarios
-
-- **Operador**: Filtra por operador
-- **Moneda**: ARS o USD
-- **Activo**: Solo activos o todos
-- **Fecha**: Filtra por rango de validez
+1. **En Cotizaciones**: Al crear una cotización, puedes seleccionar una tarifa del tarifario para pre-cargar precios
+2. **En Operaciones**: Sirve como referencia de precios
 
 ---
 
@@ -524,73 +395,19 @@ Un Cupo es una disponibilidad limitada de un servicio (habitaciones de hotel, pl
 
 ### Funcionalidades de Cupos
 
-#### 1. **Ver Lista de Cupos**
+#### 1. **Selector de Cupos**
 
-La lista muestra:
-- **Servicio**: Nombre del servicio (ej: "Hotel XYZ - Habitación Doble")
-- **Operador**: Operador que provee el cupo
-- **Fecha de Check-in**: Fecha de inicio
-- **Fecha de Check-out**: Fecha de finalización
-- **Cantidad Total**: Total de cupos disponibles
-- **Cantidad Reservada**: Cuántos están reservados
-- **Cantidad Disponible**: Cuántos quedan libres
-- **Estado**: Activo o Inactivo
+Al crear operaciones, puedes reservar cupos:
 
-#### 2. **Crear un Nuevo Cupo**
-
-1. Clic en **"+ Nuevo Cupo"**
-2. Completar:
-   - **Operador**: Seleccionar operador
-   - **Servicio**: Descripción del servicio
-   - **Fecha de Check-in**: Fecha de inicio
-   - **Fecha de Check-out**: Fecha de finalización
-   - **Cantidad Total**: Total de cupos disponibles
-   - **Moneda**: ARS o USD
-   - **Precio Unitario**: Precio por cupo
-   - **Cupo Activo**: Switch para activar/desactivar
-3. Clic en **"Crear Cupo"**
-
-#### 3. **Reservar un Cupo**
-
-Cuando tienes una operación confirmada y necesitas reservar cupos:
-
-1. Ir a la operación
-2. En la sección de servicios, asociar un cupo
-3. O desde la lista de cupos:
-   - Clic en el cupo
-   - Clic en **"Reservar"**
-   - Seleccionar la operación
-   - Ingresar cantidad a reservar
-   - Clic en **"Confirmar Reserva"**
+1. Clic en **"Seleccionar Cupo"**
+2. Ver disponibilidad en tiempo real
+3. Reservar cantidad necesaria
 
 **¿Qué sucede al reservar?**
 
-- La cantidad reservada aumenta
 - La cantidad disponible disminuye
 - El cupo queda asociado a la operación
 - Si se cancela la operación, el cupo se libera automáticamente
-
-#### 4. **Liberar un Cupo**
-
-Si necesitas liberar un cupo reservado:
-
-1. Clic en el cupo
-2. Ver las reservas activas
-3. Clic en **"Liberar"** junto a la reserva
-4. Confirmar la liberación
-
-**¿Qué sucede al liberar?**
-
-- La cantidad reservada disminuye
-- La cantidad disponible aumenta
-- El cupo queda disponible para otra operación
-
-### Filtros de Cupos
-
-- **Operador**: Filtra por operador
-- **Fecha**: Filtra por rango de fechas de check-in
-- **Estado**: Activo o Inactivo
-- **Disponibilidad**: Solo disponibles, solo reservados, o todos
 
 ---
 
@@ -598,70 +415,62 @@ Si necesitas liberar un cupo reservado:
 
 ### ¿Qué es un Cliente?
 
-Un Cliente es una persona física o jurídica que ha realizado al menos una compra o que está registrado en el sistema.
+Un Cliente es una persona que ha realizado al menos una compra o está registrado en el sistema.
 
 ### Funcionalidades de Clientes
 
-#### 1. **Ver Lista de Clientes**
+#### 1. **Lista de Clientes**
 
-La lista muestra:
+La tabla muestra:
 - **Nombre**: Nombre completo
 - **Email**: Email de contacto
 - **Teléfono**: Número de teléfono
-- **Operaciones**: Cantidad de operaciones realizadas
-- **Total Gastado**: Suma de todas sus compras
+- **Instagram**: Handle de Instagram
+- **Operaciones**: Cantidad de operaciones
+- **Acciones**:
+  - **WhatsApp**: Botón para enviar mensaje rápido
+  - **Editar**: Editar datos del cliente
 
 #### 2. **Crear un Nuevo Cliente**
 
-1. Clic en **"+ Nuevo Cliente"**
+1. Clic en **"Nuevo Cliente"**
 2. Completar:
-   - **Nombre** (obligatorio)
-   - **Email** (opcional pero recomendado)
+   - **Nombre** y **Apellido** (obligatorio)
+   - **Email** (obligatorio)
    - **Teléfono** (obligatorio)
-   - **Documento**: DNI, Pasaporte, etc. (opcional)
-   - **Dirección**: Dirección completa (opcional)
-   - **Tipo**: Persona Física o Jurídica
-   - **Notas**: Información adicional
+   - **Instagram** (opcional)
+   - **Documento**: DNI, Pasaporte, etc.
+   - **Fecha de Nacimiento**: Para alertas de cumpleaños
+   - **Nacionalidad**
 3. Clic en **"Crear Cliente"**
 
-**Nota:** Los clientes también se crean automáticamente cuando:
-- Conviertes un Lead a Operación
-- Conviertes una Cotización a Operación
+#### 3. **Detalle de un Cliente**
 
-#### 3. **Ver Detalles de un Cliente**
+Al hacer clic en un cliente, verás:
 
-Clic en cualquier cliente para ver:
-- **Información de Contacto**: Todos los datos del cliente
-- **Historial de Operaciones**: Lista de todas sus operaciones
-- **Historial de Pagos**: Resumen de pagos realizados
-- **Historial de Cotizaciones**: Cotizaciones enviadas
+**Pestañas:**
+- **Información**: Todos los datos de contacto
+- **Operaciones**: Lista de todas sus operaciones
+- **Estado de Cuenta**: Balance y pagos pendientes
+- **Mensajes**: Historial de mensajes WhatsApp enviados
 
-#### 4. **Editar Cliente**
+**Acciones:**
+- **Editar**: Modificar datos del cliente
+- **WhatsApp Rápido**: Enviar mensaje directo
+- **Enviar Estado de Cuenta**: Enviar resumen por email
 
-1. Abrir detalles del cliente
-2. Clic en **"Editar"**
-3. Modificar los campos necesarios
-4. Clic en **"Guardar Cambios"**
+#### 4. **Eliminar un Cliente**
 
-#### 5. **Asociar Clientes a Operación**
+- Solo se pueden eliminar clientes **sin operaciones asociadas**
+- Si tiene operaciones, primero cancela o elimina las operaciones
 
-En una operación, puedes agregar:
-- **Cliente Principal**: El que realiza el pago
-- **Acompañantes**: Otros pasajeros en la misma operación
+#### 5. **Estado de Cuenta del Cliente** 📊
 
-**Pasos:**
-1. En la operación, sección "Clientes"
-2. Clic en **"+ Agregar Cliente"**
-3. Seleccionar cliente existente o crear uno nuevo
-4. Seleccionar rol: Principal o Acompañante
-5. Clic en **"Agregar"**
-
-### Filtros de Clientes
-
-- **Nombre**: Busca por nombre
-- **Email**: Busca por email
-- **Teléfono**: Busca por teléfono
-- **Tipo**: Persona Física o Jurídica
+En la pestaña "Estado de Cuenta" del cliente:
+- **Balance Total**: Total pendiente de pago
+- **Historial de Pagos**: Todos los pagos realizados
+- **Próximos Vencimientos**: Pagos por vencer
+- **Botón "Enviar Estado de Cuenta"**: Envía un PDF por email
 
 ---
 
@@ -669,56 +478,41 @@ En una operación, puedes agregar:
 
 ### ¿Qué es un Operador?
 
-Un Operador es una empresa proveedora de servicios turísticos (hoteles, mayoristas, líneas aéreas, etc.) con quien la agencia trabaja.
+Un Operador es una empresa proveedora de servicios turísticos con quien la agencia trabaja.
 
 ### Funcionalidades de Operadores
 
-#### 1. **Ver Lista de Operadores**
+#### 1. **Lista de Operadores**
 
-La lista muestra:
+Muestra:
 - **Nombre**: Nombre de la empresa
 - **Contacto**: Persona de contacto
 - **Email**: Email de contacto
-- **Teléfono**: Teléfono de contacto
-- **Moneda Principal**: Moneda en que facturan
-- **Operaciones**: Cantidad de operaciones realizadas
+- **Teléfono**: Teléfono
+- **Límite de Crédito**: Límite de crédito asignado
 
 #### 2. **Crear un Nuevo Operador**
 
-1. Clic en **"+ Nuevo Operador"**
+1. Clic en **"Nuevo Operador"**
 2. Completar:
    - **Nombre** (obligatorio)
    - **Tipo**: HOTEL, MAYORISTA, AEROLINEA, OTROS
-   - **Email** (obligatorio)
-   - **Teléfono** (obligatorio)
-   - **Contacto**: Nombre de la persona de contacto
-   - **Moneda Principal**: ARS o USD
-   - **Dirección**: Dirección completa
-   - **CUIT/CUIL**: Para facturación
-   - **Condición de Pago**: Plazo de pago (ej: "30 días")
-   - **Notas**: Información adicional
+   - **Email** y **Teléfono**
+   - **Contacto**: Nombre de la persona
+   - **Límite de Crédito**: Monto máximo de deuda
 3. Clic en **"Crear Operador"**
 
-#### 3. **Ver Detalles de un Operador**
+#### 3. **Detalle de un Operador**
 
-Clic en cualquier operador para ver:
-- **Información de Contacto**: Todos los datos
-- **Operaciones Asociadas**: Lista de operaciones con este operador
-- **Pagos Realizados**: Historial de pagos
-- **Pagos Pendientes**: Total adeudado
+**Pestañas:**
+- **Información**: Datos de contacto
+- **Operaciones**: Lista de operaciones con este operador
+- **Estado de Cuenta**: Balance y pagos pendientes/realizados
 
-#### 4. **Editar Operador**
+#### 4. **Editar/Eliminar Operador**
 
-1. Abrir detalles del operador
-2. Clic en **"Editar"**
-3. Modificar los campos
-4. Clic en **"Guardar Cambios"**
-
-### Filtros de Operadores
-
-- **Nombre**: Busca por nombre
-- **Tipo**: Filtra por tipo de operador
-- **Moneda**: Filtra por moneda principal
+- **Editar**: Clic en botón "Editar" en el detalle
+- **Eliminar**: Solo si no tiene operaciones asociadas
 
 ---
 
@@ -726,399 +520,160 @@ Clic en cualquier operador para ver:
 
 ### ¿Qué es Caja?
 
-Caja gestiona todos los movimientos de dinero entrante y saliente de la agencia, organizados por cajas físicas y monedas.
+Caja gestiona todos los movimientos de dinero entrante y saliente de la agencia.
 
 ### Dashboard de Caja
 
-#### ¿Qué muestra el Dashboard de Caja?
-
-- **Resumen por Moneda**: 
-  - Total en Caja (ARS)
-  - Total en Caja (USD)
-  - Total de Ingresos del período
-  - Total de Egresos del período
-  - Flujo Neto (Ingresos - Egresos)
-
-- **Gráfico de Flujo de Caja**: Evolución diaria/semanal/mensual
-- **Últimos Movimientos**: Lista de los movimientos más recientes
-
-#### Filtros
-
-- **Rango de Fechas**: Selecciona el período
-- **Moneda**: ARS o USD
-- **Tipo**: Ingreso, Egreso, o ambos
-- **Caja**: Filtra por caja específica
-
----
+- **Total en Caja (ARS)**: Balance en pesos
+- **Total en Caja (USD)**: Balance en dólares
+- **Ingresos del Período**: Total de entradas
+- **Egresos del Período**: Total de salidas
+- **Flujo Neto**: Diferencia
 
 ### Movimientos
 
-#### ¿Qué es un Movimiento de Caja?
+#### Crear un Movimiento Manual
 
-Un movimiento de caja registra un ingreso o egreso de dinero. Puede estar asociado a una operación o ser independiente (gastos operativos, ingresos varios, etc.).
-
-#### 1. **Ver Lista de Movimientos**
-
-La lista muestra:
-- **Fecha**: Fecha del movimiento
-- **Tipo**: INCOME (Ingreso) o EXPENSE (Egreso)
-- **Categoría**: Categoría del movimiento
-- **Monto**: Cantidad en la moneda original
-- **Moneda**: ARS o USD
-- **Caja**: En qué caja se registró
-- **Operación**: Si está asociado a una operación
-- **Notas**: Descripción adicional
-
-#### 2. **Crear un Movimiento Manual**
-
-Para registrar movimientos que NO están asociados a operaciones (gastos operativos, ingresos varios, etc.):
+Para gastos operativos o ingresos varios no asociados a operaciones:
 
 1. Clic en **"+ Nuevo Movimiento"**
 2. Completar:
    - **Tipo**: INCOME o EXPENSE
-   - **Categoría**: Seleccionar o escribir categoría
-     - Ejemplos de ingresos: "Ingreso Varios", "Intereses", "Reembolso"
-     - Ejemplos de egresos: "Alquiler", "Servicios", "Sueldos", "Marketing"
-   - **Monto**: Cantidad
-   - **Moneda**: ARS o USD
-   - **Fecha**: Fecha del movimiento
-   - **Caja**: Seleccionar la caja (si hay múltiples)
-   - **Operación**: Dejar vacío si NO está asociado a una operación
-   - **Es Turístico?**: 
-     - **SÍ**: Movimiento relacionado con la actividad turística (por defecto)
-     - **NO**: Movimiento administrativo/operativo
+   - **Categoría**: Seleccionar categoría
+   - **Monto** y **Moneda**
+   - **Fecha**
    - **Notas**: Descripción detallada
 3. Clic en **"Crear Movimiento"**
 
-**¿Qué sucede al crear un movimiento?**
-
-- Se registra en la tabla `cash_movements`
-- Se actualiza el balance de la caja correspondiente
-- Si es movimiento turístico, se crea un movimiento contable (ledger_movement)
-- Si NO es turístico, se crea un movimiento contable con categoría específica
-- Se actualiza el flujo de caja en el Dashboard
-
-#### 3. **Editar un Movimiento**
-
-Solo se pueden editar movimientos que NO están asociados a operaciones:
-
-1. Buscar el movimiento
-2. Clic en **"Editar"**
-3. Modificar los campos necesarios
-4. Clic en **"Guardar Cambios"**
-
-**Nota:** Los movimientos generados automáticamente al marcar pagos como pagados NO se pueden editar manualmente para mantener la trazabilidad.
-
-#### 4. **Eliminar un Movimiento**
-
-Solo movimientos manuales pueden eliminarse:
-
-1. Clic en el movimiento
-2. Clic en **"Eliminar"**
-3. Confirmar eliminación
-
-**Impacto de eliminar:**
-
-- Se revierte el balance de la caja
-- Se elimina el movimiento contable asociado (si existe)
-- Se actualiza el flujo de caja
-
-#### 5. **Movimientos Automáticos**
-
-Los siguientes movimientos se crean automáticamente:
-
-**Al marcar un pago de cliente como pagado:**
-- Tipo: INCOME
-- Categoría: "Pago de Cliente"
-- Monto: Monto del pago
-- Moneda: Moneda del pago
-- Asociado a: La operación correspondiente
-
-**Al registrar un pago a operador:**
-- Tipo: EXPENSE
-- Categoría: "Pago a Operador"
-- Monto: Monto del pago
-- Moneda: Moneda del pago
-- Asociado a: La operación correspondiente
-
-### Filtros de Movimientos
-
-- **Tipo**: INCOME, EXPENSE, o ambos
-- **Categoría**: Filtra por categoría
-- **Moneda**: ARS o USD
-- **Caja**: Filtra por caja específica
-- **Rango de Fechas**: Selecciona período
-- **Operación**: Busca movimientos de una operación específica
-
----
-
 ### Pagos
 
-#### ¿Qué es la sección de Pagos?
-
-Esta sección centraliza TODOS los pagos esperados y realizados, tanto de clientes como a operadores, para facilitar el seguimiento y la gestión.
-
-#### 1. **Ver Lista de Pagos**
-
-La lista muestra:
-- **Tipo**: Pago de Cliente o Pago a Operador
-- **Operación**: Operación asociada
-- **Cliente/Operador**: Quien paga o a quien se paga
-- **Monto**: Cantidad
-- **Moneda**: ARS o USD
-- **Fecha de Vencimiento**: Cuándo debe pagarse/recibirse
-- **Estado**: PENDING, PAID, OVERDUE
-- **Fecha de Pago**: Si ya fue pagado
-
-#### 2. **Filtros de Pagos**
-
-- **Tipo**: Cliente, Operador, o ambos
-- **Estado**: Pending, Paid, Overdue, o todos
-- **Moneda**: ARS o USD
-- **Rango de Fechas**: Por fecha de vencimiento
-- **Operación**: Busca pagos de una operación específica
-
-#### 3. **Marcar Pago como Pagado**
-
-**Para pagos de clientes:**
-
-1. Buscar el pago en estado PENDING
-2. Clic en **"Marcar como Pagado"**
-3. Completar:
-   - **Fecha de Pago**: Fecha real de recepción
-   - **Método de Pago**: Confirmar o cambiar
-   - **Referencia**: Número de comprobante
-   - **Caja**: En qué caja se depositó
-4. Clic en **"Confirmar"**
-
-**Para pagos a operadores:**
-
-1. Buscar el pago pendiente
-2. Clic en **"Registrar Pago"**
-3. Completar:
-   - **Fecha de Pago**: Fecha real de pago
-   - **Método de Pago**: Transferencia, Efectivo, etc.
-   - **Referencia**: Número de transferencia
-   - **Caja de Origen**: Desde qué caja se pagó
-4. Clic en **"Confirmar"**
-
-**Impacto detallado de marcar como pagado:**
-
-1. **Movimiento de Caja:**
-   - Se crea un registro en `cash_movements`
-   - Se actualiza el balance de la caja
-
-2. **Movimiento Contable:**
-   - Se crea un `ledger_movement` tipo INCOME o EXPENSE
-   - Se registra en la cuenta financiera correspondiente
-   - Si la moneda es diferente a ARS, se calcula el equivalente usando el tipo de cambio del día
-   - Se actualiza el balance de la cuenta
-
-3. **IVA (si aplica):**
-   - Si es un pago de cliente, se calcula el IVA de la venta
-   - Si es un pago a operador, se calcula el IVA de la compra (si el operador está inscripto)
-
-4. **Flujo de Caja:**
-   - Se actualiza el gráfico de flujo de caja en el Dashboard
-   - Se incluye en los reportes financieros
-
-5. **Alertas:**
-   - Si había una alerta por pago vencido, se resuelve automáticamente
+Centraliza TODOS los pagos esperados y realizados:
+- Pagos de clientes
+- Pagos a operadores
+- Filtros por estado: PENDING, PAID, OVERDUE
 
 ---
 
 ## 📊 CONTABILIDAD
 
-### ¿Qué es Contabilidad?
-
-La contabilidad registra todos los movimientos financieros de manera estructurada para generar reportes, calcular IVA, y mantener un libro mayor completo.
-
 ### Libro Mayor
 
-#### ¿Qué es el Libro Mayor?
-
-El Libro Mayor es el registro cronológico de TODOS los movimientos contables del negocio. Cada movimiento financiero genera una entrada aquí.
-
-#### ¿Qué muestra el Libro Mayor?
-
-La lista muestra todos los movimientos contables:
-- **Fecha**: Fecha del movimiento
-- **Tipo**: INCOME, EXPENSE, FX_GAIN, FX_LOSS, COMMISSION, OPERATOR_PAYMENT
-- **Concepto**: Descripción del movimiento
-- **Cuenta**: Cuenta financiera afectada
-- **Monto Original**: Monto en moneda original
-- **Monto ARS**: Monto equivalente en pesos argentinos
-- **Tipo de Cambio**: Tasa usada (si aplica)
-- **Operación**: Si está asociado a una operación
-
-#### ¿De dónde vienen los movimientos?
-
-Los movimientos se crean automáticamente cuando:
-
-1. **Marcas un pago de cliente como pagado:**
-   - Tipo: INCOME
-   - Concepto: "Pago de Cliente - [Nombre Operación]"
-   - Cuenta: Cuenta de Ingresos de Venta
-   - Monto: Monto del pago convertido a ARS
-
-2. **Registras un pago a operador:**
-   - Tipo: EXPENSE o OPERATOR_PAYMENT
-   - Concepto: "Pago a Operador - [Nombre Operador]"
-   - Cuenta: Cuenta de Gastos de Operación
-   - Monto: Monto del pago convertido a ARS
-
-3. **Creas un movimiento de caja manual:**
-   - Tipo: INCOME o EXPENSE según corresponda
-   - Concepto: Categoría del movimiento
-   - Cuenta: Según la categoría
-   - Monto: Monto en ARS
-
-4. **Hay diferencia cambiaria:**
-   - Tipo: FX_GAIN o FX_LOSS
-   - Concepto: "Diferencia Cambiaria"
-   - Se calcula cuando el tipo de cambio de pago difiere del de venta
-
-5. **Pagas una comisión:**
-   - Tipo: COMMISSION
-   - Concepto: "Pago de Comisión - [Nombre Vendedor]"
-   - Cuenta: Cuenta de Gastos de Comisiones
-
-#### Conversión a ARS
-
-**IMPORTANTE:** Todos los movimientos se registran en ARS equivalentes:
-
-- Si el movimiento es en USD:
-  1. Se busca el tipo de cambio del día
-  2. Se multiplica: `monto_usd * tipo_cambio = monto_ars`
-  3. Se registra ambos: `amount_original` (USD) y `amount_ars_equivalent` (ARS)
-
-- Si el movimiento es en ARS:
-  - Se registra el mismo monto en ambos campos
-
-#### Filtros del Libro Mayor
-
-- **Tipo**: Filtra por tipo de movimiento
-- **Cuenta**: Filtra por cuenta financiera
-- **Rango de Fechas**: Selecciona período
-- **Operación**: Busca movimientos de una operación
-- **Vendedor**: Filtra movimientos por vendedor
-- **Operador**: Filtra movimientos por operador
-
----
+Registro cronológico de TODOS los movimientos contables:
+- **Tipo**: INCOME, EXPENSE, FX_GAIN, FX_LOSS, COMMISSION
+- **Monto Original**: En moneda original
+- **Monto ARS**: Equivalente en pesos
 
 ### IVA
 
-#### ¿Qué es la sección de IVA?
-
-Esta sección calcula y muestra todos los registros de IVA (Impuesto al Valor Agregado) tanto de ventas como de compras.
-
-#### Ventas con IVA
-
-Cuando marcas un pago de cliente como pagado:
-- Se calcula automáticamente el IVA de la venta
-- Se registra en la tabla `iva_sales`
-- Se muestra en esta sección
-
-**Cálculo:**
-- Monto Total: Monto pagado por el cliente
-- IVA (21%): `monto_total * 0.21 / 1.21`
-- Neto: `monto_total - iva`
-
-#### Compras con IVA
-
-Cuando registras un pago a operador que tiene CUIT inscripto en IVA:
-- Se calcula el IVA de la compra
-- Se registra en la tabla `iva_purchases`
-- Aparece en esta sección
-
-**Cálculo:**
-- Monto Total: Monto pagado al operador
-- IVA (21%): `monto_total * 0.21 / 1.21`
-- Neto: `monto_total - iva`
-
-#### IVA a Pagar
-
-Al final del período (mensual):
-- **IVA Débito**: Suma de IVA de todas las ventas
-- **IVA Crédito**: Suma de IVA de todas las compras
-- **IVA a Pagar**: `IVA Débito - IVA Crédito`
-
-**Si el resultado es positivo:** Debes pagar IVA a AFIP  
-**Si el resultado es negativo:** Tienes crédito fiscal para usar en períodos futuros
-
-#### Filtros de IVA
-
-- **Tipo**: Ventas o Compras
-- **Rango de Fechas**: Período para el cálculo
-- **Operación**: Busca IVA de una operación específica
-
----
-
-### Cuentas Financieras
-
-#### ¿Qué son las Cuentas Financieras?
-
-Las Cuentas Financieras son las cuentas contables del negocio. Cada movimiento financiero se asocia a una cuenta específica.
-
-#### Tipos de Cuentas
-
-- **Activo**: Cajas, Bancos, Cuentas por Cobrar
-- **Pasivo**: Cuentas por Pagar, Deudas
-- **Patrimonio Neto**: Capital, Resultados
-- **Ingresos**: Ventas, Ingresos Varios
-- **Gastos**: Costos de Venta, Gastos Operativos, Comisiones
-
-#### Ver Balance de una Cuenta
-
-1. Clic en la cuenta
-2. Verás:
-   - **Balance Actual**: Saldo actual de la cuenta
-   - **Movimientos**: Todos los movimientos que afectaron esta cuenta
-   - **Período**: Balance del período seleccionado
-
-#### Crear una Cuenta Nueva
-
-1. Clic en **"+ Nueva Cuenta"**
-2. Completar:
-   - **Nombre**: Nombre descriptivo
-   - **Tipo**: Activo, Pasivo, Patrimonio, Ingreso, Gasto
-   - **Código**: Código contable (opcional)
-   - **Descripción**: Descripción adicional
-3. Clic en **"Crear"**
-
-**Nota:** Las cuentas principales se crean automáticamente al iniciar el sistema.
-
----
+Cálculo automático de IVA:
+- **IVA Ventas**: De pagos recibidos de clientes
+- **IVA Compras**: De pagos a operadores
+- **IVA a Pagar**: Débito - Crédito
 
 ### Pagos a Operadores
 
-#### ¿Qué es esta sección?
+Lista centralizada de pagos a operadores con:
+- Historial de pagos
+- Pagos pendientes
+- Exportación a Excel
 
-Esta sección centraliza todos los pagos realizados a operadores para facilitar el seguimiento y la conciliación.
+---
 
-#### Ver Lista de Pagos
+## 💬 MENSAJES WHATSAPP
 
-La lista muestra:
-- **Operador**: Nombre del operador
-- **Operación**: Operación asociada
-- **Monto**: Cantidad pagada
-- **Moneda**: ARS o USD
-- **Fecha de Pago**: Cuándo se realizó
-- **Método**: Cómo se pagó
-- **Referencia**: Número de transferencia/comprobante
+### ¿Qué es el Sistema de Mensajes?
 
-#### Filtros
+El sistema de mensajes permite enviar comunicaciones por WhatsApp a clientes de forma organizada y automatizada, usando links directos (sin API de WhatsApp Business).
 
-- **Operador**: Filtra por operador específico
-- **Rango de Fechas**: Período de pagos
-- **Moneda**: ARS o USD
-- **Operación**: Busca pagos de una operación
+### Acceder a Mensajes
 
-#### Exportar Reporte
+En el sidebar, clic en **"Mensajes"** (ícono de mensaje)
 
-1. Seleccionar filtros
-2. Clic en **"Exportar"**
-3. Se descarga un archivo Excel con el detalle
+### Secciones del Centro de Mensajes
+
+#### 1. **Pestañas de Mensajes**
+
+- **Pendientes**: Mensajes generados esperando ser enviados
+- **Enviados**: Mensajes ya enviados
+- **Omitidos**: Mensajes que decidiste no enviar
+- **Todos**: Vista completa
+
+#### 2. **Cada Mensaje Muestra**
+
+- **Cliente**: Nombre y avatar
+- **Mensaje**: Preview del contenido
+- **Operación/Pago asociado** (si aplica)
+- **Estado**: Pendiente, Enviado, Omitido
+- **Botón "Enviar por WhatsApp"**: Abre WhatsApp con el mensaje pre-escrito
+
+#### 3. **Templates de Mensajes** 📝
+
+Clic en **"Templates"** para gestionar plantillas:
+
+**Templates Predefinidos:**
+- **Cotización Enviada**: Cuando envías una cotización
+- **Recordatorio de Pago (3 días)**: 3 días antes del vencimiento
+- **Pago Recibido**: Confirmación de pago
+- **Pago Vencido**: Alerta de mora
+- **Viaje Próximo (7 días)**: Recordatorio de viaje
+- **Viaje Mañana**: Último recordatorio
+- **Post-Viaje**: Seguimiento después del viaje
+- **Feliz Cumpleaños**: Felicitación automática
+- **Plan de Pagos Creado**: Cuando generas un plan de pagos
+
+**Cargar Templates por Defecto:**
+
+Si no tienes templates:
+1. Clic en **"Templates"**
+2. Clic en **"Cargar Templates por Defecto"**
+3. Se cargan 10 templates predefinidos
+
+**Crear un Template Nuevo:**
+
+1. Clic en **"Templates"**
+2. Clic en **"Nuevo Template"**
+3. Completar:
+   - **Nombre**: Nombre descriptivo
+   - **Categoría**: PAYMENT, TRIP, BIRTHDAY, MARKETING, CUSTOM
+   - **Tipo de Trigger**: Cuándo se genera (manual, automático)
+   - **Emoji Prefijo**: Emoji inicial del mensaje
+   - **Template**: Texto con variables como `{nombre}`, `{destino}`, `{monto}`
+4. Clic en **"Crear"**
+
+**Variables Disponibles:**
+- `{nombre}`: Nombre del cliente
+- `{destino}`: Destino del viaje
+- `{monto}`: Monto del pago
+- `{moneda}`: Moneda (ARS, USD)
+- `{fecha_vencimiento}`: Fecha de vencimiento
+- `{n_cuotas}`: Número de cuotas
+- `{link_cotizacion}`: Link a cotización
+- `{link_voucher}`: Link a voucher
+
+#### 4. **Generar Mensajes Automáticos**
+
+Clic en **"Generar Mensajes"** para crear mensajes basados en:
+- Pagos próximos a vencer (3 días)
+- Viajes próximos (7 días, 1 día)
+- Cumpleaños del día
+- Pagos vencidos
+
+#### 5. **WhatsApp Rápido** ⚡
+
+En varias partes del sistema hay botones de **WhatsApp Rápido**:
+
+- **En tabla de Clientes**: Botón verde de WhatsApp
+- **En tarjeta de Cumpleaños**: Botón para felicitar
+- **En detalle de Cliente**: Botón de mensaje rápido
+
+Al hacer clic, se abre WhatsApp Web con un mensaje personalizado pre-escrito.
+
+### Mensajes en Detalle de Cliente
+
+En la pestaña **"Mensajes"** del detalle de un cliente, verás:
+- Historial de todos los mensajes enviados
+- Estado de cada mensaje
+- Fecha de envío
 
 ---
 
@@ -1126,251 +681,202 @@ La lista muestra:
 
 ### ¿Qué son las Alertas?
 
-Las alertas son notificaciones automáticas que el sistema genera para recordarte acciones pendientes o situaciones que requieren atención.
+Las alertas son notificaciones automáticas que el sistema genera para recordarte acciones pendientes.
 
 ### Tipos de Alertas
 
-#### 1. **Pagos Vencidos**
-
-Se generan automáticamente cuando:
-- Un pago de cliente tiene fecha de vencimiento pasada y aún está en estado PENDING
-- Un pago a operador tiene fecha de vencimiento pasada y aún está en estado PENDING
-
-**Acciones:**
-- **Marcar como Hecho**: Indica que ya lo gestionaste (la alerta se oculta pero el pago sigue pendiente)
-- **Ignorar**: Oculta la alerta temporalmente
-- **Ir al Pago**: Te lleva directamente al pago para gestionarlo
-
-#### 2. **Pagos Próximos a Vencer**
-
-Se generan X días antes de la fecha de vencimiento (configurable).
-
-#### 3. **Operaciones sin Pagos**
-
-Operaciones confirmadas que no tienen ningún pago registrado después de X días.
-
-#### 4. **Cupos por Vencer**
-
-Cupos que están próximos a su fecha de check-in y aún tienen disponibilidad.
+- **Pagos Vencidos**: Pagos con fecha pasada
+- **Pagos Próximos a Vencer**: Pagos por vencer en los próximos días
+- **Viajes Próximos**: Operaciones con salida cercana
+- **Documentos Faltantes**: Operaciones sin documentación completa
+- **Márgenes Bajos**: Operaciones con margen por debajo del umbral
 
 ### Gestionar Alertas
 
-1. **Ver todas las alertas**: Ir a `/alerts`
-2. **Filtrar**: Por tipo, estado, fecha
-3. **Marcar como Hecho**: Cuando ya gestionaste el tema
-4. **Ignorar**: Si no aplica o es un falso positivo
+1. **Ver todas**: Ir a `/alerts`
+2. **Acciones**:
+   - **Resolver**: Marcar como resuelta
+   - **Ignorar**: Ocultar temporalmente
+   - **Ir al detalle**: Navegar a la operación/pago relacionado
 
-### Filtros de Alertas
+### Alertas en Dashboard
 
-- **Tipo**: Filtra por tipo de alerta
-- **Estado**: Activa, Hecha, Ignorada
-- **Rango de Fechas**: Período de generación
+Las 5 alertas más urgentes aparecen en el Dashboard con:
+- Tipo de alerta
+- Descripción breve
+- Tiempo desde que se venció (si aplica)
+- Badge "Vencida" en ámbar para alertas vencidas
+
+---
+
+## 📅 CALENDARIO
+
+### ¿Qué es el Calendario?
+
+Vista de calendario con todas las operaciones organizadas por fecha de salida.
+
+### Funcionalidades
+
+- **Vista Mensual**: Ver operaciones del mes
+- **Clic en Operación**: Ir al detalle de la operación
+- **Colores por Estado**: CONFIRMED (verde), CANCELLED (rojo)
 
 ---
 
 ## 📈 REPORTES
 
-### ¿Qué son los Reportes?
-
-Los reportes son análisis detallados de diferentes aspectos del negocio para la toma de decisiones.
-
 ### Tipos de Reportes
 
-#### 1. **Reporte de Ventas**
+- **Ventas**: Por vendedor, destino, período
+- **Comisiones**: Devengadas, pagadas, pendientes
+- **Operadores**: Pagos por operador
+- **Financiero**: Ingresos, egresos, flujo de caja
+- **IVA**: Débito, crédito, a pagar
 
-Muestra:
-- Ventas por vendedor
-- Ventas por destino
-- Ventas por período
-- Márgenes por operación
-- Comparativa entre períodos
+### Exportar Reportes
 
-**Uso:**
-- Analizar rendimiento de vendedores
-- Identificar destinos más rentables
-- Planificar estrategias comerciales
-
-#### 2. **Reporte de Comisiones**
-
-Muestra:
-- Comisiones devengadas por vendedor
-- Comisiones pagadas
-- Comisiones pendientes de pago
-- Desglose por operación
-
-**Uso:**
-- Calcular comisiones a pagar
-- Planificar pagos a vendedores
-- Controlar cumplimiento de metas
-
-#### 3. **Reporte de Operadores**
-
-Muestra:
-- Monto total pagado a cada operador
-- Cantidad de operaciones por operador
-- Pagos pendientes
-- Historial de pagos
-
-**Uso:**
-- Conciliar pagos con operadores
-- Analizar relaciones comerciales
-- Planificar compras
-
-#### 4. **Reporte Financiero**
-
-Muestra:
-- Ingresos y egresos del período
-- Flujo de caja detallado
-- Balance por moneda
-- Comparativa con períodos anteriores
-
-**Uso:**
-- Análisis financiero general
-- Presentación a inversores/socios
-- Toma de decisiones estratégicas
-
-#### 5. **Reporte de IVA**
-
-Muestra:
-- IVA de ventas del período
-- IVA de compras del período
-- IVA a pagar o crédito fiscal
-- Desglose mensual
-
-**Uso:**
-- Preparar declaración de IVA
-- Control fiscal
-- Planificación tributaria
-
-### Generar un Reporte
-
-1. Ir a `/reports`
-2. Seleccionar el tipo de reporte
-3. Aplicar filtros:
-   - Rango de fechas
-   - Vendedor
-   - Destino
-   - Operador
-   - Moneda
-4. Clic en **"Generar Reporte"**
-5. Ver resultados en pantalla
-6. Opcional: Clic en **"Exportar"** para descargar Excel/PDF
+1. Seleccionar tipo de reporte
+2. Aplicar filtros
+3. Clic en **"Exportar"**
+4. Elegir formato: **CSV** o **JSON**
+5. Se descarga el archivo
 
 ---
 
 ## ⚙️ CONFIGURACIÓN
 
-### ¿Qué es Configuración?
-
-La sección de Configuración permite personalizar el sistema según las necesidades de la agencia.
-
 ### Módulos de Configuración
 
 #### 1. **Usuarios**
 
-**Gestión de Usuarios:**
-
-- **Ver lista de usuarios**: Todos los usuarios del sistema
-- **Invitar nuevo usuario**: 
-  1. Clic en **"Invitar Usuario"**
-  2. Ingresar email
-  3. Seleccionar rol (ADMIN, SELLER, ACCOUNTANT, OPERATOR_MANAGER)
-  4. Seleccionar agencia(s) a las que tiene acceso
-  5. Clic en **"Enviar Invitación"**
-  6. El usuario recibirá un email con instrucciones
-
-- **Editar usuario**: Cambiar rol, agencias, o información personal
-- **Desactivar usuario**: Suspender acceso sin eliminar datos
+- Ver lista de usuarios
+- Invitar nuevos usuarios
+- Editar roles y permisos
+- Desactivar usuarios
 
 #### 2. **Agencias**
 
-**Gestión de Agencias:**
-
-- **Ver lista de agencias**: Todas las agencias en el sistema
-- **Crear nueva agencia**:
-  1. Clic en **"+ Nueva Agencia"**
-  2. Completar:
-     - Nombre
-     - Email
-     - Teléfono
-     - Dirección
-     - CUIT
-  3. Clic en **"Crear"**
-
-- **Editar agencia**: Modificar datos
-- **Eliminar agencia**: Solo si no tiene operaciones asociadas
+- Crear y editar agencias
+- Configurar datos fiscales
 
 #### 3. **Comisiones**
 
-**Reglas de Comisión:**
-
-Define cómo se calculan las comisiones de los vendedores.
-
-**Tipos de Reglas:**
-
-- **Porcentaje fijo**: Ej. 10% de todas las ventas
-- **Porcentaje variable por destino**: Ej. 15% para Europa, 10% para Caribe
-- **Por monto fijo**: Ej. $1000 por operación
-- **Escalonado**: Ej. 10% hasta $100k, 15% de ahí en adelante
-
-**Crear Regla de Comisión:**
-
-1. Clic en **"+ Nueva Regla"**
-2. Seleccionar:
-   - Vendedor (o "Todos")
-   - Tipo de regla
-   - Porcentaje o monto
-   - Destino/región (si aplica)
-   - Fecha de inicio
-   - Fecha de fin (opcional)
-3. Clic en **"Crear"**
-
-**Las comisiones se calculan automáticamente cuando:**
-- Se marca un pago de cliente como pagado
-- Se confirma una operación
+- Definir reglas de comisión por vendedor
+- Tipos: Porcentaje fijo, variable por destino, escalonado
 
 #### 4. **Trello**
 
-**Integración con Trello:**
+- Conectar con tablero de Trello
+- Mapear listas con estados de leads
+- Configurar webhooks para sincronización
 
-Conecta el sistema con Trello para sincronizar leads automáticamente.
+#### 5. **Importar Datos** 📥
 
-**Configurar Trello:**
+Sección para importar datos masivos:
 
-1. Clic en **"Configurar Trello"**
-2. Ingresar:
-   - **API Key**: Obtener de https://trello.com/app-key
-   - **API Token**: Obtener del mismo lugar
-   - **Board ID**: ID del tablero de Trello (está en la URL del tablero)
-3. Clic en **"Probar Conexión"**
-4. Si es exitoso, clic en **"Guardar"**
+1. Ir a **Configuración** → Tab **"Importar Datos"**
+2. Seleccionar tipo de datos:
+   - **Clientes**: Importar clientes desde CSV
+   - **Operadores**: Importar operadores desde CSV
+   - **Operaciones**: Importar operaciones desde CSV
+   - **Pagos**: Importar pagos desde CSV
+   - **Movimientos de Caja**: Importar movimientos desde CSV
+3. **Descargar Plantilla**: Obtén un CSV de ejemplo con los campos requeridos
+4. **Subir Archivo**: Selecciona tu archivo CSV
+5. **Previsualizar**: Revisa los datos antes de importar
+6. **Importar**: Ejecuta la importación
 
-**Mapeo de Listas:**
+**Formato del CSV:**
+- Primera fila: Nombres de columnas (headers)
+- Separador: Coma (`,`)
+- Formato de fechas: `YYYY-MM-DD`
 
-Después de conectar, mapea las listas de Trello con estados y regiones:
+#### 6. **Preferencias de Notificaciones**
 
-1. Seleccionar una lista de Trello
-2. Asignar:
-   - **Estado**: NEW, IN_PROGRESS, QUOTED, WON, LOST
-   - **Región**: ARGENTINA, CARIBE, etc. (opcional)
-3. Repetir para todas las listas
-4. Clic en **"Guardar Mapeo"**
+Configura qué notificaciones quieres recibir:
+- Pagos vencidos
+- Viajes próximos
+- Nuevos leads
+- etc.
 
-**Webhooks:**
+---
 
-Para sincronización automática bidireccional:
+## 🚀 FUNCIONES AVANZADAS
 
-1. Clic en **"Registrar Webhook"**
-2. El sistema creará un webhook en Trello
-3. Ahora, cuando muevas una tarjeta en Trello, se actualizará automáticamente en el sistema
-4. Y cuando cambies el estado de un lead en el sistema, se actualizará en Trello
+### Búsqueda Global (⌘K)
 
-#### 5. **Configuración General**
+Acceso rápido a cualquier parte del sistema:
 
-- **Moneda Principal**: ARS o USD
-- **Formato de Fecha**: dd/mm/yyyy
-- **Zona Horaria**: UTC-3 (Argentina)
-- **IVA por Defecto**: 21%
+1. Presiona **⌘K** (Mac) o **Ctrl+K** (Windows)
+2. Escribe lo que buscas:
+   - Nombre de cliente
+   - Código de operación
+   - Nombre de lead
+   - Nombre de operador
+3. Selecciona el resultado
+4. Navegas directamente al detalle
+
+**Comandos Rápidos:**
+- Escribir "nuevo cliente" → Crear cliente
+- Escribir "nuevo lead" → Crear lead
+- Escribir "OP1200" → Buscar operación
+
+### Notificaciones 🔔
+
+**Bell de Notificaciones (Navbar):**
+
+En la barra superior, verás un ícono de campana:
+- **Badge rojo**: Cantidad de notificaciones no leídas
+- **Clic**: Ver lista de notificaciones recientes
+- Tipos: Nuevos leads, pagos recibidos, alertas
+
+**Notificaciones en Tiempo Real:**
+- Los leads nuevos aparecen automáticamente
+- Sin necesidad de refrescar la página
+
+### Estados de Cuenta
+
+**Estado de Cuenta del Cliente:**
+
+1. Ir al detalle del cliente
+2. Tab "Estado de Cuenta"
+3. Ver:
+   - Balance total pendiente
+   - Historial de pagos
+   - Próximos vencimientos
+4. **Enviar por Email**: Clic en "Enviar Estado de Cuenta"
+
+**Estado de Cuenta del Operador:**
+
+1. Ir al detalle del operador
+2. Tab "Estado de Cuenta"
+3. Ver:
+   - Total adeudado
+   - Historial de pagos realizados
+   - Pagos pendientes
+
+### Generación de PDFs 📑
+
+**PDFs Disponibles:**
+
+- **Cotización**: Documento formal para el cliente
+- **Voucher de Operación**: Documento de viaje para el cliente
+- **Recibo de Pago**: Comprobante cuando se marca un pago como pagado
+- **Estado de Cuenta**: Resumen financiero del cliente
+
+**Cómo Generar:**
+
+1. Ir al detalle correspondiente
+2. Clic en el botón de descarga/PDF
+3. Se descarga automáticamente
+
+### Hover Cards 👁️
+
+**Preview Rápido sin Navegar:**
+
+En listas y tablas, al pasar el mouse sobre:
+- **Nombre de Cliente**: Ver datos básicos y últimas operaciones
+- **Código de Operación**: Ver resumen de la operación
 
 ---
 
@@ -1380,241 +886,93 @@ Para sincronización automática bidireccional:
 
 #### Día 1: Captación del Lead
 
-1. **Cliente consulta** por un viaje (llamada, WhatsApp, web, etc.)
-2. **Vendedor crea un Lead** en el sistema:
-   - Ingresa datos del contacto
-   - Selecciona destino y región
-   - Se asigna a sí mismo
-3. Si está configurado Trello, **se crea automáticamente una tarjeta en Trello**
-4. El lead aparece en estado **NEW**
+1. **Cliente consulta** por un viaje
+2. **Vendedor crea un Lead** en el sistema
+3. El lead aparece en estado **NEW**
+4. Si está configurado, se crea tarjeta en Trello
 
 #### Día 2-3: Trabajo del Lead
 
-1. **Vendedor contacta al cliente** y recopila información
-2. **Cambia estado a IN_PROGRESS** (arrastrando en Kanban o editando)
-3. Si el cliente tiene interés, **crea una Cotización**:
-   - Asocia el lead a la cotización (opcional)
-   - Agrega servicios y precios
-   - Define fecha de vencimiento
-4. **Envía la cotización al cliente** (marca como SENT)
+1. **Vendedor contacta al cliente**
+2. **Cambia estado a IN_PROGRESS**
+3. **Crea una Cotización** usando el selector de tarifas
+4. **Envía la cotización** (email con PDF adjunto)
+5. Sistema genera **mensaje WhatsApp** de cotización enviada
 
 #### Día 4-5: Seguimiento
 
 1. **Cliente revisa la cotización**
-2. Si el cliente tiene preguntas, **vendedor edita la cotización** (si está en DRAFT) o crea una nueva
-3. Si el cliente acepta, **vendedor convierte la cotización en Operación**:
-   - Se crea la operación con estado CONFIRMED
-   - Se copian servicios y precios
-   - Se asocian los clientes
+2. Si acepta, **vendedor convierte la cotización en Operación**
+3. Se crea automáticamente:
+   - Operación con estado CONFIRMED
+   - Cliente (si no existía)
+   - Reserva de cupos (si aplica)
 
 #### Día 6-10: Confirmación y Depósito
 
-1. **Cliente realiza depósito** (ej: 30% del total)
-2. **Vendedor marca el primer pago como pagado**:
-   - En la operación, sección "Pagos de Clientes"
-   - Clic en "Marcar como Pagado"
-   - Ingresa fecha, método, referencia
-3. **Se generan automáticamente:**
-   - Movimiento de caja (INGRESO)
-   - Movimiento contable (INCOME)
-   - Actualización de flujo de caja
-   - Si aplica, cálculo de IVA
-4. **Vendedor confirma con operador:**
-   - Reserva servicios con el operador
-   - Si hay cupos, los reserva en el sistema
-   - Registra los pagos a realizar al operador en la operación
+1. **Cliente realiza depósito**
+2. **Vendedor marca el pago como pagado**
+3. Sistema genera automáticamente:
+   - Movimiento de caja
+   - Movimiento contable
+   - Mensaje WhatsApp de confirmación
+   - Cálculo de comisión
 
-#### Día 11-30: Pagos y Gestiones
+#### Días Siguientes: Pagos
 
-1. **Cliente realiza pagos adicionales** según cronograma
-2. **Cada pago se marca como pagado** cuando se recibe
-3. **Se registran los pagos a operadores** cuando se realizan
-4. **Se generan movimientos contables automáticamente** en cada paso
+1. **Sistema genera recordatorios automáticos** (3 días antes de vencimiento)
+2. **Vendedor envía recordatorios vía WhatsApp**
+3. **Cada pago se marca cuando se recibe**
 
-#### Día 31-60: Finalización
+#### Antes del Viaje
 
-1. **Se realiza el viaje**
-2. **Se completan todos los pagos**
-3. **Se registra cualquier gasto adicional** (movimientos manuales)
-4. **Operación se marca como COMPLETED** (opcional)
+1. **Sistema genera alertas de viaje próximo** (7 días, 1 día antes)
+2. **Vendedor envía información del viaje vía WhatsApp**
+3. **Cliente puede descargar su voucher**
 
-#### Fin de Mes: Cierre Contable
+#### Post-Viaje
 
-1. **Revisar Libro Mayor** para verificar todos los movimientos
-2. **Generar Reporte de IVA** para declaración
-3. **Generar Reporte de Comisiones** para pagar a vendedores
-4. **Generar Reporte Financiero** para análisis
-5. **Exportar reportes** para contador o auditoría
+1. **Sistema genera mensaje de seguimiento**
+2. **Vendedor envía encuesta de satisfacción**
 
----
+### Flujo del Cumpleaños
 
-### Flujo Diario del Administrador
-
-#### Inicio del Día (9:00 AM)
-
-1. **Revisar Dashboard:**
-   - Ver KPIs principales
-   - Revisar alertas pendientes
-   - Ver flujo de caja
-
-2. **Revisar Alertas:**
-   - Pagos vencidos
-   - Pagos próximos a vencer
-   - Operaciones sin pagos
-
-3. **Priorizar acciones del día**
-
-#### Durante el Día
-
-1. **Aprobar cotizaciones** (si aplica)
-2. **Gestionar pagos recibidos:**
-   - Revisar movimientos de caja
-   - Marcar pagos como pagados
-3. **Registrar pagos a operadores:**
-   - Cuando se realiza una transferencia
-   - Registrar en el sistema
-4. **Gestionar movimientos varios:**
-   - Gastos operativos
-   - Ingresos varios
-
-#### Fin del Día (18:00 PM)
-
-1. **Revisar movimientos del día:**
-   - Verificar que todo esté registrado
-   - Corregir errores si los hay
-2. **Revisar caja:**
-   - Verificar balances
-   - Conciliar con caja física
-3. **Planificar día siguiente:**
-   - Revisar pagos a vencer
-   - Preparar transferencias
-
----
-
-### Flujo Diario del Vendedor
-
-#### Inicio del Día
-
-1. **Revisar Leads asignados:**
-   - Ver nuevos leads
-   - Seguimiento de leads en progreso
-2. **Revisar cotizaciones:**
-   - Cotizaciones pendientes de respuesta
-   - Seguimiento de cotizaciones enviadas
-
-#### Durante el Día
-
-1. **Atender consultas:**
-   - Crear nuevos leads
-   - Actualizar información de leads existentes
-2. **Preparar cotizaciones:**
-   - Crear cotizaciones para clientes
-   - Enviar cotizaciones
-3. **Seguimiento:**
-   - Llamar a clientes
-   - Responder consultas
-   - Actualizar estados de leads
-
-#### Fin del Día
-
-1. **Actualizar estados:**
-   - Mover leads en el kanban según progreso
-   - Actualizar notas de leads
-2. **Revisar operaciones:**
-   - Verificar pagos recibidos
-   - Seguimiento de operaciones activas
-
----
-
-### Flujo Semanal del Contador
-
-#### Lunes
-
-1. **Revisar movimientos de la semana anterior:**
-   - Verificar que todos los movimientos estén correctos
-   - Corregir errores
-
-#### Miércoles
-
-1. **Generar reportes parciales:**
-   - Ventas de la semana
-   - Pagos realizados
-   - Flujo de caja
-
-#### Viernes
-
-1. **Cierre semanal:**
-   - Revisar Libro Mayor
-   - Verificar balances
-   - Generar reporte financiero semanal
-
----
-
-### Flujo Mensual
-
-#### Inicio de Mes
-
-1. **Cierre del mes anterior:**
-   - Revisar todos los movimientos
-   - Generar reportes finales
-   - Exportar para contador
-
-#### Durante el Mes
-
-1. **Seguimiento continuo:**
-   - Revisar alertas
-   - Gestionar pagos
-   - Registrar movimientos
-
-#### Fin de Mes
-
-1. **Cierre contable:**
-   - Generar Reporte de IVA
-   - Calcular IVA a pagar
-   - Generar Reporte de Comisiones
-   - Pagar comisiones a vendedores
-   - Generar Reporte Financiero
-   - Exportar todos los reportes
-   - Revisar con contador/auditor
+1. **Sistema detecta cumpleaños** del cliente
+2. **Aparece en tarjeta de Dashboard**
+3. **Vendedor hace clic en WhatsApp**
+4. **Se abre WhatsApp con mensaje de felicitación**
 
 ---
 
 ## ❓ PREGUNTAS FRECUENTES
 
-### ¿Qué pasa si marco un pago como pagado por error?
+### ¿Por qué no puedo cargar templates de WhatsApp?
 
-- Puedes editar el movimiento de caja asociado (si no está bloqueado)
-- O crear un movimiento de corrección manual
-- Es recomendable contactar al administrador para reversiones complejas
+Necesitas ejecutar la migración SQL en Supabase primero. El botón "Cargar Templates por Defecto" creará los templates predefinidos.
 
-### ¿Puedo eliminar una operación?
+### ¿Puedo personalizar los mensajes de WhatsApp?
 
-- Las operaciones confirmadas NO se pueden eliminar (solo cancelar)
-- Esto es para mantener la integridad contable
-- Si necesitas corregir, cancela la operación y crea una nueva
+Sí, en **Mensajes → Templates** puedes crear y editar templates con tus propias variables.
+
+### ¿Los mensajes de WhatsApp se envían automáticamente?
+
+No, el sistema genera los mensajes pero debes hacer clic en "Enviar por WhatsApp" para abrirlos en WhatsApp Web. Esto es intencional para que tengas control sobre cada mensaje.
 
 ### ¿Cómo cambio el tipo de cambio?
 
-- El tipo de cambio se obtiene automáticamente de una API externa
-- Para cambiar manualmente, ve a Configuración → Tipo de Cambio (si está disponible)
-- O contacta al administrador
+El tipo de cambio se obtiene automáticamente. Para cambiar manualmente, contacta al administrador.
 
-### ¿Qué pasa si un cliente paga en efectivo pero registro transferencia?
+### ¿Puedo eliminar una operación?
 
-- Puedes editar el movimiento de caja para corregir el método de pago
-- O crear un movimiento de corrección
+Las operaciones confirmadas NO se pueden eliminar (solo cancelar) para mantener la integridad contable.
 
-### ¿Cómo sé cuánto debo pagar a un operador?
+### ¿Cómo exporto datos?
 
-- Ve a Contabilidad → Pagos a Operadores
-- Filtra por el operador
-- Verás el total pagado y los pagos pendientes
+En Reportes, selecciona el tipo de reporte, aplica filtros, y clic en "Exportar" para descargar CSV o JSON.
 
-### ¿Las comisiones se calculan solas?
+### ¿Cómo importo clientes masivamente?
 
-- Sí, las comisiones se calculan automáticamente cuando marcas un pago como pagado
-- Se basan en las reglas de comisión configuradas en Configuración
-- Puedes verlas en "Mis Comisiones" (vendedor) o en Reportes de Comisiones (admin)
+En Configuración → Importar Datos → Clientes, descarga la plantilla, complétala, y súbela.
 
 ---
 
@@ -1630,5 +988,6 @@ Para consultas, errores o sugerencias:
 
 **FIN DEL MANUAL**
 
-Este manual está en constante actualización. Versión 1.0 - 2024
+**Versión 2.0 - Diciembre 2025**
 
+Incluye: Sistema de Mensajes WhatsApp, Búsqueda Global, Notificaciones en Tiempo Real, Estados de Cuenta, Generación de PDFs, Importación de Datos, y mejoras de UI.
