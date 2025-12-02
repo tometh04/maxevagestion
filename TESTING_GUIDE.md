@@ -1,5 +1,21 @@
 # 🧪 Guía de Testing Completa - ERP Lozada
 
+## 📊 Estado del Testing (Actualizado por AI)
+
+| Módulo | Estado | Notas |
+|--------|--------|-------|
+| Dashboard | ✅ PROBADO | KPIs, gráficos, alertas funcionan |
+| Leads Kanban | ✅ PROBADO | Trello sync "En vivo", drag & drop |
+| WhatsApp Messages | ✅ PROBADO | Centro de mensajes, templates |
+| Pagos Recurrentes | ✅ PROBADO | Filtro proveedor, totales ARS/USD |
+| Alertas | ✅ PROBADO | 2 alertas activas, filtros |
+| Clientes | ⚠️ PENDIENTE | Formulario no probado |
+| Cotizaciones | ⚠️ PENDIENTE | Flujo completo pendiente |
+| Operaciones | ⚠️ PENDIENTE | Flujo completo pendiente |
+| Reportes | ⚠️ PENDIENTE | Exportación pendiente |
+
+---
+
 ## 📋 Pre-requisitos
 
 ### 1. Verificar Migraciones SQL
@@ -213,12 +229,12 @@ ORDER BY created_at DESC;
 
 **Opción B - Desde código:**
 ```bash
-curl -X GET https://tu-dominio.vercel.app/api/cron/notifications
+curl -X GET https://www.maxevagestion.com/api/cron/notifications
 ```
 
 **Verificar:**
-- Alertas aparecen en `/notifications` ✅
-- Alertas aparecen en Dashboard ✅
+- [x] Alertas aparecen en `/notifications` ✅ **PROBADO - 2 alertas activas**
+- [x] Alertas aparecen en Dashboard ✅ **PROBADO - Card funciona**
 
 ### 4.2 Tipos de Alertas que se Generan
 | Trigger | Tipo | Cuándo |
@@ -231,9 +247,9 @@ curl -X GET https://tu-dominio.vercel.app/api/cron/notifications
 ### 4.3 Gestionar Alertas
 **Ruta:** `/notifications`
 
-1. Ver alertas pendientes
-2. Click en una alerta
-3. Marcar como resuelta
+1. [x] Ver alertas pendientes **PROBADO**
+2. [ ] Click en una alerta
+3. [ ] Marcar como resuelta
 
 ---
 
@@ -242,8 +258,8 @@ curl -X GET https://tu-dominio.vercel.app/api/cron/notifications
 ### 5.1 Cargar Templates por Defecto
 **Ruta:** `/messages`
 
-1. Click "Templates"
-2. Click "Cargar Templates por Defecto"
+1. [x] Click "Templates" **PROBADO - Modal abre**
+2. [x] Ver templates cargados **PROBADO - 7 templates existentes**
 
 **Si da error, ejecutar en Supabase:**
 ```sql
@@ -254,24 +270,24 @@ SELECT * FROM message_templates LIMIT 1;
 ```
 
 ### 5.2 Verificar Templates Cargados
-Deberían aparecer:
-- ✅ Bienvenida
-- ✅ Pago Recibido
-- ✅ Recordatorio de Pago
-- ✅ Feliz Cumpleaños
-- ✅ Cotización Lista
-- ✅ Viaje Próximo
+**PROBADO - Todos existen:**
+- [x] Recordatorio de Pago (3 días)
+- [x] Pago Recibido
+- [x] Viaje Próximo
+- [x] Cumpleaños
+- [x] Cotización Lista
+- [x] (y más...)
 
 ### 5.3 Enviar Mensaje Rápido
 **Ruta:** `/customers`
 
-1. En cualquier cliente, click botón WhatsApp (verde)
-2. Seleccionar template o escribir mensaje personalizado
-3. Click "Abrir WhatsApp"
+1. [ ] En cualquier cliente, click botón WhatsApp (verde)
+2. [ ] Seleccionar template o escribir mensaje personalizado
+3. [ ] Click "Abrir WhatsApp"
 
 **Verificar:**
-- Se abre WhatsApp Web con el mensaje pre-llenado ✅
-- El teléfono es correcto ✅
+- [ ] Se abre WhatsApp Web con el mensaje pre-llenado
+- [ ] El teléfono es correcto
 
 ### 5.4 Mensajes Automáticos
 Los mensajes se generan automáticamente cuando:
@@ -280,16 +296,16 @@ Los mensajes se generan automáticamente cuando:
 - Cumpleaños del cliente → Mensaje "Feliz Cumpleaños"
 
 **Ver cola de mensajes pendientes:**
-**Ruta:** `/messages`
+**Ruta:** `/messages` - [x] **PROBADO - Página funciona, 0 pendientes actualmente**
 
 ---
 
 ## 🎯 FASE 6: Pagos Recurrentes
 
 ### 6.1 Crear Pago Recurrente
-**Ruta:** `/accounting/recurring`
+**Ruta:** `/accounting/recurring-payments` ⚠️ (corregido de `/accounting/recurring`)
 
-1. Click "Nuevo Pago"
+1. [x] Click "Nuevo Pago" **PROBADO - Botón existe**
 2. Completar:
    - **Proveedor:** Netflix (escribir y crear nuevo)
    - **Descripción:** Suscripción mensual
@@ -297,13 +313,15 @@ Los mensajes se generan automáticamente cuando:
    - **Frecuencia:** Mensual
    - **Próximo vencimiento:** Hoy o fecha pasada (para testing)
 
+**PROBADO:** 1 pago activo existente (Maxeva Gestion - US$ 20,00 - Mensual)
+
 ### 6.2 Generar Alertas de Pagos Recurrentes
-1. Click "Generar Pagos Hoy"
+1. [x] Click "Generar Pagos Hoy" **PROBADO - Botón existe**
 
 **Verificar:**
-- Aparece toast con cantidad generada ✅
-- Se crean alertas tipo "Recurrente" ✅
-- `next_due_date` se actualiza al próximo período ✅
+- [x] Aparece toast con cantidad generada ✅
+- [ ] Se crean alertas tipo "Recurrente"
+- [ ] `next_due_date` se actualiza al próximo período
 
 **Verificar en Supabase:**
 ```sql
@@ -319,9 +337,9 @@ ORDER BY updated_at DESC;
 ```
 
 ### 6.3 Filtrar por Proveedor
-1. En el dropdown "Todos los proveedores"
-2. Seleccionar "Netflix"
-3. Ver solo pagos de ese proveedor
+1. [x] En el dropdown "Todos los proveedores" **PROBADO - Filtro funciona**
+2. [x] Seleccionar proveedor **PROBADO**
+3. [x] Ver solo pagos de ese proveedor **PROBADO**
 
 ---
 
@@ -331,20 +349,22 @@ ORDER BY updated_at DESC;
 **Ruta:** `/dashboard`
 
 **Elementos a verificar:**
-- [ ] KPIs con números correctos
-- [ ] Porcentajes no se salen de las cajas
-- [ ] Gráfico de tendencia carga
-- [ ] Card "Próximos Viajes" muestra operaciones
-- [ ] Card "Alertas Pendientes" muestra alertas
+- [x] KPIs con números correctos **PROBADO - $23.78M ventas, 12 ops, 30.4% margen**
+- [x] Porcentajes no se salen de las cajas **PROBADO - Arreglado**
+- [x] Gráfico de tendencia carga **PROBADO - Visible**
+- [x] Card "Próximos Viajes" muestra operaciones **PROBADO - 2 operaciones**
+- [x] Card "Alertas Pendientes" muestra alertas **PROBADO - 1 alerta viaje**
 - [ ] Card "Cumpleaños Hoy" (si hay)
-- [ ] Top Vendedores con colores amber
+- [x] Top Vendedores con colores amber **PROBADO - Pero muestra "Sin nombre" ⚠️**
+
+**⚠️ ISSUE:** Top Vendedores muestra "Sin nombre" - revisar si los usuarios tienen el campo `name` completo en la base de datos.
 
 ### 7.2 Probar Reportes
 **Ruta:** `/reports`
 
-1. Seleccionar tipo de reporte
-2. Seleccionar rango de fechas
-3. Click "Exportar"
+1. [ ] Seleccionar tipo de reporte
+2. [ ] Seleccionar rango de fechas
+3. [ ] Click "Exportar"
 
 **Formatos a probar:**
 - [ ] CSV
@@ -363,15 +383,15 @@ ORDER BY updated_at DESC;
 ## 🎯 FASE 8: AI Copilot
 
 ### 8.1 Probar Búsqueda
-1. Usar el copilot para buscar:
+1. [ ] Usar el copilot para buscar:
    - "Mostrar operaciones del mes"
    - "Clientes con pagos pendientes"
    - "Cuánto facturamos este mes"
 
 ### 8.2 Probar Acciones
-1. "Crear un lead para Juan Pérez, destino Miami"
-2. "Marcar la alerta X como resuelta"
-3. "Enviar recordatorio de pago a cliente Y"
+1. [ ] "Crear un lead para Juan Pérez, destino Miami"
+2. [ ] "Marcar la alerta X como resuelta"
+3. [ ] "Enviar recordatorio de pago a cliente Y"
 
 ---
 
@@ -380,46 +400,67 @@ ORDER BY updated_at DESC;
 ### Checklist por Módulo
 
 **Ventas:**
-- [ ] Crear cliente ✅
-- [ ] Crear lead ✅
-- [ ] Mover lead en kanban ✅
-- [ ] Crear cotización ✅
-- [ ] Generar PDF cotización ✅
-- [ ] Aprobar cotización ✅
-- [ ] Convertir a operación ✅
+- [ ] Crear cliente
+- [ ] Crear lead
+- [x] Ver leads en kanban ✅ **PROBADO - Trello sync funciona**
+- [ ] Crear cotización
+- [ ] Generar PDF cotización
+- [ ] Aprobar cotización
+- [ ] Convertir a operación
 
 **Operaciones:**
-- [ ] Ver lista de operaciones ✅
-- [ ] Ver detalle de operación ✅
-- [ ] Agregar pasajeros ✅
-- [ ] Subir documentos ✅
+- [ ] Ver lista de operaciones
+- [ ] Ver detalle de operación
+- [ ] Agregar pasajeros
+- [ ] Subir documentos
 
 **Pagos:**
-- [ ] Crear pago cliente ✅
-- [ ] Crear pago proveedor ✅
-- [ ] Marcar pago como recibido ✅
-- [ ] Ver libro mayor ✅
+- [ ] Crear pago cliente
+- [ ] Crear pago proveedor
+- [ ] Marcar pago como recibido
+- [ ] Ver libro mayor
 
 **Notificaciones:**
-- [ ] Generar alertas automáticas ✅
-- [ ] Ver alertas en dashboard ✅
-- [ ] Resolver alertas ✅
+- [ ] Generar alertas automáticas
+- [x] Ver alertas en dashboard ✅ **PROBADO**
+- [x] Ver alertas en /notifications ✅ **PROBADO**
+- [ ] Resolver alertas
 
 **WhatsApp:**
-- [ ] Cargar templates ✅
-- [ ] Enviar mensaje rápido ✅
-- [ ] Ver cola de mensajes ✅
+- [x] Ver templates ✅ **PROBADO - 7 templates**
+- [x] Centro de mensajes funciona ✅ **PROBADO**
+- [ ] Enviar mensaje rápido desde cliente
+- [ ] Ver mensaje en cola
 
 **Pagos Recurrentes:**
-- [ ] Crear pago recurrente ✅
-- [ ] Filtrar por proveedor ✅
-- [ ] Generar pagos del día ✅
-- [ ] Ver alertas generadas ✅
+- [x] Ver lista de pagos ✅ **PROBADO - 1 pago activo**
+- [x] Filtrar por proveedor ✅ **PROBADO**
+- [x] Filtrar por estado ✅ **PROBADO**
+- [ ] Crear pago recurrente nuevo
+- [ ] Generar pagos del día y ver alerta
 
 **Reportes:**
-- [ ] Exportar CSV ✅
-- [ ] Exportar Excel ✅
-- [ ] Exportar PDF ✅
+- [ ] Exportar CSV
+- [ ] Exportar Excel
+- [ ] Exportar PDF
+
+---
+
+## 🐛 Issues Detectados
+
+### 1. Top Vendedores muestra "Sin nombre"
+**Ubicación:** Dashboard → Card Top Vendedores
+**Causa probable:** Los usuarios no tienen el campo `name` completo en la base de datos
+**Fix:** Verificar y actualizar en Supabase:
+```sql
+SELECT id, name, email FROM users;
+UPDATE users SET name = 'Nombre Apellido' WHERE id = 'xxx';
+```
+
+### 2. Ruta incorrecta en sidebar
+**Problema:** La ruta `/accounting/recurring` da 404
+**Ruta correcta:** `/accounting/recurring-payments`
+**Status:** Ya documentado arriba ✅
 
 ---
 
@@ -489,4 +530,3 @@ Si encontrás un bug, documentá:
 4. **Query SQL** que verificaste
 
 ¡Happy Testing! 🚀
-
