@@ -50,13 +50,13 @@ function ComparisonBadge({ current, previous, suffix = "%" }: { current: number;
   if (change === 0 || previous === 0) return null
   
   return (
-    <span className={`inline-flex items-center text-xs font-medium ${isPositive ? "text-green-600" : "text-red-600"}`}>
+    <span className={`inline-flex items-center text-[10px] font-medium whitespace-nowrap ${isPositive ? "text-emerald-600" : "text-red-500"}`}>
       {isPositive ? (
-        <ArrowUpIcon className="h-3 w-3 mr-0.5" />
+        <ArrowUpIcon className="h-2.5 w-2.5" />
       ) : (
-        <ArrowDownIcon className="h-3 w-3 mr-0.5" />
+        <ArrowDownIcon className="h-2.5 w-2.5" />
       )}
-      {change.toFixed(1)}{suffix}
+      {change.toFixed(0)}{suffix}
     </span>
   )
 }
@@ -205,52 +205,52 @@ export function DashboardPageClient({
       />
 
       {/* KPIs */}
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Ventas Totales
             </CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-24" />
             ) : (
               <>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold sm:text-2xl break-words">
-                    ${kpis.totalSales.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-lg font-bold lg:text-xl truncate">
+                    ${(kpis.totalSales / 1000000).toFixed(2)}M
                   </span>
                   <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {kpis.operationsCount} operaciones • vs período anterior
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {kpis.operationsCount} ops • vs anterior
                 </p>
               </>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Total Operaciones
             </CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
+            <Package className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-16" />
             ) : (
               <>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold sm:text-2xl">
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-lg font-bold lg:text-xl">
                     {kpis.operationsCount}
                   </span>
                   <ComparisonBadge current={kpis.operationsCount} previous={previousKpis.operationsCount} />
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground mt-0.5">
                   vs período anterior
                 </p>
               </>
@@ -258,25 +258,25 @@ export function DashboardPageClient({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Margen Total
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-24" />
             ) : (
               <>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl font-bold sm:text-2xl break-words">
-                    ${kpis.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-lg font-bold lg:text-xl truncate">
+                    ${(kpis.totalMargin / 1000000).toFixed(2)}M
                   </span>
                   <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground mt-0.5">
                   {kpis.avgMarginPercent.toFixed(1)}% promedio
                 </p>
               </>
@@ -284,22 +284,22 @@ export function DashboardPageClient({
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Margen Promedio
             </CardTitle>
-            <Percent className="h-4 w-4 text-muted-foreground" />
+            <Percent className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-16" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl">
+                <div className="text-lg font-bold lg:text-xl">
                   {kpis.avgMarginPercent.toFixed(1)}%
                 </div>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-[10px] text-muted-foreground mt-0.5">
                   Margen promedio
                 </p>
               </>
@@ -308,47 +308,47 @@ export function DashboardPageClient({
         </Card>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+      <div className="grid gap-3 grid-cols-2">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Pendientes Clientes
             </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-24" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl break-words">
-                  ${kpis.pendingCustomerPayments.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
+                  ${(kpis.pendingCustomerPayments / 1000000).toFixed(2)}M
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Pagos pendientes de clientes
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Por cobrar de clientes
                 </p>
               </>
             )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               Pendientes Operadores
             </CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-3 pb-3 pt-0">
             {loading ? (
-              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-7 w-24" />
             ) : (
               <>
-                <div className="text-xl font-bold sm:text-2xl break-words">
-                  ${kpis.pendingOperatorPayments.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
+                  ${(kpis.pendingOperatorPayments / 1000000).toFixed(2)}M
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Pagos pendientes a operadores
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Por pagar a operadores
                 </p>
               </>
             )}

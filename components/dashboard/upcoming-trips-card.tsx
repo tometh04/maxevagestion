@@ -56,60 +56,63 @@ export function UpcomingTripsCard() {
 
   const getUrgencyColor = (days: number) => {
     if (days <= 3) return "bg-red-500"
-    if (days <= 7) return "bg-orange-500"
-    if (days <= 14) return "bg-yellow-500"
+    if (days <= 7) return "bg-amber-500"
+    if (days <= 14) return "bg-amber-400"
     return "bg-green-500"
   }
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
+    <Card className="h-full">
+      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
         <div>
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Plane className="h-4 w-4" />
             Próximos Viajes
           </CardTitle>
-          <CardDescription>Salidas confirmadas</CardDescription>
+          <CardDescription className="text-xs">Salidas confirmadas</CardDescription>
         </div>
         <Link href="/operations?status=CONFIRMED">
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" className="h-7 text-xs">
             Ver todos
-            <ChevronRight className="h-4 w-4 ml-1" />
+            <ChevronRight className="h-3 w-3 ml-1" />
           </Button>
         </Link>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         {loading ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-16 w-full" />
+              <Skeleton key={i} className="h-12 w-full" />
             ))}
           </div>
         ) : operations.length === 0 ? (
-          <div className="text-center py-6 text-muted-foreground">
-            <Plane className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">No hay viajes próximos</p>
+          <div className="text-center py-4 text-muted-foreground">
+            <Plane className="h-6 w-6 mx-auto mb-1 opacity-50" />
+            <p className="text-xs">Sin viajes próximos</p>
           </div>
         ) : (
-          <ScrollArea className="h-[280px] pr-3">
-            <div className="space-y-3">
+          <ScrollArea className="h-[220px]">
+            <div className="space-y-2 pr-2">
               {operations.map((op) => {
                 const daysUntil = getDaysUntilTrip(op.departure_date)
                 const totalPax = op.adults + op.children + op.infants
 
                 return (
                   <Link key={op.id} href={`/operations/${op.id}`}>
-                    <div className="p-3 rounded-lg border hover:bg-muted/50 transition-colors cursor-pointer">
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-full ${getUrgencyColor(daysUntil)} text-white`}>
-                          <Plane className="h-3 w-3" />
+                    <div className="p-2 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded-full ${getUrgencyColor(daysUntil)} text-white shrink-0`}>
+                          <Plane className="h-2.5 w-2.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="font-mono text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="font-mono text-[10px] text-muted-foreground">
                               {op.file_code}
                             </span>
-                            <Badge variant={daysUntil <= 3 ? "destructive" : "secondary"} className="text-xs">
+                            <Badge 
+                              variant={daysUntil <= 3 ? "destructive" : "secondary"} 
+                              className="text-[10px] px-1.5 py-0 h-4"
+                            >
                               {daysUntil === 0 
                                 ? "HOY" 
                                 : daysUntil === 1 
@@ -117,25 +120,25 @@ export function UpcomingTripsCard() {
                                   : `${daysUntil} días`}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-1 text-sm font-medium">
-                            <MapPin className="h-3 w-3" />
-                            {op.destination}
+                          <div className="flex items-center gap-1 font-medium leading-tight">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{op.destination}</span>
                           </div>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-muted-foreground">
+                            <span className="flex items-center gap-0.5">
+                              <Calendar className="h-2.5 w-2.5" />
                               {format(new Date(op.departure_date), "d MMM", { locale: es })}
                             </span>
-                            <span className="flex items-center gap-1">
-                              <Users className="h-3 w-3" />
-                              {totalPax} pax
+                            <span className="flex items-center gap-0.5">
+                              <Users className="h-2.5 w-2.5" />
+                              {totalPax}
                             </span>
                             {op.sellers?.name && (
-                              <span>• {op.sellers.name}</span>
+                              <span className="truncate">• {op.sellers.name}</span>
                             )}
                           </div>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
                       </div>
                     </div>
                   </Link>
@@ -148,4 +151,3 @@ export function UpcomingTripsCard() {
     </Card>
   )
 }
-

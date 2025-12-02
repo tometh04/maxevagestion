@@ -26,7 +26,6 @@ export function TopSellersCard() {
   const fetchTopSellers = async () => {
     try {
       setLoading(true)
-      // Obtener datos del mes actual
       const now = new Date()
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
@@ -38,7 +37,6 @@ export function TopSellersCard() {
       const response = await fetch(`/api/analytics/sellers?${params.toString()}`)
       const data = await response.json()
       
-      // Ordenar por ventas totales y tomar top 5
       const topSellers = (data.sellers || [])
         .sort((a: any, b: any) => b.totalSales - a.totalSales)
         .slice(0, 5)
@@ -71,85 +69,86 @@ export function TopSellersCard() {
   const getRankIcon = (index: number) => {
     switch (index) {
       case 0:
-        return <Trophy className="h-4 w-4 text-yellow-500" />
+        return <Trophy className="h-3 w-3 text-amber-500" />
       case 1:
-        return <Medal className="h-4 w-4 text-gray-400" />
+        return <Medal className="h-3 w-3 text-gray-400" />
       case 2:
-        return <Award className="h-4 w-4 text-amber-600" />
+        return <Award className="h-3 w-3 text-amber-700" />
       default:
-        return <span className="text-xs font-medium text-muted-foreground w-4 text-center">{index + 1}</span>
+        return <span className="text-[10px] font-medium text-muted-foreground w-3 text-center">{index + 1}</span>
     }
   }
 
   const getRankBg = (index: number) => {
     switch (index) {
       case 0:
-        return "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800"
+        return "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
       case 1:
         return "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
       case 2:
-        return "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+        return "bg-amber-50/50 dark:bg-amber-950/10 border-amber-100 dark:border-amber-900"
       default:
         return ""
     }
   }
 
   const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-AR", {
-      style: "currency",
-      currency: "ARS",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value)
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(1)}M`
+    }
+    if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`
+    }
+    return `$${value.toFixed(0)}`
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
+    <Card className="h-full">
+      <CardHeader className="pb-2 space-y-0">
         <CardTitle className="text-sm font-medium flex items-center gap-2">
           <TrendingUp className="h-4 w-4" />
           Top Vendedores del Mes
         </CardTitle>
-        <CardDescription>Ranking por ventas totales</CardDescription>
+        <CardDescription className="text-xs">Ranking por ventas totales</CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         {loading ? (
-          <div className="space-y-3">
-            {[...Array(5)].map((_, i) => (
-              <Skeleton key={i} className="h-14 w-full" />
+          <div className="space-y-2">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
         ) : sellers.length === 0 ? (
-          <div className="text-center py-6 text-muted-foreground">
-            <Trophy className="h-8 w-8 mx-auto mb-2 opacity-50" />
-            <p className="text-sm">Sin datos este mes</p>
+          <div className="text-center py-4 text-muted-foreground">
+            <Trophy className="h-6 w-6 mx-auto mb-1 opacity-50" />
+            <p className="text-xs">Sin datos este mes</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {sellers.map((seller, index) => (
               <div
                 key={seller.id}
                 className={cn(
-                  "flex items-center gap-3 p-2 rounded-lg border",
+                  "flex items-center gap-2 p-1.5 rounded-md border text-xs",
                   getRankBg(index)
                 )}
               >
-                <div className="flex items-center justify-center w-6">
+                <div className="flex items-center justify-center w-4 shrink-0">
                   {getRankIcon(index)}
                 </div>
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-xs">
+                <Avatar className="h-6 w-6 shrink-0">
+                  <AvatarFallback className="text-[10px]">
                     {getInitials(seller.name)}
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{seller.name}</p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="font-medium truncate leading-tight">{seller.name || "Sin nombre"}</p>
+                  <p className="text-[10px] text-muted-foreground">
                     {seller.operationsCount} ops • {formatCurrency(seller.margin)} margen
                   </p>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold">
+                <div className="text-right shrink-0">
+                  <p className="font-semibold text-amber-600 dark:text-amber-500">
                     {formatCurrency(seller.totalSales)}
                   </p>
                 </div>
@@ -161,4 +160,3 @@ export function TopSellersCard() {
     </Card>
   )
 }
-
