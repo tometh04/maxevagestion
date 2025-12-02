@@ -28,7 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Edit, Save, X, Plus, Info, Code } from "lucide-react"
+import { Edit, Save, X, Plus, Info, Code, Download, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Template {
@@ -46,6 +46,7 @@ interface TemplatesDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   templates: Template[]
+  onRefresh?: () => void
 }
 
 const categories = [
@@ -88,10 +89,19 @@ const availableVariables = [
   { name: "{mensaje_cuotas}", description: "Info de cuotas pendientes" },
 ]
 
-export function TemplatesDialog({ open, onOpenChange, templates }: TemplatesDialogProps) {
+export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: TemplatesDialogProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<Template>>({})
   const [saving, setSaving] = useState(false)
+  const [seeding, setSeeding] = useState(false)
+  const [showNewForm, setShowNewForm] = useState(false)
+  const [newTemplate, setNewTemplate] = useState({
+    name: "",
+    category: "CUSTOM",
+    trigger_type: "MANUAL",
+    template: "",
+    emoji_prefix: "📱",
+  })
 
   function startEdit(template: Template) {
     setEditingId(template.id)
@@ -117,6 +127,7 @@ export function TemplatesDialog({ open, onOpenChange, templates }: TemplatesDial
       if (response.ok) {
         toast.success("Template actualizado")
         cancelEdit()
+        onRefresh?.()
       } else {
         toast.error("Error al guardar")
       }
@@ -135,8 +146,70 @@ export function TemplatesDialog({ open, onOpenChange, templates }: TemplatesDial
         body: JSON.stringify({ is_active: !isActive }),
       })
       toast.success(isActive ? "Template desactivado" : "Template activado")
+      onRefresh?.()
     } catch (error) {
       toast.error("Error al actualizar")
+    }
+  }
+
+  async function loadDefaultTemplates() {
+    setSeeding(true)
+    try {
+      const response = await fetch("/api/whatsapp/seed", { method: "POST" })
+      const data = await response.json()
+
+      if (response.ok) {
+        if (data.existing) {
+          toast.info(data.message)
+        } else {
+          toast.success(data.message)
+          onRefresh?.()
+        }
+      } else {
+        toast.error(data.error || "Error al cargar templates")
+      }
+    } catch (error) {
+      toast.error("Error al cargar templates")
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  async function createTemplate() {
+    if (!newTemplate.name || !newTemplate.template) {
+      toast.error("Completa nombre y mensaje")
+      return
+    }
+
+    setSaving(true)
+    try {
+      const response = await fetch("/api/whatsapp/templates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...newTemplate,
+          is_active: true,
+        }),
+      })
+
+      if (response.ok) {
+        toast.success("Template creado")
+        setShowNewForm(false)
+        setNewTemplate({
+          name: "",
+          category: "CUSTOM",
+          trigger_type: "MANUAL",
+          template: "",
+          emoji_prefix: "📱",
+        })
+        onRefresh?.()
+      } else {
+        toast.error("Error al crear template")
+      }
+    } catch (error) {
+      toast.error("Error al crear template")
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -144,6 +217,8 @@ export function TemplatesDialog({ open, onOpenChange, templates }: TemplatesDial
     ...cat,
     templates: templates.filter((t) => t.category === cat.value),
   }))
+
+  const hasTemplates = templates.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -182,135 +257,244 @@ export function TemplatesDialog({ open, onOpenChange, templates }: TemplatesDial
           </CardContent>
         </Card>
 
+        {/* Acciones */}
+        <div className="flex gap-2">
+          {!hasTemplates && (
+            <Button onClick={loadDefaultTemplates} disabled={seeding} variant="outline">
+              {seeding ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Cargar Templates por Defecto
+            </Button>
+          )}
+          <Button onClick={() => setShowNewForm(!showNewForm)} variant={showNewForm ? "secondary" : "default"}>
+            <Plus className="h-4 w-4 mr-2" />
+            {showNewForm ? "Cancelar" : "Nuevo Template"}
+          </Button>
+        </div>
+
+        {/* Formulario nuevo template */}
+        {showNewForm && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Crear nuevo template</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nombre</Label>
+                  <Input
+                    value={newTemplate.name}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, name: e.target.value })}
+                    placeholder="Ej: Promoción de temporada"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Emoji</Label>
+                  <Input
+                    value={newTemplate.emoji_prefix}
+                    onChange={(e) => setNewTemplate({ ...newTemplate, emoji_prefix: e.target.value })}
+                    className="w-20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Categoría</Label>
+                  <Select
+                    value={newTemplate.category}
+                    onValueChange={(v) => setNewTemplate({ ...newTemplate, category: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.value} value={c.value}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Trigger</Label>
+                  <Select
+                    value={newTemplate.trigger_type}
+                    onValueChange={(v) => setNewTemplate({ ...newTemplate, trigger_type: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {triggers.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Mensaje</Label>
+                <Textarea
+                  value={newTemplate.template}
+                  onChange={(e) => setNewTemplate({ ...newTemplate, template: e.target.value })}
+                  rows={5}
+                  placeholder="Hola {nombre}! ..."
+                />
+              </div>
+              <Button onClick={createTemplate} disabled={saving}>
+                {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+                Crear Template
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Templates por categoría */}
-        <Accordion type="multiple" defaultValue={["PAYMENT", "TRIP", "BIRTHDAY"]}>
-          {groupedTemplates
-            .filter((group) => group.templates.length > 0)
-            .map((group) => (
-              <AccordionItem key={group.value} value={group.value}>
-                <AccordionTrigger>
-                  <div className="flex items-center gap-2">
-                    {group.label}
-                    <Badge variant="secondary" className="ml-2">
-                      {group.templates.length}
-                    </Badge>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="space-y-3">
-                  {group.templates.map((template) => (
-                    <Card key={template.id} className={!template.is_active ? "opacity-50" : ""}>
-                      <CardContent className="p-4">
-                        {editingId === template.id ? (
-                          // Edit Mode
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="space-y-2">
-                                <Label>Nombre</Label>
-                                <Input
-                                  value={editData.name || ""}
-                                  onChange={(e) =>
-                                    setEditData({ ...editData, name: e.target.value })
-                                  }
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Emoji</Label>
-                                <Input
-                                  value={editData.emoji_prefix || ""}
-                                  onChange={(e) =>
-                                    setEditData({ ...editData, emoji_prefix: e.target.value })
-                                  }
-                                  className="w-20"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Trigger</Label>
-                              <Select
-                                value={editData.trigger_type}
-                                onValueChange={(v) =>
-                                  setEditData({ ...editData, trigger_type: v })
-                                }
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {triggers.map((t) => (
-                                    <SelectItem key={t.value} value={t.value}>
-                                      {t.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Mensaje</Label>
-                              <Textarea
-                                value={editData.template || ""}
-                                onChange={(e) =>
-                                  setEditData({ ...editData, template: e.target.value })
-                                }
-                                rows={6}
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button onClick={saveEdit} disabled={saving}>
-                                <Save className="h-4 w-4 mr-2" />
-                                Guardar
-                              </Button>
-                              <Button variant="ghost" onClick={cancelEdit}>
-                                <X className="h-4 w-4 mr-2" />
-                                Cancelar
-                              </Button>
-                            </div>
-                          </div>
-                        ) : (
-                          // View Mode
-                          <div className="space-y-3">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xl">{template.emoji_prefix}</span>
-                                <div>
-                                  <div className="font-medium">{template.name}</div>
-                                  <div className="text-xs text-muted-foreground">
-                                    Trigger:{" "}
-                                    {triggers.find((t) => t.value === template.trigger_type)?.label}
-                                  </div>
+        {hasTemplates ? (
+          <Accordion type="multiple" defaultValue={["PAYMENT", "TRIP", "BIRTHDAY"]}>
+            {groupedTemplates
+              .filter((group) => group.templates.length > 0)
+              .map((group) => (
+                <AccordionItem key={group.value} value={group.value}>
+                  <AccordionTrigger>
+                    <div className="flex items-center gap-2">
+                      {group.label}
+                      <Badge variant="secondary" className="ml-2">
+                        {group.templates.length}
+                      </Badge>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-3">
+                    {group.templates.map((template) => (
+                      <Card key={template.id} className={!template.is_active ? "opacity-50" : ""}>
+                        <CardContent className="p-4">
+                          {editingId === template.id ? (
+                            // Edit Mode
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                  <Label>Nombre</Label>
+                                  <Input
+                                    value={editData.name || ""}
+                                    onChange={(e) =>
+                                      setEditData({ ...editData, name: e.target.value })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Emoji</Label>
+                                  <Input
+                                    value={editData.emoji_prefix || ""}
+                                    onChange={(e) =>
+                                      setEditData({ ...editData, emoji_prefix: e.target.value })
+                                    }
+                                    className="w-20"
+                                  />
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                <Switch
-                                  checked={template.is_active}
-                                  onCheckedChange={() =>
-                                    toggleActive(template.id, template.is_active)
+                              <div className="space-y-2">
+                                <Label>Trigger</Label>
+                                <Select
+                                  value={editData.trigger_type}
+                                  onValueChange={(v) =>
+                                    setEditData({ ...editData, trigger_type: v })
                                   }
-                                />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => startEdit(template)}
                                 >
-                                  <Edit className="h-4 w-4" />
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {triggers.map((t) => (
+                                      <SelectItem key={t.value} value={t.value}>
+                                        {t.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Mensaje</Label>
+                                <Textarea
+                                  value={editData.template || ""}
+                                  onChange={(e) =>
+                                    setEditData({ ...editData, template: e.target.value })
+                                  }
+                                  rows={6}
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <Button onClick={saveEdit} disabled={saving}>
+                                  <Save className="h-4 w-4 mr-2" />
+                                  Guardar
+                                </Button>
+                                <Button variant="ghost" onClick={cancelEdit}>
+                                  <X className="h-4 w-4 mr-2" />
+                                  Cancelar
                                 </Button>
                               </div>
                             </div>
-                            <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-green-500">
-                              <pre className="whitespace-pre-wrap text-sm font-sans">
-                                {template.template}
-                              </pre>
+                          ) : (
+                            // View Mode
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xl">{template.emoji_prefix}</span>
+                                  <div>
+                                    <div className="font-medium">{template.name}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Trigger:{" "}
+                                      {triggers.find((t) => t.value === template.trigger_type)?.label}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Switch
+                                    checked={template.is_active}
+                                    onCheckedChange={() =>
+                                      toggleActive(template.id, template.is_active)
+                                    }
+                                  />
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => startEdit(template)}
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="bg-muted/50 rounded-lg p-3 border-l-4 border-green-500">
+                                <pre className="whitespace-pre-wrap text-sm font-sans">
+                                  {template.template}
+                                </pre>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-        </Accordion>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+          </Accordion>
+        ) : (
+          <Card className="p-8 text-center">
+            <div className="text-muted-foreground">
+              <p className="text-lg font-medium mb-2">No hay templates configurados</p>
+              <p className="text-sm mb-4">
+                Hacé clic en "Cargar Templates por Defecto" para comenzar con templates pre-configurados,
+                o creá uno nuevo manualmente.
+              </p>
+            </div>
+          </Card>
+        )}
       </DialogContent>
     </Dialog>
   )
 }
-

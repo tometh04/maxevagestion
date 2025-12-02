@@ -291,6 +291,7 @@ export function MessagesPageClient({
         open={templatesOpen}
         onOpenChange={setTemplatesOpen}
         templates={templates}
+        onRefresh={() => window.location.reload()}
       />
     </div>
   )
