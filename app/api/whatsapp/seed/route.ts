@@ -160,10 +160,66 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // Primero intentar crear las tablas si no existen
+    const createTablesSQL = `
+      -- Tabla de templates de mensajes
+      CREATE TABLE IF NOT EXISTS message_templates (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        name TEXT NOT NULL,
+        description TEXT,
+        category TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        template TEXT NOT NULL,
+        emoji_prefix TEXT,
+        is_active BOOLEAN DEFAULT true,
+        send_hour_from INTEGER DEFAULT 9,
+        send_hour_to INTEGER DEFAULT 21,
+        agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        created_by UUID REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      -- Tabla de mensajes en cola
+      CREATE TABLE IF NOT EXISTS whatsapp_messages (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        template_id UUID REFERENCES message_templates(id) ON DELETE SET NULL,
+        customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
+        phone TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
+        message TEXT NOT NULL,
+        whatsapp_link TEXT,
+        operation_id UUID REFERENCES operations(id) ON DELETE SET NULL,
+        payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+        quotation_id UUID REFERENCES quotations(id) ON DELETE SET NULL,
+        status TEXT DEFAULT 'PENDING',
+        scheduled_for TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+        sent_at TIMESTAMP WITH TIME ZONE,
+        sent_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE
+      );
+    `
+
+    // Ejecutar SQL para crear tablas
+    const { error: sqlError } = await supabase.rpc('exec_sql', { sql: createTablesSQL }).catch(() => ({ error: null }))
+    
+    // Si falla el RPC (puede no existir), intentar con la tabla directamente
+    // El error se maneja silenciosamente
+
     // Verificar si ya existen templates
-    const { data: existingTemplates } = await (supabase.from("message_templates") as any)
+    const { data: existingTemplates, error: checkError } = await (supabase.from("message_templates") as any)
       .select("id")
       .limit(1)
+
+    if (checkError) {
+      console.error("Error checking templates (table may not exist):", checkError)
+      return NextResponse.json({ 
+        error: "La tabla message_templates no existe. Por favor ejecuta la migración SQL en Supabase.",
+        hint: "Ve a Supabase → SQL Editor → Ejecuta el archivo: supabase/migrations/040_create_whatsapp_messages.sql",
+        sqlError: checkError.message
+      }, { status: 500 })
+    }
 
     if (existingTemplates && existingTemplates.length > 0) {
       return NextResponse.json({ 
@@ -183,12 +239,12 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Error seeding templates:", error)
-      return NextResponse.json({ error: "Error al crear templates" }, { status: 500 })
+      return NextResponse.json({ error: "Error al crear templates: " + error.message }, { status: 500 })
     }
 
     return NextResponse.json({ 
       success: true, 
-      message: `Se crearon ${data.length} templates`,
+      message: `Se crearon ${data?.length || 0} templates`,
       templates: data 
     })
   } catch (error: any) {
