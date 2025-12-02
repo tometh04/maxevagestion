@@ -22,6 +22,7 @@ import {
   Package,
   Repeat,
   Calendar as CalendarIcon,
+  MessageSquare,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -90,6 +91,7 @@ const allNavigation: NavItem[] = [
       { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
     ],
   },
+  { title: "Mensajes", url: "/messages", icon: MessageSquare },
   { title: "Alertas", url: "/alerts", icon: AlertCircle, module: "alerts" },
   { title: "Calendario", url: "/calendar", icon: CalendarIcon, module: "alerts" },
   { title: "Reportes", url: "/reports", icon: FileText, module: "reports" },
