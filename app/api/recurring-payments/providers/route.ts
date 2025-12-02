@@ -5,20 +5,18 @@ import { getCurrentUser } from "@/lib/auth"
 // GET - Obtener lista de proveedores
 export async function GET() {
   try {
-    const { user } = await getCurrentUser()
+    await getCurrentUser() // Solo verificar autenticación
     const supabase = await createServerClient()
 
+    // Obtener todos los proveedores (sin filtro por agencia)
     const { data, error } = await (supabase.from("recurring_payment_providers") as any)
       .select("name")
-      .eq("agency_id", user.agency_id)
       .order("name")
 
     if (error) {
       // Si la tabla no existe, devolver array vacío
-      if (error.code === "42P01") {
-        return NextResponse.json({ providers: [] })
-      }
-      throw error
+      console.error("Error fetching providers:", error)
+      return NextResponse.json({ providers: [] })
     }
 
     const providers = (data || []).map((p: any) => p.name)
@@ -32,7 +30,7 @@ export async function GET() {
 // POST - Crear nuevo proveedor
 export async function POST(request: Request) {
   try {
-    const { user } = await getCurrentUser()
+    await getCurrentUser() // Solo verificar autenticación
     const supabase = await createServerClient()
     const body = await request.json()
 
@@ -45,12 +43,12 @@ export async function POST(request: Request) {
       )
     }
 
-    const { data, error } = await (supabase.from("recurring_payment_providers") as any)
+    // Insertar sin agency_id (proveedores globales)
+    const { error } = await (supabase.from("recurring_payment_providers") as any)
       .upsert(
-        { name, agency_id: user.agency_id },
-        { onConflict: "name,agency_id" }
+        { name },
+        { onConflict: "name" }
       )
-      .select()
 
     if (error) {
       console.error("Error creating provider:", error)
@@ -69,4 +67,3 @@ export async function POST(request: Request) {
     )
   }
 }
-

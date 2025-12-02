@@ -22,9 +22,10 @@ export async function GET(request: Request) {
       .select("*")
       .order("created_at", { ascending: false })
 
-    // Filtrar por agencia del usuario
-    if (user.agency_id) {
-      query = query.eq("agency_id", user.agency_id)
+    // Filtrar por agencia del usuario (si existe)
+    const userAny = user as any
+    if (userAny.agency_id) {
+      query = query.eq("agency_id", userAny.agency_id)
     }
 
     if (isActive !== undefined) {
@@ -104,6 +105,7 @@ export async function POST(request: Request) {
 
     // Calcular next_due_date basado en start_date
     const nextDueDate = start_date
+    const userAny = user as any
 
     const { data, error } = await (supabase.from("recurring_payments") as any)
       .insert({
@@ -119,7 +121,7 @@ export async function POST(request: Request) {
         notes: notes || null,
         invoice_number: invoice_number || null,
         reference: reference || null,
-        agency_id: user.agency_id,
+        agency_id: userAny.agency_id || null,
         created_by: user.id,
       })
       .select("id")
@@ -129,7 +131,7 @@ export async function POST(request: Request) {
       console.error("Error creating recurring payment:", error)
       
       // Si la tabla no existe
-      if (error.code === "42P01") {
+      if (error.code === "42P01" || error.message?.includes("does not exist")) {
         return NextResponse.json({ 
           error: "La tabla recurring_payments no existe. Ejecuta la migración SQL en Supabase.",
           hint: "Ve a Supabase → SQL Editor → Ejecuta: supabase/migrations/041_fix_recurring_payments.sql"
@@ -142,8 +144,8 @@ export async function POST(request: Request) {
     // También guardar el proveedor en la tabla de proveedores para autocompletado
     await (supabase.from("recurring_payment_providers") as any)
       .upsert(
-        { name: provider_name, agency_id: user.agency_id },
-        { onConflict: "name,agency_id", ignoreDuplicates: true }
+        { name: provider_name },
+        { onConflict: "name", ignoreDuplicates: true }
       )
 
     return NextResponse.json({ id: data.id }, { status: 201 })

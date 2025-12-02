@@ -7,14 +7,11 @@
 -- 1. Primero crear la tabla de proveedores para pagos recurrentes
 CREATE TABLE IF NOT EXISTS recurring_payment_providers (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name TEXT NOT NULL,
-  agency_id UUID REFERENCES agencies(id) ON DELETE CASCADE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(name, agency_id)
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_recurring_payment_providers_name ON recurring_payment_providers(name);
-CREATE INDEX IF NOT EXISTS idx_recurring_payment_providers_agency ON recurring_payment_providers(agency_id);
 
 -- 2. Modificar operator_payments para permitir operation_id NULL
 -- (los pagos recurrentes no están vinculados a operaciones específicas)
