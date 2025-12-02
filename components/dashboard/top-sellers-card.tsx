@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 interface Seller {
   id: string
   name: string
+  phone?: string | null
   totalSales: number
   operationsCount: number
   margin: number
@@ -42,7 +43,8 @@ export function TopSellersCard() {
         .slice(0, 5)
         .map((s: any) => ({
           id: s.id,
-          name: s.name,
+          name: s.name || s.phone || "Vendedor",
+          phone: s.phone,
           totalSales: s.totalSales || 0,
           operationsCount: s.operationsCount || 0,
           margin: s.margin || 0,
@@ -58,6 +60,11 @@ export function TopSellersCard() {
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "?"
+    // Si es un teléfono (empieza con + o es solo números), mostrar los últimos 2 dígitos
+    if (name.startsWith("+") || /^\d+$/.test(name.replace(/\s/g, ""))) {
+      const digits = name.replace(/\D/g, "")
+      return digits.slice(-2) || "📱"
+    }
     return name
       .split(" ")
       .map((n) => n[0])
@@ -142,7 +149,7 @@ export function TopSellersCard() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate leading-tight">{seller.name || "Sin nombre"}</p>
+                  <p className="font-medium truncate leading-tight">{seller.name}</p>
                   <p className="text-[10px] text-muted-foreground">
                     {seller.operationsCount} ops • {formatCurrency(seller.margin)} margen
                   </p>

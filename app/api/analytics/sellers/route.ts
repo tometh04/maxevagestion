@@ -32,7 +32,8 @@ export async function GET(request: Request) {
         seller_id,
         sellers:seller_id(
           id,
-          name
+          name,
+          phone
         )
       `,
       )
@@ -67,12 +68,14 @@ export async function GET(request: Request) {
     // Group by seller
     const sellerStats = (operations || []).reduce((acc: any, op: any) => {
       const sellerId = op.seller_id
-      const sellerName = op.sellers?.name || "Sin nombre"
+      // Usar nombre, si no hay usar teléfono, si no hay usar "Vendedor"
+      const sellerName = op.sellers?.name || op.sellers?.phone || "Vendedor"
 
       if (!acc[sellerId]) {
         acc[sellerId] = {
           sellerId,
           sellerName,
+          phone: op.sellers?.phone || null,
           totalSales: 0,
           totalMargin: 0,
           operationsCount: 0,
@@ -87,7 +90,12 @@ export async function GET(request: Request) {
     }, {})
 
     const sellers = Object.values(sellerStats).map((seller: any) => ({
-      ...seller,
+      id: seller.sellerId,
+      name: seller.sellerName,
+      phone: seller.phone,
+      totalSales: seller.totalSales,
+      margin: seller.totalMargin,
+      operationsCount: seller.operationsCount,
       avgMarginPercent: seller.totalSales > 0 ? (seller.totalMargin / seller.totalSales) * 100 : 0,
     }))
 
