@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw, AlertCircle } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle, Filter } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { toast } from "sonner"
@@ -48,6 +48,7 @@ export function RecurringPaymentsPageClient() {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
   const [isActiveFilter, setIsActiveFilter] = useState<string>("ALL")
+  const [providerFilter, setProviderFilter] = useState<string>("ALL")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [tableError, setTableError] = useState<string | null>(null)
@@ -95,7 +96,11 @@ export function RecurringPaymentsPageClient() {
       }
 
       const result = await response.json()
-      toast.success(`Se generaron ${result.generated} pagos recurrentes`)
+      if (result.generated > 0) {
+        toast.success(`Se procesaron ${result.generated} pagos recurrentes. ${result.alertsCreated || 0} alertas creadas.`)
+      } else {
+        toast.info("No hay pagos recurrentes vencidos para procesar")
+      }
       fetchData()
     } catch (error: any) {
       console.error("Error generating payments:", error)
@@ -103,10 +108,32 @@ export function RecurringPaymentsPageClient() {
     }
   }
 
+  // Extraer proveedores únicos de los pagos
+  const uniqueProviders = useMemo(() => {
+    const providers = new Set<string>()
+    payments.forEach((p) => {
+      const name = p.provider_name || p.operators?.name
+      if (name) providers.add(name)
+    })
+    return Array.from(providers).sort()
+  }, [payments])
+
+  // Filtrar pagos por proveedor
+  const filteredPayments = useMemo(() => {
+    if (providerFilter === "ALL") return payments
+    return payments.filter((p) => {
+      const name = p.provider_name || p.operators?.name
+      return name === providerFilter
+    })
+  }, [payments, providerFilter])
+
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
   const totalMonthly = payments
     .filter((p) => p.is_active && p.frequency === "MONTHLY")
+    .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+  const totalMonthlyUSD = payments
+    .filter((p) => p.is_active && p.frequency === "MONTHLY" && p.currency === "USD")
     .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
 
   if (loading) {
@@ -136,7 +163,7 @@ export function RecurringPaymentsPageClient() {
       )}
 
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pagos Activos</CardTitle>
@@ -151,14 +178,28 @@ export function RecurringPaymentsPageClient() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Mensual</CardTitle>
+            <CardTitle className="text-sm font-medium">Total Mensual ARS</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {formatCurrency(totalMonthly, "ARS")}
+              {formatCurrency(totalMonthly - (totalMonthlyUSD * 1), "ARS")}
             </div>
             <p className="text-xs text-muted-foreground">
-              Suma de pagos mensuales activos
+              Pagos mensuales en pesos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Mensual USD</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">
+              {formatCurrency(totalMonthlyUSD, "USD")}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pagos mensuales en dólares
             </p>
           </CardContent>
         </Card>
@@ -179,15 +220,32 @@ export function RecurringPaymentsPageClient() {
       {/* Filters and Actions */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <CardTitle>Pagos Recurrentes</CardTitle>
               <CardDescription>Gestión de pagos automáticos a proveedores</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Filtro por Proveedor */}
+              <Select value={providerFilter} onValueChange={setProviderFilter}>
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Filtrar por estado" />
+                  <Filter className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="Proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos los proveedores</SelectItem>
+                  {uniqueProviders.map((provider) => (
+                    <SelectItem key={provider} value={provider}>
+                      {provider}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Filtro por Estado */}
+              <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Estado" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">Todos</SelectItem>
@@ -195,17 +253,21 @@ export function RecurringPaymentsPageClient() {
                   <SelectItem value="INACTIVE">Inactivos</SelectItem>
                 </SelectContent>
               </Select>
+
               <Button onClick={() => setNewDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Nuevo Pago Recurrente
+                Nuevo Pago
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {payments.length === 0 ? (
+          {filteredPayments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No se encontraron pagos recurrentes
+              {providerFilter !== "ALL" 
+                ? `No hay pagos recurrentes para "${providerFilter}"`
+                : "No se encontraron pagos recurrentes"
+              }
             </div>
           ) : (
             <Table>
@@ -221,7 +283,7 @@ export function RecurringPaymentsPageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => {
+                {filteredPayments.map((payment) => {
                   const daysUntilDue = Math.ceil(
                     (new Date(payment.next_due_date).getTime() - new Date().getTime()) /
                       (1000 * 60 * 60 * 24)
@@ -230,14 +292,18 @@ export function RecurringPaymentsPageClient() {
                   return (
                     <TableRow key={payment.id}>
                       <TableCell className="font-medium">
-                        {payment.provider_name || payment.operators?.name || "-"}
+                        <Badge variant="outline" className="font-normal">
+                          {payment.provider_name || payment.operators?.name || "-"}
+                        </Badge>
                       </TableCell>
-                      <TableCell>{payment.description}</TableCell>
-                      <TableCell>
+                      <TableCell className="max-w-[200px] truncate">
+                        {payment.description}
+                      </TableCell>
+                      <TableCell className={payment.currency === "USD" ? "text-emerald-600 font-medium" : ""}>
                         {formatCurrency(payment.amount, payment.currency)}
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">
+                        <Badge variant="secondary">
                           {frequencyLabels[payment.frequency] || payment.frequency}
                         </Badge>
                       </TableCell>
@@ -248,13 +314,14 @@ export function RecurringPaymentsPageClient() {
                               locale: es,
                             })}
                           </span>
-                          {daysUntilDue >= 0 && daysUntilDue <= 7 && (
+                          {daysUntilDue <= 0 && (
+                            <span className="text-xs text-red-500 font-medium">
+                              {daysUntilDue === 0 ? "Vence hoy" : `Vencido hace ${Math.abs(daysUntilDue)} días`}
+                            </span>
+                          )}
+                          {daysUntilDue > 0 && daysUntilDue <= 7 && (
                             <span className="text-xs text-amber-600">
-                              {daysUntilDue === 0
-                                ? "Hoy"
-                                : daysUntilDue === 1
-                                ? "Mañana"
-                                : `En ${daysUntilDue} días`}
+                              {daysUntilDue === 1 ? "Mañana" : `En ${daysUntilDue} días`}
                             </span>
                           )}
                         </div>
