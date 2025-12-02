@@ -30,6 +30,7 @@ const alertTypeConfig: Record<string, { icon: any; color: string; label: string 
   MISSING_DOCUMENT: { icon: FileText, color: "bg-orange-500", label: "Doc" },
   LOW_MARGIN: { icon: AlertTriangle, color: "bg-red-500", label: "Margen" },
   QUOTATION_EXPIRING: { icon: Bell, color: "bg-purple-500", label: "Cotiz" },
+  RECURRING_PAYMENT: { icon: DollarSign, color: "bg-emerald-500", label: "Recurrente" },
 }
 
 export function PendingAlertsCard() {

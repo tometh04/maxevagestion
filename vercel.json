@@ -1,17 +1,16 @@
 {
   "crons": [
     {
-      "path": "/api/cron/recurring-payments",
-      "schedule": "0 0 * * *"
+      "path": "/api/recurring-payments/generate",
+      "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/payment-reminders",
+      "path": "/api/cron/notifications",
       "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/cron/alerts",
-      "schedule": "0 9 * * *"
+      "path": "/api/cron/whatsapp",
+      "schedule": "0 10 * * *"
     }
   ]
 }
-
