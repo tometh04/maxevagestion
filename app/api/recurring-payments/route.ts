@@ -34,20 +34,32 @@ export async function GET(request: Request) {
     const { data, error } = await query
 
     if (error) {
-      // Si la tabla no existe
-      if (error.code === "42P01") {
+      console.error("Error fetching recurring payments:", error)
+      // Si la tabla no existe (código 42P01) o error de schema cache
+      if (error.code === "42P01" || error.message?.includes("schema cache") || error.message?.includes("does not exist")) {
         return NextResponse.json({ 
           payments: [],
-          error: "La tabla recurring_payments no existe. Ejecuta la migración SQL."
+          tableNotFound: true,
+          message: "La tabla recurring_payments no existe. Ejecuta la migración SQL en Supabase."
         })
       }
-      throw error
+      // Devolver array vacío para otros errores de tabla
+      return NextResponse.json({ 
+        payments: [],
+        tableNotFound: true,
+        message: "Error de base de datos. Verifica que la tabla recurring_payments exista."
+      })
     }
 
     return NextResponse.json({ payments: data || [] })
   } catch (error: any) {
     console.error("Error in GET /api/recurring-payments:", error)
-    return NextResponse.json({ error: error.message || "Error al obtener pagos recurrentes" }, { status: 500 })
+    // No devolver 500, devolver payments vacío con mensaje
+    return NextResponse.json({ 
+      payments: [],
+      tableNotFound: true,
+      message: "La tabla recurring_payments no existe. Ejecuta la migración SQL."
+    })
   }
 }
 

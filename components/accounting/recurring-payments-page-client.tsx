@@ -68,15 +68,16 @@ export function RecurringPaymentsPageClient() {
       const response = await fetch(`/api/recurring-payments?${params.toString()}`)
       const data = await response.json()
 
-      if (data.error && data.error.includes("no existe")) {
-        setTableError(data.error)
+      if (data.tableNotFound || data.message) {
+        setTableError(data.message || "La tabla recurring_payments no existe. Ejecuta la migración SQL.")
         setPayments([])
       } else {
         setPayments(data.payments || [])
       }
     } catch (error) {
       console.error("Error fetching recurring payments:", error)
-      toast.error("Error al cargar pagos recurrentes")
+      setTableError("La tabla recurring_payments no existe. Ejecuta la migración SQL en Supabase.")
+      setPayments([])
     } finally {
       setLoading(false)
     }
