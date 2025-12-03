@@ -87,15 +87,15 @@ export async function GET(request: Request) {
     
     if (wonLeadIds.length > 0) {
       // Buscar TODAS las operaciones que tengan lead_id de estos leads
-      const { data: allOperationsForWonLeads, error: opsError } = await supabase
-        .from("operations")
+      const { data: allOperationsForWonLeads, error: opsError } = await (supabase
+        .from("operations") as any)
         .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
         .in("lead_id", wonLeadIds)
       
       if (!opsError && allOperationsForWonLeads && allOperationsForWonLeads.length > 0) {
         // Crear mapa de operaciones por lead_id
         const operationsByLeadId = new Map<string, any[]>()
-        for (const op of allOperationsForWonLeads) {
+        for (const op of allOperationsForWonLeads as any[]) {
           const leadId = op.lead_id as string
           if (leadId) {
             if (!operationsByLeadId.has(leadId)) {
