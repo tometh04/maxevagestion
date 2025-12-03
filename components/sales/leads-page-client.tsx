@@ -174,8 +174,11 @@ export function LeadsPageClient({
         if (trelloListId && trelloListId !== "ALL") {
           url += `&trelloListId=${trelloListId}`
         }
+        
+        // Cache busting para asegurar datos frescos
+        url += `&_t=${Date.now()}`
 
-        const response = await fetch(url)
+        const response = await fetch(url, { cache: 'no-store' })
         const data = await response.json()
         
         if (data.leads && data.leads.length > 0) {

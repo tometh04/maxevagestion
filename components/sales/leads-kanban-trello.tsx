@@ -106,9 +106,9 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
         toast.warning(data.warning, { duration: 5000 })
       }
 
-      // Refrescar la lista
+      // Refrescar la lista y ESPERAR a que termine
       if (onRefresh) {
-        onRefresh()
+        await onRefresh()
       }
     } catch (error) {
       console.error("Error claiming lead:", error)
