@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       *,
       agencies(name),
       users:assigned_seller_id(name, email),
-      operations(id, destination, status)
+      operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)
     `)
 
     // Apply permissions-based filtering

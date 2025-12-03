@@ -157,7 +157,15 @@ interface Lead {
   users?: { name: string; email: string } | null
   agencies?: { name: string } | null
   // Enlaces a entidades convertidas
-  operations?: Array<{ id: string; destination: string; status: string }> | null
+  operations?: Array<{ 
+    id: string
+    file_code?: string
+    destination: string
+    status: string
+    created_at?: string
+    departure_date?: string
+    sale_amount_total?: number
+  }> | null
   customers?: Array<{ id: string; first_name: string; last_name: string }> | null
 }
 
@@ -371,32 +379,48 @@ export function LeadDetailDialog({
                 <div className="space-y-2">
                   {/* Link a Operación */}
                   {lead.operations && lead.operations.length > 0 && (
-                    <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                      <Briefcase className="h-4 w-4 text-primary" />
-                      <span className="text-sm flex-1">
-                        Operación: {lead.operations[0].destination}
-                      </span>
-                      <Link href={`/operations/${lead.operations[0].id}`}>
-                        <Button variant="ghost" size="sm">
-                          Ver <ExternalLink className="h-3 w-3 ml-1" />
-                        </Button>
-                      </Link>
-                    </div>
+                    <Link href={`/operations/${lead.operations[0].id}`}>
+                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors cursor-pointer">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Briefcase className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-semibold text-green-900 dark:text-green-100">
+                              Operación Creada
+                            </span>
+                          </div>
+                          <ExternalLink className="h-4 w-4 text-green-600" />
+                        </div>
+                        <div className="text-sm space-y-1 ml-6">
+                          {lead.operations[0].file_code && (
+                            <p className="font-medium">{lead.operations[0].file_code}</p>
+                          )}
+                          <p className="text-muted-foreground">{lead.operations[0].destination}</p>
+                          {lead.operations[0].created_at && (
+                            <p className="text-xs text-muted-foreground">
+                              Creada: {format(new Date(lead.operations[0].created_at), "dd/MM/yyyy")}
+                            </p>
+                          )}
+                          {lead.operations[0].departure_date && (
+                            <p className="text-xs text-muted-foreground">
+                              Salida: {format(new Date(lead.operations[0].departure_date), "dd/MM/yyyy")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </Link>
                   )}
                   
                   {/* Link a Cliente */}
                   {lead.customers && lead.customers.length > 0 && (
-                    <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors">
-                      <User className="h-4 w-4 text-primary" />
-                      <span className="text-sm flex-1">
-                        Cliente: {lead.customers[0].first_name} {lead.customers[0].last_name}
-                      </span>
-                      <Link href={`/customers/${lead.customers[0].id}`}>
-                        <Button variant="ghost" size="sm">
-                          Ver <ExternalLink className="h-3 w-3 ml-1" />
-                        </Button>
-                      </Link>
-                    </div>
+                    <Link href={`/customers/${lead.customers[0].id}`}>
+                      <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
+                        <User className="h-4 w-4 text-primary" />
+                        <span className="text-sm flex-1">
+                          Cliente: {lead.customers[0].first_name} {lead.customers[0].last_name}
+                        </span>
+                        <ExternalLink className="h-3 w-3" />
+                      </div>
+                    </Link>
                   )}
                 </div>
               </div>
