@@ -81,15 +81,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
-    // Debug: ver si se traen operaciones
-    const wonLeads = (leads || []).filter((l: any) => l.status === "WON")
-    if (wonLeads.length > 0) {
-      console.log("🔍 WON Leads con operations:", wonLeads.map((l: any) => ({
-        id: l.id,
-        name: l.contact_name,
-        operations: l.operations,
-        operations_length: l.operations?.length || 0
-      })))
+    // Para leads WON que no tienen operations cargadas por la relación,
+    // hacer una query adicional para traerlas
+    const wonLeadsWithoutOperations = (leads || []).filter((l: any) => 
+      l.status === "WON" && (!l.operations || l.operations.length === 0)
+    )
+    
+    if (wonLeadsWithoutOperations.length > 0) {
+      const wonLeadIds = wonLeadsWithoutOperations.map((l: any) => l.id)
+      
+      // Buscar operaciones por lead_id
+      const { data: operationsForWonLeads } = await supabase
+        .from("operations")
+        .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
+        .in("lead_id", wonLeadIds)
+      
+      // Asociar operaciones a los leads
+      if (operationsForWonLeads && operationsForWonLeads.length > 0) {
+        const operationsByLeadId = new Map<string, any[]>()
+        for (const op of operationsForWonLeads) {
+          if (op.lead_id) {
+            if (!operationsByLeadId.has(op.lead_id)) {
+              operationsByLeadId.set(op.lead_id, [])
+            }
+            operationsByLeadId.get(op.lead_id)!.push(op)
+          }
+        }
+        
+        leads = leads.map((lead: any) => {
+          if (lead.status === "WON" && (!lead.operations || lead.operations.length === 0)) {
+            const ops = operationsByLeadId.get(lead.id) || []
+            return { ...lead, operations: ops }
+          }
+          return lead
+        })
+      }
     }
 
     // Para leads convertidos (WON), obtener los clientes asociados a través de las operaciones

@@ -368,13 +368,6 @@ export function LeadDetailDialog({
             </>
           )}
 
-          {/* Debug info */}
-          {lead.status === "WON" && (
-            <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
-              Debug: status={lead.status}, operations={lead.operations?.length || 0}, customers={lead.customers?.length || 0}
-            </div>
-          )}
-
           {/* Entidades Relacionadas (cuando el lead está convertido) */}
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
             <>
@@ -655,14 +648,7 @@ export function LeadDetailDialog({
             {onConvert && lead.status !== "WON" && lead.status !== "LOST" && (
               <Button
                 variant="outline"
-                onClick={() => {
-                  console.log("Abriendo convertir dialog, agencies:", agencies.length, "sellers:", sellers.length)
-                  if (agencies.length === 0 || sellers.length === 0) {
-                    alert("Error: No hay agencias o vendedores disponibles para convertir el lead")
-                    return
-                  }
-                  setConvertDialogOpen(true)
-                }}
+                onClick={() => setConvertDialogOpen(true)}
                 className="flex-1 sm:flex-initial"
               >
                 <ArrowRight className="mr-2 h-4 w-4" />
