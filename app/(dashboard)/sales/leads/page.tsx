@@ -51,8 +51,13 @@ export default async function LeadsPage() {
     agencies = (data || []) as Array<{ id: string; name: string }>
   }
 
-  // Get sellers for filters
-  let sellersQuery = supabase.from("users").select("id, name").eq("role", "SELLER")
+  // Get sellers for filters - incluir SELLER, ADMIN y SUPER_ADMIN como vendedores
+  let sellersQuery = supabase
+    .from("users")
+    .select("id, name")
+    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+    .eq("is_active", true)
+  
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
