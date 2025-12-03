@@ -645,7 +645,7 @@ export function LeadDetailDialog({
               <Edit className="mr-2 h-4 w-4" />
               Editar
             </Button>
-            {onConvert && lead.status !== "WON" && lead.status !== "LOST" && (
+            {onConvert && lead.status !== "WON" && lead.status !== "LOST" && agencies.length > 0 && sellers.length > 0 && (
               <Button
                 variant="outline"
                 onClick={() => setConvertDialogOpen(true)}
