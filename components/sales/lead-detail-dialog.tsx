@@ -649,6 +649,11 @@ export function LeadDetailDialog({
               <Button
                 variant="outline"
                 onClick={() => {
+                  console.log("Abriendo convertir dialog, agencies:", agencies.length, "sellers:", sellers.length)
+                  if (agencies.length === 0 || sellers.length === 0) {
+                    alert("Error: No hay agencias o vendedores disponibles para convertir el lead")
+                    return
+                  }
                   setConvertDialogOpen(true)
                 }}
                 className="flex-1 sm:flex-initial"
