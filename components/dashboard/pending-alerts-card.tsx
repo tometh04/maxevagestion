@@ -19,8 +19,9 @@ interface Alert {
   date_due: string
   status: string
   operations?: {
-    file_code: string
-    destination: string
+    id: string
+    file_code?: string
+    destination?: string
   } | null
 }
 
@@ -99,8 +100,18 @@ export function PendingAlertsCard() {
                 const Icon = config.icon
                 const overdue = isOverdue(alert.date_due)
 
+                // Determinar el link correcto según el tipo de alerta y si tiene operation válida
+                const getAlertLink = () => {
+                  // Si tiene operación con datos válidos, ir al detalle
+                  if (alert.operation_id && alert.operations?.id) {
+                    return `/operations/${alert.operation_id}`
+                  }
+                  // Si no, ir a la lista de alertas
+                  return "/alerts"
+                }
+
                 return (
-                  <Link key={alert.id} href={alert.operation_id ? `/operations/${alert.operation_id}` : "/alerts"}>
+                  <Link key={alert.id} href={getAlertLink()}>
                     <div
                       className={`p-2 rounded-md border text-xs hover:bg-muted/50 transition-colors cursor-pointer ${
                         overdue 
