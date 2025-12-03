@@ -241,9 +241,26 @@ export function UsersSettings() {
   }
 
   const handleResendInvite = async (user: User) => {
-    toast.info("Reenviando invitación...")
-    // Por ahora solo mostramos un mensaje, en el futuro implementar reenvío
-    toast.success(`Invitación reenviada a ${user.email}`)
+    try {
+      toast.info("Reenviando invitación...")
+      
+      const response = await fetch("/api/settings/users/resend-invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success(data.message || `Invitación reenviada a ${user.email}`)
+      } else {
+        toast.error(data.error || "Error al reenviar invitación")
+      }
+    } catch (error) {
+      console.error("Error resending invite:", error)
+      toast.error("Error al reenviar invitación")
+    }
   }
 
   const toggleAgency = (agencyId: string) => {
