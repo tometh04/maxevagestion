@@ -368,6 +368,13 @@ export function LeadDetailDialog({
             </>
           )}
 
+          {/* Debug info */}
+          {lead.status === "WON" && (
+            <div className="text-xs text-muted-foreground p-2 bg-muted rounded">
+              Debug: status={lead.status}, operations={lead.operations?.length || 0}, customers={lead.customers?.length || 0}
+            </div>
+          )}
+
           {/* Entidades Relacionadas (cuando el lead está convertido) */}
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
             <>

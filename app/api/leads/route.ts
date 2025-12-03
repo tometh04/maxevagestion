@@ -81,6 +81,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
+    // Debug: ver si se traen operaciones
+    const wonLeads = (leads || []).filter((l: any) => l.status === "WON")
+    if (wonLeads.length > 0) {
+      console.log("🔍 WON Leads con operations:", wonLeads.map((l: any) => ({
+        id: l.id,
+        name: l.contact_name,
+        operations: l.operations,
+        operations_length: l.operations?.length || 0
+      })))
+    }
+
     // Para leads convertidos (WON), obtener los clientes asociados a través de las operaciones
     const wonLeadsWithOperations = leads.filter((l: any) => l.status === "WON" && l.operations?.length > 0)
     if (wonLeadsWithOperations.length > 0) {
