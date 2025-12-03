@@ -27,12 +27,11 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Build query - incluir operaciones y clientes relacionados
+    // Build query - NO incluir operations aquí, se cargan después manualmente
     let query = supabase.from("leads").select(`
       *,
       agencies(name),
-      users:assigned_seller_id(name, email),
-      operations(id, file_code, destination, status, created_at, departure_date, sale_amount_total)
+      users:assigned_seller_id(name, email)
     `)
 
     // Apply permissions-based filtering
@@ -81,35 +80,42 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
-    // Para leads WON que no tienen operations cargadas por la relación,
-    // hacer una query adicional para traerlas
-    const wonLeadsWithoutOperations = (leads || []).filter((l: any) => 
-      l.status === "WON" && (!l.operations || l.operations.length === 0)
-    )
+    // SIEMPRE cargar operaciones para leads WON desde la tabla operations directamente
+    const wonLeadIds = (leads || [])
+      .filter((l: any) => l.status === "WON")
+      .map((l: any) => l.id)
     
-    if (wonLeadsWithoutOperations.length > 0) {
-      const wonLeadIds = wonLeadsWithoutOperations.map((l: any) => l.id)
-      
-      // Buscar operaciones por lead_id
-      const { data: operationsForWonLeads } = await supabase
+    if (wonLeadIds.length > 0) {
+      // Buscar TODAS las operaciones que tengan lead_id de estos leads
+      const { data: allOperationsForWonLeads, error: opsError } = await supabase
         .from("operations")
         .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
         .in("lead_id", wonLeadIds)
       
-      // Asociar operaciones a los leads
-      if (operationsForWonLeads && operationsForWonLeads.length > 0) {
+      if (!opsError && allOperationsForWonLeads && allOperationsForWonLeads.length > 0) {
+        // Crear mapa de operaciones por lead_id
         const operationsByLeadId = new Map<string, any[]>()
-        for (const op of operationsForWonLeads) {
-          if (op.lead_id) {
-            if (!operationsByLeadId.has(op.lead_id)) {
-              operationsByLeadId.set(op.lead_id, [])
+        for (const op of allOperationsForWonLeads) {
+          const leadId = op.lead_id as string
+          if (leadId) {
+            if (!operationsByLeadId.has(leadId)) {
+              operationsByLeadId.set(leadId, [])
             }
-            operationsByLeadId.get(op.lead_id)!.push(op)
+            operationsByLeadId.get(leadId)!.push({
+              id: op.id,
+              file_code: op.file_code,
+              destination: op.destination,
+              status: op.status,
+              created_at: op.created_at,
+              departure_date: op.departure_date,
+              sale_amount_total: op.sale_amount_total,
+            })
           }
         }
         
+        // Asignar operaciones a cada lead WON
         leads = leads.map((lead: any) => {
-          if (lead.status === "WON" && (!lead.operations || lead.operations.length === 0)) {
+          if (lead.status === "WON") {
             const ops = operationsByLeadId.get(lead.id) || []
             return { ...lead, operations: ops }
           }
