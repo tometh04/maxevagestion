@@ -9,6 +9,39 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    const operationId = searchParams.get("operationId")
+    const type = searchParams.get("type") // "purchases" para compras
+
+    // Si viene operationId, filtrar solo por esa operación
+    if (operationId) {
+      if (type === "purchases") {
+        const { data: purchasesIVA, error } = await (supabase.from("iva_purchases") as any)
+          .select("*")
+          .eq("operation_id", operationId)
+
+        if (error) {
+          console.error("Error fetching purchases IVA for operation:", error)
+        }
+
+        return NextResponse.json({
+          purchases: purchasesIVA || [],
+        })
+      } else {
+        const { data: salesIVA, error } = await (supabase.from("iva_sales") as any)
+          .select("*")
+          .eq("operation_id", operationId)
+
+        if (error) {
+          console.error("Error fetching sales IVA for operation:", error)
+        }
+
+        return NextResponse.json({
+          sales: salesIVA || [],
+        })
+      }
+    }
+
+    // Si no viene operationId, devolver resumen mensual
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString())
 
