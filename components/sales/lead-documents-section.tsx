@@ -22,7 +22,7 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 
 /**
- * Verifica el estado del pasaporte
+ * Verifica el estado de vencimiento de un documento
  */
 function checkPassportStatus(expirationDate: string, tripDate?: string): {
   status: "OK" | "WARNING" | "DANGER" | "EXPIRED"
@@ -32,7 +32,7 @@ function checkPassportStatus(expirationDate: string, tripDate?: string): {
   const expDate = new Date(expirationDate)
   
   if (expDate < today) {
-    return { status: "EXPIRED", message: "Pasaporte vencido" }
+    return { status: "EXPIRED", message: "Documento vencido" }
   }
   
   if (tripDate) {
@@ -49,7 +49,7 @@ function checkPassportStatus(expirationDate: string, tripDate?: string): {
     const sixMonthsFromNow = new Date(today)
     sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6)
     if (expDate < sixMonthsFromNow) {
-      return { status: "WARNING", message: "Vence en menos de 6 meses" }
+      return { status: "WARNING", message: "Vence pronto" }
     }
   }
   
@@ -375,8 +375,8 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                         }
                         const label = fieldLabels[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
                         
-                        // Manejar fecha de vencimiento con badge
-                        if (key === "expiration_date" && doc.type === "PASSPORT") {
+                        // Manejar fecha de vencimiento con badge para cualquier documento
+                        if (key === "expiration_date") {
                           const status = checkPassportStatus(String(value))
                           return (
                             <div key={key} className="col-span-2">
