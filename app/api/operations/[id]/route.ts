@@ -266,13 +266,13 @@ export async function DELETE(
 
     // 2. Eliminar pagos y sus movimientos contables
     try {
-      const { data: payments } = await supabase
+      const { data: payments } = await (supabase
         .from("payments")
         .select("id, ledger_movement_id")
-        .eq("operation_id", operationId)
+        .eq("operation_id", operationId) as any)
 
       if (payments && payments.length > 0) {
-        for (const payment of payments) {
+        for (const payment of payments as any[]) {
           // Eliminar cash_movement asociado
           await (supabase.from("cash_movements") as any)
             .delete()
@@ -286,7 +286,7 @@ export async function DELETE(
           }
         }
         // Los pagos se eliminan por CASCADE, pero lo hacemos explícito
-        await supabase.from("payments").delete().eq("operation_id", operationId)
+        await (supabase.from("payments") as any).delete().eq("operation_id", operationId)
         console.log(`  ✓ ${payments.length} pagos eliminados con sus movimientos`)
       }
     } catch (error) {
