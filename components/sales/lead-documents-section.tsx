@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Upload, FileText, X, Eye, Trash2, Loader2, CheckCircle2, AlertCircle } from "lucide-react"
+import { Upload, FileText, X, Eye, Trash2, Loader2, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,41 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { format } from "date-fns"
+
+/**
+ * Verifica el estado del pasaporte
+ */
+function checkPassportStatus(expirationDate: string, tripDate?: string): {
+  status: "OK" | "WARNING" | "DANGER" | "EXPIRED"
+  message: string
+} {
+  const today = new Date()
+  const expDate = new Date(expirationDate)
+  
+  if (expDate < today) {
+    return { status: "EXPIRED", message: "Pasaporte vencido" }
+  }
+  
+  if (tripDate) {
+    const trip = new Date(tripDate)
+    if (expDate < trip) {
+      return { status: "DANGER", message: "Vence antes del viaje" }
+    }
+    const sixMonthsAfterTrip = new Date(trip)
+    sixMonthsAfterTrip.setMonth(sixMonthsAfterTrip.getMonth() + 6)
+    if (expDate < sixMonthsAfterTrip) {
+      return { status: "WARNING", message: "Vence cerca del viaje" }
+    }
+  } else {
+    const sixMonthsFromNow = new Date(today)
+    sixMonthsFromNow.setMonth(sixMonthsFromNow.getMonth() + 6)
+    if (expDate < sixMonthsFromNow) {
+      return { status: "WARNING", message: "Vence en menos de 6 meses" }
+    }
+  }
+  
+  return { status: "OK", message: "Vigente" }
+}
 
 interface Document {
   id: string
@@ -344,9 +379,42 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                       </div>
                     )}
                     {doc.scanned_data.expiration_date && (
-                      <div>
+                      <div className="col-span-2">
                         <span className="text-muted-foreground">Vencimiento:</span>{" "}
                         <span className="font-medium">{doc.scanned_data.expiration_date}</span>
+                        {doc.type === "PASSPORT" && (() => {
+                          const status = checkPassportStatus(doc.scanned_data.expiration_date)
+                          if (status.status === "EXPIRED") {
+                            return (
+                              <Badge variant="destructive" className="ml-2">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {status.message}
+                              </Badge>
+                            )
+                          }
+                          if (status.status === "DANGER") {
+                            return (
+                              <Badge variant="destructive" className="ml-2">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                {status.message}
+                              </Badge>
+                            )
+                          }
+                          if (status.status === "WARNING") {
+                            return (
+                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
+                                <AlertTriangle className="h-3 w-3 mr-1" />
+                                {status.message}
+                              </Badge>
+                            )
+                          }
+                          return (
+                            <Badge variant="outline" className="ml-2 border-green-500 text-green-600">
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              {status.message}
+                            </Badge>
+                          )
+                        })()}
                       </div>
                     )}
                     {doc.scanned_data.place_of_birth && (

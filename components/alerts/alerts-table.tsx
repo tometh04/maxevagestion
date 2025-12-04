@@ -19,9 +19,10 @@ import Link from "next/link"
 export interface Alert {
   id: string
   operation_id: string | null
+  lead_id?: string | null
   customer_id: string | null
   user_id: string | null
-  type: "PAYMENT_DUE" | "OPERATOR_DUE" | "UPCOMING_TRIP" | "MISSING_DOC" | "GENERIC"
+  type: string
   description: string
   date_due: string
   status: "PENDING" | "DONE" | "IGNORED"
@@ -35,6 +36,11 @@ export interface Alert {
       id: string
       name: string
     } | null
+  } | null
+  leads?: {
+    id: string
+    contact_name: string
+    destination: string
   } | null
   customers?: {
     id: string
@@ -57,6 +63,16 @@ const typeLabels: Record<string, string> = {
   UPCOMING_TRIP: "Viaje Próximo",
   MISSING_DOC: "Documento Faltante",
   GENERIC: "Genérico",
+  PAYMENT_REMINDER_7D: "Pago (7 días)",
+  PAYMENT_REMINDER_3D: "Pago (3 días)",
+  PAYMENT_REMINDER_TODAY: "Pago (Hoy)",
+  PAYMENT_OVERDUE: "Pago Vencido",
+  LEAD_CHECKIN_30D: "Check-in (30 días)",
+  LEAD_CHECKIN_15D: "Check-in (15 días)",
+  LEAD_CHECKIN_7D: "Check-in (7 días)",
+  LEAD_CHECKIN_TODAY: "Check-in (Hoy)",
+  RECURRING_PAYMENT: "Pago Recurrente",
+  PASSPORT_EXPIRY: "⚠️ Pasaporte",
 }
 
 const statusLabels: Record<string, string> = {
@@ -129,6 +145,13 @@ export function AlertsTable({
             <Link href={`/operations/${alert.operation_id}`}>
               <Button variant="link" size="sm">
                 Ver operación
+              </Button>
+            </Link>
+          )}
+          {alert.lead_id && !alert.operation_id && (
+            <Link href={`/sales/leads`}>
+              <Button variant="link" size="sm">
+                Ver lead
               </Button>
             </Link>
           )}

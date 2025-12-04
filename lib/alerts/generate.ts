@@ -158,6 +158,18 @@ export async function generateAllAlerts(): Promise<void> {
     console.error("Error generating lead reminders:", error)
   }
 
+  console.log("🔄 Generating passport expiry alerts...")
+  try {
+    const { generatePassportExpiryAlerts } = await import("./passport-expiry")
+    const passportResult = await generatePassportExpiryAlerts()
+    console.log(`   ✅ Created ${passportResult.created} passport expiry alerts (${passportResult.skipped} skipped)`)
+    if (passportResult.errors.length > 0) {
+      console.log(`   ⚠️ ${passportResult.errors.length} errors`)
+    }
+  } catch (error) {
+    console.error("Error generating passport expiry alerts:", error)
+  }
+
   // Generar alertas contables avanzadas para todas las agencias
   console.log("🔄 Generating accounting alerts...")
   try {
