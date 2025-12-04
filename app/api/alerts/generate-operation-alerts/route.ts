@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     }
 
     // Obtener la operación con sus clientes
-    const { data: operation, error: opError } = await supabase
+    const { data: operationData, error: opError } = await supabase
       .from("operations")
       .select(`
         *,
@@ -27,9 +27,12 @@ export async function POST(request: Request) {
       .eq("id", operationId)
       .single()
 
-    if (opError || !operation) {
+    if (opError || !operationData) {
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
+
+    // Type assertion para evitar errores de TypeScript
+    const operation = operationData as any
 
     const alertsToCreate: any[] = []
     const today = new Date()
