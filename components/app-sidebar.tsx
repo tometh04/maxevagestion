@@ -13,14 +13,7 @@ import {
   AlertCircle,
   Plane,
   Calculator,
-  BookOpen,
-  Receipt,
-  Wallet,
-  TrendingUp,
   GalleryVerticalEnd,
-  FileCheck,
-  Package,
-  Repeat,
   Calendar as CalendarIcon,
   MessageSquare,
 } from "lucide-react"
@@ -53,18 +46,7 @@ interface NavItem {
 const allNavigation: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
   { title: "Leads", url: "/sales/leads", icon: ShoppingCart, module: "leads" },
-  { title: "Cotizaciones", url: "/quotations", icon: FileCheck, module: "leads" },
-  {
-    title: "Operaciones",
-    url: "/operations",
-    icon: Plane,
-    module: "operations",
-      items: [
-      { title: "Lista de Operaciones", url: "/operations" },
-      { title: "Tarifarios", url: "/tariffs" },
-      { title: "Cupos", url: "/quotas" },
-    ],
-  },
+  { title: "Operaciones", url: "/operations", icon: Plane, module: "operations" },
   { title: "Clientes", url: "/customers", icon: Users, module: "customers" },
   { title: "Operadores", url: "/operators", icon: Building2, module: "operators" },
   {

@@ -134,24 +134,6 @@ const DATABASE_SCHEMA = `
 - movement_date: TIMESTAMP
 - created_at: TIMESTAMP
 
-### TABLA: quotations (Cotizaciones/Presupuestos)
-- id: UUID (PK)
-- quotation_number: TEXT (Número de cotización)
-- lead_id: UUID (FK → leads)
-- agency_id: UUID (FK → agencies)
-- seller_id: UUID (FK → users)
-- customer_name, customer_email, customer_phone: TEXT
-- destination: TEXT
-- departure_date, return_date: DATE
-- adults, children, infants: INTEGER
-- total_amount: NUMERIC
-- currency: TEXT
-- status: TEXT ('DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED')
-- valid_until: DATE
-- notes: TEXT
-- items: JSONB (Detalle de items)
-- created_at, updated_at: TIMESTAMP
-
 ### TABLA: alerts (Alertas del sistema)
 - id: UUID (PK)
 - operation_id, customer_id, user_id: UUID (FKs opcionales)
@@ -437,7 +419,7 @@ export async function POST(request: Request) {
 ## TU ROL
 Eres un experto en el negocio de agencias de viajes. Conocés perfectamente:
 - Cómo funciona una agencia de viajes (vendemos viajes, cobramos a clientes, pagamos a operadores)
-- El flujo de un cliente: Lead → Cotización → Operación/Venta → Viaje → Cierre
+- El flujo de un cliente: Lead → Operación/Venta → Viaje → Cierre
 - Métricas de negocio: ventas, márgenes, comisiones, cobros, pagos, IVA
 - Operadores mayoristas (proveedores que nos venden los servicios)
 - Gestión de leads desde Instagram, WhatsApp, Trello

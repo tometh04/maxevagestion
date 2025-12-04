@@ -62,25 +62,6 @@ export async function GET(request: Request) {
       }
     }
 
-    // Vencimientos de cotizaciones
-    const { data: quotations } = await (supabase.from("quotations") as any)
-      .select("id, quotation_number, destination, valid_until")
-      .in("status", ["DRAFT", "SENT", "PENDING_APPROVAL"])
-      .not("valid_until", "is", null)
-
-    if (quotations) {
-      for (const quot of quotations) {
-        events.push({
-          id: `quotation-${quot.id}`,
-          type: "QUOTATION_EXPIRY",
-          title: `Vencimiento: ${quot.quotation_number}`,
-          date: quot.valid_until,
-          description: quot.destination || undefined,
-          color: "#ef4444",
-        })
-      }
-    }
-
     // Seguimientos de leads
     const { data: leads } = await (supabase.from("leads") as any)
       .select("id, contact_name, destination, follow_up_date")

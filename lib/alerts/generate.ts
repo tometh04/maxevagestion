@@ -158,18 +158,6 @@ export async function generateAllAlerts(): Promise<void> {
     console.error("Error generating lead reminders:", error)
   }
 
-  console.log("🔄 Generating quotation reminders...")
-  try {
-    const { generateQuotationReminders } = await import("./quotation-reminders")
-    const quotResult = await generateQuotationReminders()
-    console.log(`   ✅ Created ${quotResult.created} quotation reminders, ${quotResult.expired} expired`)
-    if (quotResult.errors.length > 0) {
-      console.log(`   ⚠️ ${quotResult.errors.length} errors`)
-    }
-  } catch (error) {
-    console.error("Error generating quotation reminders:", error)
-  }
-
   // Generar alertas contables avanzadas para todas las agencias
   console.log("🔄 Generating accounting alerts...")
   try {

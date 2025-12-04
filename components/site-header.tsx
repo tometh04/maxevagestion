@@ -18,10 +18,7 @@ const getPageTitle = (pathname: string): string => {
   const routes: Record<string, string> = {
     "/dashboard": "Dashboard",
     "/sales/leads": "Leads",
-    "/quotations": "Cotizaciones",
     "/operations": "Operaciones",
-    "/tariffs": "Tarifarios",
-    "/quotas": "Cupos",
     "/customers": "Clientes",
     "/operators": "Operadores",
     "/cash": "Caja",
