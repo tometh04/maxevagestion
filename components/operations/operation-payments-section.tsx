@@ -90,6 +90,7 @@ export function OperationPaymentsSection({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -116,6 +117,31 @@ export function OperationPaymentsSection({
       alert("Error al eliminar pagos pendientes")
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!confirm("¿Eliminar este pago? También se eliminarán los movimientos contables asociados (libro mayor y caja).")) {
+      return
+    }
+    
+    setDeletingPaymentId(paymentId)
+    try {
+      const response = await fetch(`/api/payments?paymentId=${paymentId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al eliminar pago")
+      }
+
+      router.refresh()
+    } catch (error) {
+      console.error("Error:", error)
+      alert(error instanceof Error ? error.message : "Error al eliminar pago")
+    } finally {
+      setDeletingPaymentId(null)
     }
   }
 
@@ -261,6 +287,7 @@ export function OperationPaymentsSection({
                   <TableHead>Método</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -293,6 +320,21 @@ export function OperationPaymentsSection({
                       <Badge variant={payment.status === "PAID" ? "default" : "secondary"}>
                         {payment.status === "PAID" ? "Pagado" : "Pendiente"}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100"
+                        onClick={() => handleDeletePayment(payment.id)}
+                        disabled={deletingPaymentId === payment.id}
+                      >
+                        {deletingPaymentId === payment.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
