@@ -32,6 +32,7 @@ const statusLabels: Record<string, string> = {
 interface Operation {
   id: string
   destination: string
+  operation_date: string | null
   departure_date: string
   return_date: string | null
   sellers: { name: string } | null
@@ -41,6 +42,7 @@ interface Operation {
   margin_amount: number
   margin_percentage: number
   status: string
+  created_at: string
 }
 
 interface OperationsTableProps {
@@ -137,6 +139,20 @@ export function OperationsTable({
   const columns: ColumnDef<Operation>[] = useMemo(
     () => [
       {
+        accessorKey: "operation_date",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="F. Operación" />
+        ),
+        cell: ({ row }) => {
+          const opDate = row.original.operation_date || row.original.created_at
+          return (
+            <div className="text-sm whitespace-nowrap font-medium">
+              {opDate ? format(new Date(opDate), "dd/MM/yyyy", { locale: es }) : "-"}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: "id",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="ID" />
@@ -158,7 +174,7 @@ export function OperationsTable({
       {
         accessorKey: "departure_date",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Fechas" />
+          <DataTableColumnHeader column={column} title="Viaje" />
         ),
         cell: ({ row }) => (
           <div className="text-sm whitespace-nowrap">
@@ -168,8 +184,8 @@ export function OperationsTable({
               })}
             </div>
             {row.original.return_date && (
-              <div className="text-muted-foreground">
-                {format(new Date(row.original.return_date), "dd/MM/yyyy", {
+              <div className="text-muted-foreground text-xs">
+                al {format(new Date(row.original.return_date), "dd/MM/yyyy", {
                   locale: es,
                 })}
               </div>

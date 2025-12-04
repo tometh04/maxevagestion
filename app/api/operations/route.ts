@@ -407,6 +407,7 @@ export async function GET(request: Request) {
     const offset = parseInt(searchParams.get("offset") || "0")
     
     const { data: operations, error } = await query
+      .order("operation_date", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
