@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2 } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -89,6 +89,35 @@ export function OperationPaymentsSection({
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // Pagos pendientes (los auto-generados que nunca se pagaron)
+  const pendingPayments = payments.filter(p => p.status === "PENDING")
+  const hasPendingToClean = pendingPayments.length > 0
+
+  const handleDeletePendingPayments = async () => {
+    if (!confirm("¿Eliminar todos los pagos pendientes auto-generados? Solo quedarán los pagos realmente registrados.")) {
+      return
+    }
+    
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/api/payments/cleanup?operationId=${operationId}`, {
+        method: "DELETE",
+      })
+
+      if (!response.ok) {
+        throw new Error("Error al eliminar pagos")
+      }
+
+      router.refresh()
+    } catch (error) {
+      console.error("Error:", error)
+      alert("Error al eliminar pagos pendientes")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
@@ -195,10 +224,28 @@ export function OperationPaymentsSection({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Historial de Pagos</CardTitle>
-          <Button onClick={() => setDialogOpen(true)} size="sm">
-            <Plus className="mr-2 h-4 w-4" />
-            Registrar Pago
-          </Button>
+          <div className="flex gap-2">
+            {hasPendingToClean && (
+              <Button 
+                onClick={handleDeletePendingPayments} 
+                size="sm" 
+                variant="outline"
+                className="text-red-600 hover:text-red-700"
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="mr-2 h-4 w-4" />
+                )}
+                Limpiar auto-generados
+              </Button>
+            )}
+            <Button onClick={() => setDialogOpen(true)} size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Registrar Pago
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {payments.length === 0 ? (

@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw } from "lucide-react"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
@@ -81,9 +81,47 @@ export function OperationDetailClient({
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
+  const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
 
   const handleEditSuccess = () => {
     router.refresh()
+  }
+
+  const handleDeleteAlerts = async () => {
+    if (!confirm("¿Eliminar todas las alertas auto-generadas de esta operación?")) {
+      return
+    }
+    
+    setIsDeletingAlerts(true)
+    try {
+      const response = await fetch(`/api/alerts/cleanup?operationId=${operation.id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) throw new Error("Error")
+      router.refresh()
+    } catch (error) {
+      alert("Error al eliminar alertas")
+    } finally {
+      setIsDeletingAlerts(false)
+    }
+  }
+
+  const handleGenerateAlerts = async () => {
+    setIsGeneratingAlerts(true)
+    try {
+      const response = await fetch(`/api/alerts/generate-operation-alerts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operationId: operation.id }),
+      })
+      if (!response.ok) throw new Error("Error")
+      router.refresh()
+    } catch (error) {
+      alert("Error al generar alertas")
+    } finally {
+      setIsGeneratingAlerts(false)
+    }
   }
 
   return (
@@ -332,14 +370,40 @@ export function OperationDetailClient({
               <div>
                 <CardTitle>Alertas de la Operación</CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Las alertas se muestran en el calendario y en la sección de Alertas
+                  Check-in, vencimientos de documentos, pagos pendientes
                 </p>
               </div>
-              <Link href="/alerts">
-                <Button variant="outline" size="sm">
-                  Ver todas las alertas
+              <div className="flex gap-2">
+                {alerts && alerts.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="text-red-600 hover:text-red-700"
+                    onClick={handleDeleteAlerts}
+                    disabled={isDeletingAlerts}
+                  >
+                    {isDeletingAlerts ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Limpiar
+                  </Button>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleGenerateAlerts}
+                  disabled={isGeneratingAlerts}
+                >
+                  {isGeneratingAlerts ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  Regenerar alertas
                 </Button>
-              </Link>
+              </div>
             </CardHeader>
             <CardContent>
               {!alerts || alerts.length === 0 ? (
@@ -347,7 +411,7 @@ export function OperationDetailClient({
                   <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">No hay alertas para esta operación</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Las alertas de documentos vencidos y pagos se generan automáticamente
+                    Usa "Regenerar alertas" para crear alertas de check-in y vencimientos
                   </p>
                 </div>
               ) : (
@@ -361,7 +425,7 @@ export function OperationDetailClient({
                           <p className="text-xs text-muted-foreground">{alert.description}</p>
                           {alert.date_due && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Vence: {format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })}
+                              Fecha: {format(new Date(alert.date_due + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
                             </p>
                           )}
                         </div>
