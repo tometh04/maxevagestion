@@ -63,12 +63,13 @@ interface LeadsKanbanTrelloProps {
   agencyId: string
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string }>
   onRefresh?: () => void
   currentUserId?: string
   currentUserRole?: string
 }
 
-export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanTrelloProps) {
+export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanTrelloProps) {
   const [lists, setLists] = useState<TrelloList[]>([])
   const [loading, setLoading] = useState(true)
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
@@ -402,6 +403,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
           onOpenChange={setDialogOpen}
           agencies={agencies}
           sellers={sellers}
+          operators={operators}
           onDelete={onRefresh}
           onConvert={onRefresh}
           canClaimLeads={canClaimLeads}

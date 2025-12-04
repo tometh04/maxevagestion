@@ -175,6 +175,7 @@ interface LeadDetailDialogProps {
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
   onConvert?: () => void
@@ -188,6 +189,7 @@ export function LeadDetailDialog({
   onOpenChange,
   agencies = [],
   sellers = [],
+  operators = [],
   onEdit,
   onDelete,
   onConvert,
@@ -703,6 +705,7 @@ export function LeadDetailDialog({
           lead={lead}
           agencies={agencies}
           sellers={sellers}
+          operators={operators}
           open={convertDialogOpen}
           onOpenChange={setConvertDialogOpen}
           onSuccess={() => {

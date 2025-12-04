@@ -49,6 +49,7 @@ const operationTypeOptions = [
 const convertLeadSchema = z.object({
   agency_id: z.string().min(1, "Agencia es requerida"),
   seller_id: z.string().min(1, "Vendedor es requerido"),
+  operator_id: z.string().optional(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]),
   origin: z.string().optional(),
   destination: z.string().min(1, "Destino es requerido"),
@@ -62,6 +63,7 @@ const convertLeadSchema = z.object({
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
   operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
+  notes: z.string().optional(),
 })
 
 type ConvertLeadFormValues = z.infer<typeof convertLeadSchema>
@@ -75,9 +77,11 @@ interface ConvertLeadDialogProps {
     destination: string
     agency_id?: string
     assigned_seller_id: string | null
+    notes?: string | null
   }
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string }>
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
@@ -87,6 +91,7 @@ export function ConvertLeadDialog({
   lead,
   agencies,
   sellers,
+  operators,
   open,
   onOpenChange,
   onSuccess,
@@ -98,6 +103,7 @@ export function ConvertLeadDialog({
     defaultValues: {
       agency_id: lead.agency_id || agencies[0]?.id || "",
       seller_id: lead.assigned_seller_id || "",
+      operator_id: "",
       type: "PACKAGE" as const,
       origin: "",
       destination: lead.destination || "",
@@ -109,6 +115,7 @@ export function ConvertLeadDialog({
       sale_amount_total: 0,
       operator_cost: 0,
       currency: "ARS",
+      notes: "",
     },
   })
 
@@ -121,6 +128,7 @@ export function ConvertLeadDialog({
         body: JSON.stringify({
           lead_id: lead.id,
           ...values,
+          operator_id: values.operator_id || null,
           departure_date: values.departure_date.toISOString().split("T")[0],
           return_date: values.return_date?.toISOString().split("T")[0],
         }),
@@ -234,6 +242,32 @@ export function ConvertLeadDialog({
                         {operationTypeOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="operator_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Operador (Proveedor)</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar operador" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">Sin operador</SelectItem>
+                        {operators.map((operator) => (
+                          <SelectItem key={operator.id} value={operator.id}>
+                            {operator.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -443,6 +477,20 @@ export function ConvertLeadDialog({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="notes"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Notas (opcional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Observaciones adicionales..." {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

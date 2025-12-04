@@ -42,6 +42,7 @@ interface LeadsPageClientProps {
   initialLeads: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
   hasTrelloLeads?: boolean
@@ -53,6 +54,7 @@ export function LeadsPageClient({
   initialLeads,
   agencies,
   sellers,
+  operators,
   defaultAgencyId,
   defaultSellerId,
   hasTrelloLeads = false,
@@ -264,6 +266,7 @@ export function LeadsPageClient({
       agencyId={effectiveAgencyId!}
       agencies={agencies}
       sellers={sellers}
+      operators={operators}
       onRefresh={handleRefresh}
       currentUserId={currentUserId}
       currentUserRole={currentUserRole}
@@ -273,6 +276,7 @@ export function LeadsPageClient({
       leads={filteredLeads as any}
       agencies={agencies}
       sellers={sellers}
+      operators={operators}
       onRefresh={handleRefresh}
       currentUserId={currentUserId}
       currentUserRole={currentUserRole}
@@ -384,6 +388,7 @@ export function LeadsPageClient({
               leads={filteredLeads as any}
               agencies={agencies}
               sellers={sellers}
+              operators={operators}
               onRefresh={handleRefresh}
             />
           )}

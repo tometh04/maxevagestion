@@ -55,10 +55,11 @@ interface LeadsTableProps {
   leads: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string }>
   onRefresh?: () => void
 }
 
-export function LeadsTable({ leads, agencies, sellers, onRefresh }: LeadsTableProps) {
+export function LeadsTable({ leads, agencies, sellers, operators, onRefresh }: LeadsTableProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
 
@@ -161,6 +162,7 @@ export function LeadsTable({ leads, agencies, sellers, onRefresh }: LeadsTablePr
           lead={selectedLead}
           agencies={agencies}
           sellers={sellers}
+          operators={operators}
           open={convertDialogOpen}
           onOpenChange={setConvertDialogOpen}
           onSuccess={handleConvertSuccess}

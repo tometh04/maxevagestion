@@ -55,12 +55,13 @@ interface LeadsKanbanProps {
   leads: Lead[]
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string }>
   onRefresh?: () => void
   currentUserId?: string
   currentUserRole?: string
 }
 
-export function LeadsKanban({ leads, agencies = [], sellers = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanProps) {
+export function LeadsKanban({ leads, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanProps) {
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
 
@@ -252,6 +253,7 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], onRefresh, cur
           onOpenChange={setDialogOpen}
           agencies={agencies}
           sellers={sellers}
+          operators={operators}
           onDelete={onRefresh}
           onConvert={onRefresh}
           canClaimLeads={canClaimLeads}

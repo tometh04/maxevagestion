@@ -63,6 +63,12 @@ export default async function LeadsPage() {
   }
   const { data: sellers } = await sellersQuery
 
+  // Get operators for conversion dialog
+  const { data: operators } = await supabase
+    .from("operators")
+    .select("id, name")
+    .order("name")
+
   // Get leads (including trello_list_id)
   // OPTIMIZACIÓN: Solo cargar leads necesarios para la vista inicial
   // El cliente cargará más según sea necesario
@@ -123,6 +129,7 @@ export default async function LeadsPage() {
       initialLeads={leads || []}
       agencies={(agencies || []) as Array<{ id: string; name: string }>}
       sellers={(sellers || []) as Array<{ id: string; name: string }>}
+      operators={(operators || []) as Array<{ id: string; name: string }>}
       defaultAgencyId={agencyIds[0] || undefined}
       defaultSellerId={user.role === "SELLER" ? user.id : undefined}
       hasTrelloLeads={hasTrelloLeads || false}
