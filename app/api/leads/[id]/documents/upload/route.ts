@@ -162,19 +162,34 @@ export async function POST(
     // Si es una imagen, procesar con IA automáticamente
     let scannedData = null
     if (file.type.startsWith("image/") && ["PASSPORT", "DNI", "LICENSE"].includes(documentType)) {
+      console.log(`📄 Iniciando escaneo OCR para documento tipo: ${documentType}`)
+      console.log(`📄 URL del archivo: ${fileUrl}`)
+      
       try {
         scannedData = await scanDocumentWithAI(fileUrl, documentType)
         
+        console.log(`📄 Resultado del OCR:`, JSON.stringify(scannedData, null, 2))
+        
         // Actualizar el documento con los datos escaneados
         if (scannedData) {
-          await (supabase.from("documents") as any)
+          const { error: updateError } = await (supabase.from("documents") as any)
             .update({ scanned_data: scannedData })
             .eq("id", document.id)
+          
+          if (updateError) {
+            console.error("❌ Error actualizando scanned_data:", updateError)
+          } else {
+            console.log("✅ scanned_data actualizado correctamente")
+          }
+        } else {
+          console.warn("⚠️ El OCR devolvió null")
         }
       } catch (error) {
-        console.error("Error scanning document with AI:", error)
+        console.error("❌ Error scanning document with AI:", error)
         // No fallar si el escaneo falla, el documento ya está subido
       }
+    } else {
+      console.log(`📄 No se escanea: tipo de archivo=${file.type}, tipo de documento=${documentType}`)
     }
 
     return NextResponse.json({
@@ -321,17 +336,22 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     })
 
     const responseText = completion.choices[0]?.message?.content || "{}"
+    console.log("📄 OpenAI response raw:", responseText)
+    
     let parsedData: any
 
     try {
       parsedData = JSON.parse(responseText)
+      console.log("📄 Parsed JSON successfully:", Object.keys(parsedData))
     } catch (parseError) {
+      console.warn("⚠️ Error parsing JSON, intentando extraer de markdown...")
       // Intentar extraer JSON de markdown code blocks
       const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/```\n([\s\S]*?)\n```/)
       if (jsonMatch) {
         parsedData = JSON.parse(jsonMatch[1])
+        console.log("📄 Extracted from markdown:", Object.keys(parsedData))
       } else {
-        console.error("Error parsing AI response:", responseText)
+        console.error("❌ Error parsing AI response:", responseText)
         return null
       }
     }
@@ -339,6 +359,10 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     // Agregar metadata
     parsedData.scanned_at = new Date().toISOString()
     parsedData.scanned_by = "openai_gpt4o"
+    
+    // Contar campos no nulos
+    const nonNullFields = Object.entries(parsedData).filter(([k, v]) => v !== null && v !== "").length
+    console.log(`📄 Campos extraídos: ${nonNullFields}`)
 
     return parsedData
   } catch (error) {

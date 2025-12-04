@@ -342,91 +342,91 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                     Datos Extraídos por IA:
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-sm">
-                    {doc.scanned_data.document_number && (
-                      <div>
-                        <span className="text-muted-foreground">Número:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.document_number}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.full_name && (
-                      <div>
-                        <span className="text-muted-foreground">Nombre:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.full_name}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.first_name && (
-                      <div>
-                        <span className="text-muted-foreground">Nombre:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.first_name}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.last_name && (
-                      <div>
-                        <span className="text-muted-foreground">Apellido:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.last_name}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.date_of_birth && (
-                      <div>
-                        <span className="text-muted-foreground">Fecha de Nacimiento:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.date_of_birth}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.nationality && (
-                      <div>
-                        <span className="text-muted-foreground">Nacionalidad:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.nationality}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.expiration_date && (
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">Vencimiento:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.expiration_date}</span>
-                        {doc.type === "PASSPORT" && (() => {
-                          const status = checkPassportStatus(doc.scanned_data.expiration_date)
-                          if (status.status === "EXPIRED") {
-                            return (
-                              <Badge variant="destructive" className="ml-2">
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                {status.message}
-                              </Badge>
-                            )
-                          }
-                          if (status.status === "DANGER") {
-                            return (
-                              <Badge variant="destructive" className="ml-2">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                {status.message}
-                              </Badge>
-                            )
-                          }
-                          if (status.status === "WARNING") {
-                            return (
-                              <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
-                                <AlertTriangle className="h-3 w-3 mr-1" />
-                                {status.message}
-                              </Badge>
-                            )
-                          }
+                    {/* Mostrar todos los campos disponibles dinámicamente */}
+                    {Object.entries(doc.scanned_data)
+                      .filter(([key, value]) => 
+                        value !== null && 
+                        value !== undefined && 
+                        value !== "" &&
+                        !["scanned_at", "scanned_by", "document_type"].includes(key)
+                      )
+                      .map(([key, value]) => {
+                        // Mapear nombres de campos a etiquetas legibles
+                        const fieldLabels: Record<string, string> = {
+                          document_number: "Número de Documento",
+                          full_name: "Nombre Completo",
+                          first_name: "Nombre",
+                          last_name: "Apellido",
+                          date_of_birth: "Fecha de Nacimiento",
+                          nationality: "Nacionalidad",
+                          expiration_date: "Vencimiento",
+                          issue_date: "Fecha de Emisión",
+                          sex: "Sexo",
+                          place_of_birth: "Lugar de Nacimiento",
+                          address: "Domicilio",
+                          tramite_number: "Nº de Trámite",
+                          personal_number: "Nº Personal/DNI",
+                          issuing_authority: "Autoridad Emisora",
+                          license_number: "Nº de Licencia",
+                          class: "Clase",
+                          restrictions: "Restricciones",
+                          mrz_line1: "MRZ Línea 1",
+                          mrz_line2: "MRZ Línea 2",
+                        }
+                        const label = fieldLabels[key] || key.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
+                        
+                        // Manejar fecha de vencimiento con badge
+                        if (key === "expiration_date" && doc.type === "PASSPORT") {
+                          const status = checkPassportStatus(String(value))
                           return (
-                            <Badge variant="outline" className="ml-2 border-green-500 text-green-600">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              {status.message}
-                            </Badge>
+                            <div key={key} className="col-span-2">
+                              <span className="text-muted-foreground">{label}:</span>{" "}
+                              <span className="font-medium">{String(value)}</span>
+                              {status.status === "EXPIRED" && (
+                                <Badge variant="destructive" className="ml-2">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  {status.message}
+                                </Badge>
+                              )}
+                              {status.status === "DANGER" && (
+                                <Badge variant="destructive" className="ml-2">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  {status.message}
+                                </Badge>
+                              )}
+                              {status.status === "WARNING" && (
+                                <Badge variant="outline" className="ml-2 border-yellow-500 text-yellow-600">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  {status.message}
+                                </Badge>
+                              )}
+                              {status.status === "OK" && (
+                                <Badge variant="outline" className="ml-2 border-green-500 text-green-600">
+                                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                                  {status.message}
+                                </Badge>
+                              )}
+                            </div>
                           )
-                        })()}
-                      </div>
-                    )}
-                    {doc.scanned_data.place_of_birth && (
-                      <div>
-                        <span className="text-muted-foreground">Lugar de Nacimiento:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.place_of_birth}</span>
-                      </div>
-                    )}
-                    {doc.scanned_data.address && (
-                      <div className="col-span-2">
-                        <span className="text-muted-foreground">Dirección:</span>{" "}
-                        <span className="font-medium">{doc.scanned_data.address}</span>
+                        }
+                        
+                        return (
+                          <div key={key} className={key === "address" || key === "full_name" ? "col-span-2" : ""}>
+                            <span className="text-muted-foreground">{label}:</span>{" "}
+                            <span className="font-medium">{String(value)}</span>
+                          </div>
+                        )
+                      })
+                    }
+                    {/* Mostrar mensaje si no hay datos útiles */}
+                    {Object.entries(doc.scanned_data).filter(([key, value]) => 
+                      value !== null && 
+                      value !== undefined && 
+                      value !== "" &&
+                      !["scanned_at", "scanned_by", "document_type"].includes(key)
+                    ).length === 0 && (
+                      <div className="col-span-2 text-muted-foreground italic">
+                        No se pudieron extraer datos del documento. Intenta con una imagen más clara.
                       </div>
                     )}
                   </div>
