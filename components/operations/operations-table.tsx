@@ -145,13 +145,18 @@ export function OperationsTable({
         ),
         cell: ({ row }) => {
           const opDate = row.original.operation_date || row.original.created_at
-          // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
-          const dateStr = opDate?.includes('T') ? opDate : `${opDate}T12:00:00`
-          return (
-            <div className="text-sm whitespace-nowrap font-medium">
-              {opDate ? format(new Date(dateStr), "dd/MM/yyyy", { locale: es }) : "-"}
-            </div>
-          )
+          if (!opDate) return <div className="text-sm whitespace-nowrap font-medium">-</div>
+          try {
+            // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
+            const dateStr = typeof opDate === 'string' && opDate.includes('T') ? opDate : `${opDate}T12:00:00`
+            return (
+              <div className="text-sm whitespace-nowrap font-medium">
+                {format(new Date(dateStr), "dd/MM/yyyy", { locale: es })}
+              </div>
+            )
+          } catch {
+            return <div className="text-sm whitespace-nowrap font-medium">-</div>
+          }
         },
       },
       {
@@ -179,21 +184,25 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Viaje" />
         ),
         cell: ({ row }) => {
-          // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
-          const depDate = `${row.original.departure_date}T12:00:00`
-          const retDate = row.original.return_date ? `${row.original.return_date}T12:00:00` : null
-          return (
-            <div className="text-sm whitespace-nowrap">
-              <div>
-                {format(new Date(depDate), "dd/MM/yyyy", { locale: es })}
-              </div>
-              {retDate && (
-                <div className="text-muted-foreground text-xs">
-                  al {format(new Date(retDate), "dd/MM/yyyy", { locale: es })}
+          if (!row.original.departure_date) return <div className="text-sm whitespace-nowrap">-</div>
+          try {
+            const depDate = `${row.original.departure_date}T12:00:00`
+            const retDate = row.original.return_date ? `${row.original.return_date}T12:00:00` : null
+            return (
+              <div className="text-sm whitespace-nowrap">
+                <div>
+                  {format(new Date(depDate), "dd/MM/yyyy", { locale: es })}
                 </div>
-              )}
-            </div>
-          )
+                {retDate && (
+                  <div className="text-muted-foreground text-xs">
+                    al {format(new Date(retDate), "dd/MM/yyyy", { locale: es })}
+                  </div>
+                )}
+              </div>
+            )
+          } catch {
+            return <div className="text-sm whitespace-nowrap">-</div>
+          }
         },
       },
       {

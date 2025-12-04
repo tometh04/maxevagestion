@@ -205,22 +205,36 @@ export function OperationDetailClient({
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Fecha Operación</p>
                     <p className="text-sm font-semibold">
-                      {operation.operation_date 
-                        ? format(new Date(operation.operation_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
-                        : format(new Date(operation.created_at), "dd/MM/yyyy", { locale: es })}
+                      {(() => {
+                        try {
+                          const dateStr = operation.operation_date || operation.created_at
+                          if (!dateStr) return "-"
+                          const d = dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00'
+                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                        } catch { return "-" }
+                      })()}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Fecha Salida</p>
                     <p className="text-sm">
-                      {format(new Date(operation.departure_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
+                      {(() => {
+                        try {
+                          if (!operation.departure_date) return "-"
+                          return format(new Date(operation.departure_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
+                        } catch { return "-" }
+                      })()}
                     </p>
                   </div>
                   {operation.return_date && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Fecha Regreso</p>
                       <p className="text-sm">
-                        {format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
+                        {(() => {
+                          try {
+                            return format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
+                          } catch { return "-" }
+                        })()}
                       </p>
                     </div>
                   )}
