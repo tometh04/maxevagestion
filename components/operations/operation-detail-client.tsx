@@ -19,6 +19,7 @@ import Link from "next/link"
 import { ArrowLeft, Pencil, AlertCircle } from "lucide-react"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
+import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -48,17 +49,12 @@ const typeLabels: Record<string, string> = {
   MIXED: "Mixto",
 }
 
-const paymentStatusLabels: Record<string, string> = {
-  PENDING: "Pendiente",
-  PAID: "Pagado",
-  OVERDUE: "Vencido",
-}
-
 const alertTypeLabels: Record<string, string> = {
   PAYMENT_DUE: "Pago Pendiente",
   OPERATOR_DUE: "Pago Operador",
   UPCOMING_TRIP: "Viaje Próximo",
   MISSING_DOC: "Documento Faltante",
+  PASSPORT_EXPIRY: "Documento Vencido",
   GENERIC: "Genérico",
 }
 
@@ -169,16 +165,24 @@ export function OperationDetailClient({
                     <p className="text-sm">{operation.destination}</p>
                   </div>
                   <div>
+                    <p className="text-sm font-medium text-muted-foreground">Fecha Operación</p>
+                    <p className="text-sm font-semibold">
+                      {operation.operation_date 
+                        ? format(new Date(operation.operation_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
+                        : format(new Date(operation.created_at), "dd/MM/yyyy", { locale: es })}
+                    </p>
+                  </div>
+                  <div>
                     <p className="text-sm font-medium text-muted-foreground">Fecha Salida</p>
                     <p className="text-sm">
-                      {format(new Date(operation.departure_date), "dd/MM/yyyy", { locale: es })}
+                      {format(new Date(operation.departure_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
                     </p>
                   </div>
                   {operation.return_date && (
                     <div>
                       <p className="text-sm font-medium text-muted-foreground">Fecha Regreso</p>
                       <p className="text-sm">
-                        {format(new Date(operation.return_date), "dd/MM/yyyy", { locale: es })}
+                        {format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
                       </p>
                     </div>
                   )}
@@ -303,65 +307,13 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="payments" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Pagos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {!payments || payments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay pagos registrados</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Dirección</TableHead>
-                      <TableHead>Monto</TableHead>
-                      <TableHead>Fecha Vencimiento</TableHead>
-                      <TableHead>Fecha Pago</TableHead>
-                      <TableHead>Estado</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {payments.map((payment: any) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>{payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}</TableCell>
-                        <TableCell>
-                          <Badge variant={payment.direction === "INCOME" ? "default" : "destructive"}>
-                            {payment.direction === "INCOME" ? "Ingreso" : "Egreso"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {payment.currency} {payment.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell>
-                          {format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}
-                        </TableCell>
-                        <TableCell>
-                          {payment.date_paid
-                            ? format(new Date(payment.date_paid), "dd/MM/yyyy", { locale: es })
-                            : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              payment.status === "PAID"
-                                ? "default"
-                                : payment.status === "OVERDUE"
-                                ? "destructive"
-                                : "secondary"
-                            }
-                          >
-                            {paymentStatusLabels[payment.status] || payment.status}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <OperationPaymentsSection
+            operationId={operation.id}
+            payments={payments || []}
+            currency={operation.currency}
+            saleAmount={operation.sale_amount_total}
+            operatorCost={operation.operator_cost}
+          />
         </TabsContent>
 
         <TabsContent value="accounting" className="space-y-4">

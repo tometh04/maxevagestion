@@ -145,9 +145,11 @@ export function OperationsTable({
         ),
         cell: ({ row }) => {
           const opDate = row.original.operation_date || row.original.created_at
+          // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
+          const dateStr = opDate?.includes('T') ? opDate : `${opDate}T12:00:00`
           return (
             <div className="text-sm whitespace-nowrap font-medium">
-              {opDate ? format(new Date(opDate), "dd/MM/yyyy", { locale: es }) : "-"}
+              {opDate ? format(new Date(dateStr), "dd/MM/yyyy", { locale: es }) : "-"}
             </div>
           )
         },
@@ -176,22 +178,23 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Viaje" />
         ),
-        cell: ({ row }) => (
-          <div className="text-sm whitespace-nowrap">
-            <div>
-              {format(new Date(row.original.departure_date), "dd/MM/yyyy", {
-                locale: es,
-              })}
-            </div>
-            {row.original.return_date && (
-              <div className="text-muted-foreground text-xs">
-                al {format(new Date(row.original.return_date), "dd/MM/yyyy", {
-                  locale: es,
-                })}
+        cell: ({ row }) => {
+          // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
+          const depDate = `${row.original.departure_date}T12:00:00`
+          const retDate = row.original.return_date ? `${row.original.return_date}T12:00:00` : null
+          return (
+            <div className="text-sm whitespace-nowrap">
+              <div>
+                {format(new Date(depDate), "dd/MM/yyyy", { locale: es })}
               </div>
-            )}
-          </div>
-        ),
+              {retDate && (
+                <div className="text-muted-foreground text-xs">
+                  al {format(new Date(retDate), "dd/MM/yyyy", { locale: es })}
+                </div>
+              )}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "sellers.name",
