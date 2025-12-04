@@ -267,7 +267,13 @@ export function OperationPaymentsSection({
                 {payments.map((payment: any) => (
                   <TableRow key={payment.id}>
                     <TableCell>
-                      {format(new Date(payment.date_paid || payment.date_due), "dd/MM/yyyy", { locale: es })}
+                      {(() => {
+                        try {
+                          const d = payment.date_paid || payment.date_due
+                          if (!d) return "-"
+                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                        } catch { return "-" }
+                      })()}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">

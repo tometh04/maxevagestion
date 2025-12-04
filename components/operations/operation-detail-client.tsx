@@ -344,9 +344,12 @@ export function OperationDetailClient({
                         <TableCell>{oc.customers?.email || "-"}</TableCell>
                         <TableCell>{oc.customers?.phone || "-"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {oc.customers?.created_at 
-                            ? format(new Date(oc.customers.created_at), "dd/MM/yyyy", { locale: es })
-                            : "-"}
+                          {(() => {
+                            try {
+                              if (!oc.customers?.created_at) return "-"
+                              return format(new Date(oc.customers.created_at), "dd/MM/yyyy", { locale: es })
+                            } catch { return "-" }
+                          })()}
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline">{oc.role === "MAIN" ? "Principal" : "Acompañante"}</Badge>
@@ -439,7 +442,12 @@ export function OperationDetailClient({
                           <p className="text-xs text-muted-foreground">{alert.description}</p>
                           {alert.date_due && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Fecha: {format(new Date(alert.date_due + 'T12:00:00'), "dd/MM/yyyy", { locale: es })}
+                              Fecha: {(() => {
+                                try {
+                                  const d = alert.date_due.includes('T') ? alert.date_due : alert.date_due + 'T12:00:00'
+                                  return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                                } catch { return "-" }
+                              })()}
                             </p>
                           )}
                         </div>

@@ -127,8 +127,16 @@ export function OperationHoverCard({ operationId, children }: OperationHoverCard
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <CalendarDays className="h-3 w-3" />
               <span>
-                {format(new Date(operation.departure_date), "dd MMM yyyy", { locale: es })}
-                {operation.return_date && ` - ${format(new Date(operation.return_date), "dd MMM yyyy", { locale: es })}`}
+                {(() => {
+                  try {
+                    if (!operation.departure_date) return "-"
+                    const dep = format(new Date(operation.departure_date + 'T12:00:00'), "dd MMM yyyy", { locale: es })
+                    const ret = operation.return_date 
+                      ? ` - ${format(new Date(operation.return_date + 'T12:00:00'), "dd MMM yyyy", { locale: es })}`
+                      : ""
+                    return dep + ret
+                  } catch { return "-" }
+                })()}
               </span>
             </div>
 
