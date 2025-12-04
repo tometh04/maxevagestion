@@ -241,3 +241,82 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
   }
 }
+
+/**
+ * DELETE /api/cash/movements
+ * Eliminar un movimiento de caja y su ledger_movement asociado
+ */
+export async function DELETE(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const { searchParams } = new URL(request.url)
+    
+    const movementId = searchParams.get("movementId")
+
+    if (!movementId) {
+      return NextResponse.json({ error: "movementId es requerido" }, { status: 400 })
+    }
+
+    // Solo ADMIN y SUPER_ADMIN pueden eliminar movimientos
+    const userRole = user.role as string
+    if (!["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar movimientos" }, { status: 403 })
+    }
+
+    // Obtener el movimiento para verificar que existe
+    const { data: movement, error: fetchError } = await (supabase.from("cash_movements") as any)
+      .select("id, operation_id, amount, currency, type, category, movement_date")
+      .eq("id", movementId)
+      .single()
+
+    if (fetchError || !movement) {
+      return NextResponse.json({ error: "Movimiento no encontrado" }, { status: 404 })
+    }
+
+    // Buscar y eliminar el ledger_movement asociado
+    // (buscamos por operation_id, amount, type y fecha similar)
+    try {
+      const ledgerType = movement.type === "INCOME" ? "INCOME" : "EXPENSE"
+      
+      // Buscar ledger_movement que coincida
+      const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
+        .select("id")
+        .eq("operation_id", movement.operation_id)
+        .eq("type", ledgerType)
+        .eq("amount_original", movement.amount)
+        .eq("currency", movement.currency)
+      
+      if (ledgerMovements && ledgerMovements.length > 0) {
+        // Eliminar el primer movimiento que coincida
+        await (supabase.from("ledger_movements") as any)
+          .delete()
+          .eq("id", ledgerMovements[0].id)
+        console.log(`✅ Ledger movement ${ledgerMovements[0].id} eliminado`)
+      }
+    } catch (ledgerError) {
+      console.warn("Warning: Could not find/delete associated ledger movement:", ledgerError)
+      // Continuamos con la eliminación del cash_movement
+    }
+
+    // Eliminar el cash_movement
+    const { error: deleteError } = await (supabase.from("cash_movements") as any)
+      .delete()
+      .eq("id", movementId)
+
+    if (deleteError) {
+      console.error("Error deleting cash movement:", deleteError)
+      return NextResponse.json({ error: "Error al eliminar movimiento" }, { status: 500 })
+    }
+
+    console.log(`✅ Cash movement ${movementId} eliminado`)
+
+    return NextResponse.json({ 
+      success: true, 
+      message: "Movimiento eliminado correctamente" 
+    })
+  } catch (error) {
+    console.error("Error in DELETE /api/cash/movements:", error)
+    return NextResponse.json({ error: "Error al eliminar movimiento" }, { status: 500 })
+  }
+}
