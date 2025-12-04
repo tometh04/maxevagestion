@@ -147,8 +147,8 @@ export async function POST(request: Request) {
 
     // Insertar alertas
     if (alertsToCreate.length > 0) {
-      const { error: insertError } = await supabase
-        .from("alerts")
+      const { error: insertError } = await (supabase
+        .from("alerts") as any)
         .insert(alertsToCreate)
 
       if (insertError) {
