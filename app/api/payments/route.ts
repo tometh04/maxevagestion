@@ -25,18 +25,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    // La tabla usa "method" NOT NULL y "reference" para notas
     const paymentData = {
       operation_id,
       payer_type,
       direction,
-      method: method || null,
+      method: method || "Otro", // method es NOT NULL en la tabla
       amount,
       currency,
       date_paid: date_paid || null,
-      date_due: date_due || date_paid,
+      date_due: date_due || date_paid, // date_due es NOT NULL
       status: status || "PAID",
-      notes: notes || null,
+      reference: notes || null, // La columna se llama "reference", no "notes"
     }
+
+    console.log("Creating payment with data:", paymentData)
 
     const { data: payment, error } = await (supabase.from("payments") as any)
       .insert(paymentData)
@@ -45,7 +48,7 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Error creating payment:", error)
-      return NextResponse.json({ error: "Error al crear pago" }, { status: 500 })
+      return NextResponse.json({ error: `Error al crear pago: ${error.message}` }, { status: 500 })
     }
 
     return NextResponse.json({ payment })
