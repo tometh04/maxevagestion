@@ -277,6 +277,7 @@ export function OperationDetailClient({
                       <TableHead>Nombre</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Teléfono</TableHead>
+                      <TableHead>Creado</TableHead>
                       <TableHead>Rol</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -284,12 +285,17 @@ export function OperationDetailClient({
                     {customers.map((oc: any) => (
                       <TableRow key={oc.id}>
                         <TableCell>
-                          <Link href={`/customers/${oc.customer_id}`} className="hover:underline">
+                          <Link href={`/customers/${oc.customer_id}`} className="hover:underline font-medium">
                             {oc.customers?.first_name} {oc.customers?.last_name}
                           </Link>
                         </TableCell>
                         <TableCell>{oc.customers?.email || "-"}</TableCell>
                         <TableCell>{oc.customers?.phone || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {oc.customers?.created_at 
+                            ? format(new Date(oc.customers.created_at), "dd/MM/yyyy", { locale: es })
+                            : "-"}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline">{oc.role === "MAIN" ? "Principal" : "Acompañante"}</Badge>
                         </TableCell>
@@ -322,12 +328,28 @@ export function OperationDetailClient({
 
         <TabsContent value="alerts" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Alertas</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Alertas de la Operación</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Las alertas se muestran en el calendario y en la sección de Alertas
+                </p>
+              </div>
+              <Link href="/alerts">
+                <Button variant="outline" size="sm">
+                  Ver todas las alertas
+                </Button>
+              </Link>
             </CardHeader>
             <CardContent>
               {!alerts || alerts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay alertas</p>
+                <div className="text-center py-8">
+                  <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">No hay alertas para esta operación</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Las alertas de documentos vencidos y pagos se generan automáticamente
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {alerts.map((alert: any) => (
@@ -337,9 +359,11 @@ export function OperationDetailClient({
                         <div>
                           <p className="text-sm font-medium">{alertTypeLabels[alert.type] || alert.type}</p>
                           <p className="text-xs text-muted-foreground">{alert.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Vence: {format(new Date(alert.date_due), "dd/MM/yyyy HH:mm", { locale: es })}
-                          </p>
+                          {alert.date_due && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Vence: {format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })}
+                            </p>
+                          )}
                         </div>
                       </div>
                       <Badge variant={alert.status === "DONE" ? "default" : "secondary"}>
