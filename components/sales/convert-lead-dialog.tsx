@@ -128,7 +128,7 @@ export function ConvertLeadDialog({
         body: JSON.stringify({
           lead_id: lead.id,
           ...values,
-          operator_id: values.operator_id || null,
+          operator_id: values.operator_id && values.operator_id !== "NONE" ? values.operator_id : null,
           departure_date: values.departure_date.toISOString().split("T")[0],
           return_date: values.return_date?.toISOString().split("T")[0],
         }),
@@ -260,11 +260,11 @@ export function ConvertLeadDialog({
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar operador" />
+                          <SelectValue placeholder="Seleccionar operador (opcional)" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Sin operador</SelectItem>
+                        <SelectItem value="NONE">Sin operador</SelectItem>
                         {operators.map((operator) => (
                           <SelectItem key={operator.id} value={operator.id}>
                             {operator.name}
