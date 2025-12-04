@@ -112,6 +112,107 @@ export async function createPurchaseIVA(
 }
 
 /**
+ * Actualizar registro de IVA de venta
+ */
+export async function updateSaleIVA(
+  supabase: SupabaseClient<Database>,
+  operationId: string,
+  saleAmountTotal: number,
+  currency: "ARS" | "USD"
+): Promise<void> {
+  const { net_amount, iva_amount } = calculateSaleIVA(saleAmountTotal)
+
+  // Buscar registro existente
+  const { data: existing } = await (supabase.from("iva_sales") as any)
+    .select("id")
+    .eq("operation_id", operationId)
+    .maybeSingle()
+
+  if (existing) {
+    // Actualizar
+    const { error } = await (supabase.from("iva_sales") as any)
+      .update({
+        sale_amount_total: saleAmountTotal,
+        net_amount,
+        iva_amount,
+        currency,
+      })
+      .eq("id", existing.id)
+
+    if (error) {
+      throw new Error(`Error actualizando IVA de venta: ${error.message}`)
+    }
+  }
+  // Si no existe, no hacemos nada (ya debería haberse creado con la operación)
+}
+
+/**
+ * Actualizar registro de IVA de compra
+ */
+export async function updatePurchaseIVA(
+  supabase: SupabaseClient<Database>,
+  operationId: string,
+  operatorCostTotal: number,
+  currency: "ARS" | "USD"
+): Promise<void> {
+  const { net_amount, iva_amount } = calculatePurchaseIVA(operatorCostTotal)
+
+  // Buscar registro existente
+  const { data: existing } = await (supabase.from("iva_purchases") as any)
+    .select("id")
+    .eq("operation_id", operationId)
+    .maybeSingle()
+
+  if (existing) {
+    // Actualizar
+    const { error } = await (supabase.from("iva_purchases") as any)
+      .update({
+        operator_cost_total: operatorCostTotal,
+        net_amount,
+        iva_amount,
+        currency,
+      })
+      .eq("id", existing.id)
+
+    if (error) {
+      throw new Error(`Error actualizando IVA de compra: ${error.message}`)
+    }
+  }
+}
+
+/**
+ * Eliminar registro de IVA de venta
+ */
+export async function deleteSaleIVA(
+  supabase: SupabaseClient<Database>,
+  operationId: string
+): Promise<void> {
+  const { error } = await (supabase.from("iva_sales") as any)
+    .delete()
+    .eq("operation_id", operationId)
+
+  if (error) {
+    throw new Error(`Error eliminando IVA de venta: ${error.message}`)
+  }
+}
+
+/**
+ * Eliminar registro de IVA de compra
+ */
+export async function deletePurchaseIVA(
+  supabase: SupabaseClient<Database>,
+  operationId: string
+): Promise<void> {
+  const { error } = await (supabase.from("iva_purchases") as any)
+    .delete()
+    .eq("operation_id", operationId)
+
+  if (error) {
+    throw new Error(`Error eliminando IVA de compra: ${error.message}`)
+  }
+}
+
+/**
  * Obtener IVA mensual a pagar
  * IVA a pagar = sum(iva_sales.iva_amount) - sum(iva_purchases.iva_amount)
  */

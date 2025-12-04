@@ -121,18 +121,81 @@ const DATABASE_SCHEMA = `
 - is_active: BOOLEAN
 - created_at, updated_at: TIMESTAMP
 
-### TABLA: ledger_movements (Movimientos contables)
+### TABLA: ledger_movements (Libro Mayor - Movimientos contables) ⭐ CONTABILIDAD
 - id: UUID (PK)
 - operation_id: UUID (FK → operations)
-- payment_id: UUID (FK → payments)
+- lead_id: UUID (FK → leads) - si el movimiento es de un lead
+- payment_id: UUID (FK → payments) - si viene de un pago
 - account_id: UUID (FK → financial_accounts)
-- type: TEXT ('INCOME', 'EXPENSE', 'TRANSFER', 'FX_GAIN', 'FX_LOSS', 'OPERATOR_PAYMENT')
+- type: TEXT ('INCOME', 'EXPENSE', 'FX_GAIN', 'FX_LOSS', 'OPERATOR_PAYMENT', 'COMMISSION')
+- concept: TEXT (descripción del movimiento)
+- amount_original: NUMERIC (monto en moneda original)
+- currency: TEXT ('ARS', 'USD')
+- exchange_rate: NUMERIC (tasa de cambio si es USD)
+- amount_ars_equivalent: NUMERIC (equivalente en ARS para reportes)
+- method: TEXT ('CASH', 'BANK', 'MP', 'USD', 'OTHER')
+- seller_id, operator_id: UUID (FKs opcionales)
+- receipt_number: TEXT
+- notes: TEXT
+- created_at: TIMESTAMP
+NOTA: Este es el LIBRO MAYOR. Cada pago genera un movimiento aquí. Eliminar un pago elimina su movimiento.
+
+### TABLA: cash_movements (Movimientos de Caja) ⭐ CAJA
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- payment_id: UUID (FK → payments) - si viene de un pago
+- cash_box_id: UUID (FK → cash_boxes)
+- user_id: UUID (FK → users, quien registró)
+- type: TEXT ('INCOME', 'EXPENSE')
+- category: TEXT ('SALE', 'OPERATOR_PAYMENT', 'COMMISSION', etc)
 - amount: NUMERIC
 - currency: TEXT
-- amount_ars_equivalent: NUMERIC (Equivalente en ARS)
-- description: TEXT
 - movement_date: TIMESTAMP
-- created_at: TIMESTAMP
+- notes: TEXT
+- is_touristic: BOOLEAN
+NOTA: Registra entradas/salidas de dinero de las cajas. Pagos generan movimientos aquí automáticamente.
+
+### TABLA: iva_sales (IVA Ventas - Débito Fiscal) ⭐ IVA
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- sale_amount_total: NUMERIC (total de la venta)
+- net_amount: NUMERIC (neto gravado = total / 1.21)
+- iva_amount: NUMERIC (IVA 21% = total - neto)
+- currency: TEXT
+- sale_date: DATE
+NOTA: Se crea automáticamente al crear operación. Se actualiza si cambia el monto de venta.
+
+### TABLA: iva_purchases (IVA Compras - Crédito Fiscal) ⭐ IVA
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- operator_id: UUID (FK → operators)
+- operator_cost_total: NUMERIC (costo del operador)
+- net_amount: NUMERIC (neto gravado = total / 1.21)
+- iva_amount: NUMERIC (IVA 21% = total - neto)
+- currency: TEXT
+- purchase_date: DATE
+NOTA: Se crea automáticamente al crear operación. Se actualiza si cambia el costo del operador.
+
+### TABLA: operator_payments (Cuentas a Pagar a Operadores)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- operator_id: UUID (FK → operators)
+- amount: NUMERIC
+- currency: TEXT
+- due_date: DATE (fecha de vencimiento)
+- status: TEXT ('PENDING', 'PAID', 'OVERDUE')
+- ledger_movement_id: UUID (FK → ledger_movements, cuando se paga)
+NOTA: Se crea automáticamente al crear operación. Se marca PAID cuando se registra el pago.
+
+### TABLA: commissions (Comisiones de Vendedores)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- seller_id: UUID (FK → users)
+- amount: NUMERIC
+- currency: TEXT
+- percentage: NUMERIC
+- status: TEXT ('PENDING', 'PAID')
+NOTA: Se calculan automáticamente cuando la operación pasa a CONFIRMED/CLOSED.
 
 ### TABLA: alerts (Alertas del sistema)
 - id: UUID (PK)
@@ -410,6 +473,95 @@ export async function POST(request: Request) {
 
     contextData.cuentasFinancieras = accounts || []
 
+    // 9. Movimientos de caja del mes
+    const { data: cashMovements } = await (supabase.from("cash_movements") as any)
+      .select("type, amount, currency, category, movement_date")
+      .gte("movement_date", startOfMonth)
+
+    const ingresos = (cashMovements || []).filter((m: any) => m.type === "INCOME")
+    const egresos = (cashMovements || []).filter((m: any) => m.type === "EXPENSE")
+    
+    contextData.movimientosCajaMes = {
+      totalIngresos: ingresos.reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0),
+      totalEgresos: egresos.reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0),
+      cantidadMovimientos: (cashMovements || []).length,
+    }
+
+    // 10. Libro mayor - resumen del mes
+    const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
+      .select("type, amount_original, currency, amount_ars_equivalent, concept")
+      .gte("created_at", startOfMonth)
+
+    const ledgerByType: Record<string, number> = {}
+    for (const mov of (ledgerMovements || []) as any[]) {
+      ledgerByType[mov.type] = (ledgerByType[mov.type] || 0) + Number(mov.amount_ars_equivalent || 0)
+    }
+    
+    contextData.libroMayorMes = {
+      porTipo: ledgerByType,
+      cantidadMovimientos: (ledgerMovements || []).length,
+    }
+
+    // 11. IVA del mes
+    const { data: ivaSales } = await (supabase.from("iva_sales") as any)
+      .select("sale_amount_total, net_amount, iva_amount, currency")
+      .gte("sale_date", startOfMonth)
+
+    const { data: ivaPurchases } = await (supabase.from("iva_purchases") as any)
+      .select("operator_cost_total, net_amount, iva_amount, currency")
+      .gte("purchase_date", startOfMonth)
+
+    const totalIvaSales = (ivaSales || []).reduce((sum: number, s: any) => sum + Number(s.iva_amount || 0), 0)
+    const totalIvaPurchases = (ivaPurchases || []).reduce((sum: number, p: any) => sum + Number(p.iva_amount || 0), 0)
+    
+    contextData.ivaMes = {
+      ivaVentas: totalIvaSales,
+      ivaCompras: totalIvaPurchases,
+      ivaPagar: totalIvaSales - totalIvaPurchases, // Débito - Crédito
+      cantidadRegistros: (ivaSales || []).length + (ivaPurchases || []).length,
+    }
+
+    // 12. Comisiones pendientes
+    const { data: pendingCommissions } = await (supabase.from("commissions") as any)
+      .select(`
+        amount, currency, status,
+        users:seller_id(name),
+        operations:operation_id(file_code, destination)
+      `)
+      .eq("status", "PENDING")
+
+    contextData.comisionesPendientes = {
+      cantidad: (pendingCommissions || []).length,
+      totalPendiente: (pendingCommissions || []).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0),
+      detalles: (pendingCommissions || []).slice(0, 5).map((c: any) => ({
+        vendedor: c.users?.name,
+        monto: c.amount,
+        operacion: c.operations?.file_code || c.operations?.destination,
+      })),
+    }
+
+    // 13. Operator Payments pendientes (cuentas a pagar a operadores)
+    const { data: pendingOperatorPayments } = await (supabase.from("operator_payments") as any)
+      .select(`
+        amount, currency, due_date, status,
+        operators:operator_id(name),
+        operations:operation_id(file_code, destination)
+      `)
+      .eq("status", "PENDING")
+      .order("due_date", { ascending: true })
+
+    contextData.pagosPendientesOperadores = {
+      cantidad: (pendingOperatorPayments || []).length,
+      totalPendiente: (pendingOperatorPayments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0),
+      detalles: (pendingOperatorPayments || []).slice(0, 5).map((p: any) => ({
+        operador: p.operators?.name,
+        monto: p.amount,
+        moneda: p.currency,
+        vencimiento: p.due_date,
+        operacion: p.operations?.file_code || p.operations?.destination,
+      })),
+    }
+
     // Convertir contexto a texto
     const contextText = JSON.stringify(contextData, null, 2)
 
@@ -475,8 +627,30 @@ ${contextText}
 **"¿Cómo estamos vs el mes pasado?"**
 → Comparar ventasMesActual con mes pasado
 
+**"¿Cuánto IVA tenemos que pagar este mes?"**
+→ Usar datos de ivaMes (ivaVentas - ivaCompras = ivaPagar)
+
+**"¿Cuánto le debemos a los operadores?"**
+→ Usar datos de pagosPendientesOperadores
+
+**"¿Cuánto hay en caja?"** o **"¿Cómo está la caja este mes?"**
+→ Usar datos de movimientosCajaMes
+
+**"¿Cuántas comisiones hay pendientes?"**
+→ Usar datos de comisionesPendientes
+
+**"¿Qué movimientos hubo en el libro mayor?"**
+→ Usar datos de libroMayorMes
+
 **"en que fecha cae el próximo?"** (pregunta ambigua)
 → Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, o próximo vencimiento?"
+
+## FLUJOS CONTABLES (para explicar si preguntan)
+1. Al crear OPERACIÓN → se genera IVA Ventas, IVA Compras, y Cuenta a Pagar a Operador
+2. Al registrar PAGO → se crea movimiento en Libro Mayor y en Caja
+3. Al eliminar PAGO → se eliminan los movimientos asociados
+4. Al editar montos de OPERACIÓN → se actualizan los registros de IVA
+5. Las COMISIONES se calculan automáticamente al confirmar operación
 
 ## IMPORTANTE
 - Si la pregunta es ambigua, pedí aclaración
