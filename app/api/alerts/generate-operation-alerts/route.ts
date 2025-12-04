@@ -109,15 +109,17 @@ export async function POST(request: Request) {
     }
 
     // 4. ALERTA DE DOCUMENTOS (verificar pasaportes vencidos)
-    const { data: documents } = await supabase
+    const { data: documentsData } = await supabase
       .from("documents")
       .select("*")
       .eq("operation_id", operationId)
       .in("type", ["PASSPORT", "DNI"])
 
-    if (documents) {
+    const documents = (documentsData || []) as any[]
+
+    if (documents.length > 0) {
       for (const doc of documents) {
-        const scannedData = doc.scanned_data as any
+        const scannedData = doc.scanned_data
         if (scannedData?.expiration_date) {
           const expirationDate = new Date(scannedData.expiration_date + 'T12:00:00')
           const departureDate = operation.departure_date ? new Date(operation.departure_date + 'T12:00:00') : today
