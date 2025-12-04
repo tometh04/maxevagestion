@@ -246,41 +246,66 @@ Es la guía para entender cómo están (o deberían estar) conectadas todas las 
 
 ---
 
-## 🔴 ACCIONES CRÍTICAS FALTANTES
+## ✅ TODAS LAS ACCIONES CRÍTICAS IMPLEMENTADAS
 
-### 1. **Eliminar Operación**
-- No hay forma de eliminar una operación
-- Debería: limpiar IVA, pagos, alertas, operator_payments
-- Debería: preguntar si revertir lead a IN_PROGRESS
+### 1. ✅ **Eliminar Operación** - IMPLEMENTADO
+- `DELETE /api/operations/[id]`
+- Limpia: IVA, pagos, ledger, cash_movements, operator_payments, alertas, comisiones
+- Revierte lead a IN_PROGRESS automáticamente
+- Solo ADMIN y SUPER_ADMIN pueden eliminar
 
-### 2. **Editar Operación → Actualizar IVA**
-- Si cambian los montos de venta/costo, el IVA no se actualiza
-- El IVA queda con valores incorrectos
+### 2. ✅ **Editar Operación → Actualizar IVA** - IMPLEMENTADO
+- `PATCH /api/operations/[id]`
+- Si cambia `sale_amount_total` → actualiza `iva_sales`
+- Si cambia `operator_cost` → actualiza `iva_purchases` y `operator_payments`
 
-### 3. **Eliminar Movimiento de Caja**
-- No se puede eliminar un movimiento de caja desde la UI
-- Si se elimina, el ledger_movement queda
+### 3. ✅ **Eliminar Movimiento de Caja** - IMPLEMENTADO
+- `DELETE /api/cash/movements?movementId=xxx`
+- Elimina el cash_movement y su ledger_movement asociado
+- Solo ADMIN, SUPER_ADMIN y CONTABLE pueden eliminar
 
-### 4. **Revertir Comisión Pagada**
-- Si se pagó una comisión por error, no hay forma de revertirla
+### 4. ✅ **Revertir Comisión Pagada** - IMPLEMENTADO
+- `POST /api/commissions/revert` con `{ commissionId }`
+- Elimina el ledger_movement COMMISSION
+- Cambia status de comisión a PENDING
+- Solo ADMIN y SUPER_ADMIN pueden revertir
 
-### 5. **Eliminar Lead con Depósito**
-- El ledger_movement del depósito queda huérfano
-
----
-
-## 📋 RESUMEN DE PRIORIDADES
-
-| Prioridad | Acción | Impacto |
-|-----------|--------|---------|
-| 🔴 Alta | Actualizar IVA al editar operación | Contabilidad incorrecta |
-| 🔴 Alta | Eliminar operaciones | No se pueden corregir errores |
-| 🟡 Media | Eliminar movimientos de caja | Inconsistencias en caja |
-| 🟡 Media | Revertir comisiones | No se pueden corregir errores |
-| 🟢 Baja | Limpiar ledger al eliminar lead | Datos huérfanos |
+### 5. ⚠️ **Eliminar Lead con Depósito** - PENDIENTE (baja prioridad)
+- El ledger_movement del depósito quedaría huérfano
+- Impacto bajo: se puede limpiar manualmente si ocurre
 
 ---
 
-*Documento generado el: $(date)*
-*Última revisión: Para revisar cada vez que se modifique algún flujo*
+## 📋 RESUMEN FINAL
+
+| Acción | Estado | Endpoint |
+|--------|--------|----------|
+| Eliminar operación | ✅ | `DELETE /api/operations/[id]` |
+| Actualizar IVA al editar | ✅ | `PATCH /api/operations/[id]` |
+| Eliminar pago | ✅ | `DELETE /api/payments?paymentId=xxx` |
+| Eliminar mov. caja | ✅ | `DELETE /api/cash/movements?movementId=xxx` |
+| Revertir comisión | ✅ | `POST /api/commissions/revert` |
+
+---
+
+## 🤖 AI COPILOT - Contexto Actualizado
+
+El AI Copilot ahora tiene acceso a:
+- ✅ Movimientos de caja del mes
+- ✅ Libro mayor (ledger) del mes
+- ✅ IVA (ventas, compras, a pagar)
+- ✅ Comisiones pendientes
+- ✅ Pagos pendientes a operadores
+- ✅ Schema de DB actualizado con todas las tablas contables
+
+Preguntas ejemplo:
+- "¿Cuánto IVA tenemos que pagar este mes?"
+- "¿Cuánto le debemos a los operadores?"
+- "¿Cómo está la caja este mes?"
+- "¿Cuántas comisiones hay pendientes?"
+
+---
+
+*Documento actualizado: Diciembre 2024*
+*Sistema contable integrado completamente*
 
