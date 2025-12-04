@@ -29,6 +29,7 @@ export async function POST(request: Request) {
       product_type,
       origin,
       destination,
+      operation_date,
       departure_date,
       return_date,
       checkin_date,
@@ -76,6 +77,7 @@ export async function POST(request: Request) {
       product_type: inferredProductType,
       origin: origin || null,
       destination,
+      operation_date: operation_date || new Date().toISOString().split("T")[0], // Fecha de operación (hoy por defecto)
       departure_date,
       return_date: return_date || null,
       checkin_date: checkin_date || null,

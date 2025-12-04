@@ -6,8 +6,9 @@ import { OperationDetailClient } from "@/components/operations/operation-detail-
 export default async function OperationDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
 
@@ -21,7 +22,7 @@ export default async function OperationDetailPage({
       agencies:agency_id(id, name, city),
       leads:lead_id(id, contact_name, destination, status)
     `)
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (operationError || !operation) {
@@ -44,27 +45,27 @@ export default async function OperationDetailPage({
       *,
       customers:customer_id(*)
     `)
-    .eq("operation_id", params.id)
+    .eq("operation_id", id)
 
   // Get documents
   const { data: documents } = await supabase
     .from("documents")
     .select("*")
-    .eq("operation_id", params.id)
+    .eq("operation_id", id)
     .order("uploaded_at", { ascending: false })
 
   // Get payments
   const { data: payments } = await supabase
     .from("payments")
     .select("*")
-    .eq("operation_id", params.id)
+    .eq("operation_id", id)
     .order("date_due", { ascending: true })
 
   // Get alerts
   const { data: alerts } = await supabase
     .from("alerts")
     .select("*")
-    .eq("operation_id", params.id)
+    .eq("operation_id", id)
     .order("date_due", { ascending: true })
 
   // Get agencies for edit dialog
