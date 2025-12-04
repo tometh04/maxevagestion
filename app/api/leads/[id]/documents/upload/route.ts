@@ -223,55 +223,54 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
 
   try {
     // Obtener la imagen
+    console.log("📄 Descargando imagen desde:", fileUrl)
     const imageResponse = await fetch(fileUrl)
     if (!imageResponse.ok) {
+      console.error("❌ Error descargando imagen:", imageResponse.status, imageResponse.statusText)
       throw new Error("No se pudo obtener la imagen")
     }
 
     const imageBuffer = await imageResponse.arrayBuffer()
+    const imageSizeKB = Math.round(imageBuffer.byteLength / 1024)
+    console.log(`📄 Imagen descargada: ${imageSizeKB} KB`)
+    
+    // Si la imagen es muy grande, puede causar problemas
+    if (imageSizeKB > 5000) {
+      console.warn(`⚠️ Imagen muy grande (${imageSizeKB} KB), puede afectar el OCR`)
+    }
+    
     const base64Image = Buffer.from(imageBuffer).toString("base64")
+    console.log(`📄 Base64 generado: ${Math.round(base64Image.length / 1024)} KB`)
 
     // Determinar el prompt según el tipo de documento
     let prompt = ""
     if (documentType === "PASSPORT") {
-      prompt = `Analiza este pasaporte cuidadosamente y extrae TODA la información disponible. 
+      prompt = `Eres un experto en OCR de documentos de identidad. Analiza esta imagen de un PASAPORTE y extrae la información.
 
-INSTRUCCIONES IMPORTANTES:
-- Lee TODOS los campos visibles en el pasaporte
-- Para fechas, conviértelas al formato YYYY-MM-DD (ejemplo: "09 ENE 87" = "1987-01-09", "06 DIC 16" = "2016-12-06")
-- Para nombres, respeta exactamente como aparecen (mayúsculas, acentos, etc.)
-- El número de pasaporte está en el campo "Número / Number"
-- El DNI/Personal Number puede estar en un campo separado
-- La autoridad emisora puede ser RENAPER, Policía Federal, etc.
-- Lee las líneas MRZ (Machine Readable Zone) en la parte inferior si están visibles
+TAREA: Extraer los datos visibles del pasaporte y devolverlos en formato JSON.
 
-Devuelve un JSON con los siguientes campos:
-{
-  "document_type": "PASSPORT",
-  "document_number": "número completo del pasaporte (ej: AAE422895)",
-  "first_name": "nombre(s) de pila (ej: LUCAS ALEJANDRO)",
-  "last_name": "apellido(s) (ej: SANCHEZ)",
-  "full_name": "nombre completo tal como aparece en el pasaporte",
-  "date_of_birth": "YYYY-MM-DD (convertir formato del pasaporte)",
-  "nationality": "código de nacionalidad (ej: ARG, ARGENTINA)",
-  "place_of_birth": "lugar de nacimiento completo o código",
-  "sex": "M/F/X",
-  "expiration_date": "YYYY-MM-DD (fecha de vencimiento)",
-  "issue_date": "YYYY-MM-DD (fecha de emisión)",
-  "issuing_authority": "autoridad emisora (ej: RENAPER, Policía Federal)",
-  "personal_number": "número de documento/DNI si está visible",
-  "mrz_line1": "primera línea MRZ completa si está visible",
-  "mrz_line2": "segunda línea MRZ completa si está visible"
-}
+CAMPOS A EXTRAER:
+- document_number: Número del pasaporte (ej: "AAE422895")
+- first_name: Nombre(s) 
+- last_name: Apellido(s)
+- full_name: Nombre completo
+- date_of_birth: Fecha de nacimiento en formato YYYY-MM-DD
+- nationality: Nacionalidad (ej: "ARG" o "ARGENTINA")
+- sex: Sexo (M/F)
+- expiration_date: Fecha de vencimiento en formato YYYY-MM-DD
+- issue_date: Fecha de emisión en formato YYYY-MM-DD
+- place_of_birth: Lugar de nacimiento
+- personal_number: Número de DNI si está visible
 
-IMPORTANTE: 
-- Convierte TODAS las fechas al formato YYYY-MM-DD
-- Si ves "09 ENE 87" significa 9 de enero de 1987 = "1987-01-09"
-- Si ves "06 DIC 16" significa 6 de diciembre de 2016 = "2016-12-06"
-- Si ves "06 DIC 26" significa 6 de diciembre de 2026 = "2026-12-06"
-- Extrae el número de pasaporte completo (puede tener letras y números)
-- Si algún campo no está disponible o no es legible, usa null
-- Devuelve SOLO el JSON válido, sin texto adicional, sin markdown, sin comentarios`
+CONVERSIÓN DE FECHAS:
+- "09 ENE 87" → "1987-01-09"
+- "06 DIC 16" → "2016-12-06"  
+- "06 DIC 26" → "2026-12-06"
+
+RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas leer. Si un campo no es legible, omítelo o usa null.
+
+Ejemplo de respuesta:
+{"document_number": "AAE123456", "full_name": "JUAN PEREZ", "expiration_date": "2030-01-15"}`
     } else if (documentType === "DNI") {
       prompt = `Analiza este DNI argentino y extrae TODA la información disponible. Devuelve un JSON con los siguientes campos:
 {
@@ -311,6 +310,7 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     }
 
     // Llamar a OpenAI Vision
+    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -331,29 +331,61 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
           ],
         },
       ],
-      max_tokens: 1000,
-      response_format: { type: "json_object" },
+      max_tokens: 2000,
+      temperature: 0.1, // Más determinístico para OCR
     })
+    
+    console.log("📄 OpenAI respondió, finish_reason:", completion.choices[0]?.finish_reason)
 
-    const responseText = completion.choices[0]?.message?.content || "{}"
-    console.log("📄 OpenAI response raw:", responseText)
+    const responseText = completion.choices[0]?.message?.content || ""
+    console.log("📄 OpenAI response raw:", responseText.substring(0, 500) + (responseText.length > 500 ? "..." : ""))
+    
+    if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
+      console.error("❌ OpenAI devolvió respuesta vacía")
+      return null
+    }
     
     let parsedData: any
 
     try {
+      // Intentar parsear directamente
       parsedData = JSON.parse(responseText)
       console.log("📄 Parsed JSON successfully:", Object.keys(parsedData))
     } catch (parseError) {
-      console.warn("⚠️ Error parsing JSON, intentando extraer de markdown...")
+      console.warn("⚠️ No es JSON directo, intentando extraer...")
+      
       // Intentar extraer JSON de markdown code blocks
-      const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/```\n([\s\S]*?)\n```/)
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || 
+                       responseText.match(/```\s*([\s\S]*?)\s*```/) ||
+                       responseText.match(/\{[\s\S]*\}/)
+      
       if (jsonMatch) {
-        parsedData = JSON.parse(jsonMatch[1])
-        console.log("📄 Extracted from markdown:", Object.keys(parsedData))
+        try {
+          const jsonStr = jsonMatch[1] || jsonMatch[0]
+          parsedData = JSON.parse(jsonStr)
+          console.log("📄 Extracted JSON:", Object.keys(parsedData))
+        } catch (innerError) {
+          console.error("❌ Error parsing extracted JSON:", innerError)
+          console.error("❌ Content was:", jsonMatch[0]?.substring(0, 200))
+          return null
+        }
       } else {
-        console.error("❌ Error parsing AI response:", responseText)
+        console.error("❌ No se encontró JSON en la respuesta")
+        console.error("❌ Respuesta completa:", responseText)
         return null
       }
+    }
+    
+    // Verificar que parsedData tenga datos útiles
+    const usefulKeys = Object.keys(parsedData).filter(k => 
+      parsedData[k] !== null && 
+      parsedData[k] !== "" && 
+      !["scanned_at", "scanned_by", "document_type"].includes(k)
+    )
+    
+    if (usefulKeys.length === 0) {
+      console.error("❌ El JSON parseado no tiene datos útiles:", parsedData)
+      return null
     }
 
     // Agregar metadata
