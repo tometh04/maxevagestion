@@ -64,9 +64,10 @@ export default async function OperationDetailPage({
       .eq("lead_id", op.lead_id)
       .order("uploaded_at", { ascending: false })
     
-    if (leadDocs) {
+    if (leadDocs && leadDocs.length > 0) {
       // Agregar documentos del lead que no estén ya en la operación
-      for (const doc of leadDocs) {
+      const leadDocsArray = leadDocs as any[]
+      for (const doc of leadDocsArray) {
         if (!documents.find((d: any) => d.id === doc.id)) {
           documents.push({ ...doc, fromLead: true })
         }
