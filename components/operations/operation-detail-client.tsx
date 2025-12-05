@@ -389,7 +389,13 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="accounting" className="space-y-4">
-          <OperationAccountingSection operationId={operation.id} />
+          <OperationAccountingSection 
+            operationId={operation.id}
+            saleAmount={operation.sale_amount_total || 0}
+            operatorCost={operation.operator_cost || 0}
+            currency={operation.currency || "USD"}
+            commissionPercent={10}
+          />
         </TabsContent>
 
         <TabsContent value="alerts" className="space-y-4">
