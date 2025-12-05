@@ -364,7 +364,11 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
-          <DocumentsSection documents={documents || []} operationId={operation.id} />
+          <DocumentsSection 
+            documents={documents || []} 
+            operationId={operation.id} 
+            departureDate={operation.departure_date || undefined}
+          />
         </TabsContent>
 
         <TabsContent value="payments" className="space-y-4">
