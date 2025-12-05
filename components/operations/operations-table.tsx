@@ -142,44 +142,33 @@ export function OperationsTable({
       {
         accessorKey: "operation_date",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="F. Operación" />
+          <DataTableColumnHeader column={column} title="Fecha" />
         ),
         cell: ({ row }) => {
           const opDate = row.original.operation_date || row.original.created_at
-          if (!opDate) return <div className="text-sm whitespace-nowrap font-medium">-</div>
+          if (!opDate) return <div className="text-xs">-</div>
           try {
-            // Agregar T12:00:00 para evitar problemas de timezone con fechas DATE
             const dateStr = typeof opDate === 'string' && opDate.includes('T') ? opDate : `${opDate}T12:00:00`
             return (
-              <div className="text-sm whitespace-nowrap font-medium">
-                {format(new Date(dateStr), "dd/MM/yyyy", { locale: es })}
+              <div className="text-xs font-medium">
+                {format(new Date(dateStr), "dd/MM/yy", { locale: es })}
               </div>
             )
           } catch {
-            return <div className="text-sm whitespace-nowrap font-medium">-</div>
+            return <div className="text-xs">-</div>
           }
         },
       },
       {
-        accessorKey: "id",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="ID" />
-        ),
-        cell: ({ row }) => (
-          <div className="font-mono text-xs whitespace-nowrap">{row.original.id.slice(0, 8)}</div>
-        ),
-        enableHiding: true,
-      },
-      {
         accessorKey: "leads.contact_name",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Cliente/Lead" />
+          <DataTableColumnHeader column={column} title="Cliente" />
         ),
         cell: ({ row }) => {
           const lead = row.original.leads
           const clientName = lead?.contact_name
           return (
-            <div className="min-w-[120px] max-w-[200px] truncate" title={clientName || "-"}>
+            <div className="max-w-[140px] truncate text-xs" title={clientName || "-"}>
               {clientName || "-"}
             </div>
           )
@@ -191,7 +180,7 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Destino" />
         ),
         cell: ({ row }) => (
-          <div className="min-w-[100px] max-w-[150px] truncate" title={row.original.destination}>
+          <div className="max-w-[100px] truncate text-xs" title={row.original.destination}>
             {row.original.destination}
           </div>
         ),
@@ -202,36 +191,35 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Viaje" />
         ),
         cell: ({ row }) => {
-          if (!row.original.departure_date) return <div className="text-sm whitespace-nowrap">-</div>
+          if (!row.original.departure_date) return <div className="text-xs">-</div>
           try {
             const depDate = `${row.original.departure_date}T12:00:00`
             const retDate = row.original.return_date ? `${row.original.return_date}T12:00:00` : null
             return (
-              <div className="text-sm whitespace-nowrap">
-                <div>
-                  {format(new Date(depDate), "dd/MM/yyyy", { locale: es })}
-                </div>
+              <div className="text-xs">
+                <div>{format(new Date(depDate), "dd/MM", { locale: es })}</div>
                 {retDate && (
-                  <div className="text-muted-foreground text-xs">
-                    al {format(new Date(retDate), "dd/MM/yyyy", { locale: es })}
+                  <div className="text-muted-foreground">
+                    al {format(new Date(retDate), "dd/MM", { locale: es })}
                   </div>
                 )}
               </div>
             )
           } catch {
-            return <div className="text-sm whitespace-nowrap">-</div>
+            return <div className="text-xs">-</div>
           }
         },
       },
       {
         accessorKey: "sellers.name",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Vendedor" />
+          <DataTableColumnHeader column={column} title="Vend." />
         ),
         cell: ({ row }) => (
-          <div className="whitespace-nowrap">{row.original.sellers?.name || "-"}</div>
+          <div className="text-xs max-w-[60px] truncate" title={row.original.sellers?.name || "-"}>
+            {row.original.sellers?.name || "-"}
+          </div>
         ),
-        enableHiding: true,
       },
       {
         accessorKey: "operators.name",
@@ -239,21 +227,19 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Operador" />
         ),
         cell: ({ row }) => (
-          <div className="whitespace-nowrap">{row.original.operators?.name || "-"}</div>
+          <div className="text-xs max-w-[80px] truncate" title={row.original.operators?.name || "-"}>
+            {row.original.operators?.name || "-"}
+          </div>
         ),
-        enableHiding: true,
       },
       {
         accessorKey: "sale_amount_total",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Monto Venta" />
+          <DataTableColumnHeader column={column} title="Venta" />
         ),
         cell: ({ row }) => (
-          <div className="whitespace-nowrap">
-            {row.original.currency}{" "}
-            {row.original.sale_amount_total.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-            })}
+          <div className="text-xs font-medium">
+            {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
           </div>
         ),
       },
@@ -263,16 +249,13 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Margen" />
         ),
         cell: ({ row }) => (
-          <div className="min-w-[100px]">
-            <div className="whitespace-nowrap">
-              {row.original.currency}{" "}
-              {row.original.margin_amount.toLocaleString("es-AR", {
-                minimumFractionDigits: 2,
-              })}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {row.original.margin_percentage.toFixed(1)}%
-            </div>
+          <div className="text-xs">
+            <span className="font-medium">
+              {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
+            </span>
+            <span className="text-muted-foreground ml-1">
+              {Math.round(row.original.margin_percentage)}%
+            </span>
           </div>
         ),
       },
@@ -282,7 +265,7 @@ export function OperationsTable({
           <DataTableColumnHeader column={column} title="Estado" />
         ),
         cell: ({ row }) => (
-          <Badge variant="secondary">
+          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             {statusLabels[row.original.status] || row.original.status}
           </Badge>
         ),
