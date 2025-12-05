@@ -125,8 +125,10 @@
 
 **Estado:** ✅ Completado el 05/12/2025
 
-#### 2.2 Cuentas Corrientes de Socios 🆕
+#### 2.2 Cuentas Corrientes de Socios ✅ COMPLETADO
 **Descripción:** Registro de retiros personales de los socios
+
+**Estado:** ✅ Completado el 05/12/2025
 
 ```sql
 -- Nueva tabla sugerida
@@ -160,14 +162,14 @@ CREATE TABLE partner_withdrawals (
 
 **Estimación:** 6-8 horas
 
-#### 2.3 Módulo de Reportes - Fase 1 🟡 IMPORTANTE
+#### 2.3 Módulo de Reportes - Fase 1 ✅ COMPLETADO
 **Tareas:**
-- [ ] Reporte de ventas por período (mes, semana, custom)
-- [ ] Reporte de ventas por vendedor
-- [ ] Reporte de flujo de caja (ingresos vs egresos)
-- [ ] Exportación básica a Excel/CSV
+- [x] Reporte de ventas por período (mes, semana, custom)
+- [x] Reporte de ventas por vendedor
+- [x] Reporte de flujo de caja (ingresos vs egresos)
+- [x] Exportación básica a Excel/CSV
 
-**Estimación:** 8-12 horas
+**Estado:** ✅ Completado el 05/12/2025
 
 ---
 
@@ -325,11 +327,11 @@ Durante las primeras 2 semanas:
 
 ### Fase 2: Post-Lanzamiento
 ```
-[████░░░░░░░░░░░░░░░░] 20% Completado
+[████████████████████] 100% Completado
 
 ✅ Sistema de requisitos por destino (vacunas, visas, etc.)
-⏳ Cuentas corrientes de socios
-⏳ Módulo de reportes Fase 1
+✅ Cuentas corrientes de socios
+✅ Módulo de reportes Fase 1
 ```
 
 ---
