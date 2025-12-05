@@ -44,6 +44,7 @@ export async function POST(request: Request) {
       currency,
       sale_currency,
       operator_cost_currency,
+      commission_percentage, // Porcentaje de comisión del vendedor
     } = body
 
     // Validate required fields
@@ -264,6 +265,26 @@ export async function POST(request: Request) {
     } catch (error) {
       console.error("Error generating destination requirement alerts:", error)
       // No lanzamos error para no romper la creación de la operación
+    }
+
+    // Crear registro de comisión del vendedor si se especificó porcentaje
+    if (commission_percentage && commission_percentage > 0 && marginAmount > 0) {
+      try {
+        const commissionAmount = (marginAmount * commission_percentage) / 100
+        await (supabase.from("commission_records") as any).insert({
+          operation_id: operation.id,
+          seller_id: seller_id,
+          agency_id: agency_id,
+          amount: Math.round(commissionAmount * 100) / 100,
+          percentage: commission_percentage,
+          status: "PENDING",
+          date_calculated: new Date().toISOString(),
+        })
+        console.log(`✅ Created commission record for operation ${operation.id}: ${commission_percentage}% = ${commissionAmount}`)
+      } catch (error) {
+        console.error("Error creating commission record:", error)
+        // No lanzamos error para no romper la creación de la operación
+      }
     }
 
     return NextResponse.json({ operation })
