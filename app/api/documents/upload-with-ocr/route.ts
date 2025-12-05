@@ -103,7 +103,20 @@ export async function POST(request: Request) {
       uploaded_by_user_id: user.id,
     }
     
-    if (operationId) documentData.operation_id = operationId
+    if (operationId) {
+      documentData.operation_id = operationId
+      
+      // Si la operación tiene un lead asociado, también vincular el documento al lead
+      const { data: operation } = await supabase
+        .from("operations")
+        .select("lead_id")
+        .eq("id", operationId)
+        .single()
+      
+      if (operation && (operation as any).lead_id) {
+        documentData.lead_id = (operation as any).lead_id
+      }
+    }
     if (customerId) documentData.customer_id = customerId
 
     const { data: document, error: docError } = await (supabase.from("documents") as any)

@@ -43,9 +43,7 @@ export async function GET(
     }
 
     // Obtener documentos del lead
-    // Intentar primero con lead_id, si falla puede ser que la migración no se ejecutó
     let documents: any[] = []
-    let docsError: any = null
     
     try {
       const result = await supabase
@@ -54,36 +52,53 @@ export async function GET(
         .eq("lead_id", leadId)
         .order("uploaded_at", { ascending: false })
       
+      if (result.error) throw result.error
       documents = result.data || []
-      docsError = result.error
     } catch (error: any) {
-      // Si falla, puede ser que la columna lead_id no existe
       if (error.message?.includes("column") && error.message?.includes("lead_id")) {
-        console.warn("⚠️ Columna lead_id no existe, la migración no se ejecutó")
         return NextResponse.json({ 
-          error: "La migración 027_add_lead_documents.sql no se ha ejecutado. Por favor, ejecútala en Supabase.",
+          error: "La migración 027_add_lead_documents.sql no se ha ejecutado.",
           documents: []
         }, { status: 500 })
       }
-      docsError = error
+      throw error
     }
 
-    if (docsError) {
-      console.error("❌ Error fetching documents:", docsError)
-      // Verificar si el error es porque falta la columna lead_id
-      if (docsError.message?.includes("column") && docsError.message?.includes("lead_id")) {
-        return NextResponse.json({ 
-          error: "La migración no se ha ejecutado. Por favor, ejecuta la migración 027_add_lead_documents.sql en Supabase.",
-          documents: [] 
-        }, { status: 500 })
+    // También obtener documentos de operaciones asociadas a este lead
+    try {
+      // Buscar operaciones que tengan este lead_id
+      const { data: operations } = await supabase
+        .from("operations")
+        .select("id")
+        .eq("lead_id", leadId)
+      
+      if (operations && operations.length > 0) {
+        const operationIds = operations.map(op => op.id)
+        
+        const { data: opDocs } = await supabase
+          .from("documents")
+          .select("*, users:uploaded_by_user_id(id, name, email)")
+          .in("operation_id", operationIds)
+          .order("uploaded_at", { ascending: false })
+        
+        if (opDocs) {
+          // Agregar documentos de operaciones que no estén ya en la lista
+          for (const doc of opDocs) {
+            if (!documents.find(d => d.id === doc.id)) {
+              documents.push({ ...doc, fromOperation: true })
+            }
+          }
+        }
       }
-      return NextResponse.json({ 
-        error: `Error al obtener documentos: ${docsError.message || "Error desconocido"}`,
-        documents: []
-      }, { status: 500 })
+    } catch (error) {
+      console.error("Error fetching operation documents:", error)
+      // No fallar si esto falla, los documentos del lead ya están
     }
 
-    return NextResponse.json({ documents: documents || [] })
+    // Ordenar todos por fecha
+    documents.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+
+    return NextResponse.json({ documents })
   } catch (error) {
     console.error("Error in GET /api/leads/[id]/documents:", error)
     return NextResponse.json({ error: "Error al obtener documentos" }, { status: 500 })

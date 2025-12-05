@@ -47,12 +47,40 @@ export default async function OperationDetailPage({
     `)
     .eq("operation_id", id)
 
-  // Get documents
-  const { data: documents } = await supabase
+  // Get documents (de la operación Y del lead asociado si existe)
+  let documents: any[] = []
+  
+  // Documentos de la operación
+  const { data: opDocs } = await supabase
     .from("documents")
     .select("*")
     .eq("operation_id", id)
     .order("uploaded_at", { ascending: false })
+  
+  if (opDocs) {
+    documents = [...opDocs]
+  }
+  
+  // Si la operación tiene un lead asociado, traer también sus documentos
+  if (op.lead_id) {
+    const { data: leadDocs } = await supabase
+      .from("documents")
+      .select("*")
+      .eq("lead_id", op.lead_id)
+      .order("uploaded_at", { ascending: false })
+    
+    if (leadDocs) {
+      // Agregar documentos del lead que no estén ya en la operación
+      for (const doc of leadDocs) {
+        if (!documents.find(d => d.id === doc.id)) {
+          documents.push({ ...doc, fromLead: true })
+        }
+      }
+    }
+  }
+  
+  // Ordenar todos por fecha
+  documents.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
   // Get payments
   const { data: payments } = await supabase

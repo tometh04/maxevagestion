@@ -279,12 +279,17 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="outline">{getDocumentTypeLabel(doc.type)}</Badge>
                       {doc.scanned_data && (
                         <Badge variant="default" className="bg-green-600">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Escaneado
+                        </Badge>
+                      )}
+                      {doc.fromLead && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Desde Lead
                         </Badge>
                       )}
                     </div>
