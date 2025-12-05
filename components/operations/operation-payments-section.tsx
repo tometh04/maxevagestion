@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2 } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -91,6 +91,7 @@ export function OperationPaymentsSection({
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -142,6 +143,32 @@ export function OperationPaymentsSection({
       alert(error instanceof Error ? error.message : "Error al eliminar pago")
     } finally {
       setDeletingPaymentId(null)
+    }
+  }
+
+  const handleDownloadReceipt = async (paymentId: string) => {
+    setDownloadingReceiptId(paymentId)
+    try {
+      const response = await fetch(`/api/payments/${paymentId}/receipt`)
+      
+      if (!response.ok) {
+        throw new Error("Error al generar recibo")
+      }
+
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `recibo-${paymentId.slice(0, 8)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+    } catch (error) {
+      console.error("Error:", error)
+      alert("Error al descargar el recibo")
+    } finally {
+      setDownloadingReceiptId(null)
     }
   }
 
@@ -287,7 +314,7 @@ export function OperationPaymentsSection({
                   <TableHead>Método</TableHead>
                   <TableHead>Monto</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
+                  <TableHead className="w-[100px] text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -321,20 +348,41 @@ export function OperationPaymentsSection({
                         {payment.status === "PAID" ? "Pagado" : "Pendiente"}
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100"
-                        onClick={() => handleDeletePayment(payment.id)}
-                        disabled={deletingPaymentId === payment.id}
-                      >
-                        {deletingPaymentId === payment.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Botón de recibo - solo para pagos pagados */}
+                        {payment.status === "PAID" && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                            onClick={() => handleDownloadReceipt(payment.id)}
+                            disabled={downloadingReceiptId === payment.id}
+                            title="Descargar recibo PDF"
+                          >
+                            {downloadingReceiptId === payment.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FileText className="h-4 w-4" />
+                            )}
+                          </Button>
                         )}
-                      </Button>
+                        {/* Botón de eliminar */}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100"
+                          onClick={() => handleDeletePayment(payment.id)}
+                          disabled={deletingPaymentId === payment.id}
+                          title="Eliminar pago"
+                        >
+                          {deletingPaymentId === payment.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
