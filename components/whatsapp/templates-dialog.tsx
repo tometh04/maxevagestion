@@ -488,7 +488,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
             <div className="text-muted-foreground">
               <p className="text-lg font-medium mb-2">No hay templates configurados</p>
               <p className="text-sm mb-4">
-                Hacé clic en "Cargar Templates por Defecto" para comenzar con templates pre-configurados,
+                Hacé clic en &quot;Cargar Templates por Defecto&quot; para comenzar con templates pre-configurados,
                 o creá uno nuevo manualmente.
               </p>
             </div>

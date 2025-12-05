@@ -445,7 +445,7 @@ export function OperationDetailClient({
                   <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
                   <p className="text-sm text-muted-foreground">No hay alertas para esta operación</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Usa "Regenerar alertas" para crear alertas de check-in y vencimientos
+                    Usa &quot;Regenerar alertas&quot; para crear alertas de check-in y vencimientos
                   </p>
                 </div>
               ) : (

@@ -276,7 +276,7 @@ export function OperationPaymentsSection({
         <CardContent>
           {payments.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No hay pagos registrados. Usa el botón "Registrar Pago" cuando recibas un pago del cliente o pagues al operador.
+              No hay pagos registrados. Usa el botón &quot;Registrar Pago&quot; cuando recibas un pago del cliente o pagues al operador.
             </p>
           ) : (
             <Table>

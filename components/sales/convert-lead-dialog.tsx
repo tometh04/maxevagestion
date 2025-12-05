@@ -567,7 +567,7 @@ export function ConvertLeadDialog({
                                   setOriginOpen(false)
                                 }}
                               >
-                                Usar "{originSearch}"
+                                Usar &quot;{originSearch}&quot;
                               </Button>
                             </CommandEmpty>
                             <CommandGroup heading="Ciudades frecuentes">
@@ -643,7 +643,7 @@ export function ConvertLeadDialog({
                                   setDestinationOpen(false)
                                 }}
                               >
-                                Usar "{destinationSearch}"
+                                Usar &quot;{destinationSearch}&quot;
                               </Button>
                             </CommandEmpty>
                             {Object.entries(groupedDestinations).map(([region, destinations]) => (
