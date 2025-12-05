@@ -37,6 +37,7 @@ interface Operation {
   return_date: string | null
   sellers: { name: string } | null
   operators: { name: string } | null
+  leads: { card_name: string | null; contact_name: string | null } | null
   currency: string
   sale_amount_total: number
   margin_amount: number
@@ -170,12 +171,29 @@ export function OperationsTable({
         enableHiding: true,
       },
       {
+        accessorKey: "leads.card_name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Card/Cliente" />
+        ),
+        cell: ({ row }) => {
+          const lead = row.original.leads
+          const cardName = lead?.card_name || lead?.contact_name
+          return (
+            <div className="min-w-[120px] max-w-[200px] truncate" title={cardName || "-"}>
+              {cardName || "-"}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: "destination",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Destino" />
         ),
         cell: ({ row }) => (
-          <div className="min-w-[120px] break-words">{row.original.destination}</div>
+          <div className="min-w-[100px] max-w-[150px] truncate" title={row.original.destination}>
+            {row.original.destination}
+          </div>
         ),
       },
       {
@@ -321,7 +339,7 @@ export function OperationsTable({
 
   return (
     <>
-      <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino..." />
+      <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino o card..." />
       
       {editingOperation && (
         <EditOperationDialog
