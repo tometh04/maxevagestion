@@ -311,7 +311,7 @@ export async function GET(request: Request) {
     // Build query
     let query = supabase
       .from("operations")
-      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(card_name, contact_name)")
+      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
 
     // Apply permissions-based filtering
     const { applyOperationsFilters } = await import("@/lib/permissions-api")

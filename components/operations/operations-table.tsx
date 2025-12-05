@@ -37,7 +37,7 @@ interface Operation {
   return_date: string | null
   sellers: { name: string } | null
   operators: { name: string } | null
-  leads: { card_name: string | null; contact_name: string | null } | null
+  leads: { contact_name: string | null; destination: string | null; trello_url: string | null } | null
   currency: string
   sale_amount_total: number
   margin_amount: number
@@ -171,16 +171,16 @@ export function OperationsTable({
         enableHiding: true,
       },
       {
-        accessorKey: "leads.card_name",
+        accessorKey: "leads.contact_name",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Card/Cliente" />
+          <DataTableColumnHeader column={column} title="Cliente/Lead" />
         ),
         cell: ({ row }) => {
           const lead = row.original.leads
-          const cardName = lead?.card_name || lead?.contact_name
+          const clientName = lead?.contact_name
           return (
-            <div className="min-w-[120px] max-w-[200px] truncate" title={cardName || "-"}>
-              {cardName || "-"}
+            <div className="min-w-[120px] max-w-[200px] truncate" title={clientName || "-"}>
+              {clientName || "-"}
             </div>
           )
         },
