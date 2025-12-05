@@ -3,10 +3,11 @@ import { createServerClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { OperatorDetailClient } from "@/components/operators/operator-detail-client"
 
-export default async function OperatorDetailPage({ params }: { params: { id: string } }) {
+export default async function OperatorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
-  const operatorId = params.id
+  const operatorId = id
 
   // Get operator details
   const { data: operator, error: operatorError } = await supabase

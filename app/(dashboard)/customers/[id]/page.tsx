@@ -6,15 +6,16 @@ import { CustomerDetailClient } from "@/components/customers/customer-detail-cli
 export default async function CustomerDetailPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
+  const { id } = await params
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
 
   // Get customer
   const { data: customer, error: customerError } = await (supabase.from("customers") as any)
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single()
 
   if (customerError || !customer) {
@@ -33,7 +34,7 @@ export default async function CustomerDetailPage({
         agencies:agency_id(id, name)
       )
     `)
-    .eq("customer_id", params.id)
+    .eq("customer_id", id)
     .order("created_at", { ascending: false })
 
   // Get payments related to customer's operations
@@ -53,7 +54,7 @@ export default async function CustomerDetailPage({
   const { data: documents } = await supabase
     .from("documents")
     .select("*")
-    .eq("customer_id", params.id)
+    .eq("customer_id", id)
     .order("uploaded_at", { ascending: false })
 
   const operations = (operationCustomers || []).map((oc: any) => oc.operations).filter(Boolean)
