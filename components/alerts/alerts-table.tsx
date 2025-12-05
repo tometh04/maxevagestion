@@ -60,7 +60,7 @@ interface AlertsTableProps {
 const typeLabels: Record<string, string> = {
   PAYMENT_DUE: "Pago Pendiente",
   OPERATOR_DUE: "Pago Operador",
-  UPCOMING_TRIP: "Viaje Próximo",
+  UPCOMING_TRIP: "✈️ Viaje",
   MISSING_DOC: "Documento Faltante",
   GENERIC: "Genérico",
   PAYMENT_REMINDER_7D: "Pago (7 días)",
@@ -73,6 +73,8 @@ const typeLabels: Record<string, string> = {
   LEAD_CHECKIN_TODAY: "Check-in (Hoy)",
   RECURRING_PAYMENT: "Pago Recurrente",
   PASSPORT_EXPIRY: "⚠️ Pasaporte",
+  DESTINATION_REQUIREMENT: "📋 Requisito",
+  BIRTHDAY: "🎂 Cumpleaños",
 }
 
 const statusLabels: Record<string, string> = {
