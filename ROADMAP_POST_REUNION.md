@@ -99,8 +99,8 @@
 
 **Estimación:** 4-8 horas (depende de la cantidad de datos)
 
-#### 1.6 Configuración de Usuarios 🔴 PENDIENTE
-- [ ] Crear usuario Maxi (SUPER_ADMIN)
+#### 1.6 Configuración de Usuarios 🟡 EN PROGRESO
+- [x] Crear usuario Maxi (SUPER_ADMIN) - maxi@erplozada.com
 - [ ] Crear usuario Yamil (CONTABLE)
 - [ ] Crear usuarios vendedoras (SELLER)
 - [ ] Asignar agencias a cada usuario
@@ -111,35 +111,19 @@
 
 ### FASE 2: Primeras 2 Semanas Post-Lanzamiento
 
-#### 2.1 Sistema de Requisitos por Destino 🆕
+#### 2.1 Sistema de Requisitos por Destino ✅ COMPLETADO
 **Descripción:** Alertas automáticas sobre vacunas obligatorias, formularios de ingreso, etc.
 
-```sql
--- Nueva tabla sugerida
-CREATE TABLE destination_requirements (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  destination_code TEXT NOT NULL, -- "BR", "CO", "US", "EU"
-  destination_name TEXT NOT NULL, -- "Brasil", "Colombia", "Estados Unidos"
-  requirement_type TEXT NOT NULL, -- 'VACCINE', 'FORM', 'VISA', 'INSURANCE', 'OTHER'
-  requirement_name TEXT NOT NULL, -- "Fiebre Amarilla", "ESTA", "Formulario Migratorio"
-  is_required BOOLEAN DEFAULT true,
-  description TEXT, -- Detalles adicionales
-  url TEXT, -- Link a más info o formulario
-  valid_from DATE,
-  valid_to DATE, -- NULL si vigente indefinidamente
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
 **Tareas:**
-- [ ] Crear migración de base de datos
-- [ ] API CRUD para requisitos
-- [ ] UI en Settings para administrar requisitos
-- [ ] Generar alertas automáticas al crear operación con destino que tiene requisitos
-- [ ] Mostrar requisitos en detalle de operación
+- [x] Crear migración de base de datos (047_destination_requirements.sql)
+- [x] API CRUD para requisitos (/api/destination-requirements)
+- [x] UI en Settings para administrar requisitos (tab "Requisitos Destino")
+- [x] Generar alertas automáticas al crear operación con destino
+- [x] Mostrar requisitos en detalle de operación
 
-**Estimación:** 8-12 horas
+**Destinos incluidos:** Brasil, Colombia, EEUU, Europa, México, Cuba, Rep. Dominicana, Tailandia, Australia, Egipto
+
+**Estado:** ✅ Completado el 05/12/2025
 
 #### 2.2 Cuentas Corrientes de Socios 🆕
 **Descripción:** Registro de retiros personales de los socios
@@ -240,7 +224,7 @@ CREATE TABLE partner_withdrawals (
 - [ ] Operadores cargados con datos correctos
 
 ### Usuarios
-- [ ] Usuario Maxi creado (SUPER_ADMIN)
+- [x] Usuario Maxi creado (SUPER_ADMIN) - maxi@erplozada.com
 - [ ] Usuario Yamil creado (CONTABLE)
 - [ ] Usuarios vendedoras creados (SELLER)
 - [ ] Todos los usuarios asignados a sus agencias
@@ -335,7 +319,17 @@ Durante las primeras 2 semanas:
 ✅ OCR en operaciones
 ✅ Calendario con enlaces
 ⏳ Importación de datos
-⏳ Configuración de usuarios
+✅ Usuario Maxi (SUPER_ADMIN)
+⏳ Usuarios Yamil y vendedoras
+```
+
+### Fase 2: Post-Lanzamiento
+```
+[████░░░░░░░░░░░░░░░░] 20% Completado
+
+✅ Sistema de requisitos por destino (vacunas, visas, etc.)
+⏳ Cuentas corrientes de socios
+⏳ Módulo de reportes Fase 1
 ```
 
 ---
