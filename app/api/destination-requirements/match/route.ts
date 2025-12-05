@@ -72,8 +72,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al buscar requisitos" }, { status: 500 })
     }
 
-    // Obtener nombres de destinos encontrados
-    const matchedDestinations = [...new Set((data || []).map((r: any) => r.destination_name))]
+    // Obtener nombres de destinos encontrados (sin duplicados)
+    const matchedDestinations = Array.from(new Set((data || []).map((r: any) => r.destination_name)))
 
     return NextResponse.json({ 
       requirements: data || [],
