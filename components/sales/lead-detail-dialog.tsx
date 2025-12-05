@@ -623,8 +623,8 @@ export function LeadDetailDialog({
         <Separator />
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-            {/* Botón Agarrar Lead - solo si no tiene vendedor asignado */}
-            {!lead.users && canClaimLeads && (
+            {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
+            {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
               <Button
                 variant="default"
                 onClick={handleClaimLead}
@@ -647,19 +647,35 @@ export function LeadDetailDialog({
               <Edit className="mr-2 h-4 w-4" />
               Editar
             </Button>
-            {onConvert && lead.status !== "WON" && lead.status !== "LOST" && agencies.length > 0 && sellers.length > 0 && (
+            {/* Ver Operación - si ya tiene operación creada */}
+            {lead.operations && lead.operations.length > 0 ? (
               <Button
-                variant="outline"
-                onClick={() => setConvertDialogOpen(true)}
-                className="flex-1 sm:flex-initial"
+                variant="default"
+                asChild
+                className="flex-1 sm:flex-initial bg-green-600 hover:bg-green-700"
               >
-                <ArrowRight className="mr-2 h-4 w-4" />
-                Convertir a Operación
+                <Link href={`/operations/${lead.operations[0].id}`}>
+                  <Briefcase className="mr-2 h-4 w-4" />
+                  Ver Operación
+                </Link>
               </Button>
+            ) : (
+              /* Convertir a Operación - solo si NO tiene operación y no está LOST */
+              onConvert && lead.status !== "LOST" && agencies.length > 0 && sellers.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => setConvertDialogOpen(true)}
+                  className="flex-1 sm:flex-initial"
+                >
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  Convertir a Operación
+                </Button>
+              )
             )}
             {onDelete && !isFromTrello && (
               <Button
-                className="text-red-600 flex-1 sm:flex-initial"
+                variant="ghost"
+                className="text-red-600 flex-1 sm:flex-initial hover:text-red-700 hover:bg-red-50"
                 onClick={() => setDeleteDialogOpen(true)}
               >
                 <Trash2 className="mr-2 h-4 w-4" />

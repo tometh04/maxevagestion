@@ -267,6 +267,19 @@ export async function POST(request: Request) {
       // No lanzamos error para no romper la creación de la operación
     }
 
+    // Generar alertas automáticas (check-in, check-out, cumpleaños)
+    try {
+      await generateOperationAlerts(supabase, operation.id, {
+        departure_date,
+        return_date,
+        destination,
+        seller_id,
+      })
+    } catch (error) {
+      console.error("Error generating operation alerts:", error)
+      // No lanzamos error para no romper la creación de la operación
+    }
+
     // Crear registro de comisión del vendedor si se especificó porcentaje
     if (commission_percentage && commission_percentage > 0 && marginAmount > 0) {
       try {
@@ -473,6 +486,72 @@ async function generateDestinationRequirementAlerts(
       console.error("Error creando alertas de requisitos:", insertError)
     } else {
       console.log(`✅ Creadas ${alertsToCreate.length} alertas de requisitos para operación ${operationId}`)
+    }
+  }
+}
+
+/**
+ * Genera alertas automáticas para una operación (check-in, check-out)
+ */
+async function generateOperationAlerts(
+  supabase: any,
+  operationId: string,
+  data: {
+    departure_date: string
+    return_date?: string | null
+    destination: string
+    seller_id: string
+  }
+) {
+  const { departure_date, return_date, destination, seller_id } = data
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  
+  const alertsToCreate: any[] = []
+
+  // 1. ALERTA DE CHECK-IN (3 días antes de la salida)
+  if (departure_date) {
+    const departureDate = new Date(departure_date + 'T12:00:00')
+    const checkInAlertDate = new Date(departureDate)
+    checkInAlertDate.setDate(checkInAlertDate.getDate() - 3)
+
+    if (checkInAlertDate >= today) {
+      alertsToCreate.push({
+        operation_id: operationId,
+        user_id: seller_id,
+        type: "UPCOMING_TRIP",
+        description: `✈️ Check-in próximo: ${destination} - Salida ${departure_date}`,
+        date_due: checkInAlertDate.toISOString().split("T")[0],
+        status: "PENDING",
+      })
+    }
+  }
+
+  // 2. ALERTA DE CHECK-OUT (día antes del regreso)
+  if (return_date) {
+    const returnDate = new Date(return_date + 'T12:00:00')
+    const checkOutAlertDate = new Date(returnDate)
+    checkOutAlertDate.setDate(checkOutAlertDate.getDate() - 1)
+
+    if (checkOutAlertDate >= today) {
+      alertsToCreate.push({
+        operation_id: operationId,
+        user_id: seller_id,
+        type: "UPCOMING_TRIP",
+        description: `🏨 Check-out próximo: ${destination} - Regreso ${return_date}`,
+        date_due: checkOutAlertDate.toISOString().split("T")[0],
+        status: "PENDING",
+      })
+    }
+  }
+
+  // Insertar alertas
+  if (alertsToCreate.length > 0) {
+    const { error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate)
+    if (insertError) {
+      console.error("Error creando alertas de operación:", insertError)
+    } else {
+      console.log(`✅ Creadas ${alertsToCreate.length} alertas de check-in/check-out para operación ${operationId}`)
     }
   }
 }
