@@ -71,6 +71,7 @@ const allNavigation: NavItem[] = [
       { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
       { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
       { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
+      { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
     ],
   },
   { title: "Mensajes", url: "/messages", icon: MessageSquare },
