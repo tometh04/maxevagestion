@@ -22,6 +22,7 @@ export async function GET(request: Request) {
           date: op.checkin_date,
           description: op.file_code || undefined,
           color: "#3b82f6",
+          operationId: op.id, // Para poder enlazar a la operación
         })
       }
     }
@@ -40,13 +41,14 @@ export async function GET(request: Request) {
           date: op.departure_date,
           description: op.file_code || undefined,
           color: "#10b981",
+          operationId: op.id, // Para poder enlazar a la operación
         })
       }
     }
 
     // Vencimientos de pagos
     const { data: payments } = await (supabase.from("payments") as any)
-      .select("id, amount, currency, date_due, payer_type, operations:operation_id(destination)")
+      .select("id, amount, currency, date_due, payer_type, operation_id, operations:operation_id(destination)")
       .eq("status", "PENDING")
 
     if (payments) {
@@ -54,10 +56,11 @@ export async function GET(request: Request) {
         events.push({
           id: `payment-${payment.id}`,
           type: "PAYMENT_DUE",
-          title: `Pago ${payment.payer_type === "CUSTOMER" ? "de cliente" : "a operador"}: ${payment.amount} ${payment.currency}`,
+          title: `Pago ${payment.payer_type === "CUSTOMER" ? "de cliente" : "a operador"}: ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${payment.currency}`,
           date: payment.date_due,
           description: payment.operations?.destination || undefined,
           color: "#f59e0b",
+          operationId: payment.operation_id, // Para poder enlazar a la operación
         })
       }
     }
@@ -76,13 +79,14 @@ export async function GET(request: Request) {
           date: lead.follow_up_date,
           description: lead.destination || undefined,
           color: "#8b5cf6",
+          leadId: lead.id, // Para poder enlazar al lead
         })
       }
     }
 
     // Alertas pendientes
     const { data: alerts } = await (supabase.from("alerts") as any)
-      .select("id, description, date_due, type")
+      .select("id, description, date_due, type, operation_id")
       .eq("status", "PENDING")
 
     if (alerts) {
@@ -93,6 +97,7 @@ export async function GET(request: Request) {
           title: alert.description,
           date: alert.date_due.split("T")[0],
           color: "#6366f1",
+          operationId: alert.operation_id || undefined,
         })
       }
     }
@@ -102,4 +107,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-

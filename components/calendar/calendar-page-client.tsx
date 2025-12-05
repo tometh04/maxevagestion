@@ -4,9 +4,12 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Calendar } from "@/components/ui/calendar"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { ExternalLink } from "lucide-react"
+import Link from "next/link"
 
 interface CalendarEvent {
   id: string
@@ -15,6 +18,17 @@ interface CalendarEvent {
   date: string
   description?: string
   color: string
+  operationId?: string
+  leadId?: string
+}
+
+const typeLabels: Record<string, string> = {
+  CHECKIN: "Check-in",
+  DEPARTURE: "Salida",
+  PAYMENT_DUE: "Pago",
+  QUOTATION_EXPIRY: "Cotización",
+  FOLLOW_UP: "Seguimiento",
+  REMINDER: "Recordatorio",
 }
 
 export function CalendarPageClient() {
@@ -51,6 +65,17 @@ export function CalendarPageClient() {
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd")
   const dayEvents = eventsByDate[selectedDateStr] || []
 
+  // Función para obtener el enlace según el tipo de evento
+  const getEventLink = (event: CalendarEvent): string | null => {
+    if (event.operationId) {
+      return `/operations/${event.operationId}`
+    }
+    if (event.leadId) {
+      return `/sales/leads`
+    }
+    return null
+  }
+
   if (loading) {
     return <Skeleton className="h-[600px] w-full" />
   }
@@ -82,17 +107,31 @@ export function CalendarPageClient() {
             <p className="text-muted-foreground">No hay eventos para esta fecha</p>
           ) : (
             <div className="space-y-2">
-              {dayEvents.map((event) => (
-                <div key={event.id} className="flex items-center gap-2 p-2 rounded border">
-                  <Badge style={{ backgroundColor: event.color }}>{event.type}</Badge>
-                  <div className="flex-1">
-                    <p className="font-medium">{event.title}</p>
-                    {event.description && (
-                      <p className="text-sm text-muted-foreground">{event.description}</p>
+              {dayEvents.map((event) => {
+                const link = getEventLink(event)
+                
+                return (
+                  <div key={event.id} className="flex items-center gap-2 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors">
+                    <Badge style={{ backgroundColor: event.color }} className="shrink-0">
+                      {typeLabels[event.type] || event.type}
+                    </Badge>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{event.title}</p>
+                      {event.description && (
+                        <p className="text-sm text-muted-foreground truncate">{event.description}</p>
+                      )}
+                    </div>
+                    {link && (
+                      <Link href={link}>
+                        <Button variant="outline" size="sm">
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                          Ver
+                        </Button>
+                      </Link>
                     )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </CardContent>
@@ -100,4 +139,3 @@ export function CalendarPageClient() {
     </div>
   )
 }
-
