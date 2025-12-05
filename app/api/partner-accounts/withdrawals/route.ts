@@ -86,8 +86,8 @@ export async function POST(request: Request) {
     // Crear movimiento de caja (egreso)
     let cashMovementId = null
     if (account_id) {
-      const { data: cashMovement, error: cashError } = await supabase
-        .from("cash_movements")
+      const { data: cashMovement, error: cashError } = await (supabase
+        .from("cash_movements") as any)
         .insert({
           user_id: user.id,
           type: "EXPENSE",
@@ -106,8 +106,8 @@ export async function POST(request: Request) {
     }
 
     // Crear movimiento en ledger
-    const { data: ledgerMovement, error: ledgerError } = await supabase
-      .from("ledger_movements")
+    const { data: ledgerMovement, error: ledgerError } = await (supabase
+      .from("ledger_movements") as any)
       .insert({
         account_id: account_id || null,
         type: "EXPENSE",
