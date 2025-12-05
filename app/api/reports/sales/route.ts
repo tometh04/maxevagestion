@@ -15,8 +15,8 @@ export async function GET(request: Request) {
     const groupBy = searchParams.get("groupBy") || "day" // day, week, month
 
     // Base query
-    let query = supabase
-      .from("operations")
+    let query = (supabase
+      .from("operations") as any)
       .select(`
         id,
         destination,
@@ -55,7 +55,7 @@ export async function GET(request: Request) {
       query = query.eq("agency_id", agencyId)
     }
 
-    const { data: operations, error } = await query.order("operation_date", { ascending: true })
+    const { data: operations, error } = await query.order("operation_date", { ascending: true }) as { data: any[] | null, error: any }
 
     if (error) {
       console.error("Error fetching sales report:", error)
