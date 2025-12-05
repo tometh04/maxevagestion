@@ -15,8 +15,8 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const partnerId = searchParams.get("partnerId")
 
-    let query = supabase
-      .from("partner_withdrawals")
+    let query = (supabase
+      .from("partner_withdrawals") as any)
       .select(`
         *,
         partner:partner_id(id, partner_name),
@@ -73,8 +73,8 @@ export async function POST(request: Request) {
     }
 
     // Verificar que el socio existe
-    const { data: partner, error: partnerError } = await supabase
-      .from("partner_accounts")
+    const { data: partner, error: partnerError } = await (supabase
+      .from("partner_accounts") as any)
       .select("id, partner_name")
       .eq("id", partner_id)
       .single()
@@ -126,8 +126,8 @@ export async function POST(request: Request) {
     }
 
     // Crear el retiro
-    const { data: withdrawal, error: withdrawalError } = await supabase
-      .from("partner_withdrawals")
+    const { data: withdrawal, error: withdrawalError } = await (supabase
+      .from("partner_withdrawals") as any)
       .insert({
         partner_id,
         amount,

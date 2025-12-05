@@ -15,8 +15,8 @@ export async function GET() {
     const supabase = await createServerClient()
 
     // Obtener socios con sus retiros
-    const { data: partners, error } = await supabase
-      .from("partner_accounts")
+    const { data: partners, error } = await (supabase
+      .from("partner_accounts") as any)
       .select(`
         *,
         users:user_id(id, name, email),
@@ -82,8 +82,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El nombre del socio es requerido" }, { status: 400 })
     }
 
-    const { data: partner, error } = await supabase
-      .from("partner_accounts")
+    const { data: partner, error } = await (supabase
+      .from("partner_accounts") as any)
       .insert({
         partner_name,
         user_id: user_id || null,

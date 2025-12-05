@@ -19,8 +19,8 @@ export async function DELETE(
     const supabase = await createServerClient()
 
     // Obtener el retiro con sus referencias
-    const { data: withdrawal, error: fetchError } = await supabase
-      .from("partner_withdrawals")
+    const { data: withdrawal, error: fetchError } = await (supabase
+      .from("partner_withdrawals") as any)
       .select("*, partner:partner_id(partner_name)")
       .eq("id", id)
       .single()
@@ -46,8 +46,8 @@ export async function DELETE(
     }
 
     // Eliminar el retiro
-    const { error: deleteError } = await supabase
-      .from("partner_withdrawals")
+    const { error: deleteError } = await (supabase
+      .from("partner_withdrawals") as any)
       .delete()
       .eq("id", id)
 
