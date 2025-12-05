@@ -131,7 +131,8 @@ const convertLeadSchema = z.object({
   children: z.coerce.number().min(0).default(0).optional(),
   infants: z.coerce.number().min(0).default(0).optional(),
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
-  operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0"),
+  operator_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
+  commission_percentage: z.coerce.number().min(0).max(100).default(10).optional(),
   currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
   notes: z.string().optional(),
 })
@@ -145,6 +146,7 @@ interface ConvertLeadDialogProps {
     contact_email?: string | null
     contact_phone?: string | null
     destination: string
+    status?: string
     agency_id?: string
     assigned_seller_id: string | null
     notes?: string | null
@@ -157,9 +159,36 @@ interface ConvertLeadDialogProps {
   onSuccess: () => void
 }
 
+const leadStatusLabels: Record<string, string> = {
+  NEW: "Nuevo",
+  CONTACTED: "Contactado",
+  QUALIFIED: "Calificado",
+  NEGOTIATION: "Negociación",
+  WON: "Ganado",
+  LOST: "Perdido",
+  BUDGET_SENT: "Presupuesto Enviado",
+}
+
+// Estados de leads que NO son destinos
+const leadStatusKeywords = [
+  "presupuesto", "enviado", "nuevo", "contactado", "calificado",
+  "negociacion", "negociación", "ganado", "perdido", "pendiente",
+  "seguimiento", "cerrado", "cancelado", "won", "lost", "new",
+  "contacted", "qualified", "negotiation", "closed"
+]
+
 // Función para limpiar destino de Trello (si no es un destino válido)
 function cleanDestination(destination: string): string {
   if (!destination) return ""
+  
+  const destLower = destination.toLowerCase().trim()
+  
+  // Verificar si es un estado de lead
+  for (const status of leadStatusKeywords) {
+    if (destLower.includes(status)) {
+      return ""
+    }
+  }
   
   // Si parece un usuario de Instagram, email o algo raro, ignorar
   const invalidPatterns = [
@@ -170,7 +199,7 @@ function cleanDestination(destination: string): string {
   ]
   
   for (const pattern of invalidPatterns) {
-    if (pattern.test(destination.toLowerCase())) {
+    if (pattern.test(destLower)) {
       return ""
     }
   }
@@ -182,8 +211,8 @@ function cleanDestination(destination: string): string {
   
   // Verificar si coincide con algún destino conocido
   const knownDestination = popularDestinations.find(
-    d => d.value.toLowerCase() === destination.toLowerCase() ||
-         d.label.toLowerCase() === destination.toLowerCase()
+    d => d.value.toLowerCase() === destLower ||
+         d.label.toLowerCase() === destLower
   )
   
   if (knownDestination) {
@@ -233,6 +262,7 @@ export function ConvertLeadDialog({
       infants: 0,
       sale_amount_total: 0,
       operator_cost: 0,
+      commission_percentage: 10, // 10% por defecto
       currency: "USD", // USD por defecto para viajes
       notes: "",
     },
@@ -283,6 +313,7 @@ export function ConvertLeadDialog({
           operation_date: values.operation_date.toISOString().split("T")[0],
           departure_date: values.departure_date.toISOString().split("T")[0],
           return_date: values.return_date?.toISOString().split("T")[0],
+          commission_percentage: values.commission_percentage || 10,
         }),
       })
 
@@ -323,6 +354,7 @@ export function ConvertLeadDialog({
                   <li><strong>Nombre:</strong> {lead.contact_name}</li>
                   {lead.contact_email && <li><strong>Email:</strong> {lead.contact_email}</li>}
                   {lead.contact_phone && <li><strong>Teléfono:</strong> {lead.contact_phone}</li>}
+                  {lead.status && <li><strong>Estado Lead:</strong> {leadStatusLabels[lead.status] || lead.status}</li>}
                 </ul>
               </AlertDescription>
             </Alert>
@@ -772,9 +804,9 @@ export function ConvertLeadDialog({
                 name="sale_amount_total"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monto de Venta Total</FormLabel>
+                    <FormLabel>Precio al Cliente (Venta Total)</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" min="0" {...field} />
+                      <Input type="number" step="0.01" min="0" placeholder="Ej: 2500" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -786,15 +818,68 @@ export function ConvertLeadDialog({
                 name="operator_cost"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Costo de Operador</FormLabel>
+                    <FormLabel>Costo del Operador/Proveedor</FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" min="0" {...field} />
+                      <Input type="number" step="0.01" min="0" placeholder="Ej: 2000" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="commission_percentage"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Comisión Vendedor (%)</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.5" min="0" max="100" placeholder="10" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+
+            {/* Resumen financiero calculado */}
+            {form.watch("sale_amount_total") > 0 && (
+              <div className="bg-muted/50 p-4 rounded-lg space-y-2 text-sm">
+                <div className="font-medium text-muted-foreground mb-2">Resumen Financiero:</div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Precio Cliente:</div>
+                  <div className="font-medium text-right">
+                    {form.watch("currency")} {form.watch("sale_amount_total")?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div>Costo Operador:</div>
+                  <div className="font-medium text-right">
+                    {form.watch("currency")} {form.watch("operator_cost")?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </div>
+                  <div>Margen Bruto:</div>
+                  <div className={cn(
+                    "font-medium text-right",
+                    (form.watch("sale_amount_total") - form.watch("operator_cost")) >= 0 ? "text-green-600" : "text-red-600"
+                  )}>
+                    {form.watch("currency")} {(form.watch("sale_amount_total") - form.watch("operator_cost")).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    {" "}({form.watch("sale_amount_total") > 0 
+                      ? (((form.watch("sale_amount_total") - form.watch("operator_cost")) / form.watch("sale_amount_total")) * 100).toFixed(1)
+                      : 0}%)
+                  </div>
+                  <div>Comisión Vendedor:</div>
+                  <div className="font-medium text-right text-amber-600">
+                    {form.watch("currency")} {((form.watch("sale_amount_total") - form.watch("operator_cost")) * (form.watch("commission_percentage") || 0) / 100).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    {" "}({form.watch("commission_percentage") || 0}%)
+                  </div>
+                  <div className="border-t pt-1">Ganancia Neta:</div>
+                  <div className={cn(
+                    "font-semibold text-right border-t pt-1",
+                    ((form.watch("sale_amount_total") - form.watch("operator_cost")) * (1 - (form.watch("commission_percentage") || 0) / 100)) >= 0 ? "text-green-600" : "text-red-600"
+                  )}>
+                    {form.watch("currency")} {((form.watch("sale_amount_total") - form.watch("operator_cost")) * (1 - (form.watch("commission_percentage") || 0) / 100)).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <FormField
               control={form.control}
