@@ -38,14 +38,99 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Documento no encontrado" }, { status: 404 })
     }
 
-    // Get file from Supabase Storage
     const doc = document as any
     const fileUrl = doc.file_url
+    const documentType = doc.type
+
+    console.log(`📄 Iniciando OCR para documento ${documentId}, tipo: ${documentType}`)
+    console.log(`📄 URL: ${fileUrl}`)
+
+    // Get file from URL
     const imageResponse = await fetch(fileUrl)
+    if (!imageResponse.ok) {
+      console.error("❌ Error descargando imagen:", imageResponse.status)
+      return NextResponse.json({ error: "No se pudo obtener la imagen" }, { status: 500 })
+    }
+
     const imageBuffer = await imageResponse.arrayBuffer()
+    const imageSizeKB = Math.round(imageBuffer.byteLength / 1024)
+    console.log(`📄 Imagen descargada: ${imageSizeKB} KB`)
+    
     const base64Image = Buffer.from(imageBuffer).toString("base64")
 
-    // Call OpenAI Vision
+    // Determinar el prompt según el tipo de documento (igual que en leads)
+    let prompt = ""
+    if (documentType === "PASSPORT") {
+      prompt = `Eres un experto en OCR de documentos de identidad. Analiza esta imagen de un PASAPORTE y extrae la información.
+
+TAREA: Extraer los datos visibles del pasaporte y devolverlos en formato JSON.
+
+CAMPOS A EXTRAER:
+- document_number: Número del pasaporte (ej: "AAE422895")
+- first_name: Nombre(s) 
+- last_name: Apellido(s)
+- full_name: Nombre completo
+- date_of_birth: Fecha de nacimiento en formato YYYY-MM-DD
+- nationality: Nacionalidad (ej: "ARG" o "ARGENTINA")
+- sex: Sexo (M/F)
+- expiration_date: Fecha de vencimiento en formato YYYY-MM-DD
+- issue_date: Fecha de emisión en formato YYYY-MM-DD
+- place_of_birth: Lugar de nacimiento
+- personal_number: Número de DNI si está visible
+- document_type: "PASSPORT"
+
+CONVERSIÓN DE FECHAS:
+- "09 ENE 87" → "1987-01-09"
+- "06 DIC 16" → "2016-12-06"  
+- "06 DIC 26" → "2026-12-06"
+
+RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas leer. Si un campo no es legible, omítelo o usa null.
+
+Ejemplo de respuesta:
+{"document_number": "AAE123456", "full_name": "JUAN PEREZ", "first_name": "JUAN", "last_name": "PEREZ", "expiration_date": "2030-01-15", "document_type": "PASSPORT"}`
+    } else if (documentType === "DNI") {
+      prompt = `Eres un experto en OCR de documentos de identidad. Analiza este DNI argentino y extrae TODA la información disponible. 
+
+Devuelve un JSON con los siguientes campos:
+{
+  "document_type": "DNI",
+  "document_number": "número de documento",
+  "first_name": "nombre",
+  "last_name": "apellido",
+  "full_name": "nombre completo tal como aparece",
+  "date_of_birth": "YYYY-MM-DD",
+  "nationality": "ARG",
+  "sex": "M/F/X",
+  "address": "domicilio si está visible",
+  "place_of_birth": "lugar de nacimiento",
+  "tramite_number": "número de trámite si está visible",
+  "expiration_date": "YYYY-MM-DD si está visible"
+}
+
+CONVERSIÓN DE FECHAS:
+- "09 ENE 1987" → "1987-01-09"
+- "15/03/1990" → "1990-03-15"
+
+Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el JSON, sin texto adicional.`
+    } else {
+      // Prompt genérico para otros tipos
+      prompt = `Analiza este documento y extrae toda la información personal que puedas encontrar.
+Devuelve un JSON con los siguientes campos (si están disponibles):
+{
+  "document_type": "tipo de documento",
+  "document_number": "número",
+  "first_name": "nombre",
+  "last_name": "apellido", 
+  "full_name": "nombre completo",
+  "date_of_birth": "YYYY-MM-DD",
+  "expiration_date": "YYYY-MM-DD",
+  "nationality": "nacionalidad"
+}
+Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
+    }
+
+    // Call OpenAI Vision con configuración optimizada
+    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -54,33 +139,88 @@ export async function POST(request: Request) {
           content: [
             {
               type: "text",
-              text: `Extrae la información de este documento (${doc.type}). 
-              Devuelve un JSON con: first_name, last_name, document_type, document_number, date_of_birth, expiration_date, nationality.
-              Si algún campo no está disponible, usa null.`,
+              text: prompt,
             },
             {
               type: "image_url",
               image_url: {
                 url: `data:image/jpeg;base64,${base64Image}`,
+                detail: "high", // Alta resolución para mejor OCR
               },
             },
           ],
         },
       ],
-      max_tokens: 500,
+      max_tokens: 2000,
+      temperature: 0.1, // Más determinístico para OCR
     })
 
-    const responseText = completion.choices[0]?.message?.content || "{}"
-    let parsedData: any
-    try {
-      parsedData = JSON.parse(responseText)
-    } catch {
-      // Try to extract JSON from markdown code blocks
-      const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || responseText.match(/```\n([\s\S]*?)\n```/)
-      parsedData = jsonMatch ? JSON.parse(jsonMatch[1]) : {}
+    console.log("📄 OpenAI respondió, finish_reason:", completion.choices[0]?.finish_reason)
+
+    const responseText = completion.choices[0]?.message?.content || ""
+    console.log("📄 OpenAI response raw:", responseText.substring(0, 500))
+
+    if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
+      console.error("❌ OpenAI devolvió respuesta vacía")
+      return NextResponse.json({ error: "No se pudieron extraer datos del documento" }, { status: 400 })
     }
 
-    // Create or update customer
+    let parsedData: any
+    try {
+      // Intentar parsear directamente
+      parsedData = JSON.parse(responseText)
+      console.log("📄 Parsed JSON directly:", Object.keys(parsedData))
+    } catch {
+      // Intentar extraer JSON de markdown code blocks
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || 
+                       responseText.match(/```\s*([\s\S]*?)\s*```/) ||
+                       responseText.match(/\{[\s\S]*\}/)
+      
+      if (jsonMatch) {
+        try {
+          const jsonStr = jsonMatch[1] || jsonMatch[0]
+          parsedData = JSON.parse(jsonStr)
+          console.log("📄 Extracted JSON from markdown:", Object.keys(parsedData))
+        } catch (innerError) {
+          console.error("❌ Error parsing extracted JSON:", innerError)
+          return NextResponse.json({ error: "Error al procesar respuesta del OCR" }, { status: 500 })
+        }
+      } else {
+        console.error("❌ No se encontró JSON en la respuesta")
+        return NextResponse.json({ error: "No se encontró información en la respuesta" }, { status: 500 })
+      }
+    }
+
+    // Verificar que parsedData tenga datos útiles
+    const usefulKeys = Object.keys(parsedData).filter(k => 
+      parsedData[k] !== null && 
+      parsedData[k] !== "" && 
+      !["scanned_at", "scanned_by"].includes(k)
+    )
+    
+    if (usefulKeys.length === 0) {
+      console.error("❌ El JSON parseado no tiene datos útiles:", parsedData)
+      return NextResponse.json({ error: "No se pudieron extraer datos útiles del documento" }, { status: 400 })
+    }
+
+    console.log(`📄 Campos extraídos exitosamente: ${usefulKeys.join(", ")}`)
+
+    // Agregar metadata
+    parsedData.scanned_at = new Date().toISOString()
+    parsedData.scanned_by = "openai_gpt4o"
+
+    // Actualizar el documento con los datos escaneados
+    const { error: updateError } = await (supabase.from("documents") as any)
+      .update({ scanned_data: parsedData })
+      .eq("id", documentId)
+
+    if (updateError) {
+      console.error("❌ Error actualizando scanned_data:", updateError)
+    } else {
+      console.log("✅ scanned_data guardado en el documento")
+    }
+
+    // También actualizar/crear cliente si hay datos suficientes
     if (parsedData.first_name || parsedData.last_name || parsedData.document_number) {
       let customerId = doc.customer_id
 
@@ -113,6 +253,7 @@ export async function POST(request: Request) {
 
           if (newCustomer) {
             customerId = (newCustomer as any).id
+            console.log(`✅ Cliente creado: ${customerId}`)
           }
         }
       }
@@ -128,9 +269,13 @@ export async function POST(request: Request) {
         if (parsedData.nationality) updateData.nationality = parsedData.nationality
         
         if (Object.keys(updateData).length > 0) {
-          // @ts-ignore - Supabase type inference issue with customers table
-          const updateQuery = supabase.from("customers").update(updateData).eq("id", customerId)
-          await updateQuery
+          const { error: custUpdateError } = await (supabase.from("customers") as any)
+            .update(updateData)
+            .eq("id", customerId)
+          
+          if (!custUpdateError) {
+            console.log(`✅ Cliente actualizado: ${customerId}`)
+          }
         }
       }
     }
