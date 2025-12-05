@@ -1,21 +1,25 @@
-import { NextResponse } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
-// Configurar para Node.js runtime (no Edge)
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await getCurrentUser()
-    const { id: paymentId } = await params
+    // Obtener el ID del pago
+    const { id: paymentId } = await context.params
     
+    if (!paymentId) {
+      return NextResponse.json({ error: "ID de pago requerido" }, { status: 400 })
+    }
+
+    const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
     // Obtener pago con datos relacionados
@@ -32,7 +36,12 @@ export async function GET(
       .eq("id", paymentId)
       .single()
 
-    if (error || !payment) {
+    if (error) {
+      console.error("Error fetching payment:", error)
+      return NextResponse.json({ error: "Error al obtener pago" }, { status: 500 })
+    }
+    
+    if (!payment) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
 
@@ -83,8 +92,9 @@ export async function GET(
       concepto = "Pago de servicios turísticos"
     }
 
-    // Importar jsPDF dinámicamente para evitar problemas de SSR
-    const { default: jsPDF } = await import("jspdf")
+    // Importar jsPDF dinámicamente
+    const jsPDFModule = await import("jspdf")
+    const jsPDF = jsPDFModule.default
     
     // Crear PDF
     const doc = new jsPDF()
@@ -99,7 +109,7 @@ export async function GET(
 
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
-    doc.text(`RECIBO X: Nº ${receiptNumber}`, pageWidth - margin, y, { align: "right" })
+    doc.text(`RECIBO X: No ${receiptNumber}`, pageWidth - margin, y, { align: "right" })
 
     y += 20
 
@@ -114,7 +124,7 @@ export async function GET(
     doc.setFontSize(11)
     
     doc.setFont("helvetica", "bold")
-    doc.text("Señor:", margin, y)
+    doc.text("Senor:", margin, y)
     doc.setFont("helvetica", "normal")
     doc.text(customerName, margin + 25, y)
     
@@ -191,7 +201,7 @@ export async function GET(
     doc.setTextColor(128, 128, 128)
     
     doc.text(agencyName, pageWidth / 2, footerY - 5, { align: "center" })
-    doc.text("Este recibo es válido como comprobante de pago.", pageWidth / 2, footerY, { align: "center" })
+    doc.text("Este recibo es valido como comprobante de pago.", pageWidth / 2, footerY, { align: "center" })
 
     // Generar buffer
     const pdfBuffer = doc.output("arraybuffer")
@@ -204,6 +214,9 @@ export async function GET(
     })
   } catch (error: any) {
     console.error("Error generating receipt PDF:", error)
-    return NextResponse.json({ error: "Error al generar recibo: " + (error?.message || "Unknown error") }, { status: 500 })
+    return NextResponse.json({ 
+      error: "Error al generar recibo", 
+      details: error?.message || "Unknown error" 
+    }, { status: 500 })
   }
 }
