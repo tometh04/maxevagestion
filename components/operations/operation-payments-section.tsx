@@ -149,21 +149,127 @@ export function OperationPaymentsSection({
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId)
     try {
-      const response = await fetch(`/api/payments/${paymentId}/receipt`)
+      // Obtener datos del recibo desde la API
+      const response = await fetch(`/api/payments/${paymentId}/receipt-data`)
       
       if (!response.ok) {
-        throw new Error("Error al generar recibo")
+        throw new Error("Error al obtener datos del recibo")
       }
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `recibo-${paymentId.slice(0, 8)}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
+      const data = await response.json()
+
+      // Importar jsPDF dinámicamente (solo en cliente)
+      const { default: jsPDF } = await import("jspdf")
+      
+      // Crear PDF
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const margin = 20
+      let y = 25
+
+      // HEADER
+      doc.setFontSize(11)
+      doc.setFont("helvetica", "normal")
+      doc.text(`${data.agencyCity} ${data.fechaFormateada}`, margin, y)
+
+      doc.setFontSize(12)
+      doc.setFont("helvetica", "bold")
+      doc.text(`RECIBO X: No ${data.receiptNumber}`, pageWidth - margin, y, { align: "right" })
+
+      y += 20
+
+      // Línea separadora
+      doc.setDrawColor(0, 0, 0)
+      doc.setLineWidth(0.5)
+      doc.line(margin, y, pageWidth - margin, y)
+      
+      y += 15
+
+      // DATOS DEL CLIENTE
+      doc.setFontSize(11)
+      
+      doc.setFont("helvetica", "bold")
+      doc.text("Senor:", margin, y)
+      doc.setFont("helvetica", "normal")
+      doc.text(data.customerName, margin + 25, y)
+      
+      y += 10
+      
+      doc.setFont("helvetica", "bold")
+      doc.text("Domicilio:", margin, y)
+      doc.setFont("helvetica", "normal")
+      doc.text(data.customerAddress || "-", margin + 30, y)
+      
+      y += 10
+      
+      doc.setFont("helvetica", "bold")
+      doc.text("Localidad:", margin, y)
+      doc.setFont("helvetica", "normal")
+      doc.text(data.customerCity || "-", margin + 30, y)
+
+      y += 20
+
+      // MONTO RECIBIDO
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(12)
+      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR")}`, margin, y)
+
+      y += 15
+
+      // CONCEPTO
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(11)
+      doc.text(data.concepto, margin, y)
+
+      y += 15
+
+      // Moneda recibida
+      doc.setFont("helvetica", "bold")
+      doc.text("Moneda recibida:", margin, y)
+      doc.setFont("helvetica", "normal")
+      doc.text(data.currencyName, margin + 45, y)
+
+      y += 25
+
+      // TOTAL
+      doc.setLineWidth(0.3)
+      doc.line(pageWidth - 80, y, pageWidth - margin, y)
+      
+      y += 10
+      
+      doc.setFontSize(14)
+      doc.setFont("helvetica", "bold")
+      doc.text("TOTAL", pageWidth - 80, y)
+      
+      const totalFormatted = `${data.currency} ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
+      doc.text(totalFormatted, pageWidth - margin, y, { align: "right" })
+
+      y += 5
+      doc.line(pageWidth - 80, y, pageWidth - margin, y)
+
+      y += 30
+
+      // FIRMAS
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      
+      doc.line(margin, y, margin + 70, y)
+      doc.text("Firma Cliente", margin + 20, y + 8)
+
+      doc.line(pageWidth - margin - 70, y, pageWidth - margin, y)
+      doc.text("Firma Agencia", pageWidth - margin - 50, y + 8)
+
+      // FOOTER
+      const footerY = doc.internal.pageSize.getHeight() - 20
+      doc.setFontSize(8)
+      doc.setFont("helvetica", "italic")
+      doc.setTextColor(128, 128, 128)
+      
+      doc.text(data.agencyName, pageWidth / 2, footerY - 5, { align: "center" })
+      doc.text("Este recibo es valido como comprobante de pago.", pageWidth / 2, footerY, { align: "center" })
+
+      // Descargar el PDF
+      doc.save(`recibo-${data.receiptNumber}.pdf`)
     } catch (error) {
       console.error("Error:", error)
       alert("Error al descargar el recibo")
