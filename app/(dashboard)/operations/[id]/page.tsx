@@ -48,18 +48,13 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
 
   // Get documents (de la operación Y del lead asociado si existe)
-  let documents: any[] = []
-  
-  // Documentos de la operación
   const { data: opDocs } = await supabase
     .from("documents")
     .select("*")
     .eq("operation_id", id)
     .order("uploaded_at", { ascending: false })
   
-  if (opDocs) {
-    documents = [...opDocs]
-  }
+  const documents: Array<any> = opDocs ? [...opDocs] : []
   
   // Si la operación tiene un lead asociado, traer también sus documentos
   if (op.lead_id) {
@@ -72,7 +67,7 @@ export default async function OperationDetailPage({
     if (leadDocs) {
       // Agregar documentos del lead que no estén ya en la operación
       for (const doc of leadDocs) {
-        if (!documents.find(d => d.id === doc.id)) {
+        if (!documents.find((d: any) => d.id === doc.id)) {
           documents.push({ ...doc, fromLead: true })
         }
       }
@@ -80,7 +75,7 @@ export default async function OperationDetailPage({
   }
   
   // Ordenar todos por fecha
-  documents.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+  documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
   // Get payments
   const { data: payments } = await supabase
