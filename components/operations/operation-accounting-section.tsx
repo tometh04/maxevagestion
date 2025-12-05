@@ -11,10 +11,9 @@ import {
   DollarSign, 
   Percent, 
   Calculator,
-  PieChart,
-  BarChart3,
-  ArrowUpRight,
-  ArrowDownRight,
+  Receipt,
+  ArrowUp,
+  ArrowDown,
   Minus
 } from "lucide-react"
 
@@ -84,7 +83,6 @@ export function OperationAccountingSection({
   const ventaNeta = saleAmount / 1.21
   const costoNeto = operatorCost / 1.21
   const marginNeto = ventaNeta - costoNeto
-  const marginNetoPercent = ventaNeta > 0 ? (marginNeto / ventaNeta) * 100 : 0
   
   // Comisiones estimadas
   const comisionEstimada = marginBruto * (commissionPercent / 100)
@@ -101,11 +99,11 @@ export function OperationAccountingSection({
   if (loading) {
     return (
       <div className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-4">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
         </div>
         <Skeleton className="h-64" />
       </div>
@@ -116,242 +114,229 @@ export function OperationAccountingSection({
   const isProfitable = marginBruto > 0
 
   return (
-    <div className="space-y-6">
-      {/* KPIs principales */}
-      <div className="grid gap-4 md:grid-cols-4">
+    <div className="space-y-4">
+      {/* KPIs principales - mismo estilo que dashboard */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {/* Margen Bruto */}
-        <Card className={`border-l-4 ${isProfitable ? 'border-l-green-500' : 'border-l-red-500'}`}>
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">Margen Bruto</p>
-                <p className={`text-2xl font-bold ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(marginBruto, currency)}
-                </p>
-                <div className="flex items-center gap-1 mt-1">
-                  {isProfitable ? (
-                    <ArrowUpRight className="h-3 w-3 text-green-500" />
-                  ) : (
-                    <ArrowDownRight className="h-3 w-3 text-red-500" />
-                  )}
-                  <span className={`text-sm font-medium ${isProfitable ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatPercent(marginBrutoPercent)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">del total</span>
-                </div>
-              </div>
-              <div className={`p-3 rounded-full ${isProfitable ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-                {isProfitable ? (
-                  <TrendingUp className={`h-5 w-5 ${isProfitable ? 'text-green-600' : 'text-red-600'}`} />
-                ) : (
-                  <TrendingDown className="h-5 w-5 text-red-600" />
-                )}
-              </div>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Margen Bruto
+            </CardTitle>
+            {isProfitable ? (
+              <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+            ) : (
+              <TrendingDown className="h-3.5 w-3.5 text-muted-foreground" />
+            )}
+          </CardHeader>
+          <CardContent className="px-3 pb-3 pt-0">
+            <div className="text-lg font-bold lg:text-xl truncate">
+              {formatCurrency(marginBruto, currency)}
+            </div>
+            <div className="flex items-center gap-1 mt-0.5">
+              {isProfitable ? (
+                <ArrowUp className="h-3 w-3 text-emerald-500" />
+              ) : marginBruto < 0 ? (
+                <ArrowDown className="h-3 w-3 text-red-500" />
+              ) : (
+                <Minus className="h-3 w-3 text-muted-foreground" />
+              )}
+              <span className={`text-[10px] font-medium ${isProfitable ? 'text-emerald-500' : marginBruto < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+                {formatPercent(marginBrutoPercent)} del total
+              </span>
             </div>
           </CardContent>
         </Card>
 
         {/* ROI */}
-        <Card className="border-l-4 border-l-blue-500">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">ROI</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {formatPercent(roi)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Retorno sobre inversión
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
-                <Percent className="h-5 w-5 text-blue-600" />
-              </div>
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              ROI
+            </CardTitle>
+            <Percent className="h-3.5 w-3.5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-3 pb-3 pt-0">
+            <div className="text-lg font-bold lg:text-xl">
+              {formatPercent(roi)}
             </div>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Retorno sobre inversión
+            </p>
           </CardContent>
         </Card>
 
-        {/* IVA a Pagar */}
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">IVA Posición</p>
-                <p className={`text-2xl font-bold ${ivaAPagar >= 0 ? 'text-amber-600' : 'text-green-600'}`}>
-                  {formatCurrency(Math.abs(ivaAPagar), currency)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {ivaAPagar >= 0 ? 'A pagar a AFIP' : 'Crédito fiscal'}
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-amber-100 dark:bg-amber-900/30">
-                <Calculator className="h-5 w-5 text-amber-600" />
-              </div>
+        {/* IVA Posición */}
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Posición IVA
+            </CardTitle>
+            <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-3 pb-3 pt-0">
+            <div className={`text-lg font-bold lg:text-xl truncate ${ivaAPagar >= 0 ? 'text-amber-600' : ''}`}>
+              {formatCurrency(Math.abs(ivaAPagar), currency)}
             </div>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {ivaAPagar >= 0 ? 'A pagar a AFIP' : 'Crédito fiscal'}
+            </p>
           </CardContent>
         </Card>
 
-        {/* Ganancia Final Estimada */}
-        <Card className="border-l-4 border-l-purple-500">
-          <CardContent className="pt-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase">Ganancia Neta</p>
-                <p className="text-2xl font-bold text-purple-600">
-                  {formatCurrency(gananciaFinal, currency)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Después de comisión ({commissionPercent}%)
-                </p>
-              </div>
-              <div className="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
-                <DollarSign className="h-5 w-5 text-purple-600" />
-              </div>
+        {/* Ganancia Neta */}
+        <Card className="overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
+              Ganancia Neta
+            </CardTitle>
+            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="px-3 pb-3 pt-0">
+            <div className="text-lg font-bold lg:text-xl truncate">
+              {formatCurrency(gananciaFinal, currency)}
             </div>
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              Después de comisión ({commissionPercent}%)
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Desglose visual de la operación */}
+      {/* Desglose de la operación */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            Desglose de la Operación
-          </CardTitle>
-          <CardDescription>Visualización de costos, márgenes y ganancias</CardDescription>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base font-medium">Desglose de Rentabilidad</CardTitle>
+          <CardDescription className="text-xs">Distribución de costos y márgenes</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-6">
             {/* Barra de distribución */}
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="font-medium">Distribución del Precio de Venta</span>
-                <span className="text-muted-foreground">{formatCurrency(saleAmount, currency)}</span>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">Distribución del precio de venta</span>
+                <span className="font-medium">{formatCurrency(saleAmount, currency)}</span>
               </div>
-              <div className="h-8 rounded-full overflow-hidden flex bg-muted">
+              <div className="h-6 rounded-md overflow-hidden flex bg-muted">
                 <div 
-                  className="bg-red-500 flex items-center justify-center text-white text-xs font-medium transition-all"
+                  className="bg-muted-foreground/40 flex items-center justify-center text-[10px] font-medium text-foreground transition-all"
                   style={{ width: `${Math.min(costoPercent, 100)}%` }}
                 >
-                  {costoPercent > 15 && `Costo ${formatPercent(costoPercent)}`}
+                  {costoPercent > 20 && `${formatPercent(costoPercent)}`}
                 </div>
                 <div 
-                  className="bg-green-500 flex items-center justify-center text-white text-xs font-medium transition-all"
+                  className="bg-primary flex items-center justify-center text-[10px] font-medium text-primary-foreground transition-all"
                   style={{ width: `${Math.max(marginPercent, 0)}%` }}
                 >
-                  {marginPercent > 10 && `Margen ${formatPercent(marginPercent)}`}
+                  {marginPercent > 15 && `${formatPercent(marginPercent)}`}
                 </div>
               </div>
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-red-500"></div>
-                  <span>Costo Operador: {formatCurrency(operatorCost, currency)}</span>
+              <div className="flex justify-between text-[10px] text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-muted-foreground/40"></div>
+                  <span>Costo: {formatCurrency(operatorCost, currency)}</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-3 h-3 rounded bg-green-500"></div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-sm bg-primary"></div>
                   <span>Margen: {formatCurrency(marginBruto, currency)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Tabla de desglose detallado */}
+            {/* Tabla de desglose */}
             <div className="grid gap-4 md:grid-cols-2">
               {/* Ingresos */}
-              <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-green-600 uppercase tracking-wide flex items-center gap-2">
-                  <ArrowUpRight className="h-4 w-4" />
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Ingresos
                 </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between p-2 rounded bg-green-50 dark:bg-green-900/20">
-                    <span>Venta Total (con IVA)</span>
-                    <span className="font-semibold">{formatCurrency(saleAmount, currency)}</span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between py-1.5 px-2 rounded bg-muted/50">
+                    <span className="text-muted-foreground">Venta Total</span>
+                    <span className="font-medium">{formatCurrency(saleAmount, currency)}</span>
                   </div>
-                  <div className="flex justify-between p-2">
-                    <span className="text-muted-foreground">Venta Neta (sin IVA)</span>
-                    <span>{formatCurrency(ventaNeta, currency)}</span>
+                  <div className="flex justify-between py-1.5 px-2">
+                    <span className="text-muted-foreground text-xs">Neto (sin IVA)</span>
+                    <span className="text-xs">{formatCurrency(ventaNeta, currency)}</span>
                   </div>
-                  <div className="flex justify-between p-2">
-                    <span className="text-muted-foreground">IVA Débito Fiscal</span>
-                    <span className="text-amber-600">{formatCurrency(ivaVentas, currency)}</span>
+                  <div className="flex justify-between py-1.5 px-2">
+                    <span className="text-muted-foreground text-xs">IVA Débito</span>
+                    <span className="text-xs text-amber-600">{formatCurrency(ivaVentas, currency)}</span>
                   </div>
                 </div>
               </div>
 
               {/* Costos */}
-              <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-red-600 uppercase tracking-wide flex items-center gap-2">
-                  <ArrowDownRight className="h-4 w-4" />
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Costos
                 </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between p-2 rounded bg-red-50 dark:bg-red-900/20">
-                    <span>Costo Operador (con IVA)</span>
-                    <span className="font-semibold">{formatCurrency(operatorCost, currency)}</span>
+                <div className="space-y-1 text-sm">
+                  <div className="flex justify-between py-1.5 px-2 rounded bg-muted/50">
+                    <span className="text-muted-foreground">Costo Operador</span>
+                    <span className="font-medium">{formatCurrency(operatorCost, currency)}</span>
                   </div>
-                  <div className="flex justify-between p-2">
-                    <span className="text-muted-foreground">Costo Neto (sin IVA)</span>
-                    <span>{formatCurrency(costoNeto, currency)}</span>
+                  <div className="flex justify-between py-1.5 px-2">
+                    <span className="text-muted-foreground text-xs">Neto (sin IVA)</span>
+                    <span className="text-xs">{formatCurrency(costoNeto, currency)}</span>
                   </div>
-                  <div className="flex justify-between p-2">
-                    <span className="text-muted-foreground">IVA Crédito Fiscal</span>
-                    <span className="text-blue-600">-{formatCurrency(ivaCompras, currency)}</span>
+                  <div className="flex justify-between py-1.5 px-2">
+                    <span className="text-muted-foreground text-xs">IVA Crédito</span>
+                    <span className="text-xs">-{formatCurrency(ivaCompras, currency)}</span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Resumen de márgenes */}
+            {/* Resumen */}
             <div className="border-t pt-4">
-              <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-2">
-                <PieChart className="h-4 w-4" />
-                Resumen de Rentabilidad
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
+                Resumen
               </h4>
               <div className="grid gap-3 md:grid-cols-3">
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Margen Bruto</span>
-                    <Badge variant={marginBruto >= 0 ? "default" : "destructive"} className="text-xs">
+                <div className="p-3 rounded-lg border">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">Margen Bruto</span>
+                    <Badge variant="secondary" className="text-[10px] h-5">
                       {formatPercent(marginBrutoPercent)}
                     </Badge>
                   </div>
-                  <p className={`text-xl font-bold ${marginBruto >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <p className="text-base font-bold">
                     {formatCurrency(marginBruto, currency)}
                   </p>
                   <Progress 
                     value={Math.min(Math.max(marginBrutoPercent, 0), 100)} 
-                    className="h-2 mt-2"
+                    className="h-1.5 mt-2"
                   />
                 </div>
 
-                <div className="p-4 rounded-lg border bg-card">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-muted-foreground">Comisión Vendedor</span>
-                    <Badge variant="secondary" className="text-xs">
+                <div className="p-3 rounded-lg border">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-muted-foreground">Comisión</span>
+                    <Badge variant="secondary" className="text-[10px] h-5">
                       {commissionPercent}%
                     </Badge>
                   </div>
-                  <p className="text-xl font-bold text-orange-600">
+                  <p className="text-base font-bold text-amber-600">
                     -{formatCurrency(comisionEstimada, currency)}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">
+                  <p className="text-[10px] text-muted-foreground mt-2">
                     Sobre margen bruto
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg border-2 border-purple-500 bg-purple-50 dark:bg-purple-900/20">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">Ganancia Final</span>
-                    <Badge className="text-xs bg-purple-600">
+                <div className="p-3 rounded-lg border bg-muted/30">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium">Utilidad Final</span>
+                    <Badge variant="default" className="text-[10px] h-5">
                       {formatPercent(gananciaFinalPercent)}
                     </Badge>
                   </div>
-                  <p className="text-xl font-bold text-purple-600">
+                  <p className="text-base font-bold">
                     {formatCurrency(gananciaFinal, currency)}
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Utilidad neta de la operación
+                  <p className="text-[10px] text-muted-foreground mt-2">
+                    Ganancia neta
                   </p>
                 </div>
               </div>
@@ -360,91 +345,75 @@ export function OperationAccountingSection({
         </CardContent>
       </Card>
 
-      {/* IVA Section (detalle fiscal) */}
+      {/* Detalle IVA fiscal */}
       {hasIvaData && (
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calculator className="h-5 w-5" />
-              Detalle de IVA Fiscal
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Detalle Fiscal
             </CardTitle>
-            <CardDescription>Registros de IVA para presentación ante AFIP</CardDescription>
+            <CardDescription className="text-xs">Registros de IVA para AFIP</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               {/* IVA Ventas */}
-              <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-amber-600 uppercase tracking-wide">
-                  IVA Ventas (Débito Fiscal)
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  IVA Ventas (Débito)
                 </h4>
                 {data?.ivaSales && data.ivaSales.length > 0 ? (
                   data.ivaSales.map((sale: any) => (
-                    <div key={sale.id} className="p-4 rounded-lg border bg-amber-50 dark:bg-amber-900/10 space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Total facturado</span>
+                    <div key={sale.id} className="p-3 rounded-lg border space-y-1.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Total facturado</span>
                         <span className="font-medium">{formatCurrency(sale.sale_amount_total, sale.currency)}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Neto gravado</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Neto gravado</span>
                         <span>{formatCurrency(sale.net_amount, sale.currency)}</span>
                       </div>
-                      <div className="flex justify-between text-amber-600">
-                        <span className="text-sm font-medium">IVA 21%</span>
-                        <span className="font-semibold">{formatCurrency(sale.iva_amount, sale.currency)}</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">IVA 21%</span>
+                        <span className="font-medium text-amber-600">{formatCurrency(sale.iva_amount, sale.currency)}</span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">Sin registros de venta</p>
+                  <p className="text-xs text-muted-foreground">Sin registros</p>
                 )}
               </div>
 
               {/* IVA Compras */}
-              <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-blue-600 uppercase tracking-wide">
-                  IVA Compras (Crédito Fiscal)
+              <div className="space-y-2">
+                <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  IVA Compras (Crédito)
                 </h4>
                 {data?.ivaPurchases && data.ivaPurchases.length > 0 ? (
                   data.ivaPurchases.map((purchase: any) => (
-                    <div key={purchase.id} className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-900/10 space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Total pagado</span>
+                    <div key={purchase.id} className="p-3 rounded-lg border space-y-1.5">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Total pagado</span>
                         <span className="font-medium">{formatCurrency(purchase.operator_cost_total, purchase.currency)}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-sm text-muted-foreground">Neto gravado</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Neto gravado</span>
                         <span>{formatCurrency(purchase.net_amount, purchase.currency)}</span>
                       </div>
-                      <div className="flex justify-between text-blue-600">
-                        <span className="text-sm font-medium">IVA 21%</span>
-                        <span className="font-semibold">{formatCurrency(purchase.iva_amount, purchase.currency)}</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">IVA 21%</span>
+                        <span className="font-medium">{formatCurrency(purchase.iva_amount, purchase.currency)}</span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-muted-foreground">Sin registros de compra</p>
+                  <p className="text-xs text-muted-foreground">Sin registros</p>
                 )}
               </div>
             </div>
           </CardContent>
         </Card>
       )}
-
-      {/* Nota informativa */}
-      <Card className="bg-muted/30 border-dashed">
-        <CardContent className="pt-6">
-          <div className="flex gap-3">
-            <div className="shrink-0">
-              <Badge variant="outline" className="text-xs">Info</Badge>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Los cálculos de IVA asumen facturación con 21%. El margen bruto es la diferencia entre 
-              venta y costo. La comisión del vendedor se calcula sobre el margen bruto. 
-              La ganancia final es lo que queda después de comisiones.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }
