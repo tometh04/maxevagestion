@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import jsPDF from "jspdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+
+// Configurar para Node.js runtime (no Edge)
+export const runtime = "nodejs"
+export const dynamic = "force-dynamic"
 
 export async function GET(
   request: Request,
@@ -12,8 +15,6 @@ export async function GET(
   try {
     const { user } = await getCurrentUser()
     const { id: paymentId } = await params
-    
-    console.log("Generating receipt for payment:", paymentId)
     
     const supabase = await createServerClient()
 
@@ -31,17 +32,9 @@ export async function GET(
       .eq("id", paymentId)
       .single()
 
-    if (error) {
-      console.error("Error fetching payment:", error)
-      return NextResponse.json({ error: "Error al obtener pago: " + error.message }, { status: 500 })
-    }
-    
-    if (!payment) {
-      console.error("Payment not found:", paymentId)
+    if (error || !payment) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
-
-    console.log("Payment found:", payment.id)
 
     // Si el pago está asociado a una operación con clientes, obtener el cliente principal
     let customerName = "Cliente"
@@ -68,26 +61,42 @@ export async function GET(
 
     const agency = payment.operations?.agencies
     const agencyCity = agency?.city || "Rosario"
+    const agencyName = agency?.name || "Maxeva Gestión"
 
-    // Generar número de recibo (basado en el ID)
-    // Formato: 1000-00000XXX (donde XXX son los últimos 4 dígitos del ID convertido a número)
+    // Generar número de recibo
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
 
-    // Crear PDF - Formato similar al modelo de Lozada
+    // Formatear fecha
+    const fechaPago = payment.date_paid || payment.date_due || new Date().toISOString()
+    const fechaFormateada = format(new Date(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
+
+    // Moneda y monto
+    const currencyName = payment.currency === "USD" ? "Dolar" : "Pesos"
+    const amount = Number(payment.amount) || 0
+
+    // Concepto
+    let concepto = payment.reference || ""
+    if (!concepto && payment.operations?.destination) {
+      concepto = `Pago viaje ${payment.operations.destination}`
+    }
+    if (!concepto) {
+      concepto = "Pago de servicios turísticos"
+    }
+
+    // Importar jsPDF dinámicamente para evitar problemas de SSR
+    const { default: jsPDF } = await import("jspdf")
+    
+    // Crear PDF
     const doc = new jsPDF()
     const pageWidth = doc.internal.pageSize.getWidth()
     const margin = 20
     let y = 25
 
-    // === HEADER ===
-    // Fecha y lugar (izquierda)
+    // HEADER
     doc.setFontSize(11)
     doc.setFont("helvetica", "normal")
-    const fechaPago = payment.date_paid || payment.date_due || new Date().toISOString()
-    const fechaFormateada = format(new Date(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
     doc.text(`${agencyCity} ${fechaFormateada}`, margin, y)
 
-    // Número de recibo (derecha) - en negrita y más grande
     doc.setFontSize(12)
     doc.setFont("helvetica", "bold")
     doc.text(`RECIBO X: Nº ${receiptNumber}`, pageWidth - margin, y, { align: "right" })
@@ -101,10 +110,9 @@ export async function GET(
     
     y += 15
 
-    // === DATOS DEL CLIENTE ===
+    // DATOS DEL CLIENTE
     doc.setFontSize(11)
     
-    // Señor:
     doc.setFont("helvetica", "bold")
     doc.text("Señor:", margin, y)
     doc.setFont("helvetica", "normal")
@@ -112,7 +120,6 @@ export async function GET(
     
     y += 10
     
-    // Domicilio:
     doc.setFont("helvetica", "bold")
     doc.text("Domicilio:", margin, y)
     doc.setFont("helvetica", "normal")
@@ -120,7 +127,6 @@ export async function GET(
     
     y += 10
     
-    // Localidad:
     doc.setFont("helvetica", "bold")
     doc.text("Localidad:", margin, y)
     doc.setFont("helvetica", "normal")
@@ -128,33 +134,16 @@ export async function GET(
 
     y += 20
 
-    // === MONTO RECIBIDO ===
+    // MONTO RECIBIDO
     doc.setFont("helvetica", "bold")
     doc.setFontSize(12)
-    const currencyName = payment.currency === "USD" ? "Dolar" : "Pesos"
-    const amount = Number(payment.amount) || 0
     doc.text(`Recibimos el equivalente a ${currencyName}: ${amount.toLocaleString("es-AR")}`, margin, y)
 
     y += 15
 
-    // === CONCEPTO ===
+    // CONCEPTO
     doc.setFont("helvetica", "normal")
     doc.setFontSize(11)
-    
-    // Concepto del pago
-    let concepto = payment.reference || ""
-    if (!concepto && payment.operations?.destination) {
-      concepto = `Pago viaje ${payment.operations.destination}`
-    }
-    if (!concepto) {
-      concepto = "Pago de servicios turísticos"
-    }
-    
-    // Si hay notas adicionales, agregarlas
-    if (payment.notes && payment.notes !== payment.reference) {
-      concepto += ` - ${payment.notes}`
-    }
-    
     doc.text(concepto, margin, y)
 
     y += 15
@@ -167,8 +156,7 @@ export async function GET(
 
     y += 25
 
-    // === TOTAL ===
-    // Línea arriba del total
+    // TOTAL
     doc.setLineWidth(0.3)
     doc.line(pageWidth - 80, y, pageWidth - margin, y)
     
@@ -181,39 +169,32 @@ export async function GET(
     const totalFormatted = `${payment.currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
     doc.text(totalFormatted, pageWidth - margin, y, { align: "right" })
 
-    // Línea debajo del total
     y += 5
     doc.line(pageWidth - 80, y, pageWidth - margin, y)
 
     y += 30
 
-    // === FIRMAS ===
+    // FIRMAS
     doc.setFontSize(10)
     doc.setFont("helvetica", "normal")
     
-    // Línea firma izquierda
     doc.line(margin, y, margin + 70, y)
     doc.text("Firma Cliente", margin + 20, y + 8)
 
-    // Línea firma derecha
     doc.line(pageWidth - margin - 70, y, pageWidth - margin, y)
     doc.text("Firma Agencia", pageWidth - margin - 50, y + 8)
 
-    // === FOOTER ===
+    // FOOTER
     const footerY = doc.internal.pageSize.getHeight() - 20
     doc.setFontSize(8)
     doc.setFont("helvetica", "italic")
     doc.setTextColor(128, 128, 128)
     
-    if (agency?.name) {
-      doc.text(agency.name, pageWidth / 2, footerY - 5, { align: "center" })
-    }
+    doc.text(agencyName, pageWidth / 2, footerY - 5, { align: "center" })
     doc.text("Este recibo es válido como comprobante de pago.", pageWidth / 2, footerY, { align: "center" })
 
     // Generar buffer
     const pdfBuffer = doc.output("arraybuffer")
-
-    console.log("Receipt PDF generated successfully")
 
     return new NextResponse(pdfBuffer, {
       headers: {
@@ -223,6 +204,6 @@ export async function GET(
     })
   } catch (error: any) {
     console.error("Error generating receipt PDF:", error)
-    return NextResponse.json({ error: "Error al generar recibo: " + error.message }, { status: 500 })
+    return NextResponse.json({ error: "Error al generar recibo: " + (error?.message || "Unknown error") }, { status: 500 })
   }
 }

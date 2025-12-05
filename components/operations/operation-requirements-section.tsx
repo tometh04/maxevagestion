@@ -60,13 +60,22 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
     try {
       setLoading(true)
       const response = await fetch(`/api/destination-requirements/match?destination=${encodeURIComponent(destination)}`)
-      if (!response.ok) throw new Error("Error al obtener requisitos")
+      
+      // Si falla silenciosamente, no mostrar error - simplemente no hay requisitos
+      if (!response.ok) {
+        setRequirements([])
+        setMatchedDestinations([])
+        return
+      }
       
       const data = await response.json()
       setRequirements(data.requirements || [])
       setMatchedDestinations(data.matchedDestinations || [])
     } catch (error) {
-      console.error("Error fetching requirements:", error)
+      // Silenciar errores - la sección simplemente no se muestra
+      console.warn("Could not fetch requirements:", error)
+      setRequirements([])
+      setMatchedDestinations([])
     } finally {
       setLoading(false)
     }

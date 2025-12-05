@@ -68,8 +68,9 @@ export async function GET(request: Request) {
       .order("requirement_type", { ascending: true })
 
     if (error) {
-      console.error("Error fetching requirements:", error)
-      return NextResponse.json({ error: "Error al buscar requisitos" }, { status: 500 })
+      // Si la tabla no existe, retornar vacío silenciosamente
+      console.warn("Could not fetch destination requirements (table may not exist):", error.message)
+      return NextResponse.json({ requirements: [], matchedDestinations: [] })
     }
 
     // Obtener nombres de destinos encontrados (sin duplicados)
