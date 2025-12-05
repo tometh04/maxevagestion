@@ -258,6 +258,14 @@ export async function POST(request: Request) {
       }
     }
 
+    // Generar alertas de requisitos por destino
+    try {
+      await generateDestinationRequirementAlerts(supabase, operation.id, destination, departure_date, seller_id)
+    } catch (error) {
+      console.error("Error generating destination requirement alerts:", error)
+      // No lanzamos error para no romper la creación de la operación
+    }
+
     return NextResponse.json({ operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)
@@ -358,5 +366,92 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error("Error in GET /api/operations:", error)
     return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
+  }
+}
+
+// Mapeo de destinos a códigos de país
+const destinationMappings: Record<string, string[]> = {
+  "BR": ["brasil", "brazil", "rio", "rio de janeiro", "sao paulo", "são paulo", "florianopolis", "florianópolis", "salvador", "fortaleza", "recife", "buzios", "búzios", "arraial", "porto seguro", "maceió", "maceio", "natal", "foz de iguazu", "foz do iguaçu"],
+  "CO": ["colombia", "cartagena", "bogota", "bogotá", "medellin", "medellín", "cali", "san andres", "san andrés", "santa marta"],
+  "US": ["estados unidos", "usa", "united states", "miami", "new york", "nueva york", "los angeles", "las vegas", "orlando", "disney", "california", "florida", "texas", "chicago", "boston", "washington", "san francisco", "hawaii", "hawai"],
+  "EU": ["europa", "europe", "españa", "spain", "italia", "italy", "francia", "france", "alemania", "germany", "portugal", "grecia", "greece", "holanda", "netherlands", "belgica", "bélgica", "austria", "suiza", "switzerland", "roma", "paris", "barcelona", "madrid", "amsterdam", "berlin", "viena", "vienna", "praga", "prague", "budapest", "atenas", "athens", "lisboa", "lisbon", "venecia", "venice", "florencia", "florence", "milan", "milán"],
+  "MX": ["mexico", "méxico", "cancun", "cancún", "riviera maya", "playa del carmen", "los cabos", "cabo san lucas", "puerto vallarta", "ciudad de mexico", "cdmx", "tulum", "cozumel"],
+  "CU": ["cuba", "habana", "la habana", "havana", "varadero", "santiago de cuba"],
+  "DO": ["republica dominicana", "república dominicana", "dominicana", "punta cana", "santo domingo", "puerto plata", "bayahibe", "la romana", "samana", "samaná"],
+  "TH": ["tailandia", "thailand", "bangkok", "phuket", "krabi", "chiang mai", "koh samui", "pattaya"],
+  "AU": ["australia", "sydney", "melbourne", "brisbane", "perth", "gold coast", "cairns"],
+  "EG": ["egipto", "egypt", "cairo", "el cairo", "luxor", "aswan", "hurghada", "sharm el sheikh"],
+}
+
+/**
+ * Genera alertas automáticas basadas en los requisitos del destino
+ */
+async function generateDestinationRequirementAlerts(
+  supabase: any,
+  operationId: string,
+  destination: string,
+  departureDate: string,
+  sellerId: string
+) {
+  const destLower = destination.toLowerCase()
+  
+  // Encontrar códigos de país que matchean con el destino
+  const matchingCodes: string[] = []
+  for (const [code, keywords] of Object.entries(destinationMappings)) {
+    for (const keyword of keywords) {
+      if (destLower.includes(keyword) || keyword.includes(destLower)) {
+        if (!matchingCodes.includes(code)) {
+          matchingCodes.push(code)
+        }
+        break
+      }
+    }
+  }
+
+  if (matchingCodes.length === 0) {
+    console.log(`ℹ️ No se encontraron requisitos para destino: ${destination}`)
+    return
+  }
+
+  // Buscar requisitos activos y obligatorios para esos destinos
+  const { data: requirements, error } = await (supabase.from("destination_requirements") as any)
+    .select("*")
+    .in("destination_code", matchingCodes)
+    .eq("is_active", true)
+    .eq("is_required", true)
+
+  if (error || !requirements || requirements.length === 0) {
+    console.log(`ℹ️ No hay requisitos obligatorios para: ${matchingCodes.join(", ")}`)
+    return
+  }
+
+  // Calcular fecha de alerta basada en days_before_trip
+  const departure = new Date(departureDate + "T12:00:00")
+  const alertsToCreate: any[] = []
+
+  for (const req of requirements) {
+    const alertDate = new Date(departure)
+    alertDate.setDate(alertDate.getDate() - req.days_before_trip)
+    
+    // Solo crear alerta si la fecha de alerta es en el futuro
+    if (alertDate > new Date()) {
+      alertsToCreate.push({
+        operation_id: operationId,
+        user_id: sellerId,
+        type: "DESTINATION_REQUIREMENT",
+        description: `${req.requirement_name} (${req.destination_name}) - ${req.description || "Verificar antes del viaje"}`,
+        date_due: alertDate.toISOString(),
+        status: "PENDING",
+      })
+    }
+  }
+
+  if (alertsToCreate.length > 0) {
+    const { error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate)
+    if (insertError) {
+      console.error("Error creando alertas de requisitos:", insertError)
+    } else {
+      console.log(`✅ Creadas ${alertsToCreate.length} alertas de requisitos para operación ${operationId}`)
+    }
   }
 }

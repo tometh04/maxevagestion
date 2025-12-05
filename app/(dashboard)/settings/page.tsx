@@ -9,6 +9,7 @@ import { AISettings } from "@/components/settings/ai-settings"
 import { SeedMockData } from "@/components/settings/seed-mock-data"
 import { MigrateHistoricalAccounting } from "@/components/settings/migrate-historical-accounting"
 import { ImportSettings } from "@/components/settings/import-settings"
+import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 
 export default async function SettingsPage() {
   const { user } = await getCurrentUser()
@@ -59,6 +60,7 @@ export default async function SettingsPage() {
           <TabsTrigger value="trello">Trello</TabsTrigger>
           <TabsTrigger value="commissions">Comisiones</TabsTrigger>
           <TabsTrigger value="ai">AI</TabsTrigger>
+          <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
           <TabsTrigger value="import">Importar Datos</TabsTrigger>
           {user.role === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
         </TabsList>
@@ -76,6 +78,9 @@ export default async function SettingsPage() {
         </TabsContent>
         <TabsContent value="ai">
           <AISettings />
+        </TabsContent>
+        <TabsContent value="requirements">
+          <DestinationRequirementsClient />
         </TabsContent>
         <TabsContent value="import">
           <ImportSettings />
