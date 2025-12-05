@@ -2,7 +2,7 @@
 
 **Fecha de reunión:** 3 de Diciembre, 2025  
 **Participantes:** Maxi (Owner), Yamil (Contable), Vendedoras  
-**Actualizado:** 4 de Diciembre, 2025
+**Actualizado:** 5 de Diciembre, 2025
 
 ---
 
@@ -29,8 +29,8 @@
 | Filtros por agencia/vendedor/período | ✅ | |
 | Sistema de alertas de pagos | ✅ | Vencidos y próximos a vencer |
 | Integración Trello en tiempo real | ✅ | ~60s delay |
-| OCR de pasaportes/documentos | ✅ | Con OpenAI Vision |
-| Conversión Lead → Operación | ✅ | Dialog completo |
+| OCR de pasaportes/documentos | ✅ | Con OpenAI Vision - **Igual en Leads y Operaciones** |
+| Conversión Lead → Operación | ✅ | Dialog completo con operador, notas, origen/destino |
 | Centro de mensajes WhatsApp | ✅ | Templates + operación manual |
 | Caja separada por moneda (ARS/USD) | ✅ | |
 | Generación de recibos | ✅ | Desde operaciones |
@@ -38,15 +38,17 @@
 | Gestión de operadores | ✅ | Con deudas pendientes |
 | Alertas de pagos a operadores | ✅ | |
 | Dos agencias con filtros | ✅ | Rosario + Madero |
-| Calendario de eventos | ✅ | |
+| Calendario de eventos | ✅ | **Con enlaces a operaciones** |
+| Alertas de pasaportes vencidos | ✅ | **Implementado 05/12** |
+| Eliminación de documentos | ✅ | **Implementado 05/12** |
 
 ---
 
 ## ❌ MÓDULOS ELIMINADOS (No se usarán)
 
-- ~~Cotizaciones~~ - Eliminado del sidebar y código
-- ~~Tarifarios~~ - Eliminado del sidebar y código
-- ~~Cupos~~ - Eliminado del sidebar y código
+- ~~Cotizaciones~~ - ✅ Eliminado del sidebar y código
+- ~~Tarifarios~~ - ✅ Eliminado del sidebar y código
+- ~~Cupos~~ - ✅ Eliminado del sidebar y código
 
 ---
 
@@ -55,23 +57,41 @@
 ### FASE 1: Pre-Lanzamiento (Esta semana)
 **Objetivo:** Tener el sistema listo para uso real
 
-#### 1.1 Alertas de Pasaportes Vencidos 🔴 CRÍTICO
-- [ ] Verificar fecha de vencimiento del pasaporte (desde `documents` o campo en `customers`)
-- [ ] Generar alerta 6 meses antes del viaje si pasaporte vence antes/durante el viaje
-- [ ] UI: Badge rojo "Actualizar pasaporte" en operación y cliente
-- [ ] Considerar agregar campo `passport_expiry_date` en tabla `customers`
+#### 1.1 Alertas de Pasaportes Vencidos ✅ COMPLETADO
+- [x] Verificar fecha de vencimiento del pasaporte (desde `scanned_data` en documentos)
+- [x] Generar alerta 6 meses antes del viaje si pasaporte vence antes/durante el viaje
+- [x] UI: Badge con estado (Vigente, Vence pronto, Vencido) en documentos
+- [x] OCR automático extrae `expiration_date` de pasaportes y DNI
 
-**Estimación:** 4-6 horas
+**Estado:** ✅ Completado el 05/12/2025
 
-#### 1.2 Revisar Formulario Conversión Lead → Operación 🟡 IMPORTANTE
-- [ ] Sesión de testing con Maxi/vendedoras (15-30 min)
-- [ ] Ajustar campos según feedback
-- [ ] Validar que alertas se generen correctamente al convertir
-- [ ] Verificar que el cliente se cree/asocie automáticamente
+#### 1.2 Revisar Formulario Conversión Lead → Operación ✅ COMPLETADO
+- [x] Agregar selector de operador
+- [x] Campo de notas
+- [x] Combobox para origen/destino con ciudades populares
+- [x] Fecha de operación (operation_date)
+- [x] Limpiar datos inválidos de Trello
+- [x] UI mejorada con alertas claras
 
-**Estimación:** 2-3 horas
+**Estado:** ✅ Completado el 04/12/2025
 
-#### 1.3 Importación Inicial de Datos 🔴 CRÍTICO
+#### 1.3 OCR en Operaciones ✅ COMPLETADO
+- [x] Mismo funcionamiento que en leads/CRM
+- [x] OCR automático al subir documento
+- [x] Datos extraídos se muestran directamente en la lista
+- [x] Botón de eliminar documento
+- [x] Badge de vencimiento integrado
+
+**Estado:** ✅ Completado el 05/12/2025
+
+#### 1.4 Calendario con Enlaces ✅ COMPLETADO
+- [x] Botón "Ver" para ir a cada operación
+- [x] Enlaces a leads para seguimientos
+- [x] Formateo correcto de montos
+
+**Estado:** ✅ Completado el 05/12/2025
+
+#### 1.5 Importación Inicial de Datos 🔴 PENDIENTE
 - [ ] **Operaciones abiertas actuales** (obligatorio antes de lanzar)
 - [ ] **Foto inicial de caja** (saldos en ARS y USD por cuenta)
 - [ ] **Base de clientes** desde Excel/Trello
@@ -79,7 +99,7 @@
 
 **Estimación:** 4-8 horas (depende de la cantidad de datos)
 
-#### 1.4 Configuración de Usuarios 🔴 CRÍTICO
+#### 1.6 Configuración de Usuarios 🔴 PENDIENTE
 - [ ] Crear usuario Maxi (SUPER_ADMIN)
 - [ ] Crear usuario Yamil (CONTABLE)
 - [ ] Crear usuarios vendedoras (SELLER)
@@ -226,13 +246,16 @@ CREATE TABLE partner_withdrawals (
 - [ ] Todos los usuarios asignados a sus agencias
 
 ### Integraciones
-- [ ] Trello configurado para ambas agencias
+- [x] Trello configurado para ambas agencias
 - [ ] Webhooks de Trello apuntando a producción
 - [ ] Templates de WhatsApp cargados
 
-### Funcionalidades
-- [ ] Alertas de pasaportes vencidos implementadas
-- [ ] Formulario de conversión revisado con usuarios
+### Funcionalidades ✅
+- [x] Alertas de pasaportes vencidos implementadas
+- [x] Formulario de conversión revisado
+- [x] OCR en operaciones igual que en leads
+- [x] Calendario con enlaces a operaciones
+- [x] Eliminación de módulos no usados
 
 ### Capacitación
 - [ ] Sesión de capacitación con vendedoras (30 min)
@@ -284,7 +307,7 @@ RESEND_API_KEY= (opcional, para emails)
 
 | Semana | Actividades |
 |--------|-------------|
-| **Semana 1** | Fase 1 completa + lanzamiento soft |
+| **Semana 1** | ✅ Fase 1 casi completa - Falta importación de datos y usuarios |
 | **Semana 2** | Iteración sobre feedback, inicio Fase 2 |
 | **Semana 3-4** | Sistema de requisitos + Cuentas de socios |
 | **Semana 5-6** | Reportes Fase 1 + Data histórica |
@@ -301,5 +324,20 @@ Durante las primeras 2 semanas:
 
 ---
 
-**Última actualización:** 4 de Diciembre, 2025
+## 📊 PROGRESO ACTUAL
 
+### Fase 1: Pre-Lanzamiento
+```
+[████████████░░░░░░░░] 60% Completado
+
+✅ Alertas de pasaportes vencidos
+✅ Formulario de conversión
+✅ OCR en operaciones
+✅ Calendario con enlaces
+⏳ Importación de datos
+⏳ Configuración de usuarios
+```
+
+---
+
+**Última actualización:** 5 de Diciembre, 2025
