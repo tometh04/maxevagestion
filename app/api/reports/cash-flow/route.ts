@@ -19,8 +19,8 @@ export async function GET(request: Request) {
     const currency = searchParams.get("currency") || "ALL"
 
     // Obtener movimientos de caja
-    let query = supabase
-      .from("cash_movements")
+    let query = (supabase
+      .from("cash_movements") as any)
       .select("*")
       .order("movement_date", { ascending: true })
 
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       query = query.eq("currency", currency)
     }
 
-    const { data: movements, error } = await query
+    const { data: movements, error } = await query as { data: any[] | null, error: any }
 
     if (error) {
       console.error("Error fetching cash flow:", error)
