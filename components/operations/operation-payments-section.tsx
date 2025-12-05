@@ -150,7 +150,7 @@ export function OperationPaymentsSection({
     setDownloadingReceiptId(paymentId)
     try {
       // Obtener datos del recibo desde la API
-      const response = await fetch(`/api/payments/${paymentId}/receipt-data`)
+      const response = await fetch(`/api/receipt-data?paymentId=${paymentId}`)
       
       if (!response.ok) {
         throw new Error("Error al obtener datos del recibo")

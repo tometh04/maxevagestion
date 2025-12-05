@@ -4,12 +4,10 @@ import { getCurrentUser } from "@/lib/auth"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
-export async function GET(
-  request: NextRequest,
-  context: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest) {
   try {
-    const { id: paymentId } = await context.params
+    const { searchParams } = new URL(request.url)
+    const paymentId = searchParams.get("paymentId")
     
     if (!paymentId) {
       return NextResponse.json({ error: "ID de pago requerido" }, { status: 400 })
