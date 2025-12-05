@@ -68,6 +68,7 @@ interface Document {
     name: string
     email: string
   }
+  fromLead?: boolean // Indica si el documento proviene de un lead asociado
 }
 
 interface DocumentsSectionProps {
