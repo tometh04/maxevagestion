@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
+// API para obtener datos del recibo - genera PDF en el cliente
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
