@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getAccountBalance } from "@/lib/accounting/ledger"
 
 export async function GET(request: Request) {
   try {
@@ -154,11 +155,79 @@ export async function GET(request: Request) {
       }
     })
 
+    // Obtener balances actuales de todas las cuentas financieras
+    const { data: accounts } = await (supabase.from("financial_accounts") as any)
+      .select(`
+        id,
+        name,
+        type,
+        currency,
+        initial_balance,
+        agency_id,
+        agencies:agency_id(id, name)
+      `)
+      .eq("is_active", true)
+      .order("agency_id", { ascending: true })
+      .order("type", { ascending: true })
+
+    const accountsWithBalance = await Promise.all(
+      (accounts || []).map(async (account: any) => {
+        try {
+          const balance = await getAccountBalance(account.id, supabase)
+          return {
+            ...account,
+            current_balance: balance,
+          }
+        } catch (error) {
+          console.error(`Error calculating balance for account ${account.id}:`, error)
+          return {
+            ...account,
+            current_balance: account.initial_balance || 0,
+          }
+        }
+      })
+    )
+
+    // Calcular totales por moneda y agencia
+    const balanceSummary = {
+      total_ars: 0,
+      total_usd: 0,
+      by_agency: {} as Record<string, { ars: number; usd: number; accounts: any[] }>,
+    }
+
+    for (const account of accountsWithBalance) {
+      const agencyId = account.agency_id || "sin-agencia"
+      const agencyName = account.agencies?.name || "Sin agencia"
+      
+      if (!balanceSummary.by_agency[agencyId]) {
+        balanceSummary.by_agency[agencyId] = {
+          ars: 0,
+          usd: 0,
+          accounts: [],
+          agency_name: agencyName,
+        }
+      }
+
+      if (account.currency === "ARS") {
+        balanceSummary.total_ars += account.current_balance
+        balanceSummary.by_agency[agencyId].ars += account.current_balance
+      } else {
+        balanceSummary.total_usd += account.current_balance
+        balanceSummary.by_agency[agencyId].usd += account.current_balance
+      }
+
+      balanceSummary.by_agency[agencyId].accounts.push(account)
+    }
+
     return NextResponse.json({
       totals,
       byCategory: categoryData,
       byDay: dailyWithBalance,
       movementsCount: movements?.length || 0,
+      accountBalances: {
+        summary: balanceSummary,
+        accounts: accountsWithBalance,
+      },
     })
   } catch (error) {
     console.error("Error in GET /api/reports/cash-flow:", error)

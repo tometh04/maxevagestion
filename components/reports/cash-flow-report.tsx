@@ -109,6 +109,7 @@ export function CashFlowReport() {
   const totals = data?.totals || {}
   const byCategory = data?.byCategory || []
   const byDay = data?.byDay || []
+  const accountBalances = data?.accountBalances || { summary: { total_ars: 0, total_usd: 0, by_agency: {} }, accounts: [] }
 
   // Preparar datos para el gráfico
   const chartData = byDay.map((d: any) => ({
@@ -170,6 +171,88 @@ export function CashFlowReport() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Saldos Actuales de Cuentas */}
+      {accountBalances.accounts.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Wallet className="h-5 w-5" />
+              Saldos Actuales de Cuentas Financieras
+            </CardTitle>
+            <CardDescription>
+              Balance actual de todas las cuentas activas
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 md:grid-cols-2 mb-6">
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">Total ARS</div>
+                <div className="text-2xl font-bold text-amber-600">
+                  $ {Math.round(accountBalances.summary.total_ars || 0).toLocaleString("es-AR")}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm text-muted-foreground">Total USD</div>
+                <div className="text-2xl font-bold text-amber-600">
+                  US$ {Math.round(accountBalances.summary.total_usd || 0).toLocaleString("es-AR")}
+                </div>
+              </div>
+            </div>
+            
+            {Object.entries(accountBalances.summary.by_agency || {}).length > 0 && (
+              <div className="space-y-4">
+                {Object.entries(accountBalances.summary.by_agency).map(([agencyId, agencyData]: [string, any]) => (
+                  <div key={agencyId} className="border rounded-lg p-4">
+                    <h4 className="font-semibold mb-3">{agencyData.agency_name || "Sin agencia"}</h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Cuenta</TableHead>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead className="text-right">Balance</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {agencyData.accounts.map((account: any) => (
+                          <TableRow key={account.id}>
+                            <TableCell className="font-medium">{account.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {account.type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <span className={`font-semibold ${(account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"}`}>
+                                {account.currency === "USD" ? "US$" : "$"} {Math.round(account.current_balance || 0).toLocaleString("es-AR")}
+                              </span>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow className="bg-muted/50">
+                          <TableCell colSpan={2} className="font-semibold">
+                            Subtotal {agencyData.agency_name}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="space-y-1">
+                              <div className="font-semibold text-amber-600">
+                                $ {Math.round(agencyData.ars || 0).toLocaleString("es-AR")}
+                              </div>
+                              <div className="font-semibold text-amber-600">
+                                US$ {Math.round(agencyData.usd || 0).toLocaleString("es-AR")}
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-3">
