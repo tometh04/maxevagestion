@@ -33,7 +33,7 @@
 | Conversión Lead → Operación | ✅ | Dialog completo con operador, notas, origen/destino |
 | Centro de mensajes WhatsApp | ✅ | Templates + operación manual |
 | Caja separada por moneda (ARS/USD) | ✅ | |
-| Generación de recibos | ✅ | Desde operaciones |
+| Generación de recibos | ✅ | PDF con header Lozada, saldo restante - **Completado 05/12** |
 | Tipo de cambio con FX gains/losses | ✅ | |
 | Gestión de operadores | ✅ | Con deudas pendientes |
 | Alertas de pagos a operadores | ✅ | |
