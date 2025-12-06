@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -12,6 +13,28 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Plus, Trash2, AlertTriangle, Building2 } from "lucide-react"
+import { toast } from "sonner"
+import { useRouter } from "next/navigation"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -22,34 +45,216 @@ function formatCurrency(amount: number, currency: string = "ARS"): string {
 }
 
 const accountTypeLabels: Record<string, string> = {
-  CASH: "Caja",
-  BANK: "Banco",
-  MP: "Mercado Pago",
-  USD: "Cuenta USD",
+  SAVINGS_ARS: "Caja de ahorro ARS",
+  SAVINGS_USD: "Caja de ahorro USD",
+  CHECKING_ARS: "Cuenta corriente ARS",
+  CHECKING_USD: "Cuenta corriente USD",
+  CASH_ARS: "Caja efectivo ARS",
+  CASH_USD: "Caja efectivo USD",
+  CREDIT_CARD: "Tarjeta de crédito",
+  ASSETS: "Activos",
 }
 
+const accountTypes = [
+  { value: "SAVINGS_ARS", label: "Caja de ahorro ARS" },
+  { value: "SAVINGS_USD", label: "Caja de ahorro USD" },
+  { value: "CHECKING_ARS", label: "Cuenta corriente ARS" },
+  { value: "CHECKING_USD", label: "Cuenta corriente USD" },
+  { value: "CASH_ARS", label: "Caja efectivo ARS" },
+  { value: "CASH_USD", label: "Caja efectivo USD" },
+  { value: "CREDIT_CARD", label: "Tarjeta de crédito" },
+  { value: "ASSETS", label: "Activos" },
+]
+
+const assetTypes = [
+  { value: "VOUCHER", label: "Vouchers en stock" },
+  { value: "QUOTA", label: "Cupos comprados" },
+  { value: "HOTEL", label: "Hoteles en stock" },
+  { value: "OTHER", label: "Otros activos" },
+]
+
 export function FinancialAccountsPageClient() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<any[]>([])
+  const [agencies, setAgencies] = useState<any[]>([])
+  const [openDialog, setOpenDialog] = useState(false)
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [formData, setFormData] = useState<any>({
+    name: "",
+    type: "",
+    currency: "ARS",
+    agency_id: "",
+    initial_balance: 0,
+    account_number: "",
+    bank_name: "",
+    // Tarjeta de crédito
+    card_number: "",
+    card_holder: "",
+    card_expiry_date: "",
+    // Activos
+    asset_type: "",
+    asset_description: "",
+    asset_quantity: 0,
+    notes: "",
+  })
 
   useEffect(() => {
-    async function fetchAccounts() {
+    fetchData()
+  }, [])
+
+  async function fetchData() {
       setLoading(true)
       try {
-        const response = await fetch("/api/accounting/financial-accounts")
-        if (!response.ok) throw new Error("Error al obtener cuentas financieras")
+      const [accountsRes, agenciesRes] = await Promise.all([
+        fetch("/api/accounting/financial-accounts"),
+        fetch("/api/agencies"),
+      ])
 
-        const data = await response.json()
-        setAccounts(data.accounts || [])
-      } catch (error) {
-        console.error("Error fetching financial accounts:", error)
+      if (!accountsRes.ok) throw new Error("Error al obtener cuentas")
+      if (!agenciesRes.ok) throw new Error("Error al obtener agencias")
+
+      const accountsData = await accountsRes.json()
+      const agenciesData = await agenciesRes.json()
+
+      setAccounts(accountsData.accounts || [])
+      setAgencies(agenciesData.agencies || [])
+    } catch (error: any) {
+      toast.error(error.message || "Error al cargar datos")
       } finally {
         setLoading(false)
       }
     }
 
-    fetchAccounts()
-  }, [])
+  const handleClearAll = async () => {
+    try {
+      const res = await fetch("/api/accounting/financial-accounts/clear", {
+        method: "DELETE",
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Error al eliminar cuentas")
+      }
+
+      toast.success("Todas las cuentas han sido eliminadas")
+      setDeleteConfirmOpen(false)
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar cuentas")
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!formData.type || !formData.agency_id) {
+      toast.error("Tipo de cuenta y agencia son requeridos")
+      return
+    }
+
+    // Determinar moneda automáticamente según tipo
+    let currency = formData.currency
+    if (formData.type.includes("_USD")) {
+      currency = "USD"
+    } else if (formData.type.includes("_ARS")) {
+      currency = "ARS"
+    } else if (formData.type === "CREDIT_CARD") {
+      // Para tarjetas, la moneda puede ser ARS o USD
+      currency = formData.currency || "ARS"
+    } else if (formData.type === "ASSETS") {
+      // Para activos, la moneda puede ser ARS o USD
+      currency = formData.currency || "ARS"
+    }
+
+    // Preparar datos según tipo
+    const accountData: any = {
+      name: formData.name,
+      type: formData.type,
+      currency,
+      agency_id: formData.agency_id,
+      initial_balance: Number(formData.initial_balance) || 0,
+      notes: formData.notes || null,
+      is_active: true,
+    }
+
+    // Datos para cuentas bancarias
+    if (formData.type.includes("CHECKING") || formData.type.includes("SAVINGS")) {
+      accountData.account_number = formData.account_number || null
+      accountData.bank_name = formData.bank_name || null
+    }
+
+    // Datos para tarjetas de crédito
+    if (formData.type === "CREDIT_CARD") {
+      if (!formData.card_holder || !formData.card_number) {
+        toast.error("Titular y número de tarjeta son requeridos para tarjetas de crédito")
+        return
+      }
+      accountData.card_holder = formData.card_holder
+      accountData.card_number = formData.card_number.slice(-4) // Solo últimos 4 dígitos
+      accountData.bank_name = formData.bank_name || null
+      accountData.card_expiry_date = formData.card_expiry_date || null
+    }
+
+    // Datos para activos
+    if (formData.type === "ASSETS") {
+      if (!formData.asset_type) {
+        toast.error("Tipo de activo es requerido")
+        return
+      }
+      accountData.asset_type = formData.asset_type
+      accountData.asset_description = formData.asset_description || null
+      accountData.asset_quantity = Number(formData.asset_quantity) || 0
+    }
+
+    try {
+      const res = await fetch("/api/accounting/financial-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(accountData),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || "Error al crear cuenta")
+      }
+
+      toast.success("Cuenta creada exitosamente")
+      setOpenDialog(false)
+      resetForm()
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || "Error al crear cuenta")
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({
+      name: "",
+      type: "",
+      currency: "ARS",
+      agency_id: "",
+      initial_balance: 0,
+      account_number: "",
+      bank_name: "",
+      card_number: "",
+      card_holder: "",
+      card_expiry_date: "",
+      asset_type: "",
+      asset_description: "",
+      asset_quantity: 0,
+      notes: "",
+    })
+  }
+
+  const getDisplayName = (account: any) => {
+    if (account.type === "CREDIT_CARD" && account.card_holder && account.card_number) {
+      return `${account.card_holder} •••• ${account.card_number}`
+    }
+    return account.name
+  }
 
   if (loading) {
     return (
@@ -59,59 +264,331 @@ export function FinancialAccountsPageClient() {
     )
   }
 
-  if (accounts.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No se encontraron cuentas financieras
-      </div>
-    )
-  }
-
-  // Group accounts by type
-  const accountsByType = accounts.reduce((acc, account) => {
-    const type = account.type
-    if (!acc[type]) {
-      acc[type] = []
+  // Agrupar por agencia
+  const accountsByAgency = accounts.reduce((acc, account) => {
+    const agencyId = account.agency_id || "sin-agencia"
+    if (!acc[agencyId]) {
+      acc[agencyId] = {
+        agency: agencies.find((a) => a.id === agencyId),
+        accounts: [],
+      }
     }
-    acc[type].push(account)
+    acc[agencyId].accounts.push(account)
     return acc
-  }, {} as Record<string, any[]>)
+  }, {} as Record<string, any>)
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {Object.entries(accountsByType).map(([type, typeAccounts]) => {
-          const accounts = typeAccounts as any[]
-          const totalBalance = accounts.reduce(
-            (sum, acc) => sum + (acc.current_balance || 0),
-            0
-          )
-          return (
-            <Card key={type}>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium">
-                  {accountTypeLabels[type] || type}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(totalBalance, accounts[0]?.currency || "ARS")}
+      {/* Header con botones */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Cuentas Financieras</h1>
+          <p className="text-muted-foreground">Gestiona todas las cuentas y cajas de las agencias</p>
+        </div>
+        <div className="flex gap-2">
+          {accounts.length > 0 && (
+            <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+              <DialogTrigger asChild>
+                <Button variant="destructive">
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Limpiar Todas
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-red-600">
+                    <AlertTriangle className="h-5 w-5" />
+                    ¿Eliminar todas las cuentas?
+                  </DialogTitle>
+                  <DialogDescription>
+                    Esta acción eliminará todas las cuentas financieras del sistema. Esta acción no se puede deshacer.
+                    Asegúrate de haber respaldado la información necesaria.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button variant="destructive" onClick={handleClearAll}>
+                    Sí, eliminar todas
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          )}
+
+          <Dialog open={openDialog} onOpenChange={setOpenDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Cuenta
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Nueva Cuenta Financiera</DialogTitle>
+                <DialogDescription>
+                  Completa los datos según el tipo de cuenta que deseas crear
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                {/* Tipo de cuenta */}
+                <div>
+                  <Label>Tipo de Cuenta *</Label>
+                  <Select
+                    value={formData.type}
+                    onValueChange={(value) => setFormData({ ...formData, type: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona un tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accountTypes.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {accounts.length} cuenta{accounts.length !== 1 ? "s" : ""}
-                </p>
-              </CardContent>
-            </Card>
-          )
-        })}
+
+                {/* Agencia */}
+                <div>
+                  <Label>Agencia *</Label>
+                  <Select
+                    value={formData.agency_id}
+                    onValueChange={(value) => setFormData({ ...formData, agency_id: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona una agencia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agencies.map((agency) => (
+                        <SelectItem key={agency.id} value={agency.id}>
+                          {agency.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Nombre */}
+                <div>
+                  <Label>Nombre *</Label>
+                  <Input
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder={
+                      formData.type === "CREDIT_CARD"
+                        ? "Ej: Tarjeta Principal"
+                        : formData.type === "ASSETS"
+                        ? "Ej: Vouchers Brasil 2025"
+                        : "Ej: Caja Principal"
+                    }
+                    required
+                  />
+                </div>
+
+                {/* Campos específicos para cuentas bancarias */}
+                {(formData.type.includes("CHECKING") || formData.type.includes("SAVINGS")) && (
+                  <>
+                    <div>
+                      <Label>Banco</Label>
+                      <Input
+                        value={formData.bank_name}
+                        onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+                        placeholder="Ej: Banco Galicia"
+                      />
+                    </div>
+                    <div>
+                      <Label>Número de Cuenta</Label>
+                      <Input
+                        value={formData.account_number}
+                        onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                        placeholder="Número de cuenta bancaria"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Campos específicos para tarjetas de crédito */}
+                {formData.type === "CREDIT_CARD" && (
+                  <>
+                    <div>
+                      <Label>Moneda *</Label>
+                      <Select
+                        value={formData.currency}
+                        onValueChange={(value) => setFormData({ ...formData, currency: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Titular *</Label>
+                      <Input
+                        value={formData.card_holder}
+                        onChange={(e) => setFormData({ ...formData, card_holder: e.target.value })}
+                        placeholder="Nombre del titular"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label>Número de Tarjeta *</Label>
+                      <Input
+                        value={formData.card_number}
+                        onChange={(e) => setFormData({ ...formData, card_number: e.target.value.replace(/\D/g, "") })}
+                        placeholder="1234 5678 9012 3456"
+                        maxLength={19}
+                        required
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Solo se guardarán los últimos 4 dígitos por seguridad
+                      </p>
+                    </div>
+                    <div>
+                      <Label>Banco</Label>
+                      <Input
+                        value={formData.bank_name}
+                        onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
+                        placeholder="Ej: Visa, Mastercard, Banco Galicia"
+                      />
+                    </div>
+                    <div>
+                      <Label>Fecha de Vencimiento</Label>
+                      <Input
+                        type="month"
+                        value={formData.card_expiry_date}
+                        onChange={(e) => setFormData({ ...formData, card_expiry_date: e.target.value })}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Campos específicos para activos */}
+                {formData.type === "ASSETS" && (
+                  <>
+                    <div>
+                      <Label>Moneda *</Label>
+                      <Select
+                        value={formData.currency}
+                        onValueChange={(value) => setFormData({ ...formData, currency: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Tipo de Activo *</Label>
+                      <Select
+                        value={formData.asset_type}
+                        onValueChange={(value) => setFormData({ ...formData, asset_type: value })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona el tipo" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {assetTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Descripción</Label>
+                      <Textarea
+                        value={formData.asset_description}
+                        onChange={(e) => setFormData({ ...formData, asset_description: e.target.value })}
+                        placeholder="Ej: Vouchers para Brasil enero 2025"
+                      />
+                    </div>
+                    <div>
+                      <Label>Cantidad</Label>
+                      <Input
+                        type="number"
+                        value={formData.asset_quantity}
+                        onChange={(e) => setFormData({ ...formData, asset_quantity: parseInt(e.target.value) || 0 })}
+                        placeholder="0"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Saldo inicial */}
+                {formData.type !== "ASSETS" && (
+                  <div>
+                    <Label>Saldo Inicial</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData.initial_balance}
+                      onChange={(e) => setFormData({ ...formData, initial_balance: parseFloat(e.target.value) || 0 })}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+
+                {/* Notas */}
+                <div>
+                  <Label>Notas</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    placeholder="Notas adicionales (opcional)"
+                  />
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setOpenDialog(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit">Crear Cuenta</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
-      {/* Accounts Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Cuentas Financieras</CardTitle>
-          <CardDescription>Balance actual de todas las cuentas</CardDescription>
+      {/* Tabla de cuentas por agencia */}
+      {Object.keys(accountsByAgency).length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No hay cuentas financieras</h3>
+            <p className="text-muted-foreground mb-4">
+              Comienza creando tu primera cuenta financiera
+            </p>
+            <Button onClick={() => setOpenDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Crear Primera Cuenta
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(accountsByAgency).map(([agencyId, data]: [string, any]) => (
+            <Card key={agencyId}>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Building2 className="h-5 w-5" />
+                  {data.agency?.name || "Sin agencia"}
+                </CardTitle>
+                <CardDescription>
+                  {data.accounts.length} cuenta{data.accounts.length !== 1 ? "s" : ""}
+                </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
@@ -120,27 +597,29 @@ export function FinancialAccountsPageClient() {
                 <TableHead>Nombre</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Moneda</TableHead>
-                <TableHead>Balance Inicial</TableHead>
-                <TableHead>Balance Actual</TableHead>
+                      <TableHead className="text-right">Saldo Inicial</TableHead>
+                      <TableHead className="text-right">Balance Actual</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {accounts.map((account) => (
+                    {data.accounts.map((account: any) => (
                 <TableRow key={account.id}>
-                  <TableCell className="font-medium">{account.name}</TableCell>
+                        <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
                   <TableCell>
-                    <Badge variant="outline">{accountTypeLabels[account.type] || account.type}</Badge>
+                          <Badge variant="outline">
+                            {accountTypeLabels[account.type] || account.type}
+                          </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{account.currency}</Badge>
                   </TableCell>
-                  <TableCell>
+                        <TableCell className="text-right">
                     {formatCurrency(account.initial_balance || 0, account.currency)}
                   </TableCell>
-                  <TableCell>
+                        <TableCell className="text-right">
                     <span
                       className={`font-bold ${
-                        account.current_balance >= 0 ? "text-amber-600" : "text-red-600"
+                              (account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"
                       }`}
                     >
                       {formatCurrency(account.current_balance || 0, account.currency)}
@@ -152,7 +631,9 @@ export function FinancialAccountsPageClient() {
           </Table>
         </CardContent>
       </Card>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
-
