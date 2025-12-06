@@ -67,7 +67,7 @@ export async function GET(request: Request) {
     }
 
     // Calcular totales
-    const totals = {
+    const totals: any = {
       count: operations?.length || 0,
       total_sale_usd: 0,
       total_sale_ars: 0,
@@ -76,6 +76,12 @@ export async function GET(request: Request) {
       total_margin_usd: 0,
       total_margin_ars: 0,
       currency: "USD", // Moneda principal según cuál tenga más ventas
+      total_sale: 0,
+      total_cost: 0,
+      total_margin: 0,
+      total_sale_other: 0,
+      total_margin_other: 0,
+      avg_margin_percent: 0,
     }
 
     for (const op of operations || []) {
