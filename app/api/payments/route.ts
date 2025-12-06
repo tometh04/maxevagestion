@@ -230,6 +230,7 @@ export async function POST(request: Request) {
 /**
  * GET /api/payments
  * Obtener pagos, opcionalmente filtrados por operación
+ * Con paginación: page (default: 1) y limit (default: 50, max: 200)
  */
 export async function GET(request: Request) {
   try {
@@ -238,21 +239,43 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     
     const operationId = searchParams.get("operationId")
+    
+    // Paginación: usar page en vez de offset para mejor UX
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+    const requestedLimit = parseInt(searchParams.get("limit") || "50")
+    const limit = Math.min(requestedLimit, 200) // Máximo 200
+    const offset = (page - 1) * limit
 
-    let query = supabase.from("payments").select("*")
+    // Query base
+    let query = supabase.from("payments").select("*", { count: "exact" })
     
     if (operationId) {
       query = query.eq("operation_id", operationId)
     }
 
-    const { data: payments, error } = await query.order("date_paid", { ascending: false })
+    // Aplicar paginación y ordenamiento
+    const { data: payments, error, count } = await query
+      .order("date_due", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
 
     if (error) {
       console.error("Error fetching payments:", error)
       return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
     }
 
-    return NextResponse.json({ payments })
+    const totalPages = count ? Math.ceil(count / limit) : 0
+
+    return NextResponse.json({ 
+      payments: payments || [],
+      pagination: {
+        total: count || 0,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages
+      }
+    })
   } catch (error) {
     console.error("Error in GET /api/payments:", error)
     return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })

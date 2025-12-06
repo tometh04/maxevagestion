@@ -360,22 +360,13 @@ export async function GET(request: Request) {
       query = query.lte("departure_date", dateTo)
     }
 
-    // Add pagination with reasonable limits
-    const requestedLimit = parseInt(searchParams.get("limit") || "100")
+    // Add pagination: usar page en vez de offset para mejor UX
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+    const requestedLimit = parseInt(searchParams.get("limit") || "50")
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
-    const offset = parseInt(searchParams.get("offset") || "0")
+    const offset = (page - 1) * limit
     
-    const { data: operations, error } = await query
-      .order("operation_date", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (error) {
-      console.error("Error fetching operations:", error)
-      return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
-    }
-
-    // Get total count for pagination
+    // Get total count first (con todos los filtros aplicados)
     let countQuery = supabase
       .from("operations")
       .select("*", { count: "exact", head: true })
@@ -386,15 +377,47 @@ export async function GET(request: Request) {
       // Ignore if filtering fails
     }
     
+    // Aplicar mismos filtros al count
+    if (status && status !== "ALL") {
+      countQuery = countQuery.eq("status", status)
+    }
+    if (sellerId && sellerId !== "ALL") {
+      countQuery = countQuery.eq("seller_id", sellerId)
+    }
+    if (agencyId && agencyId !== "ALL") {
+      countQuery = countQuery.eq("agency_id", agencyId)
+    }
+    if (dateFrom) {
+      countQuery = countQuery.gte("departure_date", dateFrom)
+    }
+    if (dateTo) {
+      countQuery = countQuery.lte("departure_date", dateTo)
+    }
+    
     const { count } = await countQuery
+    
+    // Ahora obtener los datos con paginación
+    const { data: operations, error } = await query
+      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)", { count: "exact" })
+      .order("operation_date", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1)
+
+    if (error) {
+      console.error("Error fetching operations:", error)
+      return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
+    }
+
+    const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({ 
       operations: operations || [],
       pagination: {
         total: count || 0,
+        page,
         limit,
-        offset,
-        hasMore: (count || 0) > offset + limit
+        totalPages,
+        hasMore: page < totalPages
       }
     })
   } catch (error) {

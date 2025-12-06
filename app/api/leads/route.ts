@@ -62,11 +62,11 @@ export async function GET(request: Request) {
       query = query.eq("trello_list_id", trelloListId)
     }
 
-    // Add pagination with reasonable limits
-    const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    // Aumentar límite para poder cargar todos los leads (máximo 10000 para evitar problemas de memoria)
-    const limit = Math.min(requestedLimit, 10000)
-    const offset = parseInt(searchParams.get("offset") || "0")
+    // Add pagination: usar page en vez de offset para mejor UX
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
+    const requestedLimit = parseInt(searchParams.get("limit") || "50")
+    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
+    const offset = (page - 1) * limit
     
     const result = await query
       .order("created_at", { ascending: false })
@@ -163,7 +163,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // Get total count for pagination
+    // Get total count for pagination (con todos los filtros aplicados)
     let countQuery = supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
@@ -174,15 +174,32 @@ export async function GET(request: Request) {
       // Ignore if filtering fails
     }
     
+    // Aplicar mismos filtros al count
+    if (status && status !== "ALL") {
+      countQuery = countQuery.eq("status", status)
+    }
+    if (sellerId && sellerId !== "ALL") {
+      countQuery = countQuery.eq("assigned_seller_id", sellerId)
+    }
+    if (agencyId && agencyId !== "ALL") {
+      countQuery = countQuery.eq("agency_id", agencyId)
+    }
+    if (trelloListId && trelloListId !== "ALL") {
+      countQuery = countQuery.eq("trello_list_id", trelloListId)
+    }
+    
     const { count } = await countQuery
+
+    const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({ 
       leads: leads || [], 
       pagination: {
         total: count || 0,
+        page,
         limit,
-        offset,
-        hasMore: (count || 0) > offset + limit
+        totalPages,
+        hasMore: page < totalPages
       }
     })
   } catch (error) {
