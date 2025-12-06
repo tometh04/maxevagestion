@@ -359,6 +359,23 @@ Durante las primeras 2 semanas:
 
 ---
 
+## 📌 IMPORTANTE: ROADMAP CONSOLIDADO
+
+Este roadmap ha sido consolidado con todos los demás roadmaps del proyecto.
+
+**Ver documentos actualizados:**
+- 📊 **`ANALISIS_PRE_PRODUCCION.md`** - Análisis exhaustivo del estado actual, gaps críticos, problemas de performance
+- 🚀 **`ROADMAP_PRODUCCION.md`** - Roadmap consolidado y ejecutable para llegar a producción
+
+El nuevo roadmap está organizado en 3 fases:
+1. **FASE 1: CRÍTICO** (2-3 días) - AI Copilot completo, performance, paginación, Trello robusto
+2. **FASE 2: IMPORTANTE** (3-4 días) - Caché, validaciones, edge cases
+3. **FASE 3: NICE TO HAVE** (1-2 días) - Búsqueda global, UX polish, documentación
+
+**Total estimado:** 5-7 días de trabajo enfocado
+
+---
+
 ## 📝 NOTAS DE IMPLEMENTACIÓN
 
 ### Funcionalidades Recientes Completadas (05/12/2025)

@@ -114,11 +114,14 @@ const DATABASE_SCHEMA = `
 ### TABLA: financial_accounts (Cuentas financieras/Cajas)
 - id: UUID (PK)
 - name: TEXT (Nombre: "Caja ARS", "Banco Galicia USD", etc)
-- type: TEXT ('CASH', 'BANK', 'MERCADOPAGO', 'CRYPTO')
+- type: TEXT ('SAVINGS_ARS', 'SAVINGS_USD', 'CHECKING_ARS', 'CHECKING_USD', 'CASH_ARS', 'CASH_USD', 'CREDIT_CARD', 'ASSETS')
 - currency: TEXT ('ARS', 'USD')
 - initial_balance: NUMERIC
 - agency_id: UUID (FK → agencies)
 - is_active: BOOLEAN
+- account_number: TEXT (Número de cuenta bancaria)
+- card_number, card_holder, bank_name, card_expiry_date, card_cvv: TEXT (Para tarjetas)
+- asset_type, asset_description, asset_quantity: TEXT/INTEGER (Para activos)
 - created_at, updated_at: TIMESTAMP
 
 ### TABLA: ledger_movements (Libro Mayor - Movimientos contables) ⭐ CONTABILIDAD
@@ -139,6 +142,21 @@ const DATABASE_SCHEMA = `
 - notes: TEXT
 - created_at: TIMESTAMP
 NOTA: Este es el LIBRO MAYOR. Cada pago genera un movimiento aquí. Eliminar un pago elimina su movimiento.
+
+### TABLA: cash_boxes (Cajas físicas/virtuales)
+- id: UUID (PK)
+- agency_id: UUID (FK → agencies)
+- name: TEXT (Nombre: "Caja Principal", "Caja Chica", etc)
+- description: TEXT
+- box_type: TEXT ('MAIN', 'PETTY', 'USD', 'BANK', 'OTHER')
+- currency: TEXT ('ARS', 'USD')
+- initial_balance: NUMERIC
+- current_balance: NUMERIC (calculado automáticamente)
+- is_active: BOOLEAN
+- is_default: BOOLEAN (caja por defecto de la agencia)
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
 
 ### TABLA: cash_movements (Movimientos de Caja) ⭐ CAJA
 - id: UUID (PK)
@@ -187,24 +205,148 @@ NOTA: Se crea automáticamente al crear operación. Se actualiza si cambia el co
 - ledger_movement_id: UUID (FK → ledger_movements, cuando se paga)
 NOTA: Se crea automáticamente al crear operación. Se marca PAID cuando se registra el pago.
 
-### TABLA: commissions (Comisiones de Vendedores)
+### TABLA: commission_records (Comisiones de Vendedores) ⭐ CORREGIDO
 - id: UUID (PK)
 - operation_id: UUID (FK → operations)
 - seller_id: UUID (FK → users)
+- agency_id: UUID (FK → agencies)
 - amount: NUMERIC
-- currency: TEXT
-- percentage: NUMERIC
 - status: TEXT ('PENDING', 'PAID')
-NOTA: Se calculan automáticamente cuando la operación pasa a CONFIRMED/CLOSED.
+- date_calculated: DATE
+- date_paid: DATE
+- created_at, updated_at: TIMESTAMP
+NOTA: Se calculan automáticamente cuando la operación pasa a CONFIRMED/CLOSED. Tabla correcta es commission_records, no commissions.
 
 ### TABLA: alerts (Alertas del sistema)
 - id: UUID (PK)
-- operation_id, customer_id, user_id: UUID (FKs opcionales)
-- type: TEXT ('PAYMENT_DUE', 'OPERATOR_DUE', 'UPCOMING_TRIP', 'MISSING_DOC', 'GENERIC')
+- operation_id, customer_id, user_id, lead_id: UUID (FKs opcionales)
+- type: TEXT ('PAYMENT_DUE', 'OPERATOR_DUE', 'UPCOMING_TRIP', 'MISSING_DOC', 'PASSPORT_EXPIRY', 'DESTINATION_REQUIREMENT', 'BIRTHDAY', 'GENERIC')
 - description: TEXT
 - date_due: TIMESTAMP
 - status: TEXT ('PENDING', 'DONE', 'IGNORED')
 - created_at, updated_at: TIMESTAMP
+NOTA: lead_id se agregó para alertas de pasaportes en leads no convertidos.
+
+### TABLA: destination_requirements (Requisitos por Destino) ⭐ NUEVO
+- id: UUID (PK)
+- destination_code: TEXT (Código ISO: "BR", "US", "EU", etc.)
+- destination_name: TEXT ("Brasil", "Estados Unidos", etc.)
+- requirement_type: TEXT ('VACCINE', 'FORM', 'VISA', 'INSURANCE', 'DOCUMENT', 'OTHER')
+- requirement_name: TEXT ("Fiebre Amarilla", "ESTA", etc.)
+- is_required: BOOLEAN
+- description: TEXT
+- url: TEXT (Link a más info)
+- days_before_trip: INTEGER (Días antes del viaje para alertar)
+- valid_from, valid_to: DATE
+- is_active: BOOLEAN
+- created_at, updated_at: TIMESTAMP
+NOTA: Requisitos de vacunas, visas, formularios por destino. Se generan alertas automáticas.
+
+### TABLA: partner_accounts (Cuentas de Socios) ⭐ NUEVO
+- id: UUID (PK)
+- partner_name: TEXT ("Maxi", "Socio 2", etc.)
+- user_id: UUID (FK → users, opcional)
+- is_active: BOOLEAN
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: partner_withdrawals (Retiros de Socios) ⭐ NUEVO
+- id: UUID (PK)
+- partner_id: UUID (FK → partner_accounts)
+- amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- withdrawal_date: DATE
+- account_id: UUID (FK → financial_accounts, de qué cuenta salió)
+- cash_movement_id: UUID (FK → cash_movements)
+- ledger_movement_id: UUID (FK → ledger_movements)
+- description: TEXT
+- created_by: UUID (FK → users)
+- created_at: TIMESTAMP
+NOTA: Retiros personales de socios. Genera movimientos contables automáticamente.
+
+### TABLA: recurring_payments (Pagos Recurrentes) ⭐ NUEVO
+- id: UUID (PK)
+- operator_id: UUID (FK → operators)
+- amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- frequency: TEXT ('WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')
+- start_date: DATE
+- end_date: DATE (opcional, NULL = sin fin)
+- next_due_date: DATE (próxima fecha de vencimiento)
+- last_generated_date: DATE
+- is_active: BOOLEAN
+- description: TEXT
+- invoice_number, reference: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Pagos que se generan automáticamente según frecuencia. Un cron job genera los pagos.
+
+### TABLA: message_templates (Templates de WhatsApp) ⭐ NUEVO
+- id: UUID (PK)
+- name: TEXT
+- description: TEXT
+- category: TEXT ('PAYMENT', 'TRIP', 'QUOTATION', 'BIRTHDAY', 'MARKETING', 'CUSTOM')
+- trigger_type: TEXT ('MANUAL', 'QUOTATION_SENT', 'PAYMENT_DUE_3D', 'TRIP_7D_BEFORE', etc.)
+- template: TEXT (Template con variables: {nombre}, {destino}, etc.)
+- emoji_prefix: TEXT
+- is_active: BOOLEAN
+- send_hour_from, send_hour_to: INTEGER
+- agency_id: UUID (FK → agencies, NULL = global)
+- created_at, updated_at: TIMESTAMP
+
+### TABLA: whatsapp_messages (Mensajes WhatsApp) ⭐ NUEVO
+- id: UUID (PK)
+- template_id: UUID (FK → message_templates)
+- customer_id: UUID (FK → customers)
+- phone: TEXT
+- customer_name: TEXT
+- message: TEXT (Mensaje ya armado con variables)
+- whatsapp_link: TEXT (Link wa.me generado)
+- operation_id, payment_id, quotation_id: UUID (FKs opcionales, para contexto)
+- status: TEXT ('PENDING', 'SENT', 'SKIPPED', 'FAILED')
+- scheduled_for: TIMESTAMP
+- sent_at: TIMESTAMP
+- sent_by: UUID (FK → users)
+- agency_id: UUID (FK → agencies)
+- created_at: TIMESTAMP
+NOTA: Cola de mensajes WhatsApp. Un cron job procesa y envía los mensajes pendientes.
+
+### TABLA: communications (Historial de Comunicaciones) ⭐ NUEVO
+- id: UUID (PK)
+- customer_id, lead_id, operation_id: UUID (FKs, al menos uno requerido)
+- communication_type: TEXT ('CALL', 'EMAIL', 'WHATSAPP', 'MEETING', 'NOTE')
+- subject: TEXT
+- content: TEXT
+- date: TIMESTAMP
+- duration: INTEGER (minutos, si es llamada)
+- follow_up_date: DATE (fecha para seguimiento)
+- user_id: UUID (FK → users, quien realizó la comunicación)
+- created_at, updated_at: TIMESTAMP
+NOTA: Historial de todas las comunicaciones con clientes, leads y operaciones.
+
+### TABLA: settings_trello (Configuración Trello) ⭐ NUEVO
+- id: UUID (PK)
+- agency_id: UUID (FK → agencies, UNIQUE)
+- trello_api_key: TEXT
+- trello_token: TEXT
+- board_id: TEXT
+- list_status_mapping: JSONB (mapeo de listas a estados de leads)
+- list_region_mapping: JSONB (mapeo de listas a regiones)
+- last_sync_at: TIMESTAMP
+- created_at, updated_at: TIMESTAMP
+NOTA: Configuración de sincronización con Trello por agencia.
+
+### TABLA: audit_logs (Logs de Auditoría) ⭐ NUEVO
+- id: UUID (PK)
+- user_id: UUID (FK → users)
+- action: TEXT (LOGIN, CREATE_*, UPDATE_*, DELETE_*, etc.)
+- entity_type: TEXT (user, lead, operation, payment, etc.)
+- entity_id: UUID
+- details: JSONB (detalles adicionales)
+- ip_address: INET
+- user_agent: TEXT
+- created_at: TIMESTAMP
+NOTA: Registro de todas las acciones importantes en el sistema. Solo visible para SUPER_ADMIN y ADMIN.
 
 ### TABLA: exchange_rates (Tipos de cambio)
 - id: UUID (PK)
@@ -214,26 +356,43 @@ NOTA: Se calculan automáticamente cuando la operación pasa a CONFIRMED/CLOSED.
 - source: TEXT
 - created_at: TIMESTAMP
 
+### TABLA: operation_customers (Relación Operación-Clientes)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- customer_id: UUID (FK → customers)
+- role: TEXT ('MAIN' = cliente principal, 'COMPANION' = acompañante)
+NOTA: Una operación puede tener múltiples clientes/pasajeros.
+
 ### TABLA: documents (Documentos/Archivos)
 - id: UUID (PK)
 - operation_id, customer_id, lead_id: UUID (FKs opcionales)
-- type: TEXT ('PASSPORT', 'VOUCHER', 'TICKET', 'INVOICE', 'OTHER')
+- type: TEXT ('PASSPORT', 'DNI', 'VOUCHER', 'TICKET', 'INVOICE', 'OTHER')
 - file_name, file_url, storage_path: TEXT
+- scanned_data: JSONB (Datos extraídos por OCR: nombre, documento, fecha_nacimiento, expiration_date, etc.)
 - uploaded_by: UUID (FK → users)
 - uploaded_at: TIMESTAMP
+NOTA: scanned_data contiene información extraída por OCR de pasaportes, DNI, etc.
 
 ### RELACIONES CLAVE:
-- Una OPERACIÓN tiene un VENDEDOR (seller_id), un OPERADOR (operator_id), y un CLIENTE (customer_id)
+- Una OPERACIÓN tiene un VENDEDOR (seller_id), un OPERADOR (operator_id), y un CLIENTE PRINCIPAL (customer_id)
+- Una OPERACIÓN puede tener MÚLTIPLES CLIENTES/PASAJEROS (tabla operation_customers)
 - Una OPERACIÓN puede tener muchos PAGOS (INCOME de clientes, EXPENSE a operadores)
 - Un LEAD puede convertirse en una OPERACIÓN cuando se concreta la venta
+- Los PAGOS generan movimientos en ledger_movements y cash_movements automáticamente
 - Los PAGOS tienen estado PENDING/PAID/OVERDUE
+- Las ALERTAS se generan automáticamente: pagos vencidos, viajes próximos, documentos faltantes, pasaportes vencidos, requisitos de destino
+- Los DOCUMENTOS pueden estar asociados a operations, customers o leads (conectados bidireccionalmente)
+- Los RETIROS DE SOCIOS generan movimientos en ledger_movements y cash_movements
+- Los PAGOS RECURRENTES generan pagos automáticamente según su frecuencia
+- Los MENSAJES WHATSAPP se generan automáticamente según triggers configurados
 
 ### MÉTRICAS DE NEGOCIO:
 - VENTA TOTAL = sale_amount_total (lo que paga el cliente)
 - COSTO = operator_cost (lo que pagamos al operador)
 - MARGEN = margin_amount = sale_amount_total - operator_cost (nuestra ganancia)
-- COMISIÓN = commission_amount (lo que gana el vendedor)
+- COMISIÓN = commission_amount (lo que gana el vendedor, registrado en commission_records)
 - CONVERSIÓN = leads WON / leads totales
+- IVA A PAGAR = ivaVentas - ivaCompras (débito fiscal - crédito fiscal)
 `
 
 // Helper para limpiar JSON
@@ -333,45 +492,86 @@ export async function POST(request: Request) {
     const lastMonthEndStr = lastMonthEnd.toISOString().split('T')[0]
 
     // Obtener datos relevantes del contexto actual
+    // OPTIMIZACIÓN: Paralelizar queries con Promise.all()
     const contextData: any = {}
 
-    // 1. Resumen de ventas del mes actual
-    const { data: salesThisMonth } = await supabase
-      .from("operations")
-      .select("sale_amount_total, margin_amount, operator_cost, status, product_type, seller_id")
-      .gte("created_at", startOfMonth)
+    // Paralelizar queries iniciales (1-2)
+    const [salesThisMonthResult, salesThisWeekResult] = await Promise.all([
+      supabase
+        .from("operations")
+        .select("sale_amount_total, margin_amount, operator_cost, status, product_type, seller_id")
+        .gte("created_at", startOfMonth),
+      supabase
+        .from("operations")
+        .select("sale_amount_total, margin_amount")
+        .gte("created_at", startOfWeekStr),
+    ])
+
+    const salesThisMonth = salesThisMonthResult.data || []
+    const salesThisWeek = salesThisWeekResult.data || []
 
     contextData.ventasMesActual = {
-      total: (salesThisMonth || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
-      margen: (salesThisMonth || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
-      cantidadOperaciones: (salesThisMonth || []).length,
+      total: salesThisMonth.reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
+      margen: salesThisMonth.reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
+      cantidadOperaciones: salesThisMonth.length,
     }
-
-    // 2. Ventas de esta semana
-    const { data: salesThisWeek } = await supabase
-      .from("operations")
-      .select("sale_amount_total, margin_amount")
-      .gte("created_at", startOfWeekStr)
 
     contextData.ventasEstaSemana = {
-      total: (salesThisWeek || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
-      margen: (salesThisWeek || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
-      cantidadOperaciones: (salesThisWeek || []).length,
+      total: salesThisWeek.reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0),
+      margen: salesThisWeek.reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0),
+      cantidadOperaciones: salesThisWeek.length,
     }
 
-    // 3. Pagos vencidos
-    const { data: overduePayments } = await supabase
-      .from("payments")
-      .select(`
-        id, amount, currency, date_due, direction, payer_type,
-        operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
-      `)
-      .eq("status", "PENDING")
-      .lt("date_due", currentDate)
+    // Paralelizar queries de pagos (3-4)
+    const endOfWeek = new Date(today)
+    endOfWeek.setDate(today.getDate() + 7)
+    
+    const [overduePaymentsResult, paymentsDueTodayResult, upcomingTripsResult, activeLeadsResult, accountsResult] = await Promise.all([
+      supabase
+        .from("payments")
+        .select(`
+          id, amount, currency, date_due, direction, payer_type,
+          operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
+        `)
+        .eq("status", "PENDING")
+        .lt("date_due", currentDate),
+      supabase
+        .from("payments")
+        .select(`
+          id, amount, currency, direction, payer_type,
+          operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
+        `)
+        .eq("status", "PENDING")
+        .eq("date_due", currentDate),
+      supabase
+        .from("operations")
+        .select(`
+          id, file_code, destination, departure_date, status,
+          customers:customer_id(first_name, last_name, phone),
+          users:seller_id(name)
+        `)
+        .gte("departure_date", currentDate)
+        .lte("departure_date", endOfWeek.toISOString().split('T')[0])
+        .order("departure_date", { ascending: true }),
+      supabase
+        .from("leads")
+        .select("id, status, source, region, destination")
+        .in("status", ["NEW", "IN_PROGRESS", "QUOTED"]),
+      supabase
+        .from("financial_accounts")
+        .select("name, type, currency, initial_balance")
+        .eq("is_active", true),
+    ])
+
+    const overduePayments = overduePaymentsResult.data || []
+    const paymentsDueToday = paymentsDueTodayResult.data || []
+    const upcomingTrips = upcomingTripsResult.data || []
+    const activeLeads = activeLeadsResult.data || []
+    const accounts = accountsResult.data || []
 
     contextData.pagosVencidos = {
-      cantidad: (overduePayments || []).length,
-      detalles: (overduePayments || []).slice(0, 10).map((p: any) => ({
+      cantidad: overduePayments.length,
+      detalles: overduePayments.slice(0, 10).map((p: any) => ({
         monto: p.amount,
         moneda: p.currency,
         vencimiento: p.date_due,
@@ -381,19 +581,9 @@ export async function POST(request: Request) {
       })),
     }
 
-    // 4. Pagos que vencen hoy
-    const { data: paymentsDueToday } = await supabase
-      .from("payments")
-      .select(`
-        id, amount, currency, direction, payer_type,
-        operations:operation_id(file_code, destination, customers:customer_id(first_name, last_name))
-      `)
-      .eq("status", "PENDING")
-      .eq("date_due", currentDate)
-
     contextData.pagosVencenHoy = {
-      cantidad: (paymentsDueToday || []).length,
-      detalles: (paymentsDueToday || []).map((p: any) => ({
+      cantidad: paymentsDueToday.length,
+      detalles: paymentsDueToday.map((p: any) => ({
         monto: p.amount,
         moneda: p.currency,
         tipo: p.payer_type === 'CUSTOMER' ? 'Cobrar a cliente' : 'Pagar a operador',
@@ -402,23 +592,9 @@ export async function POST(request: Request) {
       })),
     }
 
-    // 5. Próximos viajes (esta semana)
-    const endOfWeek = new Date(today)
-    endOfWeek.setDate(today.getDate() + 7)
-    const { data: upcomingTrips } = await supabase
-      .from("operations")
-      .select(`
-        id, file_code, destination, departure_date, status,
-        customers:customer_id(first_name, last_name, phone),
-        users:seller_id(name)
-      `)
-      .gte("departure_date", currentDate)
-      .lte("departure_date", endOfWeek.toISOString().split('T')[0])
-      .order("departure_date", { ascending: true })
-
     contextData.viajesProximos = {
-      cantidad: (upcomingTrips || []).length,
-      detalles: (upcomingTrips || []).map((t: any) => ({
+      cantidad: upcomingTrips.length,
+      detalles: upcomingTrips.map((t: any) => ({
         codigo: t.file_code,
         destino: t.destination,
         fechaSalida: t.departure_date,
@@ -429,102 +605,103 @@ export async function POST(request: Request) {
       })),
     }
 
-    // 6. Top vendedores del mes
-    const { data: operations } = await supabase
-      .from("operations")
-      .select("seller_id, sale_amount_total, margin_amount, users:seller_id(name)")
-      .gte("created_at", startOfMonth)
-
+    // 6. Top vendedores del mes (usar datos ya cargados)
     const sellerStats: Record<string, any> = {}
-    for (const op of (operations || []) as any[]) {
+    for (const op of salesThisMonth as any[]) {
       const sellerId = op.seller_id
-      const sellerName = op.users?.name || "Sin vendedor"
+      // Necesitamos el nombre del vendedor, hacer query separada si es necesario
       if (!sellerStats[sellerId]) {
-        sellerStats[sellerId] = { nombre: sellerName, ventas: 0, margen: 0, operaciones: 0 }
+        sellerStats[sellerId] = { nombre: "Sin vendedor", ventas: 0, margen: 0, operaciones: 0 }
       }
       sellerStats[sellerId].ventas += op.sale_amount_total || 0
       sellerStats[sellerId].margen += op.margin_amount || 0
       sellerStats[sellerId].operaciones += 1
     }
+    
+    // Obtener nombres de vendedores en batch
+    const sellerIds = Object.keys(sellerStats)
+    if (sellerIds.length > 0) {
+      const { data: sellers } = await supabase
+        .from("users")
+        .select("id, name")
+        .in("id", sellerIds)
+      
+      for (const seller of (sellers || []) as any[]) {
+        if (sellerStats[seller.id]) {
+          sellerStats[seller.id].nombre = seller.name
+        }
+      }
+    }
+    
     contextData.topVendedores = Object.values(sellerStats)
       .sort((a: any, b: any) => b.ventas - a.ventas)
       .slice(0, 5)
 
-    // 7. Leads activos
-    const { data: activeLeads } = await supabase
-      .from("leads")
-      .select("id, status, source, region, destination")
-      .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
-
     const leadsByStatus: Record<string, number> = {}
-    for (const lead of (activeLeads || []) as any[]) {
+    for (const lead of activeLeads as any[]) {
       leadsByStatus[lead.status] = (leadsByStatus[lead.status] || 0) + 1
     }
     contextData.leadsActivos = {
-      total: (activeLeads || []).length,
+      total: activeLeads.length,
       porEstado: leadsByStatus,
     }
 
-    // 8. Cuentas financieras
-    const { data: accounts } = await supabase
-      .from("financial_accounts")
-      .select("name, type, currency, initial_balance")
-      .eq("is_active", true)
+    contextData.cuentasFinancieras = accounts
 
-    contextData.cuentasFinancieras = accounts || []
+    // Paralelizar queries contables (9-11)
+    const [cashMovementsResult, ledgerMovementsResult, ivaSalesResult, ivaPurchasesResult] = await Promise.all([
+      (supabase.from("cash_movements") as any)
+        .select("type, amount, currency, category, movement_date")
+        .gte("movement_date", startOfMonth),
+      (supabase.from("ledger_movements") as any)
+        .select("type, amount_original, currency, amount_ars_equivalent, concept")
+        .gte("created_at", startOfMonth),
+      (supabase.from("iva_sales") as any)
+        .select("sale_amount_total, net_amount, iva_amount, currency")
+        .gte("sale_date", startOfMonth),
+      (supabase.from("iva_purchases") as any)
+        .select("operator_cost_total, net_amount, iva_amount, currency")
+        .gte("purchase_date", startOfMonth),
+    ])
 
-    // 9. Movimientos de caja del mes
-    const { data: cashMovements } = await (supabase.from("cash_movements") as any)
-      .select("type, amount, currency, category, movement_date")
-      .gte("movement_date", startOfMonth)
+    const cashMovements = cashMovementsResult.data || []
+    const ledgerMovements = ledgerMovementsResult.data || []
+    const ivaSales = ivaSalesResult.data || []
+    const ivaPurchases = ivaPurchasesResult.data || []
 
-    const ingresos = (cashMovements || []).filter((m: any) => m.type === "INCOME")
-    const egresos = (cashMovements || []).filter((m: any) => m.type === "EXPENSE")
+    const ingresos = cashMovements.filter((m: any) => m.type === "INCOME")
+    const egresos = cashMovements.filter((m: any) => m.type === "EXPENSE")
     
     contextData.movimientosCajaMes = {
       totalIngresos: ingresos.reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0),
       totalEgresos: egresos.reduce((sum: number, m: any) => sum + Number(m.amount || 0), 0),
-      cantidadMovimientos: (cashMovements || []).length,
+      cantidadMovimientos: cashMovements.length,
     }
 
-    // 10. Libro mayor - resumen del mes
-    const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
-      .select("type, amount_original, currency, amount_ars_equivalent, concept")
-      .gte("created_at", startOfMonth)
-
     const ledgerByType: Record<string, number> = {}
-    for (const mov of (ledgerMovements || []) as any[]) {
+    for (const mov of ledgerMovements as any[]) {
       ledgerByType[mov.type] = (ledgerByType[mov.type] || 0) + Number(mov.amount_ars_equivalent || 0)
     }
     
     contextData.libroMayorMes = {
       porTipo: ledgerByType,
-      cantidadMovimientos: (ledgerMovements || []).length,
+      cantidadMovimientos: ledgerMovements.length,
     }
 
-    // 11. IVA del mes
-    const { data: ivaSales } = await (supabase.from("iva_sales") as any)
-      .select("sale_amount_total, net_amount, iva_amount, currency")
-      .gte("sale_date", startOfMonth)
-
-    const { data: ivaPurchases } = await (supabase.from("iva_purchases") as any)
-      .select("operator_cost_total, net_amount, iva_amount, currency")
-      .gte("purchase_date", startOfMonth)
-
-    const totalIvaSales = (ivaSales || []).reduce((sum: number, s: any) => sum + Number(s.iva_amount || 0), 0)
-    const totalIvaPurchases = (ivaPurchases || []).reduce((sum: number, p: any) => sum + Number(p.iva_amount || 0), 0)
+    const totalIvaSales = ivaSales.reduce((sum: number, s: any) => sum + Number(s.iva_amount || 0), 0)
+    const totalIvaPurchases = ivaPurchases.reduce((sum: number, p: any) => sum + Number(p.iva_amount || 0), 0)
     
     contextData.ivaMes = {
       ivaVentas: totalIvaSales,
       ivaCompras: totalIvaPurchases,
       ivaPagar: totalIvaSales - totalIvaPurchases, // Débito - Crédito
-      cantidadRegistros: (ivaSales || []).length + (ivaPurchases || []).length,
+      cantidadRegistros: ivaSales.length + ivaPurchases.length,
     }
 
-    // 12. Comisiones pendientes
-    const { data: pendingCommissions } = await (supabase.from("commissions") as any)
+    // 12. Comisiones pendientes (usando commission_records)
+    const { data: pendingCommissions } = await (supabase.from("commission_records") as any)
       .select(`
-        amount, currency, status,
+        amount, status,
         users:seller_id(name),
         operations:operation_id(file_code, destination)
       `)
@@ -540,25 +717,107 @@ export async function POST(request: Request) {
       })),
     }
 
-    // 13. Operator Payments pendientes (cuentas a pagar a operadores)
-    const { data: pendingOperatorPayments } = await (supabase.from("operator_payments") as any)
-      .select(`
-        amount, currency, due_date, status,
-        operators:operator_id(name),
-        operations:operation_id(file_code, destination)
-      `)
-      .eq("status", "PENDING")
-      .order("due_date", { ascending: true })
+    // Paralelizar queries finales (12-17)
+    const [pendingCommissionsResult, pendingOperatorPaymentsResult, destinationRequirementsResult, partnerAccountsResult, recurringPaymentsResult, whatsappMessagesResult] = await Promise.all([
+      (supabase.from("commission_records") as any)
+        .select(`
+          amount, status,
+          users:seller_id(name),
+          operations:operation_id(file_code, destination)
+        `)
+        .eq("status", "PENDING"),
+      (supabase.from("operator_payments") as any)
+        .select(`
+          amount, currency, due_date, status,
+          operators:operator_id(name),
+          operations:operation_id(file_code, destination)
+        `)
+        .eq("status", "PENDING")
+        .order("due_date", { ascending: true }),
+      supabase
+        .from("destination_requirements")
+        .select("destination_code, destination_name, requirement_type, requirement_name, is_required")
+        .eq("is_active", true)
+        .limit(20),
+      supabase
+        .from("partner_accounts")
+        .select("id, partner_name, is_active"),
+      (supabase.from("recurring_payments") as any)
+        .select("id, operator_id, amount, currency, frequency, next_due_date, is_active, description")
+        .eq("is_active", true),
+      (supabase.from("whatsapp_messages") as any)
+        .select("id, customer_name, message, status, scheduled_for, sent_at")
+        .eq("status", "PENDING")
+        .limit(10),
+    ])
+
+    const pendingCommissions = pendingCommissionsResult.data || []
+    const pendingOperatorPayments = pendingOperatorPaymentsResult.data || []
+    const destinationRequirements = destinationRequirementsResult.data || []
+    const partnerAccounts = partnerAccountsResult.data || []
+    const recurringPayments = recurringPaymentsResult.data || []
+    const whatsappMessages = whatsappMessagesResult.data || []
+
+    contextData.comisionesPendientes = {
+      cantidad: pendingCommissions.length,
+      totalPendiente: pendingCommissions.reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0),
+      detalles: pendingCommissions.slice(0, 5).map((c: any) => ({
+        vendedor: c.users?.name,
+        monto: c.amount,
+        operacion: c.operations?.file_code || c.operations?.destination,
+      })),
+    }
 
     contextData.pagosPendientesOperadores = {
-      cantidad: (pendingOperatorPayments || []).length,
-      totalPendiente: (pendingOperatorPayments || []).reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0),
-      detalles: (pendingOperatorPayments || []).slice(0, 5).map((p: any) => ({
+      cantidad: pendingOperatorPayments.length,
+      totalPendiente: pendingOperatorPayments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0),
+      detalles: pendingOperatorPayments.slice(0, 5).map((p: any) => ({
         operador: p.operators?.name,
         monto: p.amount,
         moneda: p.currency,
         vencimiento: p.due_date,
         operacion: p.operations?.file_code || p.operations?.destination,
+      })),
+    }
+
+    // 14. Requisitos de destino activos
+    contextData.requisitosDestino = {
+      cantidad: destinationRequirements.length,
+      destinosUnicos: Array.from(new Set(destinationRequirements.map((r: any) => r.destination_name))),
+      detalles: destinationRequirements.slice(0, 10),
+    }
+
+    // 15. Cuentas de socios
+    contextData.cuentasSocios = {
+      cantidad: partnerAccounts.length,
+      activas: partnerAccounts.filter((p: any) => p.is_active).length,
+      detalles: partnerAccounts.map((p: any) => ({
+        nombre: p.partner_name,
+        activo: p.is_active,
+      })),
+    }
+
+    // 16. Pagos recurrentes activos
+    contextData.pagosRecurrentes = {
+      cantidad: recurringPayments.length,
+      proximos: recurringPayments
+        .filter((p: any) => {
+          const nextDue = new Date(p.next_due_date + 'T12:00:00')
+          const today = new Date()
+          today.setHours(0, 0, 0, 0)
+          return nextDue <= new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000) // Próximos 7 días
+        })
+        .length,
+      detalles: recurringPayments.slice(0, 5),
+    }
+
+    // 17. Mensajes WhatsApp pendientes
+    contextData.mensajesWhatsApp = {
+      pendientes: whatsappMessages.length,
+      detalles: whatsappMessages.map((m: any) => ({
+        cliente: m.customer_name,
+        estado: m.status,
+        programado: m.scheduled_for,
       })),
     }
 
@@ -642,8 +901,23 @@ ${contextText}
 **"¿Qué movimientos hubo en el libro mayor?"**
 → Usar datos de libroMayorMes
 
+**"¿Qué requisitos hay para viajar a Brasil?"**
+→ Usar datos de requisitosDestino (filtrar por destination_code="BR")
+
+**"¿Cuántos retiros hicieron los socios este mes?"**
+→ Consultar partner_withdrawals filtrando por withdrawal_date del mes
+
+**"¿Qué pagos recurrentes están activos?"**
+→ Usar datos de pagosRecurrentes
+
+**"¿Cuántos mensajes WhatsApp están pendientes?"**
+→ Usar datos de mensajesWhatsApp
+
+**"¿Qué requisitos faltan para la operación X?"**
+→ Consultar destination_requirements para el destino de la operación y comparar con documentos cargados
+
 **"en que fecha cae el próximo?"** (pregunta ambigua)
-→ Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, o próximo vencimiento?"
+→ Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, o próximo pago recurrente?"
 
 ## FLUJOS CONTABLES (para explicar si preguntan)
 1. Al crear OPERACIÓN → se genera IVA Ventas, IVA Compras, y Cuenta a Pagar a Operador
