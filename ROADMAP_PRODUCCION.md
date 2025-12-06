@@ -101,19 +101,19 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 1.3 Paginación en Tablas Grandes
+### 1.3 Paginación en Tablas Grandes ✅ COMPLETADO (APIs)
 
 **Objetivo:** Evitar cargar miles de registros a la vez.
 
 **Tareas:**
-- [ ] Implementar paginación en `/api/operations/route.ts`:
-  - Agregar parámetros `page` y `limit` (default: 50)
-  - Retornar `total`, `page`, `limit`, `totalPages`
-  - Usar `.range()` de Supabase
-- [ ] Implementar paginación en `/api/leads/route.ts`
-- [ ] Implementar paginación en `/api/payments/route.ts`
-- [ ] Implementar paginación en `/api/cash/movements/route.ts`
-- [ ] Actualizar componentes client-side para usar paginación:
+- [x] Implementar paginación en `/api/operations/route.ts`:
+  - Agregar parámetros `page` y `limit` (default: 50) ✅
+  - Retornar `total`, `page`, `limit`, `totalPages` ✅
+  - Usar `.range()` de Supabase ✅
+- [x] Implementar paginación en `/api/leads/route.ts` ✅
+- [x] Implementar paginación en `/api/payments/route.ts` ✅
+- [x] Implementar paginación en `/api/cash/movements/route.ts` ✅
+- [ ] Actualizar componentes client-side para usar paginación (PENDIENTE - hacer después de probar):
   - `operations-table.tsx`
   - `leads-table.tsx`
   - `payments-table.tsx`
