@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getAccountBalance } from "@/lib/accounting/ledger"
+import { canPerformAction } from "@/lib/permissions-api"
 
 export async function GET(request: Request) {
   try {
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     // Verificar permisos
-    if (user.role !== "SUPER_ADMIN" && user.role !== "CONTABLE") {
+    if (!canPerformAction(user, "accounting", "write")) {
       return NextResponse.json({ error: "No tiene permiso para crear cuentas" }, { status: 403 })
     }
 
