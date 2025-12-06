@@ -181,14 +181,20 @@ CREATE TABLE partner_withdrawals (
 
 ### FASE 3: Semanas 3-6 (Iteración)
 
-#### 3.1 Módulo de Reportes - Fase 2
-- [ ] Reportes de márgenes por operación/vendedor/período
+#### 3.1 Módulo de Reportes - Fase 2 🟡 EN PROGRESO
+- [x] Reportes de márgenes por operación/vendedor/período ✅
+  - [x] Vista detallada por operación individual
+  - [x] Agrupación por vendedor con márgenes totales y porcentajes
+  - [x] Agrupación por operador con análisis de rentabilidad
+  - [x] Agrupación por tipo de producto con gráfico de distribución
+  - [x] Exportación a CSV con todos los datos
 - [ ] Reportes de operadores (balances, pagos pendientes)
 - [ ] Reportes de comisiones (por vendedor, por mes)
 - [ ] Exportación a PDF con diseño profesional
 - [ ] Comparación de períodos (este mes vs mes anterior)
 
-**Estimación:** 12-16 horas
+**Estado:** ✅ Reportes de márgenes completados el 05/12/2025
+**Estimación restante:** 8-12 horas
 
 #### 3.2 Importación de Data Histórica
 - [ ] UI para importar datos históricos por mes

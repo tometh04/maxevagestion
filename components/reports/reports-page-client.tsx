@@ -3,9 +3,10 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent } from "lucide-react"
 import { SalesReport } from "./sales-report"
 import { CashFlowReport } from "./cash-flow-report"
+import { MarginsReport } from "./margins-report"
 
 interface ReportsPageClientProps {
   userRole: string
@@ -34,6 +35,10 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
             <TrendingUp className="h-4 w-4" />
             Ventas
           </TabsTrigger>
+          <TabsTrigger value="margins" className="flex items-center gap-2">
+            <Percent className="h-4 w-4" />
+            Márgenes
+          </TabsTrigger>
           {canSeeCashFlow && (
             <TabsTrigger value="cashflow" className="flex items-center gap-2">
               <Wallet className="h-4 w-4" />
@@ -44,6 +49,15 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
 
         <TabsContent value="sales" className="mt-6">
           <SalesReport 
+            userRole={userRole} 
+            userId={userId}
+            sellers={sellers}
+            agencies={agencies}
+          />
+        </TabsContent>
+
+        <TabsContent value="margins" className="mt-6">
+          <MarginsReport 
             userRole={userRole} 
             userId={userId}
             sellers={sellers}
