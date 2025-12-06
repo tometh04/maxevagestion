@@ -67,7 +67,7 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
 
         {canSeeCashFlow && (
           <TabsContent value="cashflow" className="mt-6">
-            <CashFlowReport />
+            <CashFlowReport agencies={agencies} />
           </TabsContent>
         )}
       </Tabs>

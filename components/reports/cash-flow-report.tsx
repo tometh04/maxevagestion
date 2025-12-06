@@ -47,7 +47,11 @@ const categoryLabels: Record<string, string> = {
   OTRO: "Otro",
 }
 
-export function CashFlowReport() {
+interface CashFlowReportProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function CashFlowReport({ agencies }: CashFlowReportProps) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<any>(null)
   
@@ -55,6 +59,7 @@ export function CashFlowReport() {
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"))
   const [dateTo, setDateTo] = useState(format(endOfMonth(new Date()), "yyyy-MM-dd"))
   const [currency, setCurrency] = useState("ALL")
+  const [agencyId, setAgencyId] = useState("ALL")
 
   const fetchReport = useCallback(async () => {
     setLoading(true)
@@ -63,6 +68,7 @@ export function CashFlowReport() {
         dateFrom,
         dateTo,
         currency,
+        agencyId,
       })
       
       const res = await fetch(`/api/reports/cash-flow?${params}`)
@@ -78,7 +84,7 @@ export function CashFlowReport() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currency])
+  }, [dateFrom, dateTo, currency, agencyId])
 
   useEffect(() => {
     fetchReport()
@@ -127,7 +133,7 @@ export function CashFlowReport() {
           <CardTitle className="text-lg">Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-6">
             <div>
               <Label>Desde</Label>
               <Input
@@ -154,6 +160,22 @@ export function CashFlowReport() {
                   <SelectItem value="ALL">Todas</SelectItem>
                   <SelectItem value="ARS">ARS</SelectItem>
                   <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Agencia</Label>
+              <Select value={agencyId} onValueChange={setAgencyId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>
+                      {agency.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

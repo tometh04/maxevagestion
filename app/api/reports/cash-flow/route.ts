@@ -18,11 +18,15 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const currency = searchParams.get("currency") || "ALL"
+    const agencyId = searchParams.get("agencyId") || "ALL"
 
-    // Obtener movimientos de caja
+    // Obtener movimientos de caja con información de operaciones para filtrar por agencia
     let query = (supabase
       .from("cash_movements") as any)
-      .select("*")
+      .select(`
+        *,
+        operations:operation_id(agency_id)
+      `)
       .order("movement_date", { ascending: true })
 
     if (dateFrom) {
@@ -35,7 +39,20 @@ export async function GET(request: Request) {
       query = query.eq("currency", currency)
     }
 
-    const { data: movements, error } = await query as { data: any[] | null, error: any }
+    const { data: movementsRaw, error } = await query as { data: any[] | null, error: any }
+
+    // Filtrar por agencia si es necesario
+    let movements = movementsRaw
+    if (agencyId !== "ALL" && movements) {
+      movements = movements.filter((mov: any) => {
+        // Si tiene operation_id, verificar la agencia de la operación
+        if (mov.operation_id && mov.operations) {
+          return mov.operations.agency_id === agencyId
+        }
+        // Si no tiene operación, no podemos filtrar (se incluye)
+        return true
+      })
+    }
 
     if (error) {
       console.error("Error fetching cash flow:", error)
@@ -156,7 +173,7 @@ export async function GET(request: Request) {
     })
 
     // Obtener balances actuales de todas las cuentas financieras
-    const { data: accounts } = await (supabase.from("financial_accounts") as any)
+    let accountsQuery = (supabase.from("financial_accounts") as any)
       .select(`
         id,
         name,
@@ -167,6 +184,14 @@ export async function GET(request: Request) {
         agencies:agency_id(id, name)
       `)
       .eq("is_active", true)
+
+    // Filtrar por agencia si es necesario
+    if (agencyId !== "ALL") {
+      accountsQuery = accountsQuery.eq("agency_id", agencyId)
+    }
+
+    // Filtrar por moneda si es necesario (solo para cuentas, no para movimientos que ya están filtrados)
+    const { data: accounts } = await accountsQuery
       .order("agency_id", { ascending: true })
       .order("type", { ascending: true })
 
