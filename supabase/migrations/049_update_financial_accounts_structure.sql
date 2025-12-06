@@ -44,8 +44,7 @@ ADD COLUMN IF NOT EXISTS asset_quantity INTEGER DEFAULT 0;
 
 -- 6. Agregar número de cuenta bancaria (para cuentas bancarias)
 ALTER TABLE financial_accounts 
-ADD COLUMN IF NOT EXISTS account_number TEXT,
-ADD COLUMN IF NOT EXISTS bank_name TEXT;
+ADD COLUMN IF NOT EXISTS account_number TEXT;
 
 -- 7. Índices
 CREATE INDEX IF NOT EXISTS idx_financial_accounts_agency ON financial_accounts(agency_id);
