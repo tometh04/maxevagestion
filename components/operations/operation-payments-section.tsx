@@ -88,6 +88,9 @@ export function OperationPaymentsSection({
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
+  
+  // Debug: mostrar los pagos que llegan
+  console.log("Payments received:", payments.map(p => ({ id: p.id, amount: p.amount, status: p.status })))
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
@@ -148,9 +151,11 @@ export function OperationPaymentsSection({
 
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId)
+    console.log("Downloading receipt for payment ID:", paymentId)
     try {
       // Obtener datos del recibo desde la API
       const response = await fetch(`/api/receipt-data?paymentId=${paymentId}`)
+      console.log("Response status:", response.status)
       
       if (!response.ok) {
         throw new Error("Error al obtener datos del recibo")
