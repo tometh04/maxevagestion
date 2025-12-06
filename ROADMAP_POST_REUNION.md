@@ -91,13 +91,18 @@
 
 **Estado:** ✅ Completado el 05/12/2025
 
-#### 1.5 Importación Inicial de Datos 🔴 PENDIENTE
-- [ ] **Operaciones abiertas actuales** (obligatorio antes de lanzar)
-- [ ] **Foto inicial de caja** (saldos en ARS y USD por cuenta)
-- [ ] **Base de clientes** desde Excel/Trello
-- [ ] Script o UI amigable para importar
+#### 1.5 Importación Inicial de Datos ✅ COMPLETADO
+- [x] **UI de importación** en Settings → "Importar Datos" (completa con templates)
+- [x] **Importación de operaciones** desde CSV
+- [x] **Importación de clientes** desde CSV
+- [x] **Importación de operadores** desde CSV
+- [x] **Importación de pagos** desde CSV
+- [x] **Importación de movimientos de caja** desde CSV
+- [ ] **Operaciones abiertas actuales** (pendiente cargar data real)
+- [ ] **Foto inicial de caja** (pendiente cargar data real)
+- [ ] **Base de clientes** (pendiente cargar data real)
 
-**Estimación:** 4-8 horas (depende de la cantidad de datos)
+**Estado:** ✅ Interfaz completa el 05/12/2025 - Lista para uso
 
 #### 1.6 Configuración de Usuarios 🟡 EN PROGRESO
 - [x] Crear usuario Maxi (SUPER_ADMIN) - maxi@erplozada.com
@@ -153,14 +158,15 @@ CREATE TABLE partner_withdrawals (
 ```
 
 **Tareas:**
-- [ ] Crear migraciones
-- [ ] Nuevo módulo `/accounting/partner-accounts`
-- [ ] Lista de socios con balance actual
-- [ ] Formulario para registrar retiros
-- [ ] Historial de movimientos por socio
-- [ ] Integración con ledger_movements
+- [x] Crear migraciones (048_partner_accounts.sql)
+- [x] Nuevo módulo `/accounting/partner-accounts`
+- [x] Lista de socios con balance actual
+- [x] Formulario para registrar retiros
+- [x] Historial de movimientos por socio
+- [x] Integración con ledger_movements y cash_movements
+- [x] Eliminación de retiros con reversión contable
 
-**Estimación:** 6-8 horas
+**Estado:** ✅ Completado el 05/12/2025
 
 #### 2.3 Módulo de Reportes - Fase 1 ✅ COMPLETADO
 **Tareas:**
@@ -193,13 +199,13 @@ CREATE TABLE partner_withdrawals (
 **Estimación:** 6-8 horas
 
 #### 3.3 Mejoras de UX
-- [ ] Breadcrumbs en páginas de detalle
-- [ ] Confirmaciones para acciones destructivas (eliminar, cancelar)
-- [ ] Loading states consistentes
-- [ ] Mensajes de error más claros
-- [ ] Búsqueda global (Cmd+K)
+- [x] Breadcrumbs en páginas de detalle (implementado en operations, customers, operators)
+- [x] Confirmaciones para acciones destructivas (implementado en varios módulos)
+- [x] Loading states consistentes (spinners y skeletons)
+- [x] Mensajes de error más claros (toasts con detalles)
+- [ ] Búsqueda global (Cmd+K) - Pendiente
 
-**Estimación:** 4-6 horas
+**Estimación:** 1-2 horas (solo falta búsqueda global)
 
 ---
 
@@ -242,6 +248,10 @@ CREATE TABLE partner_withdrawals (
 - [x] OCR en operaciones igual que en leads
 - [x] Calendario con enlaces a operaciones
 - [x] Eliminación de módulos no usados
+- [x] Recibos PDF con header Lozada y saldo restante
+- [x] Generación automática de alertas al crear operación (check-in, check-out, cumpleaños, requisitos)
+- [x] Interfaz de importación masiva de datos (CSV)
+- [x] Cuentas corrientes de socios
 
 ### Capacitación
 - [ ] Sesión de capacitación con vendedoras (30 min)
@@ -314,14 +324,17 @@ Durante las primeras 2 semanas:
 
 ### Fase 1: Pre-Lanzamiento
 ```
-[████████████░░░░░░░░] 60% Completado
+[████████████████░░░░] 85% Completado
 
 ✅ Alertas de pasaportes vencidos
 ✅ Formulario de conversión
 ✅ OCR en operaciones
 ✅ Calendario con enlaces
-⏳ Importación de datos
+✅ Interfaz de importación (lista para usar)
+✅ Recibos PDF completos
+✅ Generación automática de alertas
 ✅ Usuario Maxi (SUPER_ADMIN)
+⏳ Cargar datos reales (operaciones, clientes, saldos caja)
 ⏳ Usuarios Yamil y vendedoras
 ```
 
@@ -337,3 +350,32 @@ Durante las primeras 2 semanas:
 ---
 
 **Última actualización:** 5 de Diciembre, 2025
+
+---
+
+## 📝 NOTAS DE IMPLEMENTACIÓN
+
+### Funcionalidades Recientes Completadas (05/12/2025)
+
+1. **Recibos PDF:**
+   - Header completo con logo Lozada Viajes
+   - Saldo restante de pago destacado
+   - Formato idéntico al modelo de Lozada
+   - Generación en cliente (navegador) para mejor compatibilidad
+
+2. **Generación Automática de Alertas:**
+   - Se generan automáticamente al crear una operación
+   - Incluye: check-in (3 días antes), check-out (1 día antes), cumpleaños de clientes (7 días antes), requisitos de destino, documentos vencidos
+   - Botón "Regenerar alertas" en detalle de operación para actualizar
+
+3. **Interfaz de Importación:**
+   - UI completa en Settings → "Importar Datos"
+   - Templates descargables para cada tipo de dato
+   - Validación en tiempo real
+   - Vista previa antes de importar
+   - Manejo de errores detallado
+
+4. **Cuentas de Socios:**
+   - Módulo completo en `/accounting/partner-accounts`
+   - Registro de retiros con integración contable automática
+   - Eliminación con reversión de movimientos contables
