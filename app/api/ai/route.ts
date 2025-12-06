@@ -920,11 +920,24 @@ ${contextText}
 → Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, o próximo pago recurrente?"
 
 ## FLUJOS CONTABLES (para explicar si preguntan)
-1. Al crear OPERACIÓN → se genera IVA Ventas, IVA Compras, y Cuenta a Pagar a Operador
-2. Al registrar PAGO → se crea movimiento en Libro Mayor y en Caja
-3. Al eliminar PAGO → se eliminan los movimientos asociados
+1. Al crear OPERACIÓN → se genera IVA Ventas, IVA Compras, Cuenta a Pagar a Operador, y commission_records
+2. Al registrar PAGO → se crea movimiento en Libro Mayor (ledger_movements) y en Caja (cash_movements)
+3. Al eliminar PAGO → se eliminan los movimientos asociados (reversión automática)
 4. Al editar montos de OPERACIÓN → se actualizan los registros de IVA
-5. Las COMISIONES se calculan automáticamente al confirmar operación
+5. Las COMISIONES se calculan automáticamente al confirmar operación (se registran en commission_records)
+6. Al registrar RETIRO DE SOCIO → se crean movimientos en ledger_movements y cash_movements
+7. Los PAGOS RECURRENTES generan pagos automáticamente (cron job diario)
+
+## FLUJOS DE DOCUMENTOS Y ALERTAS
+1. Al subir DOCUMENTO con OCR → se extrae información (scanned_data) y se puede crear/actualizar customer
+2. Al crear OPERACIÓN → se generan alertas automáticas: check-in (3 días antes), check-out (1 día antes), requisitos de destino, documentos vencidos
+3. Los DOCUMENTOS están conectados bidireccionalmente: si se sube en lead, aparece en operación y viceversa
+4. Las ALERTAS de pasaportes se generan comparando expiration_date (en scanned_data) con departure_date
+
+## FLUJOS DE COMUNICACIÓN
+1. Los MENSAJES WHATSAPP se generan automáticamente según triggers (pagos vencidos, viajes próximos, etc.)
+2. Los TEMPLATES de mensajes son configurables por agencia
+3. Las COMUNICACIONES se registran manualmente (llamadas, emails, reuniones, notas)
 
 ## IMPORTANTE
 - Si la pregunta es ambigua, pedí aclaración
