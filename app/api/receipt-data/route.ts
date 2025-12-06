@@ -10,6 +10,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const paymentId = searchParams.get("paymentId")
     
+    console.log("Receipt data request for paymentId:", paymentId)
+    
     if (!paymentId) {
       return NextResponse.json({ error: "ID de pago requerido" }, { status: 400 })
     }
@@ -31,8 +33,15 @@ export async function GET(request: NextRequest) {
       .eq("id", paymentId)
       .single()
 
-    if (error || !payment) {
-      return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+    console.log("Payment query result:", { payment: payment?.id, error: error?.message })
+
+    if (error) {
+      console.error("Supabase error:", error)
+      return NextResponse.json({ error: "Error en base de datos: " + error.message, paymentId }, { status: 500 })
+    }
+    
+    if (!payment) {
+      return NextResponse.json({ error: "Pago no encontrado", paymentId }, { status: 404 })
     }
 
     // Si el pago está asociado a una operación con clientes, obtener el cliente principal
