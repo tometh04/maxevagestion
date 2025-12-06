@@ -25,6 +25,8 @@ export async function GET(request: NextRequest) {
           id,
           file_code,
           destination,
+          sale_amount_total,
+          currency,
           agencies:agency_id (id, name, city)
         )
       `)
@@ -45,7 +47,13 @@ export async function GET(request: NextRequest) {
     let customerAddress = ""
     let customerCity = ""
     
+    // Calcular saldo restante
+    let saldoRestante = 0
+    let totalOperacion = 0
+    let totalPagado = 0
+    
     if (payment.operations?.id) {
+      // Obtener cliente principal
       const { data: mainCustomer } = await (supabase
         .from("operation_customers") as any)
         .select(`
@@ -61,11 +69,22 @@ export async function GET(request: NextRequest) {
         customerAddress = c.address || ""
         customerCity = c.city || ""
       }
+
+      // Obtener todos los pagos de la operación para calcular saldo
+      const { data: allPayments } = await (supabase.from("payments") as any)
+        .select("amount, status, payer_type")
+        .eq("operation_id", payment.operations.id)
+        .eq("payer_type", "CUSTOMER")
+        .eq("status", "PAID")
+
+      totalOperacion = Number(payment.operations.sale_amount_total) || 0
+      totalPagado = (allPayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+      saldoRestante = totalOperacion - totalPagado
     }
 
     const agency = payment.operations?.agencies
     const agencyCity = agency?.city || "Rosario"
-    const agencyName = agency?.name || "Maxeva Gestion"
+    const agencyName = agency?.name || "Lozada Viajes"
 
     // Generar número de recibo
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
@@ -99,10 +118,13 @@ export async function GET(request: NextRequest) {
       currency: payment.currency,
       amount,
       concepto,
+      totalOperacion,
+      totalPagado,
+      saldoRestante,
+      destination: payment.operations?.destination || "",
     })
   } catch (error: any) {
     console.error("Error fetching receipt data:", error)
     return NextResponse.json({ error: "Error al obtener datos" }, { status: 500 })
   }
 }
-

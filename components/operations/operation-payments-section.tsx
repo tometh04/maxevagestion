@@ -148,11 +148,9 @@ export function OperationPaymentsSection({
 
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId)
-    console.log("Downloading receipt for payment ID:", paymentId)
     try {
       // Obtener datos del recibo desde la API
       const response = await fetch(`/api/receipt-data?paymentId=${paymentId}`)
-      console.log("Response status:", response.status)
       
       if (!response.ok) {
         throw new Error("Error al obtener datos del recibo")
@@ -166,109 +164,196 @@ export function OperationPaymentsSection({
       // Crear PDF
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
-      const margin = 20
-      let y = 25
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+      let y = 0
 
-      // HEADER
-      doc.setFontSize(11)
+      // ========== HEADER LOZADA ==========
+      // Fondo dorado izquierdo
+      doc.setFillColor(194, 156, 95) // Color dorado
+      doc.rect(0, 0, pageWidth * 0.55, 35, "F")
+      
+      // Flecha blanca
+      doc.setFillColor(255, 255, 255)
+      doc.triangle(pageWidth * 0.45, 0, pageWidth * 0.55, 17.5, pageWidth * 0.45, 35, "F")
+      
+      // Fondo dorado derecho (más oscuro)
+      doc.setFillColor(184, 142, 74)
+      doc.rect(pageWidth * 0.55, 0, pageWidth * 0.45, 35, "F")
+      
+      // Logo LOZADA Viajes (texto)
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(22)
+      doc.setFont("helvetica", "bold")
+      doc.text("LOZADA", 15, 18)
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "italic")
+      doc.text("Viajes", 62, 22)
+      
+      // Datos derecha del header
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(7)
+      doc.setFont("helvetica", "normal")
+      
+      // Recuadro "Documento no valido como factura X"
+      doc.setDrawColor(255, 255, 255)
+      doc.setLineWidth(0.3)
+      doc.rect(pageWidth - 45, 3, 40, 12)
+      doc.setFontSize(6)
+      doc.text("Documento no", pageWidth - 43, 7)
+      doc.text("valido como", pageWidth - 43, 10)
+      doc.text("factura", pageWidth - 43, 13)
+      doc.setFontSize(16)
+      doc.setFont("helvetica", "bold")
+      doc.text("X", pageWidth - 12, 12)
+      
+      // Info de contacto
+      doc.setFontSize(7)
+      doc.setFont("helvetica", "normal")
+      doc.text(`N° Legajo: 18181`, pageWidth - 45, 20)
+      doc.text(`+5493412753942`, pageWidth - 45, 24)
+      doc.text(`rosario.ventas@lozadaviajes.com`, pageWidth - 45, 28)
+      doc.text(`Corrientes 631 (Piso 1) Rosario, Santa Fe`, pageWidth - 45, 32)
+
+      y = 45
+
+      // ========== FECHA Y NUMERO RECIBO ==========
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(10)
       doc.setFont("helvetica", "normal")
       doc.text(`${data.agencyCity} ${data.fechaFormateada}`, margin, y)
 
-      doc.setFontSize(12)
+      doc.setFontSize(11)
       doc.setFont("helvetica", "bold")
       doc.text(`RECIBO X: No ${data.receiptNumber}`, pageWidth - margin, y, { align: "right" })
 
-      y += 20
+      y += 15
 
       // Línea separadora
       doc.setDrawColor(0, 0, 0)
       doc.setLineWidth(0.5)
       doc.line(margin, y, pageWidth - margin, y)
       
-      y += 15
+      y += 12
 
-      // DATOS DEL CLIENTE
-      doc.setFontSize(11)
+      // ========== DATOS DEL CLIENTE ==========
+      doc.setFontSize(10)
       
       doc.setFont("helvetica", "bold")
       doc.text("Senor:", margin, y)
       doc.setFont("helvetica", "normal")
-      doc.text(data.customerName, margin + 25, y)
+      doc.text(data.customerName, margin + 22, y)
       
-      y += 10
+      y += 8
       
       doc.setFont("helvetica", "bold")
       doc.text("Domicilio:", margin, y)
       doc.setFont("helvetica", "normal")
-      doc.text(data.customerAddress || "-", margin + 30, y)
+      doc.text(data.customerAddress || "-", margin + 28, y)
       
-      y += 10
+      y += 8
       
       doc.setFont("helvetica", "bold")
       doc.text("Localidad:", margin, y)
       doc.setFont("helvetica", "normal")
-      doc.text(data.customerCity || "-", margin + 30, y)
-
-      y += 20
-
-      // MONTO RECIBIDO
-      doc.setFont("helvetica", "bold")
-      doc.setFontSize(12)
-      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR")}`, margin, y)
+      doc.text(data.customerCity || "-", margin + 28, y)
 
       y += 15
+
+      // ========== MONTO RECIBIDO ==========
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(11)
+      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR")}`, margin, y)
+
+      y += 12
 
       // CONCEPTO
       doc.setFont("helvetica", "normal")
-      doc.setFontSize(11)
+      doc.setFontSize(10)
       doc.text(data.concepto, margin, y)
 
-      y += 15
+      y += 10
 
       // Moneda recibida
       doc.setFont("helvetica", "bold")
       doc.text("Moneda recibida:", margin, y)
       doc.setFont("helvetica", "normal")
-      doc.text(data.currencyName, margin + 45, y)
+      doc.text(data.currencyName, margin + 42, y)
 
-      y += 25
+      y += 20
 
-      // TOTAL
+      // ========== TOTAL ==========
       doc.setLineWidth(0.3)
-      doc.line(pageWidth - 80, y, pageWidth - margin, y)
+      doc.line(pageWidth - 85, y, pageWidth - margin, y)
       
-      y += 10
+      y += 8
       
-      doc.setFontSize(14)
+      doc.setFontSize(12)
       doc.setFont("helvetica", "bold")
-      doc.text("TOTAL", pageWidth - 80, y)
+      doc.text("TOTAL", pageWidth - 85, y)
       
       const totalFormatted = `${data.currency} ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
       doc.text(totalFormatted, pageWidth - margin, y, { align: "right" })
 
-      y += 5
-      doc.line(pageWidth - 80, y, pageWidth - margin, y)
+      y += 4
+      doc.line(pageWidth - 85, y, pageWidth - margin, y)
 
-      y += 30
+      // ========== SALDO RESTANTE ==========
+      if (data.saldoRestante > 0) {
+        y += 15
+        doc.setFillColor(255, 243, 205) // Fondo amarillo claro
+        doc.rect(margin, y - 5, pageWidth - margin * 2, 18, "F")
+        
+        doc.setFontSize(10)
+        doc.setFont("helvetica", "bold")
+        doc.setTextColor(133, 100, 4) // Color dorado oscuro
+        doc.text("SALDO PENDIENTE DE PAGO:", margin + 5, y + 3)
+        
+        doc.setFontSize(12)
+        const saldoFormatted = `${data.currency} ${data.saldoRestante.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
+        doc.text(saldoFormatted, pageWidth - margin - 5, y + 3, { align: "right" })
+        
+        doc.setFontSize(8)
+        doc.setFont("helvetica", "normal")
+        doc.text(`(Total operacion: ${data.currency} ${data.totalOperacion.toLocaleString("es-AR")} - Pagado: ${data.currency} ${data.totalPagado.toLocaleString("es-AR")})`, margin + 5, y + 10)
+        
+        doc.setTextColor(0, 0, 0)
+        y += 20
+      } else if (data.totalOperacion > 0) {
+        y += 15
+        doc.setFillColor(209, 250, 229) // Fondo verde claro
+        doc.rect(margin, y - 5, pageWidth - margin * 2, 12, "F")
+        
+        doc.setFontSize(10)
+        doc.setFont("helvetica", "bold")
+        doc.setTextColor(22, 101, 52) // Verde oscuro
+        doc.text("PAGADO EN SU TOTALIDAD", pageWidth / 2, y + 3, { align: "center" })
+        
+        doc.setTextColor(0, 0, 0)
+        y += 15
+      }
 
-      // FIRMAS
-      doc.setFontSize(10)
+      y += 15
+
+      // ========== FIRMAS ==========
+      doc.setFontSize(9)
       doc.setFont("helvetica", "normal")
+      doc.setTextColor(0, 0, 0)
       
-      doc.line(margin, y, margin + 70, y)
-      doc.text("Firma Cliente", margin + 20, y + 8)
+      doc.line(margin, y, margin + 65, y)
+      doc.text("Firma Cliente", margin + 18, y + 6)
 
-      doc.line(pageWidth - margin - 70, y, pageWidth - margin, y)
-      doc.text("Firma Agencia", pageWidth - margin - 50, y + 8)
+      doc.line(pageWidth - margin - 65, y, pageWidth - margin, y)
+      doc.text("Firma Agencia", pageWidth - margin - 48, y + 6)
 
-      // FOOTER
-      const footerY = doc.internal.pageSize.getHeight() - 20
-      doc.setFontSize(8)
+      // ========== FOOTER ==========
+      const footerY = pageHeight - 15
+      doc.setFontSize(7)
       doc.setFont("helvetica", "italic")
       doc.setTextColor(128, 128, 128)
       
-      doc.text(data.agencyName, pageWidth / 2, footerY - 5, { align: "center" })
-      doc.text("Este recibo es valido como comprobante de pago.", pageWidth / 2, footerY, { align: "center" })
+      doc.text("LOZADA VIAJES - Corrientes 631 (Piso 1 Oficina F) Rosario, Santa Fe", pageWidth / 2, footerY - 3, { align: "center" })
+      doc.text("Este recibo es valido como comprobante de pago. No valido como factura.", pageWidth / 2, footerY + 1, { align: "center" })
 
       // Descargar el PDF
       doc.save(`recibo-${data.receiptNumber}.pdf`)
