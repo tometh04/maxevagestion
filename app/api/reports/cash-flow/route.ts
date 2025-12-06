@@ -189,10 +189,10 @@ export async function GET(request: Request) {
     )
 
     // Calcular totales por moneda y agencia
-    const balanceSummary = {
+    const balanceSummary: any = {
       total_ars: 0,
       total_usd: 0,
-      by_agency: {} as Record<string, { ars: number; usd: number; accounts: any[] }>,
+      by_agency: {} as Record<string, { ars: number; usd: number; accounts: any[]; agency_name?: string }>,
     }
 
     for (const account of accountsWithBalance) {
