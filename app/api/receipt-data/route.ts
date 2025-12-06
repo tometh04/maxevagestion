@@ -10,8 +10,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const paymentId = searchParams.get("paymentId")
     
-    console.log("Receipt data request for paymentId:", paymentId)
-    
     if (!paymentId) {
       return NextResponse.json({ error: "ID de pago requerido" }, { status: 400 })
     }
@@ -27,13 +25,11 @@ export async function GET(request: NextRequest) {
           id,
           file_code,
           destination,
-          agencies:agency_id (id, name, city, phone, email, address)
+          agencies:agency_id (id, name, city)
         )
       `)
       .eq("id", paymentId)
       .single()
-
-    console.log("Payment query result:", { payment: payment?.id, error: error?.message })
 
     if (error) {
       console.error("Supabase error:", error)

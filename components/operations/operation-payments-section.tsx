@@ -88,9 +88,6 @@ export function OperationPaymentsSection({
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [dialogOpen, setDialogOpen] = useState(false)
-  
-  // Debug: mostrar los pagos que llegan
-  console.log("Payments received:", payments.map(p => ({ id: p.id, amount: p.amount, status: p.status })))
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
