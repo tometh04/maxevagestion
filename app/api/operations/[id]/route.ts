@@ -397,14 +397,14 @@ export async function DELETE(
       console.error("Error deleting alerts:", error)
     }
 
-    // 7. Eliminar comisiones
+    // 7. Eliminar comisiones (commission_records)
     try {
-      await (supabase.from("commissions") as any)
+      await (supabase.from("commission_records") as any)
         .delete()
         .eq("operation_id", operationId)
-      console.log(`  ✓ Comisiones eliminadas`)
+      console.log(`  ✓ Comisiones (commission_records) eliminadas`)
     } catch (error) {
-      console.error("Error deleting commissions:", error)
+      console.error("Error deleting commission_records:", error)
     }
 
     // 8. Eliminar documentos (el storage se limpia con policies)

@@ -282,25 +282,31 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 2.4 Manejo de Edge Cases
+### 2.4 Manejo de Edge Cases ✅
 
 **Objetivo:** El sistema debe manejar casos extremos sin romperse.
 
 **Tareas:**
-- [ ] Al eliminar operación:
-  - Verificar que se eliminen todos los movimientos contables
-  - Verificar que se eliminen todas las alertas
-  - Verificar que se eliminen todos los documentos (opcional)
-- [ ] Al eliminar cliente:
-  - Verificar que no tenga operaciones activas
-  - Si tiene operaciones, mostrar error claro
-- [ ] Al cambiar moneda de operación:
-  - Recalcular todos los movimientos contables
-  - Actualizar exchange rates
-  - Recalcular balances
-- [ ] Al eliminar pago:
-  - Revertir movimientos contables correctamente
-  - Actualizar balances de caja
+- [x] Al eliminar operación:
+  - Verificar que se eliminen todos los movimientos contables ✅
+  - Verificar que se eliminen todas las alertas ✅
+  - Verificar que se eliminen todos los documentos ✅
+  - Verificar que se eliminen commission_records ✅
+  - Revertir lead a IN_PROGRESS si existe ✅
+- [x] Al eliminar cliente:
+  - Verificar que no tenga operaciones activas ✅
+  - Si tiene operaciones, mostrar error claro y detallado ✅
+  - Distinguir entre operaciones activas y canceladas/cerradas ✅
+- [x] Al cambiar moneda de operación:
+  - Detecta cambios de moneda y registra advertencia ✅
+  - Recalcular todos los movimientos contables automáticamente (TODO futuro - requiere refactorización mayor)
+  - Actualizar exchange rates (TODO futuro)
+  - Recalcular balances (TODO futuro)
+- [x] Al eliminar pago:
+  - Revertir movimientos contables correctamente ✅
+  - Revertir operator_payment a PENDING si estaba pagado ✅
+  - Eliminar cash_movements y ledger_movements asociados ✅
+  - Invalidar caché del dashboard ✅
 
 **Archivos a modificar:**
 - `app/api/operations/[id]/route.ts` (DELETE)

@@ -10,6 +10,7 @@ import {
   getExchangeRate,
   getLatestExchangeRate,
 } from "@/lib/accounting/exchange-rates"
+import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 
 /**
  * POST /api/payments
@@ -381,8 +382,14 @@ export async function DELETE(request: Request) {
     }
 
     console.log(`✅ Pago ${paymentId} eliminado junto con sus movimientos contables`)
+    console.log(`  ✓ Cash movement eliminado`)
+    console.log(`  ✓ Ledger movement eliminado (si existía)`)
+    console.log(`  ✓ Operator payment revertido a PENDING (si estaba marcado como pagado)`)
 
-    return NextResponse.json({ success: true, message: "Pago eliminado correctamente" })
+    // Invalidar caché del dashboard (los KPIs cambian al eliminar un pago)
+    revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    return NextResponse.json({ success: true, message: "Pago eliminado correctamente. Los movimientos contables fueron revertidos." })
   } catch (error) {
     console.error("Error in DELETE /api/payments:", error)
     return NextResponse.json({ error: "Error al eliminar pago" }, { status: 500 })

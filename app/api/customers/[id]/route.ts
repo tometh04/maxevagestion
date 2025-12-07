@@ -112,23 +112,48 @@ export async function DELETE(
     const supabase = await createServerClient()
     const { id: customerId } = await params
 
-    // Check if customer has operations
-    const { data: operationCustomers, error: checkError } = await supabase
+    // Check if customer has operations - obtener más información para mensaje detallado
+    const { data: operations, error: checkError } = await supabase
       .from("operation_customers")
-      .select("id")
+      .select(`
+        id,
+        operations:operation_id(
+          id,
+          destination,
+          status,
+          departure_date
+        )
+      `)
       .eq("customer_id", customerId)
-      .limit(1)
 
     if (checkError) {
       console.error("Error checking customer operations:", checkError)
       return NextResponse.json({ error: "Error al verificar cliente" }, { status: 500 })
     }
 
-    if (operationCustomers && operationCustomers.length > 0) {
-      return NextResponse.json(
-        { error: "No se puede eliminar el cliente porque tiene operaciones asociadas" },
-        { status: 400 }
-      )
+    if (operations && operations.length > 0) {
+      // Verificar si hay operaciones activas (no canceladas, no cerradas)
+      const activeOperations = operations.filter((oc: any) => {
+        const op = oc.operations
+        return op && !["CANCELLED", "CLOSED"].includes(op.status)
+      })
+
+      if (activeOperations.length > 0) {
+        return NextResponse.json(
+          { 
+            error: `No se puede eliminar el cliente porque tiene ${activeOperations.length} operación(es) activa(s) asociada(s). Las operaciones deben estar canceladas o cerradas para poder eliminar el cliente.` 
+          },
+          { status: 400 }
+        )
+      } else {
+        // Tiene operaciones pero todas están canceladas o cerradas - aún así no permitimos eliminar
+        return NextResponse.json(
+          { 
+            error: `No se puede eliminar el cliente porque tiene ${operations.length} operación(es) asociada(s) (aunque estén canceladas o cerradas). Esta restricción evita perder el historial de viajes del cliente.` 
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Delete customer documents first
