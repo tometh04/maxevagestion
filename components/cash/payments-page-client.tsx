@@ -22,8 +22,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
   const [status, setStatus] = useState("ALL")
   const [payerType, setPayerType] = useState("ALL")
   const [direction, setDirection] = useState("ALL")
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [loading, setLoading] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0) // Para forzar refresh de PaymentsTable
 
   const filters = useMemo(
     () => ({
@@ -35,43 +34,9 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
     [baseFilters, status, payerType, direction],
   )
 
-  const fetchPayments = useCallback(async () => {
-    setLoading(true)
-    const params = new URLSearchParams()
-    params.set("dateFrom", filters.dateFrom)
-    params.set("dateTo", filters.dateTo)
-    params.set("currency", filters.currency)
-
-    if (filters.agencyId !== "ALL") {
-      params.set("agencyId", filters.agencyId)
-    }
-
-    if (filters.status !== "ALL") {
-      params.set("status", filters.status)
-    }
-
-    if (filters.payerType !== "ALL") {
-      params.set("payerType", filters.payerType)
-    }
-
-    if (filters.direction !== "ALL") {
-      params.set("direction", filters.direction)
-    }
-
-    try {
-      const response = await fetch(`/api/payments?${params.toString()}`)
-      const data = await response.json()
-      setPayments(data.payments || [])
-    } catch (error) {
-      console.error("Error fetching payments:", error)
-    } finally {
-      setLoading(false)
-    }
-  }, [filters])
-
-  useEffect(() => {
-    fetchPayments()
-  }, [fetchPayments])
+  const handleRefresh = useCallback(() => {
+    setRefreshKey(prev => prev + 1) // Forzar re-render de PaymentsTable
+  }, [])
 
   return (
     <div className="space-y-6">
@@ -120,19 +85,27 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
         </div>
 
         <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => setBaseFilters(defaultFilters)}>
+          <Button variant="outline" onClick={() => {
+            setBaseFilters(defaultFilters)
+            setStatus("ALL")
+            setPayerType("ALL")
+            setDirection("ALL")
+          }}>
             Limpiar filtros
-          </Button>
-          <Button onClick={fetchPayments} disabled={loading}>
-            Actualizar
           </Button>
         </div>
       </div>
 
       <PaymentsTable
-        payments={payments}
-        isLoading={loading}
-        onRefresh={fetchPayments}
+        key={refreshKey} // Forzar re-render cuando cambian los filtros
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        currency={filters.currency}
+        agencyId={filters.agencyId}
+        status={filters.status}
+        payerType={filters.payerType}
+        direction={filters.direction}
+        onRefresh={handleRefresh}
         emptyMessage="No encontramos pagos con los filtros actuales"
       />
     </div>

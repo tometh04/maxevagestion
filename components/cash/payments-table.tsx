@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useEffect, useCallback } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label"
 import { DatePicker } from "@/components/ui/date-picker"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
+import { ServerPagination } from "@/components/ui/server-pagination"
 import { MoreHorizontal } from "lucide-react"
 import {
   DropdownMenu,
@@ -51,18 +52,95 @@ export interface Payment {
 }
 
 interface PaymentsTableProps {
-  payments: Payment[]
+  payments?: Payment[] // Opcional: si no se pasa, carga sus propios datos con paginación
   isLoading?: boolean
   onRefresh?: () => void
   emptyMessage?: string
+  // Filtros para paginación server-side
+  dateFrom?: string
+  dateTo?: string
+  currency?: string
+  agencyId?: string
+  status?: string
+  payerType?: string
+  direction?: string
 }
 
-export function PaymentsTable({ payments, isLoading = false, onRefresh, emptyMessage }: PaymentsTableProps) {
+export function PaymentsTable({ 
+  payments: initialPayments, 
+  isLoading: externalLoading = false, 
+  onRefresh, 
+  emptyMessage,
+  dateFrom,
+  dateTo,
+  currency,
+  agencyId,
+  status,
+  payerType,
+  direction,
+}: PaymentsTableProps) {
+  const [payments, setPayments] = useState<Payment[]>(initialPayments || [])
+  const [loading, setLoading] = useState(!initialPayments)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
   const [datePaid, setDatePaid] = useState("")
   const [reference, setReference] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Estado de paginación server-side
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  
+  // Si se pasan payments como prop, usarlos (modo legacy)
+  // Si no, cargar con paginación server-side
+  const useServerPagination = !initialPayments
+  
+  const fetchPayments = useCallback(async () => {
+    if (!useServerPagination) return // Si se pasan payments como prop, no cargar
+    
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (dateFrom) params.append("dateFrom", dateFrom)
+      if (dateTo) params.append("dateTo", dateTo)
+      if (currency) params.append("currency", currency)
+      if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
+      if (status && status !== "ALL") params.append("status", status)
+      if (payerType && payerType !== "ALL") params.append("payerType", payerType)
+      if (direction && direction !== "ALL") params.append("direction", direction)
+      params.append("page", page.toString())
+      params.append("limit", limit.toString())
+
+      const response = await fetch(`/api/payments?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setPayments(data.payments || [])
+        // El API retorna paginación dentro de un objeto 'pagination'
+        const pagination = data.pagination || {}
+        setTotal(pagination.total || 0)
+        setTotalPages(pagination.totalPages || 0)
+        setHasMore(pagination.hasMore || false)
+      }
+    } catch (error) {
+      console.error("Error fetching payments:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, status, payerType, direction, page, limit])
+  
+  useEffect(() => {
+    fetchPayments()
+  }, [fetchPayments])
+  
+  // Si se pasan payments como prop, actualizar cuando cambien
+  useEffect(() => {
+    if (initialPayments) {
+      setPayments(initialPayments)
+    }
+  }, [initialPayments])
 
   const columns: ColumnDef<Payment & { searchText?: string }>[] = useMemo(
     () => [
@@ -242,12 +320,17 @@ export function PaymentsTable({ payments, isLoading = false, onRefresh, emptyMes
       setDialogOpen(false)
       setSelectedPayment(null)
       onRefresh?.()
+      if (useServerPagination) {
+        fetchPayments() // Recargar si usa paginación server-side
+      }
     } catch (error) {
       console.error("Error al marcar pago:", error)
     } finally {
       setIsSubmitting(false)
     }
   }
+
+  const isLoading = externalLoading || (loading && useServerPagination)
 
   if (isLoading) {
     return (
@@ -265,15 +348,35 @@ export function PaymentsTable({ payments, isLoading = false, onRefresh, emptyMes
 
   return (
     <>
-      <DataTable
-        columns={columns}
-        data={payments.map((p) => ({
-          ...p,
-          searchText: `${p.operations?.destination || ""} ${p.operations?.agencies?.name || ""}`.toLowerCase(),
-        }))}
-        searchKey="searchText"
-        searchPlaceholder="Buscar por destino o agencia..."
-      />
+      <div className="space-y-4">
+        <DataTable
+          columns={columns}
+          data={payments.map((p) => ({
+            ...p,
+            searchText: `${p.operations?.destination || ""} ${p.operations?.agencies?.name || ""}`.toLowerCase(),
+          }))}
+          searchKey="searchText"
+          searchPlaceholder="Buscar por destino o agencia..."
+          showPagination={false}
+        />
+        
+        {/* Paginación server-side (solo si no se pasan payments como prop) */}
+        {useServerPagination && total > 0 && (
+          <ServerPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            hasMore={hasMore}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit)
+              setPage(1) // Resetear a página 1
+            }}
+            limitOptions={[25, 50, 100, 200]}
+          />
+        )}
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

@@ -23,9 +23,8 @@ interface MovementsPageClientProps {
 export function MovementsPageClient({ agencies, defaultFilters, operations = [] }: MovementsPageClientProps) {
   const [baseFilters, setBaseFilters] = useState(defaultFilters)
   const [type, setType] = useState("ALL")
-  const [movements, setMovements] = useState<CashMovement[]>([])
-  const [loading, setLoading] = useState(false)
   const [newMovementDialogOpen, setNewMovementDialogOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0) // Para forzar refresh de MovementsTable
 
   const filters = useMemo(
     () => ({
@@ -35,31 +34,9 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
     [baseFilters, type],
   )
 
-  const fetchMovements = useCallback(async () => {
-    setLoading(true)
-    const params = new URLSearchParams()
-    params.set("dateFrom", filters.dateFrom)
-    params.set("dateTo", filters.dateTo)
-    params.set("currency", filters.currency)
-
-    if (filters.agencyId !== "ALL") {
-      params.set("agencyId", filters.agencyId)
-    }
-
-    if (filters.type !== "ALL") {
-      params.set("type", filters.type)
-    }
-
-    try {
-      const response = await fetch(`/api/cash/movements?${params.toString()}`)
-      const data = await response.json()
-      setMovements(data.movements || [])
-    } catch (error) {
-      console.error("Error fetching movements:", error)
-    } finally {
-      setLoading(false)
-    }
-  }, [filters])
+  const handleRefresh = useCallback(() => {
+    setRefreshKey(prev => prev + 1) // Forzar re-render de MovementsTable
+  }, [])
 
   const handleExport = useCallback(async () => {
     const params = new URLSearchParams()
@@ -97,10 +74,6 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
     }
   }, [filters])
 
-  useEffect(() => {
-    fetchMovements()
-  }, [fetchMovements])
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -131,26 +104,30 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
         </div>
 
         <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => setBaseFilters(defaultFilters)}>
+          <Button variant="outline" onClick={() => {
+            setBaseFilters(defaultFilters)
+            setType("ALL")
+          }}>
             Limpiar filtros
-          </Button>
-          <Button variant="outline" onClick={fetchMovements} disabled={loading}>
-            Actualizar
           </Button>
           <Button onClick={handleExport}>Exportar CSV</Button>
         </div>
       </div>
 
       <MovementsTable
-        movements={movements}
-        isLoading={loading}
+        key={refreshKey} // Forzar re-render cuando cambian los filtros
+        dateFrom={filters.dateFrom}
+        dateTo={filters.dateTo}
+        currency={filters.currency}
+        agencyId={filters.agencyId}
+        type={filters.type}
         emptyMessage="No encontramos movimientos con los filtros actuales"
       />
 
       <NewCashMovementDialog
         open={newMovementDialogOpen}
         onOpenChange={setNewMovementDialogOpen}
-        onSuccess={fetchMovements}
+        onSuccess={handleRefresh}
         operations={operations}
       />
     </div>
