@@ -6,6 +6,7 @@ import { transferLeadToOperation, getOrCreateDefaultAccount } from "@/lib/accoun
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { canPerformAction } from "@/lib/permissions-api"
+import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 
 export async function POST(request: Request) {
   try {
