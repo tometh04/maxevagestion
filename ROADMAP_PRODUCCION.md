@@ -430,13 +430,18 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 - [x] Edge cases manejados ✅
 - [x] Búsqueda global funcional ✅
 
-### Testing (Recomendado Antes de Producción)
-- [ ] Flujo completo probado: Lead → Operación → Pago → Cierre - **RECOMENDADO**
-- [ ] Eliminaciones probadas - **RECOMENDADO**
-- [ ] Cambios de moneda probados - **RECOMENDADO**
-- [ ] Sincronización Trello probada (con muchos cards) - **RECOMENDADO**
-- [ ] AI Copilot probado con preguntas complejas - **RECOMENDADO**
-- [ ] Performance probada con datos reales - **RECOMENDADO**
+### Testing ✅ CHECKLIST CREADO
+- [x] Checklist de testing completo creado (`TESTING_COMPLETO_PRODUCCION.md`) ✅
+- [ ] Flujo completo probado: Lead → Operación → Pago → Cierre - **EN PROGRESO**
+- [ ] Eliminaciones probadas - **PENDIENTE**
+- [ ] Cambios de moneda probados - **PENDIENTE**
+- [ ] Sincronización Trello probada (con muchos cards) - **PENDIENTE**
+- [ ] AI Copilot probado con preguntas complejas - **PENDIENTE**
+- [ ] Performance probada con datos reales - **PENDIENTE**
+
+**Documentación de Testing:**
+- ✅ `TESTING_COMPLETO_PRODUCCION.md` - Checklist completo para producción
+- ✅ `TESTING_CHECKLIST.md` - Checklist detallado de funcionalidades nuevas
 
 ### Documentación ✅ COMPLETADO
 - [x] Manual de usuario actualizado ✅
