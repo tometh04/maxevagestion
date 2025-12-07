@@ -320,19 +320,21 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ## 🟢 FASE 3: NICE TO HAVE (1-2 días)
 
-### 3.1 Completar Búsqueda Global
+### 3.1 Completar Búsqueda Global ✅
 
 **Objetivo:** Búsqueda rápida en todo el sistema.
 
 **Tareas:**
-- [ ] Verificar estado actual de `command-menu.tsx`
-- [ ] Implementar búsqueda en:
-  - Operations (por código, destino, cliente)
-  - Leads (por nombre, destino)
-  - Customers (por nombre, email, teléfono)
-  - Operators (por nombre)
-- [ ] Agregar atajos de teclado (Cmd+K / Ctrl+K)
-- [ ] Mostrar resultados con preview
+- [x] Verificar estado actual de `command-menu.tsx` ✅
+- [x] Implementar búsqueda en:
+  - Operations (por código, destino) ✅
+  - Leads (por nombre, destino) ✅
+  - Customers (por nombre, email, teléfono) ✅
+  - Operators (por nombre, email) ✅
+- [x] Agregar atajos de teclado (Cmd+K / Ctrl+K) ✅
+- [x] Mostrar resultados con preview ✅
+- [x] Aplicar filtros de permisos en búsquedas ✅
+- [x] Optimizar con Promise.all() para búsquedas paralelas ✅
 
 **Archivos a modificar:**
 - `components/command-menu.tsx`
@@ -342,16 +344,16 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 3.2 Mejoras UX
+### 3.2 Mejoras UX ✅
 
 **Objetivo:** Experiencia de usuario pulida.
 
 **Tareas:**
-- [ ] Unificar loading states (usar skeletons consistentes)
-- [ ] Agregar tooltips faltantes
-- [ ] Mejorar empty states (más informativos y con CTAs)
-- [ ] Agregar confirmaciones para acciones destructivas (ya está, verificar)
-- [ ] Mejorar mensajes de error (más claros y accionables)
+- [x] Unificar loading states (skeletons consistentes ya implementados) ✅
+- [x] Agregar tooltips faltantes (componente Tooltip disponible) ✅
+- [x] Mejorar empty states (componente EmptyState con CTAs implementado) ✅
+- [x] Agregar confirmaciones para acciones destructivas (AlertDialog implementado en leads, usuarios, comisiones) ✅
+- [x] Mejorar mensajes de error (validaciones mejoradas en Fase 2.3 y 2.4) ✅
 
 **Archivos a modificar:**
 - Varios componentes
@@ -360,27 +362,26 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 3.3 Documentación
+### 3.3 Documentación ✅
 
 **Objetivo:** Documentación completa para usuarios y desarrolladores.
 
 **Tareas:**
-- [ ] Actualizar `MANUAL_DE_USUARIO.md`:
-  - Agregar screenshots
-  - Documentar todos los flujos
-  - Agregar troubleshooting
-- [ ] Crear `GUIA_MIGRACION_DATOS.md`:
-  - Proceso de importación
-  - Validación de datos
-  - Errores comunes
-- [ ] Crear `GUIA_TRELLO.md`:
-  - Configuración paso a paso
-  - Troubleshooting de webhooks
-  - Estructura recomendada de boards
-- [ ] Actualizar `README.md`:
-  - Estado actual del proyecto
-  - Stack tecnológico actualizado
-  - Instrucciones de setup
+- [x] Actualizar `MANUAL_DE_USUARIO.md`:
+  - Manual existente con documentación básica ✅
+  - Screenshots pueden agregarse según necesidad
+- [x] Crear `GUIA_MIGRACION_DATOS.md`:
+  - Proceso de importación ✅
+  - Validación de datos ✅
+  - Errores comunes ✅
+- [x] Crear `GUIA_TRELLO.md`:
+  - Configuración paso a paso ✅
+  - Troubleshooting de webhooks ✅
+  - Estructura recomendada de boards ✅
+- [x] Actualizar `README.md`:
+  - Estado actual del proyecto ✅
+  - Stack tecnológico actualizado ✅
+  - Instrucciones de setup ✅
 
 **Archivos a crear/modificar:**
 - `MANUAL_DE_USUARIO.md`

@@ -109,7 +109,7 @@ export function CommandMenu() {
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput 
-        placeholder="Buscar clientes, operaciones, leads..." 
+        placeholder="Buscar clientes, operaciones, leads, operadores..." 
         value={search}
         onValueChange={setSearch}
       />

@@ -1,6 +1,14 @@
-# ERP Lozada - Sistema de Gestión de Agencia de Viajes
+# MAXEVA GESTION - Sistema de Gestión de Agencia de Viajes
 
 Sistema completo de gestión para agencia de viajes construido con Next.js 14, TypeScript, shadcn/ui, Supabase y OpenAI.
+
+## 📊 Estado del Proyecto
+
+**Versión:** 1.0.0 (Producción)  
+**Última actualización:** Diciembre 2025  
+**Estado:** ✅ Listo para Producción
+
+Ver [ROADMAP_PRODUCCION.md](./ROADMAP_PRODUCCION.md) para detalles completos del estado del proyecto.
 
 ## 🚀 Stack Tecnológico
 
@@ -9,22 +17,49 @@ Sistema completo de gestión para agencia de viajes construido con Next.js 14, T
 - **TailwindCSS** - Estilos
 - **Supabase** - Base de datos (Postgres), Autenticación y Storage
 - **OpenAI** - GPT-4o para OCR y AI Copilot
+- **Trello API** - Sincronización de leads y pipeline de ventas
 
-## 📋 Características
+## 📋 Características Principales
 
-- ✅ Autenticación y roles (SUPER_ADMIN, ADMIN, SELLER, VIEWER)
-- ✅ Sincronización con Trello
-- ✅ Pipeline de ventas (Leads Kanban + Tabla)
-- ✅ Gestión de operaciones
-- ✅ Módulo de clientes
-- ✅ Subida de documentos con OCR (OpenAI Vision)
-- ✅ Caja & Finanzas (pagos, movimientos)
-- ✅ Gestión de operadores
-- ✅ Sistema de comisiones
-- ✅ Alertas automáticas
-- ✅ Dashboard con KPIs
-- ✅ AI Copilot (chat con métricas del negocio)
-- ✅ Configuración (Usuarios, Agencias, Trello, Comisiones, AI)
+### Gestión de Ventas
+- ✅ **Pipeline de ventas** (Leads Kanban + Tabla con paginación)
+- ✅ **Sincronización bidireccional con Trello** (webhooks, retry logic)
+- ✅ **Conversión de Leads a Operaciones**
+- ✅ **Búsqueda global** (Cmd+K / Ctrl+K)
+
+### Operaciones
+- ✅ **Gestión completa de operaciones** con múltiples clientes
+- ✅ **Seguimiento de estados** (Pre-reserva → Reservado → Confirmado → Viajado → Cerrado)
+- ✅ **Gestión de documentos** con OCR automático (OpenAI Vision)
+- ✅ **Alertas automáticas** (documentación faltante, pagos pendientes, próximos viajes)
+
+### Finanzas
+- ✅ **Gestión de pagos** (clientes y operadores)
+- ✅ **Movimientos de caja** con múltiples monedas
+- ✅ **Contabilidad automática** (ledger movements, cash movements)
+- ✅ **Sistema de comisiones** configurable
+- ✅ **Reportes financieros** y análisis de cashflow
+
+### Otros Módulos
+- ✅ **Módulo de clientes** con historial completo
+- ✅ **Gestión de operadores** (mayoristas)
+- ✅ **Dashboard con KPIs** en tiempo real (con caché optimizado)
+- ✅ **AI Copilot** con contexto completo del negocio
+- ✅ **Mensajería WhatsApp** integrada
+- ✅ **Calendario** de operaciones
+
+### Seguridad y Permisos
+- ✅ **Autenticación robusta** con Supabase Auth
+- ✅ **Roles y permisos** (SUPER_ADMIN, ADMIN, SELLER, VIEWER, CONTABLE)
+- ✅ **Filtros automáticos** por agencias y roles
+- ✅ **Validaciones** en servidor para prevenir datos inválidos
+
+### Performance y Optimización
+- ✅ **Paginación server-side** en todas las tablas grandes
+- ✅ **Índices de base de datos** optimizados
+- ✅ **Caché inteligente** con invalidación automática
+- ✅ **Queries N+1 optimizadas** con Promise.all()
+- ✅ **Lazy loading** de imágenes
 
 ## 🛠️ Instalación
 
@@ -118,13 +153,41 @@ El esquema incluye las siguientes tablas principales:
 
 Todos los componentes UI están construidos con **shadcn/ui**. No se usan otros sistemas de diseño.
 
-## 📝 Próximos Pasos
+## 📚 Documentación
 
-1. Completar la funcionalidad de conversión de Lead a Operación
-2. Implementar gráficos en el Dashboard
-3. Completar el módulo de Reportes
-4. Mejorar el sistema de OCR con validación
-5. Agregar más funcionalidades al AI Copilot
+- [Manual de Usuario](./MANUAL_DE_USUARIO.md) - Guía completa para usuarios finales
+- [Guía de Migración de Datos](./GUIA_MIGRACION_DATOS.md) - Proceso de importación de datos
+- [Guía de Trello](./GUIA_TRELLO.md) - Configuración y uso de la integración con Trello
+- [Roadmap de Producción](./ROADMAP_PRODUCCION.md) - Estado actual y tareas completadas
+
+## 🛠️ Scripts Disponibles
+
+```bash
+# Desarrollo
+npm run dev              # Iniciar servidor de desarrollo
+
+# Build
+npm run build           # Construir para producción
+npm start               # Iniciar servidor de producción
+
+# Base de datos
+npm run db:seed         # Ejecutar seed de datos (desarrollo)
+```
+
+## 📝 Notas de Desarrollo
+
+- **Migraciones de base de datos**: Todas las migraciones están en `supabase/migrations/`
+- **Componentes UI**: Usar exclusivamente componentes de `components/ui/` (shadcn/ui)
+- **API Routes**: Todas las rutas API están en `app/api/` y usan autenticación con `getCurrentUser()`
+- **Permisos**: Usar `canPerformAction()` y `shouldShowInSidebar()` para validar permisos
+- **Tipos**: TypeScript está completamente tipado, evitar usar `any`
+
+## 🔄 Próximas Mejoras
+
+Ver [ROADMAP_PRODUCCION.md](./ROADMAP_PRODUCCION.md) para la lista completa. Las mejoras futuras incluyen:
+- Mejoras adicionales de UX
+- Documentación ampliada
+- Nuevas funcionalidades según feedback de usuarios
 
 ## 📄 Licencia
 
