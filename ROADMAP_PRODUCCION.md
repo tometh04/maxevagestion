@@ -442,6 +442,7 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 **Documentación de Testing:**
 - ✅ `TESTING_COMPLETO_PRODUCCION.md` - Checklist completo para producción
 - ✅ `TESTING_CHECKLIST.md` - Checklist detallado de funcionalidades nuevas
+- ✅ `GUIA_EJECUCION_TESTING.md` - Guía práctica paso a paso para ejecutar pruebas
 
 ### Documentación ✅ COMPLETADO
 - [x] Manual de usuario actualizado ✅
