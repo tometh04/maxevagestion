@@ -274,7 +274,14 @@ export async function POST(request: Request) {
       // Sync the card
       try {
         console.log("🔄 Syncing card:", cardId, "for action:", actionType)
-        const card = await fetchTrelloCard(cardId, trelloSettings.trello_api_key, trelloSettings.trello_token)
+        
+        // MEJORADO: Usar retry logic (fetchTrelloCard ya tiene retry integrado)
+        const card = await fetchTrelloCard(
+          cardId, 
+          trelloSettings.trello_api_key, 
+          trelloSettings.trello_token
+        )
+        
         if (card) {
           console.log("✅ Card fetched successfully:", card.name)
           console.log("📋 Card details:", {
@@ -317,12 +324,21 @@ export async function POST(request: Request) {
           action: actionType,
           duration: `${duration}ms`,
         })
+        
+        // MEJORADO: Mensajes de error más específicos
+        let errorMessage = error.message || "Error desconocido"
+        if (error.message?.includes("429") || error.message?.includes("Rate limit")) {
+          errorMessage = "Rate limit de Trello API. El webhook será procesado más tarde."
+        } else if (error.message?.includes("401") || error.message?.includes("Invalid")) {
+          errorMessage = "Credenciales de Trello inválidas. Verifica la configuración."
+        }
+        
         // Return 200 to prevent Trello from retrying failed webhooks
         // Log the error but don't fail the webhook
         return NextResponse.json({ 
           received: true,
           error: "Error syncing card", 
-          message: error.message,
+          message: errorMessage,
           cardId,
           action: actionType,
         })

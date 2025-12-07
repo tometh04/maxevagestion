@@ -80,8 +80,10 @@ export async function POST(request: Request) {
     // Helper para hacer delay
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-    // Helper para retry con backoff exponencial
-    const fetchCardWithRetry = async (cardId: string, retries = 3): Promise<any> => {
+    // MEJORADO: fetchTrelloCard ya tiene retry logic integrado, pero manejamos errores aquí
+    const fetchCardWithRetry = async (cardId: string, retries = 2): Promise<any> => {
+      // fetchTrelloCard ya tiene retry logic interno (3 intentos), 
+      // pero si falla completamente, podemos reintentar una vez más aquí
       for (let attempt = 0; attempt < retries; attempt++) {
         try {
           const fullCard = await fetchTrelloCard(
@@ -94,8 +96,8 @@ export async function POST(request: Request) {
           // Si es rate limit, esperar más tiempo
           if (error.message?.includes("429") || error.message?.includes("Rate limit") || error.message?.includes("Too Many Requests")) {
             rateLimited++
-            const waitTime = Math.min(1000 * Math.pow(2, attempt), 10000) // Max 10 segundos
-            console.log(`⚠️ Rate limit detectado para card ${cardId}, esperando ${waitTime}ms antes de reintentar...`)
+            const waitTime = Math.min(2000 * Math.pow(2, attempt), 30000) // Max 30 segundos
+            console.log(`⚠️ Rate limit persistente para card ${cardId}, esperando ${waitTime}ms antes de reintentar...`)
             await delay(waitTime)
             continue
           }
@@ -104,7 +106,7 @@ export async function POST(request: Request) {
             throw error
           }
           // Esperar un poco antes de reintentar
-          await delay(500 * (attempt + 1))
+          await delay(1000 * (attempt + 1))
         }
       }
       return null

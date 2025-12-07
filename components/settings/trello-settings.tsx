@@ -136,8 +136,8 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
 
   const handleTestConnection = async () => {
     const values = form.getValues()
-    if (!values.apiKey || !values.token || !values.boardId) {
-      setTestResult("❌ Por favor completa todos los campos")
+    if (!values.apiKey || !values.token) {
+      setTestResult("❌ Por favor completa API Key y Token")
       return
     }
 
@@ -145,26 +145,35 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
     setTestResult(null)
 
     try {
-      const res = await fetch("/api/trello/test-connection", {
+      // Usar el nuevo endpoint de validación
+      const res = await fetch("/api/trello/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           apiKey: values.apiKey,
           token: values.token,
-          boardId: values.boardId,
-          agencyId: agencyId || "",
+          boardId: values.boardId || undefined,
         }),
       })
       const data = await res.json()
-      if (data.success) {
-        setTestResult(`✅ Conectado a: ${data.board.name}`)
-        // Load lists after successful connection
-        await loadLists()
+      if (data.valid) {
+        let message = `✅ ${data.message || "Credenciales válidas"}`
+        if (data.member) {
+          message += `\n👤 Usuario: ${data.member.fullName || data.member.username}`
+        }
+        if (data.board) {
+          message += `\n📋 Board: ${data.board.name} (${data.listsCount || 0} listas)`
+        }
+        setTestResult(message)
+        // Load lists after successful connection if boardId was provided
+        if (values.boardId) {
+          await loadLists()
+        }
       } else {
-        setTestResult(`❌ ${data.error || "Error al conectar"}`)
+        setTestResult(`❌ ${data.error || "Credenciales inválidas"}`)
       }
-    } catch (error) {
-      setTestResult("❌ Error al conectar")
+    } catch (error: any) {
+      setTestResult(`❌ Error: ${error.message || "Error al validar"}`)
     } finally {
       setLoading(false)
     }
@@ -177,7 +186,29 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
     }
 
     setLoading(true)
+    setTestResult(null)
+    
     try {
+      // MEJORA: Validar credenciales ANTES de guardar
+      const validateRes = await fetch("/api/trello/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          apiKey: values.apiKey,
+          token: values.token,
+          boardId: values.boardId,
+        }),
+      })
+      
+      const validateData = await validateRes.json()
+      
+      if (!validateData.valid) {
+        setTestResult(`❌ ${validateData.error || "Credenciales inválidas"}`)
+        setLoading(false)
+        return
+      }
+
+      // Si la validación fue exitosa, guardar
       const res = await fetch("/api/settings/trello", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -192,13 +223,13 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
       })
       const data = await res.json()
       if (res.ok) {
-        setTestResult("✅ Credenciales guardadas correctamente")
+        setTestResult(`✅ ${validateData.message || "Credenciales guardadas correctamente"}`)
         await loadLists()
       } else {
         setTestResult(`❌ ${data.error || "Error al guardar"}`)
       }
-    } catch (error) {
-      setTestResult("❌ Error al guardar")
+    } catch (error: any) {
+      setTestResult(`❌ Error: ${error.message || "Error al guardar"}`)
     } finally {
       setLoading(false)
     }

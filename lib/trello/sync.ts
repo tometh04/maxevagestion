@@ -395,8 +395,60 @@ export async function syncTrelloCardToLead(
 }
 
 /**
+ * Retry helper con exponential backoff
+ */
+async function fetchWithRetry(
+  url: string,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<Response> {
+  let lastError: Error | null = null
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(url)
+      
+      // Si es rate limit, esperar más tiempo
+      if (response.status === 429) {
+        const retryAfter = response.headers.get("Retry-After")
+        const waitTime = retryAfter 
+          ? parseInt(retryAfter) * 1000 
+          : baseDelay * Math.pow(2, attempt)
+        
+        console.log(`⚠️ Rate limit (429). Esperando ${waitTime}ms antes de reintentar... (intento ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 30000))) // Max 30 segundos
+        continue
+      }
+      
+      // Si es otro error, esperar un poco y reintentar
+      if (!response.ok && response.status >= 500) {
+        const waitTime = baseDelay * Math.pow(2, attempt)
+        console.log(`⚠️ Error ${response.status}. Esperando ${waitTime}ms antes de reintentar... (intento ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+        continue
+      }
+      
+      // Si la respuesta es OK o error 4xx (no reintentar), retornar
+      return response
+      
+    } catch (error: any) {
+      lastError = error
+      if (attempt < maxRetries - 1) {
+        const waitTime = baseDelay * Math.pow(2, attempt)
+        console.log(`⚠️ Error de red: ${error.message}. Esperando ${waitTime}ms antes de reintentar... (intento ${attempt + 1}/${maxRetries})`)
+        await new Promise(resolve => setTimeout(resolve, waitTime))
+      }
+    }
+  }
+  
+  // Si llegamos aquí, todos los intentos fallaron
+  throw lastError || new Error("Failed to fetch after all retries")
+}
+
+/**
  * Fetch a single card from Trello by ID
  * Obtiene TODA la información disponible según la documentación oficial de Trello
+ * MEJORADO: Incluye retry logic con exponential backoff
  * https://developer.atlassian.com/cloud/trello/guides/rest-api/api-introduction/
  */
 export async function fetchTrelloCard(
@@ -439,23 +491,21 @@ export async function fetchTrelloCard(
       list_fields: "name,pos",
     })
 
-    const response = await fetch(
-      `https://api.trello.com/1/cards/${cardId}?${params.toString()}`
+    // MEJORADO: Usar retry logic con exponential backoff
+    const response = await fetchWithRetry(
+      `https://api.trello.com/1/cards/${cardId}?${params.toString()}`,
+      3, // maxRetries
+      1000 // baseDelay: 1 segundo
     )
 
+    if (response.status === 404) {
+      return null // Card deleted
+    }
+
     if (!response.ok) {
-      if (response.status === 404) {
-        return null // Card deleted
-      }
       const errorText = await response.text()
       console.error(`❌ Trello API error (${response.status}):`, errorText)
-      
-      // Si es rate limit, lanzar error específico para que se maneje con retry
-      if (response.status === 429) {
-        throw new Error(`Trello API error: Too Many Requests (429) - ${errorText}`)
-      }
-      
-      throw new Error(`Trello API error: ${response.statusText}`)
+      throw new Error(`Trello API error: ${response.status} - ${errorText}`)
     }
 
     const card = await response.json()
