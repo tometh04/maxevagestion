@@ -165,24 +165,25 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 1.5 Mejorar Trello Integration
+### 1.5 Mejorar Trello Integration ✅ COMPLETADO
 
 **Objetivo:** Trello debe funcionar perfectamente y ser resiliente a errores.
 
 **Tareas:**
-- [ ] Agregar validación de credenciales antes de guardar:
-  - Endpoint `/api/trello/validate` que prueba API key + token
-  - Llamar desde `trello-settings.tsx` antes de guardar
-- [ ] Agregar retry logic con exponential backoff:
-  - En `lib/trello/sync.ts`
-  - Para webhooks y sincronización
-- [ ] Mejorar error handling:
-  - Capturar todos los errores de Trello API
-  - Logging detallado
-  - Mostrar errores claros al usuario
-- [ ] Agregar indicador de progreso:
-  - En sincronización manual
-  - Mostrar cantidad de cards procesados
+- [x] Agregar validación de credenciales antes de guardar:
+  - Endpoint `/api/trello/validate` que prueba API key + token ✅
+  - Llamar desde `trello-settings.tsx` antes de guardar ✅
+- [x] Agregar retry logic con exponential backoff:
+  - En `lib/trello/sync.ts` (helper `fetchWithRetry`) ✅
+  - Para webhooks y sincronización ✅
+  - Manejo de rate limits mejorado (hasta 30s de espera) ✅
+- [x] Mejorar error handling:
+  - Capturar todos los errores de Trello API ✅
+  - Logging detallado ✅
+  - Mostrar errores claros al usuario (mensajes específicos por tipo de error) ✅
+- [ ] Agregar indicador de progreso en tiempo real:
+  - Requiere Server-Sent Events o WebSockets (complejidad alta)
+  - Por ahora se muestra resumen al finalizar ✅
 
 **Archivos a modificar:**
 - `lib/trello/sync.ts`

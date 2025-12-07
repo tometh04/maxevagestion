@@ -51,7 +51,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
   const [lists, setLists] = useState<Array<{ id: string; name: string }>>([])
   const [statusMapping, setStatusMapping] = useState<Record<string, string>>({})
   const [regionMapping, setRegionMapping] = useState<Record<string, string>>({})
-  const [syncResult, setSyncResult] = useState<{ total: number; created: number; updated: number; incremental?: boolean; lastSyncAt?: string | null } | null>(null)
+  const [syncResult, setSyncResult] = useState<{ total: number; created: number; updated: number; incremental?: boolean; lastSyncAt?: string | null; errors?: number; error?: string; rateLimited?: number } | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [forceFullSync, setForceFullSync] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
@@ -686,17 +686,28 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                 {syncing ? "Sincronizando..." : forceFullSync ? "Ejecutar Sincronización Completa" : "Ejecutar Sincronización"}
               </Button>
               {syncResult && (
-                <Alert>
+                <Alert variant={syncResult.error || (syncResult.errors && syncResult.errors > 0) ? "destructive" : "default"}>
                   <AlertDescription>
                     <div className="space-y-1">
-                      <div>✅ Sincronización {syncResult.incremental ? "incremental" : "completa"} completada</div>
-                      <div className="text-sm">
-                        Total: {syncResult.total} | Creados: {syncResult.created} | Actualizados: {syncResult.updated}
-                      </div>
-                      {syncResult.incremental && syncResult.lastSyncAt && (
-                        <div className="text-xs text-muted-foreground">
-                          Última sincronización: {new Date(syncResult.lastSyncAt).toLocaleString('es-AR')}
-                        </div>
+                      {syncResult.error ? (
+                        <>
+                          <div>❌ Error en sincronización</div>
+                          <div className="text-sm">{syncResult.error}</div>
+                        </>
+                      ) : (
+                        <>
+                          <div>✅ Sincronización {syncResult.incremental ? "incremental" : "completa"} completada</div>
+                          <div className="text-sm">
+                            Total: {syncResult.total} | Creados: {syncResult.created} | Actualizados: {syncResult.updated}
+                            {syncResult.errors && syncResult.errors > 0 && ` | Errores: ${syncResult.errors}`}
+                            {syncResult.rateLimited && syncResult.rateLimited > 0 && ` | Rate limits: ${syncResult.rateLimited}`}
+                          </div>
+                          {syncResult.incremental && syncResult.lastSyncAt && (
+                            <div className="text-xs text-muted-foreground">
+                              Última sincronización: {new Date(syncResult.lastSyncAt).toLocaleString('es-AR')}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </AlertDescription>
