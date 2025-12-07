@@ -396,47 +396,47 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ## 📊 CHECKLIST FINAL PRE-PRODUCCIÓN
 
-### Datos
-- [ ] Seed data limpiada (preservar Trello leads)
-- [ ] Operaciones abiertas cargadas
-- [ ] Saldos iniciales de caja configurados
-- [ ] Clientes importados
-- [ ] Operadores cargados
+### Datos (Acción Manual Requerida)
+- [ ] Seed data limpiada (preservar Trello leads) - **PENDIENTE: Acción manual**
+- [ ] Operaciones abiertas cargadas - **PENDIENTE: Acción manual**
+- [ ] Saldos iniciales de caja configurados - **PENDIENTE: Acción manual**
+- [ ] Clientes importados - **PENDIENTE: Acción manual**
+- [ ] Operadores cargados - **PENDIENTE: Acción manual**
 
-### Usuarios
-- [ ] Usuario Maxi creado (SUPER_ADMIN) ✅
-- [ ] Usuario Yamil creado (CONTABLE)
-- [ ] Usuarios vendedoras creados (SELLER)
-- [ ] Todos asignados a sus agencias
+### Usuarios (Acción Manual Requerida)
+- [ ] Usuario Maxi creado (SUPER_ADMIN) - **PENDIENTE: Acción manual**
+- [ ] Usuario Yamil creado (CONTABLE) - **PENDIENTE: Acción manual**
+- [ ] Usuarios vendedoras creados (SELLER) - **PENDIENTE: Acción manual**
+- [ ] Todos asignados a sus agencias - **PENDIENTE: Acción manual**
 
-### Configuración
-- [ ] Trello configurado para ambas agencias
-- [ ] Webhooks de Trello registrados en producción
-- [ ] Variables de entorno configuradas en Vercel
-- [ ] OpenAI API key configurada
-- [ ] Resend API key configurada (si se usa)
+### Configuración (Acción Manual Requerida)
+- [ ] Trello configurado para ambas agencias - **PENDIENTE: Acción manual**
+- [ ] Webhooks de Trello registrados en producción - **PENDIENTE: Acción manual**
+- [ ] Variables de entorno configuradas en Vercel - **PENDIENTE: Acción manual**
+- [ ] OpenAI API key configurada - **PENDIENTE: Acción manual**
+- [ ] Resend API key configurada (si se usa) - **PENDIENTE: Acción manual**
 
-### Performance
-- [ ] Índices agregados y verificados
-- [ ] Paginación implementada en todas las tablas grandes
-- [ ] Queries N+1 optimizadas
-- [ ] Caché implementado
-- [ ] Lazy loading de imágenes
+### Performance ✅ COMPLETADO
+- [x] Índices agregados y verificados ✅
+- [x] Paginación implementada en todas las tablas grandes ✅
+- [x] Queries N+1 optimizadas ✅
+- [x] Caché implementado ✅
+- [x] Lazy loading de imágenes ✅
 
-### Funcionalidades
-- [ ] AI Copilot con contexto completo
-- [ ] Trello con retry logic y validación
-- [ ] Validaciones implementadas
-- [ ] Edge cases manejados
-- [ ] Búsqueda global funcional
+### Funcionalidades ✅ COMPLETADO
+- [x] AI Copilot con contexto completo ✅
+- [x] Trello con retry logic y validación ✅
+- [x] Validaciones implementadas ✅
+- [x] Edge cases manejados ✅
+- [x] Búsqueda global funcional ✅
 
-### Testing
-- [ ] Flujo completo probado: Lead → Operación → Pago → Cierre
-- [ ] Eliminaciones probadas
-- [ ] Cambios de moneda probados
-- [ ] Sincronización Trello probada (con muchos cards)
-- [ ] AI Copilot probado con preguntas complejas
-- [ ] Performance probada con datos reales
+### Testing (Recomendado Antes de Producción)
+- [ ] Flujo completo probado: Lead → Operación → Pago → Cierre - **RECOMENDADO**
+- [ ] Eliminaciones probadas - **RECOMENDADO**
+- [ ] Cambios de moneda probados - **RECOMENDADO**
+- [ ] Sincronización Trello probada (con muchos cards) - **RECOMENDADO**
+- [ ] AI Copilot probado con preguntas complejas - **RECOMENDADO**
+- [ ] Performance probada con datos reales - **RECOMENDADO**
 
 ### Documentación ✅ COMPLETADO
 - [x] Manual de usuario actualizado ✅
