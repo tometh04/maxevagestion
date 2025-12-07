@@ -81,10 +81,9 @@ CREATE INDEX IF NOT EXISTS idx_cash_operation
   ON cash_movements(operation_id)
   WHERE operation_id IS NOT NULL;
 
--- Query común: Movimientos por pago (para reversión)
-CREATE INDEX IF NOT EXISTS idx_cash_payment 
-  ON cash_movements(payment_id)
-  WHERE payment_id IS NOT NULL;
+-- NOTA: El índice para payment_id en cash_movements ya existe en la migración 047
+-- como idx_cash_movements_payment. No es necesario crearlo aquí.
+-- Si necesitas verificar que existe, ejecuta primero la migración 047.
 
 -- =====================================================
 -- ÍNDICES PARA ALERTS

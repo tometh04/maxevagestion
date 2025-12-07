@@ -226,22 +226,25 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 2.2 Lazy Loading de Imágenes
+### 2.2 Lazy Loading de Imágenes ✅
 
 **Objetivo:** Cargar imágenes solo cuando sean visibles.
 
 **Tareas:**
-- [ ] Implementar lazy loading en:
-  - Lista de documentos
-  - Avatares de usuarios
-  - Imágenes de clientes
-- [ ] Usar `loading="lazy"` en `<img>` tags
-- [ ] Implementar skeleton mientras carga
+- [x] Implementar lazy loading en:
+  - Lista de documentos (no aplica - se abren con window.open) ✅
+  - Avatares de usuarios ✅
+  - Imágenes de clientes (no hay imágenes directas, solo avatares) ✅
+- [x] Usar `loading="lazy"` en componentes Avatar ✅
+- [x] Skeleton ya está implementado en componentes (AvatarFallback) ✅
 
-**Archivos a modificar:**
-- `components/documents/documents-section.tsx`
-- `components/customers/customer-detail-client.tsx`
-- `components/operations/operation-detail-client.tsx`
+**Archivos modificados:**
+- `components/ui/avatar.tsx` ✅
+
+**Notas:**
+- Los documentos se abren en nueva ventana, no se renderizan como imágenes en la página
+- Los avatares ahora usan lazy loading por defecto
+- No hay imágenes directas de clientes que requieran lazy loading
 
 **Estimación:** 2-3 horas
 
