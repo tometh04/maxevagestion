@@ -397,8 +397,9 @@ export async function GET(request: Request) {
     const { count } = await countQuery
     
     // Ahora obtener los datos con paginación
+    // El count ya lo obtuvimos antes, solo necesitamos los datos
     const { data: operations, error } = await query
-      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)", { count: "exact" })
+      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
       .order("operation_date", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
