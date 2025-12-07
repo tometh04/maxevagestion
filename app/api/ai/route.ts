@@ -698,25 +698,6 @@ export async function POST(request: Request) {
       cantidadRegistros: ivaSales.length + ivaPurchases.length,
     }
 
-    // 12. Comisiones pendientes (usando commission_records)
-    const { data: pendingCommissions } = await (supabase.from("commission_records") as any)
-      .select(`
-        amount, status,
-        users:seller_id(name),
-        operations:operation_id(file_code, destination)
-      `)
-      .eq("status", "PENDING")
-
-    contextData.comisionesPendientes = {
-      cantidad: (pendingCommissions || []).length,
-      totalPendiente: (pendingCommissions || []).reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0),
-      detalles: (pendingCommissions || []).slice(0, 5).map((c: any) => ({
-        vendedor: c.users?.name,
-        monto: c.amount,
-        operacion: c.operations?.file_code || c.operations?.destination,
-      })),
-    }
-
     // Paralelizar queries finales (12-17)
     const [pendingCommissionsResult, pendingOperatorPaymentsResult, destinationRequirementsResult, partnerAccountsResult, recurringPaymentsResult, whatsappMessagesResult] = await Promise.all([
       (supabase.from("commission_records") as any)
