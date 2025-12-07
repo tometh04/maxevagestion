@@ -51,12 +51,12 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 1.2 Optimización de Performance - Base de Datos
+### 1.2 Optimización de Performance - Base de Datos ✅ COMPLETADO
 
 **Objetivo:** El sistema debe ser rápido incluso con miles de registros.
 
 **Tareas:**
-- [ ] Crear migración `050_performance_indexes_final.sql`:
+- [x] Crear migración `050_performance_indexes_final.sql`:
   ```sql
   -- Índices compuestos para operations (queries más comunes)
   CREATE INDEX IF NOT EXISTS idx_operations_agency_status_date 
@@ -91,8 +91,8 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
     ON alerts(user_id, status) 
     WHERE user_id IS NOT NULL;
   ```
-- [ ] Agregar índices a `operations.operation_date` si no existe
-- [ ] Verificar que todos los índices de `029_performance_indexes.sql` están aplicados
+- [x] Agregar índices a `operations.operation_date` si no existe ✅
+- [x] Verificar que todos los índices de `029_performance_indexes.sql` están aplicados ✅
 
 **Archivos a crear:**
 - `supabase/migrations/050_performance_indexes_final.sql`
@@ -134,21 +134,26 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ---
 
-### 1.4 Optimizar Queries N+1
+### 1.4 Optimizar Queries N+1 ✅ COMPLETADO
 
 **Objetivo:** Reducir cantidad de queries a la base de datos.
 
 **Tareas:**
-- [ ] Optimizar `/api/operations/route.ts`:
-  - Usar `.select()` con joins explícitos
-  - Evitar queries individuales por operación
-- [ ] Optimizar `/api/ai/route.ts`:
-  - Usar `Promise.all()` para paralelizar todas las queries
-  - Agrupar queries relacionadas
-- [ ] Optimizar `/api/leads/route.ts`:
-  - Cargar relaciones en una sola query
-- [ ] Optimizar dashboard queries:
-  - Combinar queries cuando sea posible
+- [x] Optimizar `/api/operations/route.ts`:
+  - Usar `.select()` con joins explícitos ✅
+  - Evitar queries individuales por operación ✅
+  - Especificar campos exactos en lugar de `*` ✅
+- [x] Optimizar `/api/ai/route.ts`:
+  - Usar `Promise.all()` para paralelizar todas las queries ✅
+  - Agrupar queries relacionadas ✅
+- [x] Optimizar `/api/leads/route.ts`:
+  - Cargar relaciones en una sola query ✅
+  - Ya usa queries en batch (no N+1) ✅
+- [x] Optimizar `/api/operations/[id]/route.ts`:
+  - Paralelizar queries de customers, documents, payments, alerts ✅
+- [x] Optimizar dashboard queries:
+  - Ya usa `Promise.all()` en el cliente ✅
+  - Combinar queries cuando sea posible ✅
 
 **Archivos a modificar:**
 - `app/api/operations/route.ts`

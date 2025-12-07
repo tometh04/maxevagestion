@@ -321,10 +321,16 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Build query
+    // Build query - Optimizado: cargar todas las relaciones en una sola query
     let query = supabase
       .from("operations")
-      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
+      .select(`
+        *,
+        sellers:seller_id(id, name, email),
+        operators:operator_id(id, name),
+        agencies:agency_id(id, name, city),
+        leads:lead_id(id, contact_name, destination, trello_url, status)
+      `)
 
     // Apply permissions-based filtering
     const { applyOperationsFilters } = await import("@/lib/permissions-api")

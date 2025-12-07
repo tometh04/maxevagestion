@@ -38,43 +38,49 @@ export async function GET(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 })
   }
 
-    // Get customers
-    const { data: operationCustomers } = await supabase
+  // OPTIMIZACIÓN: Paralelizar todas las queries relacionadas
+  const [
+    operationCustomersResult,
+    documentsResult,
+    paymentsResult,
+    alertsResult
+  ] = await Promise.all([
+    supabase
       .from("operation_customers")
       .select(`
         *,
         customers:customer_id(*)
       `)
-      .eq("operation_id", operationId)
-
-    // Get documents
-    const { data: documents } = await supabase
+      .eq("operation_id", operationId),
+    supabase
       .from("documents")
       .select("*")
       .eq("operation_id", operationId)
-      .order("uploaded_at", { ascending: false })
-
-    // Get payments
-    const { data: payments } = await supabase
+      .order("uploaded_at", { ascending: false }),
+    supabase
       .from("payments")
       .select("*")
       .eq("operation_id", operationId)
-      .order("date_due", { ascending: true })
-
-    // Get alerts
-    const { data: alerts } = await supabase
+      .order("date_due", { ascending: true }),
+    supabase
       .from("alerts")
       .select("*")
       .eq("operation_id", operationId)
-      .order("date_due", { ascending: true })
+      .order("date_due", { ascending: true }),
+  ])
 
-    return NextResponse.json({
-      operation,
-      customers: operationCustomers || [],
-      documents: documents || [],
-      payments: payments || [],
-      alerts: alerts || [],
-    })
+  const operationCustomers = operationCustomersResult.data || []
+  const documents = documentsResult.data || []
+  const payments = paymentsResult.data || []
+  const alerts = alertsResult.data || []
+
+  return NextResponse.json({
+    operation,
+    customers: operationCustomers,
+    documents: documents,
+    payments: payments,
+    alerts: alerts,
+  })
   } catch (error) {
     console.error("Error in GET /api/operations/[id]:", error)
     return NextResponse.json({ error: "Error al obtener operación" }, { status: 500 })
