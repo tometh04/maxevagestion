@@ -118,6 +118,47 @@ export async function PATCH(
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    // Validaciones de fechas
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    if (body.operation_date) {
+      const operationDate = new Date(body.operation_date)
+      operationDate.setHours(0, 0, 0, 0)
+      
+      if (operationDate > today) {
+        return NextResponse.json({ error: "La fecha de operación no puede ser futura" }, { status: 400 })
+      }
+    }
+
+    if (body.departure_date) {
+      const departureDate = new Date(body.departure_date)
+      departureDate.setHours(0, 0, 0, 0)
+      
+      const operationDate = body.operation_date 
+        ? new Date(body.operation_date) 
+        : new Date(currentOp.operation_date)
+      operationDate.setHours(0, 0, 0, 0)
+
+      if (departureDate < operationDate) {
+        return NextResponse.json({ error: "La fecha de salida debe ser posterior a la fecha de operación" }, { status: 400 })
+      }
+    }
+
+    // Validaciones de montos
+    if (body.sale_amount_total !== undefined && body.sale_amount_total < 0) {
+      return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
+    }
+
+    if (body.operator_cost !== undefined && body.operator_cost < 0) {
+      return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
+    }
+
+    // Detectar cambio de moneda
+    const oldCurrency = currentOp.currency || currentOp.sale_currency || "ARS"
+    const newCurrency = body.currency || body.sale_currency || oldCurrency
+    const currencyChanged = oldCurrency !== newCurrency
+
     // Calculate margin if amounts changed
     let updateData: any = { ...body }
     const oldSaleAmount = currentOp.sale_amount_total
@@ -145,7 +186,22 @@ export async function PATCH(
     }
 
     const op = operation as any
-    const currency = op.currency || "ARS"
+    const currency = op.currency || op.sale_currency || "ARS"
+
+    // ============================================
+    // MANEJAR CAMBIO DE MONEDA
+    // ============================================
+    if (currencyChanged) {
+      try {
+        console.log(`⚠️ Cambio de moneda detectado: ${oldCurrency} → ${newCurrency}`)
+        console.log(`⚠️ ADVERTENCIA: Se cambió la moneda de la operación. Los movimientos contables existentes mantienen su moneda original.`)
+        console.log(`⚠️ Considera recalcular movimientos contables si es necesario.`)
+        // TODO: En el futuro, implementar recálculo automático de movimientos contables
+        // cuando cambia la moneda de una operación
+      } catch (error) {
+        console.error("Error handling currency change:", error)
+      }
+    }
 
     // ============================================
     // ACTUALIZAR IVA SI CAMBIARON LOS MONTOS

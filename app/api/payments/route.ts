@@ -41,14 +41,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    // Validaciones de montos
+    if (amount < 0) {
+      return NextResponse.json({ error: "El monto no puede ser negativo" }, { status: 400 })
+    }
+
+    // Validaciones de fechas
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Resetear a medianoche para comparación
+
+    if (date_paid) {
+      const paidDate = new Date(date_paid)
+      paidDate.setHours(0, 0, 0, 0)
+      
+      // Validar que date_paid no sea futuro
+      if (paidDate > today) {
+        return NextResponse.json({ error: "La fecha de pago no puede ser futura" }, { status: 400 })
+      }
+    }
+
+    // Validar que date_due sea después de date_paid (si ambos están)
+    if (date_paid && date_due) {
+      const paidDate = new Date(date_paid)
+      paidDate.setHours(0, 0, 0, 0)
+      
+      const dueDate = new Date(date_due)
+      dueDate.setHours(0, 0, 0, 0)
+
+      if (dueDate < paidDate) {
+        return NextResponse.json({ error: "La fecha de vencimiento debe ser posterior o igual a la fecha de pago" }, { status: 400 })
+      }
+    }
+
     // 1. Crear el pago en tabla payments
     const paymentData = {
-      operation_id,
-      payer_type,
-      direction,
+        operation_id,
+        payer_type,
+        direction,
       method: method || "Otro",
       amount,
-      currency,
+        currency,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
       status: status || "PAID",

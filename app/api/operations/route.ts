@@ -52,6 +52,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
+    // Validaciones de fechas
+    const today = new Date()
+    today.setHours(0, 0, 0, 0) // Resetear a medianoche para comparación
+
+    const operationDate = operation_date ? new Date(operation_date) : new Date()
+    operationDate.setHours(0, 0, 0, 0)
+
+    const departureDate = new Date(departure_date)
+    departureDate.setHours(0, 0, 0, 0)
+
+    // Validar que operation_date no sea futuro
+    if (operationDate > today) {
+      return NextResponse.json({ error: "La fecha de operación no puede ser futura" }, { status: 400 })
+    }
+
+    // Validar que departure_date sea después de operation_date
+    if (departureDate < operationDate) {
+      return NextResponse.json({ error: "La fecha de salida debe ser posterior a la fecha de operación" }, { status: 400 })
+    }
+
+    // Validar que los montos no sean negativos
+    if (sale_amount_total < 0) {
+      return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
+    }
+
+    if (operator_cost < 0) {
+      return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
+    }
+
     // Check permissions
     if (user.role === "SELLER" && seller_id !== user.id) {
       return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
