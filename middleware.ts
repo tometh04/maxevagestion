@@ -48,8 +48,15 @@ export async function middleware(req: NextRequest) {
   // Refresh session if expired - required for Server Components
   try {
     await supabase.auth.getUser()
-  } catch (error) {
-    // Si falla la autenticación, continuar sin error (se manejará en las páginas)
+  } catch (error: any) {
+    // Silenciar errores de refresh token inválido/no encontrado (normal cuando no hay sesión)
+    if (error?.message?.includes('Refresh Token') || 
+        error?.message?.includes('JWT') ||
+        error?.status === 401) {
+      // No hacer nada, es normal cuando no hay sesión activa
+      return response
+    }
+    // Para otros errores, loguear como warning
     console.warn('Middleware auth error:', error)
   }
 
