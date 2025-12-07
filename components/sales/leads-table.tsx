@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import {
   Table,
@@ -16,6 +16,7 @@ import { ExternalLink } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { ConvertLeadDialog } from "./convert-lead-dialog"
+import { ServerPagination } from "@/components/ui/server-pagination"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-blue-500",
@@ -52,16 +53,78 @@ interface Lead {
 }
 
 interface LeadsTableProps {
-  leads: Lead[]
+  leads?: Lead[] // Opcional: si no se pasa, carga sus propios datos con paginación
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   onRefresh?: () => void
+  agencyId?: string // Para filtrar por agencia
+  sellerId?: string // Para filtrar por vendedor
 }
 
-export function LeadsTable({ leads, agencies, sellers, operators, onRefresh }: LeadsTableProps) {
+export function LeadsTable({ 
+  leads: initialLeads, 
+  agencies, 
+  sellers, 
+  operators, 
+  onRefresh,
+  agencyId,
+  sellerId,
+}: LeadsTableProps) {
+  const [leads, setLeads] = useState<Lead[]>(initialLeads || [])
+  const [loading, setLoading] = useState(!initialLeads)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
+  
+  // Estado de paginación server-side
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  
+  // Si se pasan leads como prop, usarlos (modo legacy)
+  // Si no, cargar con paginación server-side
+  const useServerPagination = !initialLeads
+  
+  const fetchLeads = useCallback(async () => {
+    if (!useServerPagination) return // Si se pasan leads como prop, no cargar
+    
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
+      if (sellerId && sellerId !== "ALL") params.append("sellerId", sellerId)
+      params.append("page", page.toString())
+      params.append("limit", limit.toString())
+
+      const response = await fetch(`/api/leads?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setLeads(data.leads || [])
+        // El API retorna paginación dentro de un objeto 'pagination'
+        const pagination = data.pagination || {}
+        setTotal(pagination.total || 0)
+        setTotalPages(pagination.totalPages || 0)
+        setHasMore(pagination.hasMore || false)
+      }
+    } catch (error) {
+      console.error("Error fetching leads:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [useServerPagination, agencyId, sellerId, page, limit])
+  
+  useEffect(() => {
+    fetchLeads()
+  }, [fetchLeads])
+  
+  // Si se pasan leads como prop, actualizar cuando cambien
+  useEffect(() => {
+    if (initialLeads) {
+      setLeads(initialLeads)
+    }
+  }, [initialLeads])
 
   const handleConvertClick = (lead: Lead) => {
     setSelectedLead(lead)
@@ -70,11 +133,29 @@ export function LeadsTable({ leads, agencies, sellers, operators, onRefresh }: L
 
   const handleConvertSuccess = () => {
     onRefresh?.()
+    if (useServerPagination) {
+      fetchLeads() // Recargar si usa paginación server-side
+    }
+  }
+
+  if (loading && useServerPagination) {
+    return (
+      <div className="rounded-md border">
+        <div className="p-4">
+          <div className="space-y-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="h-12 w-full animate-pulse rounded bg-muted" />
+            ))}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
     <>
-      <div className="rounded-md border">
+      <div className="space-y-4">
+        <div className="rounded-md border">
         <Table>
         <TableHeader>
           <TableRow>
@@ -155,6 +236,24 @@ export function LeadsTable({ leads, agencies, sellers, operators, onRefresh }: L
           )}
         </TableBody>
         </Table>
+        </div>
+        
+        {/* Paginación server-side (solo si no se pasan leads como prop) */}
+        {useServerPagination && total > 0 && (
+          <ServerPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            hasMore={hasMore}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit)
+              setPage(1) // Resetear a página 1
+            }}
+            limitOptions={[25, 50, 100, 200]}
+          />
+        )}
       </div>
 
       {selectedLead && (

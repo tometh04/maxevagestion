@@ -379,19 +379,14 @@ export function LeadsPageClient({
           )}
         </TabsContent>
         <TabsContent value="table" className="space-y-4">
-          {loading ? (
-            <div className="flex items-center justify-center p-8">
-              <p className="text-muted-foreground">Cargando leads...</p>
-            </div>
-          ) : (
-            <LeadsTable
-              leads={filteredLeads as any}
-              agencies={agencies}
-              sellers={sellers}
-              operators={operators}
-              onRefresh={handleRefresh}
-            />
-          )}
+          <LeadsTable
+            agencies={agencies}
+            sellers={sellers}
+            operators={operators}
+            onRefresh={handleRefresh}
+            agencyId={selectedAgencyId}
+            sellerId={defaultSellerId}
+          />
         </TabsContent>
       </Tabs>
 

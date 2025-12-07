@@ -9,6 +9,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
+import { ServerPagination } from "@/components/ui/server-pagination"
 import { MoreHorizontal, Pencil, Eye } from "lucide-react"
 import {
   DropdownMenu,
@@ -71,6 +72,13 @@ export function OperationsTable({
   const [editingOperation, setEditingOperation] = useState<Operation | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   
+  // Estado de paginación server-side
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(50)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  
   // Datos para el diálogo de edición (se cargarán cuando sea necesario)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
   const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
@@ -116,18 +124,25 @@ export function OperationsTable({
       if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
       if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
       if (filters.dateTo) params.append("dateTo", filters.dateTo)
+      
+      // Agregar parámetros de paginación
+      params.append("page", page.toString())
+      params.append("limit", limit.toString())
 
       const response = await fetch(`/api/operations?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setOperations(data.operations || [])
+        setTotal(data.total || 0)
+        setTotalPages(data.totalPages || 0)
+        setHasMore(data.hasMore || false)
       }
     } catch (error) {
       console.error("Error fetching operations:", error)
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters, page, limit])
 
   useEffect(() => {
     fetchOperations()
@@ -135,6 +150,7 @@ export function OperationsTable({
 
   useEffect(() => {
     setFilters(initialFilters)
+    setPage(1) // Resetear a página 1 cuando cambian los filtros
   }, [initialFilters])
 
   const columns: ColumnDef<Operation>[] = useMemo(
@@ -322,7 +338,32 @@ export function OperationsTable({
 
   return (
     <>
-      <DataTable columns={columns} data={operations} searchKey="destination" searchPlaceholder="Buscar por destino o card..." />
+      <div className="space-y-4">
+        <DataTable 
+          columns={columns} 
+          data={operations} 
+          searchKey="destination" 
+          searchPlaceholder="Buscar por destino o card..."
+          showPagination={false}
+        />
+        
+        {/* Paginación server-side */}
+        {total > 0 && (
+          <ServerPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            hasMore={hasMore}
+            onPageChange={setPage}
+            onLimitChange={(newLimit) => {
+              setLimit(newLimit)
+              setPage(1) // Resetear a página 1
+            }}
+            limitOptions={[25, 50, 100, 200]}
+          />
+        )}
+      </div>
       
       {editingOperation && (
         <EditOperationDialog
