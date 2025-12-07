@@ -43,9 +43,37 @@ export async function GET(request: Request) {
       const webhooks = await webhooksResponse.json()
 
       // Filter webhooks for this board
-      const boardWebhooks = webhooks.filter(
-        (wh: any) => wh.idModel === settings.board_id || wh.callbackURL?.includes("/api/trello/webhook")
-      )
+      // Trello can use short or long board IDs, so we need to check both
+      const normalizeBoardId = (id: string): string => {
+        if (!id) return ""
+        return id.trim()
+      }
+      
+      const boardIdsMatch = (id1: string, id2: string): boolean => {
+        if (!id1 || !id2) return false
+        if (id1 === id2) return true
+        // Check if one is contained in the other (for short/long ID variations)
+        if (id1.includes(id2) || id2.includes(id1)) return true
+        // Check first 8 characters (common short ID length)
+        if (id1.length >= 8 && id2.length >= 8) {
+          if (id1.substring(0, 8) === id2.substring(0, 8)) return true
+        }
+        return false
+      }
+      
+      const boardWebhooks = webhooks.filter((wh: any) => {
+        // Match by board ID (exact or partial)
+        if (boardIdsMatch(wh.idModel || "", settings.board_id)) {
+          return true
+        }
+        // Match by callback URL if it's our webhook endpoint
+        if (wh.callbackURL?.includes("/api/trello/webhook")) {
+          // Try to verify by fetching the board from the webhook
+          // For now, include it if the URL matches
+          return true
+        }
+        return false
+      })
 
       return NextResponse.json({ webhooks: boardWebhooks })
     } catch (error) {

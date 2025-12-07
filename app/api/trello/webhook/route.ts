@@ -383,7 +383,9 @@ export async function POST(request: Request) {
 }
 
 // Trello webhooks need to verify the endpoint with a HEAD request
+// This is called by Trello to verify the webhook URL is valid
 export async function HEAD(request: Request) {
-  return NextResponse.json({}, { status: 200 })
+  console.log("✅ Trello HEAD request received - endpoint verified")
+  return new NextResponse(null, { status: 200 })
 }
 

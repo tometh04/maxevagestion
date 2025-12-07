@@ -56,8 +56,11 @@ Vercel debería estar haciendo el deploy automáticamente ahora. Verifica en:
 ### 5. Configurar Trello para Producción
 - [ ] Seguir `GUIA_TRELLO.md`
 - [ ] Configurar Trello para ambas agencias
-- [ ] Registrar webhooks en producción
-- [ ] Probar sincronización manual
+- [ ] **Registrar webhooks en producción** (Ver `GUIA_WEBHOOK_TRELLO_PRODUCCION.md`)
+  - Opción 1: Desde la interfaz (Settings → Trello → Webhooks)
+  - Opción 2: Script automático: `npx tsx scripts/register-trello-webhook-production.ts <URL_PRODUCCION>`
+- [ ] Verificar que los webhooks están activos
+- [ ] Probar sincronización: crear card en Trello → verificar que aparece en Leads
 
 ### 6. Migrar Datos Históricos
 - [ ] Seguir `GUIA_MIGRACION_DATOS.md`

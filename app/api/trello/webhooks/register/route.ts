@@ -30,6 +30,56 @@ export async function POST(request: Request) {
 
     const settings = trelloSettings as any
 
+    // Validate webhook URL
+    if (!webhookUrl.startsWith("https://")) {
+      return NextResponse.json(
+        { error: "La URL del webhook debe ser HTTPS" },
+        { status: 400 }
+      )
+    }
+
+    if (!webhookUrl.includes("/api/trello/webhook")) {
+      return NextResponse.json(
+        { error: "La URL del webhook debe terminar en /api/trello/webhook" },
+        { status: 400 }
+      )
+    }
+
+    // Check if webhook already exists for this board
+    try {
+      const existingWebhooksResponse = await fetch(
+        `https://api.trello.com/1/tokens/${settings.trello_token}/webhooks?key=${settings.trello_api_key}`
+      )
+      
+      if (existingWebhooksResponse.ok) {
+        const existingWebhooks = await existingWebhooksResponse.json()
+        
+        // Find webhooks for this board
+        const boardWebhooks = existingWebhooks.filter(
+          (wh: any) => wh.idModel === settings.board_id || 
+                      wh.callbackURL === webhookUrl ||
+                      (wh.callbackURL?.includes("/api/trello/webhook") && wh.idModel === settings.board_id)
+        )
+        
+        // Delete existing webhooks for this board
+        for (const existingWebhook of boardWebhooks) {
+          try {
+            await fetch(
+              `https://api.trello.com/1/webhooks/${existingWebhook.id}?key=${settings.trello_api_key}&token=${settings.trello_token}`,
+              { method: "DELETE" }
+            )
+            console.log(`🗑️ Eliminado webhook existente: ${existingWebhook.id}`)
+          } catch (deleteError) {
+            console.error("Error eliminando webhook existente:", deleteError)
+            // Continue anyway
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error verificando webhooks existentes:", error)
+      // Continue anyway, try to register new webhook
+    }
+
     // Get the full board ID (not the short ID)
     // First, try to get the board to get its full ID
     let boardIdModel = settings.board_id
@@ -40,6 +90,7 @@ export async function POST(request: Request) {
       if (boardResponse.ok) {
         const boardData = await boardResponse.json()
         boardIdModel = boardData.id // Use the full ID, not the short ID
+        console.log(`✅ Board ID obtenido: ${boardIdModel} (original: ${settings.board_id})`)
       }
     } catch (error) {
       console.error("Error fetching board:", error)
@@ -53,7 +104,7 @@ export async function POST(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        description: `MAXEVA GESTION - ${settings.board_id}`,
+        description: `MAXEVA GESTION - Board ${boardIdModel}`,
         callbackURL: webhookUrl,
         idModel: boardIdModel, // Use full board ID
         key: settings.trello_api_key,
