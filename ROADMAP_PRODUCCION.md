@@ -198,21 +198,21 @@ Este roadmap consolida todos los roadmaps anteriores y se enfoca en los gaps cr�
 
 ## 🟡 FASE 2: IMPORTANTE (3-4 días)
 
-### 2.1 Implementar Caché
+### 2.1 Implementar Caché ✅
 
 **Objetivo:** Reducir carga en base de datos y mejorar velocidad.
 
 **Tareas:**
-- [ ] Instalar y configurar caché (Vercel KV o similar)
-- [ ] Implementar caché para:
-  - Lista de agencies (TTL: 1 hora)
-  - Lista de operators (TTL: 1 hora)
-  - KPIs del dashboard (TTL: 5 minutos)
-  - Configuración de Trello (TTL: 10 minutos)
-- [ ] Invalidar caché cuando sea necesario:
-  - Al crear/editar agency
-  - Al crear/editar operator
-  - Al crear operación (invalidar KPIs)
+- [x] Instalar y configurar caché (usando `unstable_cache` de Next.js) ✅
+- [x] Implementar caché para:
+  - Lista de agencies (TTL: 1 hora) ✅
+  - Lista de operators (TTL: 1 hora) ✅
+  - KPIs del dashboard (TTL: 5 minutos) ✅
+  - Configuración de Trello (TTL: 10 minutos) ✅
+- [x] Invalidar caché cuando sea necesario:
+  - Al crear operador (invalidar caché de operators) ✅
+  - Al crear/editar/eliminar operación (invalidar KPIs del dashboard) ✅
+  - Al actualizar configuración de Trello ✅
 
 **Archivos a crear:**
 - `lib/cache.ts`

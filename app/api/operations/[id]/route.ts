@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA } from "@/lib/accounting/iva"
+import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 
 export async function GET(
   request: Request,
@@ -219,6 +220,9 @@ export async function PATCH(
       }
     }
 
+    // Invalidar caché del dashboard (los KPIs cambian al editar una operación)
+    revalidateTag(CACHE_TAGS.DASHBOARD)
+
     return NextResponse.json({ success: true, operation })
   } catch (error) {
     console.error("Error in PATCH /api/operations/[id]:", error)
@@ -379,6 +383,9 @@ export async function DELETE(
     }
 
     console.log(`✅ Operación ${operationId} eliminada completamente`)
+
+    // Invalidar caché del dashboard (los KPIs cambian al eliminar una operación)
+    revalidateTag(CACHE_TAGS.DASHBOARD)
 
     return NextResponse.json({ 
       success: true, 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getCachedDashboardKPIs } from "@/lib/cache"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -8,7 +9,6 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -16,63 +16,72 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+    // Crear clave de caché basada en parámetros
+    const cacheKey = `sales-${user.id}-${dateFrom || 'all'}-${dateTo || 'all'}-${agencyId || 'all'}-${sellerId || 'all'}`
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    const result = await getCachedDashboardKPIs(async () => {
+      const supabase = await createServerClient()
 
-    let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
+      // Get user agencies
+      const { data: userAgencies } = await supabase
+        .from("user_agencies")
+        .select("agency_id")
+        .eq("user_id", user.id)
 
-    // Apply role-based filtering
-    if (user.role === "SELLER") {
-      query = query.eq("seller_id", user.id)
-    } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      query = query.in("agency_id", agencyIds)
-    }
+      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Apply filters
-    if (dateFrom) {
-      query = query.gte("created_at", dateFrom)
-    }
+      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
 
-    if (dateTo) {
-      query = query.lte("created_at", dateTo)
-    }
+      // Apply role-based filtering
+      if (user.role === "SELLER") {
+        query = query.eq("seller_id", user.id)
+      } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+        query = query.in("agency_id", agencyIds)
+      }
 
-    if (agencyId && agencyId !== "ALL") {
-      query = query.eq("agency_id", agencyId)
-    }
+      // Apply filters
+      if (dateFrom) {
+        query = query.gte("created_at", dateFrom)
+      }
 
-    if (sellerId && sellerId !== "ALL") {
-      query = query.eq("seller_id", sellerId)
-    }
+      if (dateTo) {
+        query = query.lte("created_at", dateTo)
+      }
 
-    const { data: operations, error } = await query
+      if (agencyId && agencyId !== "ALL") {
+        query = query.eq("agency_id", agencyId)
+      }
 
-    if (error) {
-      console.error("Error fetching sales data:", error)
-      return NextResponse.json({ error: "Error al obtener datos de ventas" }, { status: 500 })
-    }
+      if (sellerId && sellerId !== "ALL") {
+        query = query.eq("seller_id", sellerId)
+      }
 
-    const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
-    const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
-    const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
-    const operationsCount = (operations || []).length
-    const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
+      const { data: operations, error } = await query
 
-    return NextResponse.json({
-      totalSales,
-      totalMargin,
-      totalCost,
-      operationsCount,
-      avgMarginPercent,
-    })
-  } catch (error) {
+      if (error) {
+        console.error("Error fetching sales data:", error)
+        throw new Error("Error al obtener datos de ventas")
+      }
+
+      const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
+      const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
+      const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
+      const operationsCount = (operations || []).length
+      const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
+
+      return {
+        totalSales,
+        totalMargin,
+        totalCost,
+        operationsCount,
+        avgMarginPercent,
+      }
+    }, cacheKey)
+
+    return NextResponse.json(result)
+  } catch (error: any) {
     console.error("Error in GET /api/analytics/sales:", error)
-    return NextResponse.json({ error: "Error al obtener datos de ventas" }, { status: 500 })
+    return NextResponse.json({ error: error.message || "Error al obtener datos de ventas" }, { status: 500 })
   }
 }
 

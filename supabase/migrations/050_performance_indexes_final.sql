@@ -55,10 +55,8 @@ CREATE INDEX IF NOT EXISTS idx_ledger_operation
   ON ledger_movements(operation_id)
   WHERE operation_id IS NOT NULL;
 
--- Query común: Movimientos por pago (para reversión al eliminar pagos)
-CREATE INDEX IF NOT EXISTS idx_ledger_payment 
-  ON ledger_movements(payment_id)
-  WHERE payment_id IS NOT NULL;
+-- NOTA: ledger_movements NO tiene payment_id. La relación es al revés:
+-- payments tiene ledger_movement_id (ver migración 047)
 
 -- =====================================================
 -- ÍNDICES PARA CASH_MOVEMENTS

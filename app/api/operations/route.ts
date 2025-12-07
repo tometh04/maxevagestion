@@ -300,6 +300,9 @@ export async function POST(request: Request) {
       }
     }
 
+    // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
+    revalidateTag(CACHE_TAGS.DASHBOARD)
+
     return NextResponse.json({ operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)
