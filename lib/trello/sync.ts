@@ -174,6 +174,7 @@ export async function syncTrelloCardToLead(
 ): Promise<{ created: boolean; leadId: string }> {
   const listStatusMapping = settings.list_status_mapping || {}
   const listRegionMapping = settings.list_region_mapping || {}
+  
 
   const status = (listStatusMapping[card.idList] || "NEW") as "NEW" | "IN_PROGRESS" | "QUOTED" | "WON" | "LOST"
   const region = (listRegionMapping[card.idList] || "OTROS") as
@@ -197,20 +198,31 @@ export async function syncTrelloCardToLead(
   let destination = parseDestination(card)
 
   // Mapear miembros de Trello a vendedores
+  // MEJORADO: Usar los miembros que ya vienen en el card (si están disponibles)
   let assigned_seller_id: string | null = null
   if (card.idMembers && card.idMembers.length > 0) {
-    // Obtener información del miembro desde Trello
     try {
-      const memberId = card.idMembers[0]
-      const memberResponse = await fetch(
-        `https://api.trello.com/1/members/${memberId}?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=fullName,username,email`
-      )
-      if (memberResponse.ok) {
-        const member = await memberResponse.json()
-        const memberName = (member.fullName || member.username || "").trim()
+      // Primero intentar usar los miembros que ya vienen en el card
+      let memberName = ""
+      if (card.members && card.members.length > 0) {
+        const member = card.members[0]
+        memberName = (member.fullName || member.username || "").trim()
+      } else {
+        // Si no vienen en el card, obtener desde la API
+        const memberId = card.idMembers[0]
+        const memberResponse = await fetch(
+          `https://api.trello.com/1/members/${memberId}?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=fullName,username,email`
+        )
+        if (memberResponse.ok) {
+          const member = await memberResponse.json()
+          memberName = (member.fullName || member.username || "").trim()
+        }
+      }
+      
+      if (memberName) {
         const normalizedName = memberName.toLowerCase().replace(/\s+/g, "")
         
-        // Buscar vendedor en la BD
+        // Buscar vendedor en la BD con matching más flexible
         const { data: sellers } = await supabase
           .from("users")
           .select("id, name")
@@ -218,13 +230,24 @@ export async function syncTrelloCardToLead(
           .eq("is_active", true)
         
         if (sellers) {
+          // Matching más agresivo: buscar por nombre completo, parcial, o variaciones
           const seller = sellers.find((s: any) => {
             const sellerName = s.name.toLowerCase().replace(/\s+/g, "")
-            return sellerName === normalizedName || 
-                   sellerName.includes(normalizedName) ||
-                   normalizedName.includes(sellerName) ||
-                   memberName.toLowerCase().includes(sellerName) ||
-                   sellerName.includes(memberName.toLowerCase())
+            const memberNameLower = memberName.toLowerCase()
+            const sellerNameLower = s.name.toLowerCase()
+            
+            // Matching exacto
+            if (sellerName === normalizedName) return true
+            // Matching parcial (cualquiera contiene al otro)
+            if (sellerName.includes(normalizedName) || normalizedName.includes(sellerName)) return true
+            // Matching por nombre completo (ignorando mayúsculas)
+            if (memberNameLower === sellerNameLower) return true
+            // Matching por primera palabra (para "Maximiliano" vs "Maximiliano Lastname")
+            const memberFirstWord = memberNameLower.split(/\s+/)[0]
+            const sellerFirstWord = sellerNameLower.split(/\s+/)[0]
+            if (memberFirstWord && sellerFirstWord && memberFirstWord === sellerFirstWord) return true
+            
+            return false
           })
           
           if (seller) {
