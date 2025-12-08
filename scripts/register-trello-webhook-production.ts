@@ -28,51 +28,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-const webhookUrl = process.argv[2]
-
-if (!webhookUrl) {
-  console.error("❌ Error: Falta la URL de producción")
-  console.error("")
-  console.error("Uso:")
-  console.error("  npx tsx scripts/register-trello-webhook-production.ts <URL_PRODUCCION>")
-  console.error("")
-  console.error("Ejemplo:")
-  console.error("  npx tsx scripts/register-trello-webhook-production.ts https://maxevagestion.vercel.app")
-  process.exit(1)
-}
-
-// Validate URL
-if (!webhookUrl.startsWith("https://")) {
-  console.error("❌ Error: La URL debe ser HTTPS")
-  process.exit(1)
-}
-
-const fullWebhookUrl = webhookUrl.endsWith("/api/trello/webhook")
-  ? webhookUrl
-  : `${webhookUrl.replace(/\/$/, "")}/api/trello/webhook`
-
-console.log("🚀 Registro de Webhooks de Trello en Producción")
-console.log("=" .repeat(60))
-console.log(`📍 URL del Webhook: ${fullWebhookUrl}`)
-console.log("")
-
-// Verify endpoint is accessible
-console.log("🔍 Verificando que el endpoint es accesible...")
-try {
-  const headResponse = await fetch(fullWebhookUrl, { method: "HEAD" })
-  if (headResponse.ok) {
-    console.log("✅ Endpoint accesible")
-  } else {
-    console.warn(`⚠️  Endpoint responde con status: ${headResponse.status}`)
-  }
-} catch (error: any) {
-  console.error(`❌ Error verificando endpoint: ${error.message}`)
-  console.error("   Asegúrate de que la URL sea correcta y el servidor esté funcionando")
-  process.exit(1)
-}
-
-console.log("")
-
 async function registerWebhookForAgency(agencyName: string, agencyId: string, boardId: string) {
   console.log(`\n📋 Procesando: ${agencyName}`)
   console.log(`   Agency ID: ${agencyId}`)
@@ -216,6 +171,51 @@ async function registerWebhookForAgency(agencyName: string, agencyId: string, bo
 }
 
 async function main() {
+  const webhookUrl = process.argv[2]
+
+  if (!webhookUrl) {
+    console.error("❌ Error: Falta la URL de producción")
+    console.error("")
+    console.error("Uso:")
+    console.error("  npx tsx scripts/register-trello-webhook-production.ts <URL_PRODUCCION>")
+    console.error("")
+    console.error("Ejemplo:")
+    console.error("  npx tsx scripts/register-trello-webhook-production.ts https://maxevagestion.vercel.app")
+    process.exit(1)
+  }
+
+  // Validate URL
+  if (!webhookUrl.startsWith("https://")) {
+    console.error("❌ Error: La URL debe ser HTTPS")
+    process.exit(1)
+  }
+
+  const fullWebhookUrl = webhookUrl.endsWith("/api/trello/webhook")
+    ? webhookUrl
+    : `${webhookUrl.replace(/\/$/, "")}/api/trello/webhook`
+
+  console.log("🚀 Registro de Webhooks de Trello en Producción")
+  console.log("=" .repeat(60))
+  console.log(`📍 URL del Webhook: ${fullWebhookUrl}`)
+  console.log("")
+
+  // Verify endpoint is accessible
+  console.log("🔍 Verificando que el endpoint es accesible...")
+  try {
+    const headResponse = await fetch(fullWebhookUrl, { method: "HEAD" })
+    if (headResponse.ok) {
+      console.log("✅ Endpoint accesible")
+    } else {
+      console.warn(`⚠️  Endpoint responde con status: ${headResponse.status}`)
+    }
+  } catch (error: any) {
+    console.error(`❌ Error verificando endpoint: ${error.message}`)
+    console.error("   Asegúrate de que la URL sea correcta y el servidor esté funcionando")
+    process.exit(1)
+  }
+
+  console.log("")
+
   // Get all agencies with Trello configured
   const { data: agencies, error: agenciesError } = await supabase
     .from("agencies")
