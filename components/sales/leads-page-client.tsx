@@ -104,22 +104,39 @@ export function LeadsPageClient({
           if (payload.eventType === 'INSERT') {
             const newLead = payload.new as Lead
             // Solo agregar si coincide con el filtro de agencia actual
-            if (selectedAgencyId === "ALL" || newLead.agency_id === selectedAgencyId) {
+            // Y si es un lead de Trello (tiene trello_list_id) cuando estamos usando Trello Kanban
+            const isTrelloLead = newLead.trello_list_id !== null && newLead.trello_list_id !== undefined
+            const shouldAdd = (selectedAgencyId === "ALL" || newLead.agency_id === selectedAgencyId)
+            
+            if (shouldAdd) {
               setLeads((prev) => {
                 // Evitar duplicados
                 if (prev.some(l => l.id === newLead.id)) return prev
-                toast.success(`🆕 Nuevo lead: ${newLead.contact_name}`, { duration: 3000 })
+                if (isTrelloLead) {
+                  toast.success(`🆕 Nuevo lead de Trello: ${newLead.contact_name}`, { duration: 3000 })
+                }
                 return [newLead, ...prev]
               })
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedLead = payload.new as Lead
-            setLeads((prev) => 
-              prev.map((lead) => 
-                lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
+            const oldLead = payload.old as Lead
+            
+            // Si cambió el trello_list_id, es un movimiento de lista - recargar todos los leads
+            if (oldLead?.trello_list_id !== updatedLead.trello_list_id) {
+              console.log('📋 Lista de Trello cambiada, recargando leads...')
+              // Recargar todos los leads para asegurar orden correcto
+              if (selectedAgencyId && selectedAgencyId !== "ALL") {
+                loadLeads(selectedAgencyId, selectedTrelloListId)
+              }
+            } else {
+              // Actualizar el lead en la lista actual
+              setLeads((prev) => 
+                prev.map((lead) => 
+                  lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
+                )
               )
-            )
-            // toast.info(`✏️ Lead actualizado: ${updatedLead.contact_name}`, { duration: 2000 })
+            }
           } else if (payload.eventType === 'DELETE') {
             const deletedId = (payload.old as any)?.id
             if (deletedId) {
@@ -142,7 +159,7 @@ export function LeadsPageClient({
       console.log('🔌 Desconectando de Supabase Realtime...')
       supabase.removeChannel(channel)
     }
-  }, [selectedAgencyId])
+  }, [selectedAgencyId, selectedTrelloListId]) // Agregar selectedTrelloListId a dependencias
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
@@ -154,52 +171,7 @@ export function LeadsPageClient({
       }, 100)
       return () => clearTimeout(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgencyId, selectedTrelloListId])
-
-  const loadLeads = async (agencyId: string, trelloListId: string | null = null) => {
-    setLoading(true)
-    try {
-      // Cargar TODOS los leads usando paginación correcta (page en vez de offset)
-      let allLeads: Lead[] = []
-      let page = 1
-      const limit = 1000 // Aumentado para cargar más leads por página
-      let hasMore = true
-      let maxPages = 20 // Limite de seguridad para evitar loops infinitos
-
-      while (hasMore && page <= maxPages) {
-        let url = agencyId === "ALL"
-          ? `/api/leads?page=${page}&limit=${limit}`
-          : `/api/leads?agencyId=${agencyId}&page=${page}&limit=${limit}`
-        
-        if (trelloListId && trelloListId !== "ALL") {
-          url += `&trelloListId=${trelloListId}`
-        }
-        
-        // Cache busting para asegurar datos frescos
-        url += `&_t=${Date.now()}`
-
-        const response = await fetch(url, { cache: 'no-store' })
-        const data = await response.json()
-        
-        if (data.leads && data.leads.length > 0) {
-          allLeads = [...allLeads, ...data.leads]
-          hasMore = data.pagination?.hasMore || false
-          console.log(`📥 Página ${page}: ${data.leads.length} leads (Total: ${allLeads.length})`)
-          page++
-        } else {
-          hasMore = false
-        }
-      }
-
-      setLeads(allLeads)
-      console.log(`✅ Cargados ${allLeads.length} leads en total`)
-    } catch (error) {
-      console.error("Error loading leads:", error)
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [selectedAgencyId, selectedTrelloListId, loadLeads])
 
   const handleRefresh = async () => {
     await loadLeads(selectedAgencyId, selectedTrelloListId)
