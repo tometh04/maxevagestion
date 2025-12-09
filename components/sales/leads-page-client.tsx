@@ -146,32 +146,31 @@ export function LeadsPageClient({
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
-    if (initialLoad) {
-      setInitialLoad(false)
-      // Cargar leads iniciales según la agencia seleccionada
-      if (selectedAgencyId && selectedAgencyId !== defaultAgencyId) {
+    // SIEMPRE cargar leads para Trello (initialLeads puede tener solo 500 por límite de Supabase)
+    if (selectedAgencyId && selectedAgencyId !== "ALL") {
+      // Pequeño delay para asegurar que el componente está montado
+      const timer = setTimeout(() => {
         loadLeads(selectedAgencyId, selectedTrelloListId)
-      }
-      return
+      }, 100)
+      return () => clearTimeout(timer)
     }
-    loadLeads(selectedAgencyId, selectedTrelloListId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAgencyId, selectedTrelloListId])
 
   const loadLeads = async (agencyId: string, trelloListId: string | null = null) => {
     setLoading(true)
     try {
-      // Cargar TODOS los leads (hasta 10000 para evitar problemas de memoria)
-      // Usar paginación si es necesario
+      // Cargar TODOS los leads usando paginación correcta (page en vez de offset)
       let allLeads: Lead[] = []
-      let offset = 0
-      const limit = 5000 // Cargar en batches grandes
+      let page = 1
+      const limit = 1000 // Aumentado para cargar más leads por página
       let hasMore = true
+      let maxPages = 20 // Limite de seguridad para evitar loops infinitos
 
-      while (hasMore) {
+      while (hasMore && page <= maxPages) {
         let url = agencyId === "ALL"
-          ? `/api/leads?limit=${limit}&offset=${offset}`
-          : `/api/leads?agencyId=${agencyId}&limit=${limit}&offset=${offset}`
+          ? `/api/leads?page=${page}&limit=${limit}`
+          : `/api/leads?agencyId=${agencyId}&page=${page}&limit=${limit}`
         
         if (trelloListId && trelloListId !== "ALL") {
           url += `&trelloListId=${trelloListId}`
@@ -185,15 +184,16 @@ export function LeadsPageClient({
         
         if (data.leads && data.leads.length > 0) {
           allLeads = [...allLeads, ...data.leads]
-          offset += data.leads.length
-          hasMore = data.pagination?.hasMore || data.leads.length === limit
+          hasMore = data.pagination?.hasMore || false
+          console.log(`📥 Página ${page}: ${data.leads.length} leads (Total: ${allLeads.length})`)
+          page++
         } else {
           hasMore = false
         }
       }
 
       setLeads(allLeads)
-      console.log(`✅ Cargados ${allLeads.length} leads`)
+      console.log(`✅ Cargados ${allLeads.length} leads en total`)
     } catch (error) {
       console.error("Error loading leads:", error)
     } finally {

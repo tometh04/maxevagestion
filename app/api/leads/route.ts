@@ -65,7 +65,8 @@ export async function GET(request: Request) {
     // Add pagination: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
+    // Aumentar límite máximo para Trello (hay muchos leads)
+    const limit = Math.min(requestedLimit, 1000) // Máximo 1000 para Trello
     const offset = (page - 1) * limit
     
     const result = await query

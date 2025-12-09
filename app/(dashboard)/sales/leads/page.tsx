@@ -70,14 +70,12 @@ export default async function LeadsPage() {
     .order("name")
 
   // Get leads (including trello_list_id)
-  // OPTIMIZACIÓN: Solo cargar leads necesarios para la vista inicial
+  // Para Trello, necesitamos cargar MÁS leads inicialmente para que el Kanban funcione
   // El cliente cargará más según sea necesario
-  
-  // Para VENDEDORES: Ver sus leads asignados + leads SIN asignar (para poder "agarrarlos")
-  // Los leads sin asignar son los que caen en listas de campañas en Trello
   let leads: any[] = []
   let leadsError: any = null
-  const INITIAL_LIMIT = 500
+  // Aumentar límite inicial para Trello (hay 1,400+ leads en Rosario)
+  const INITIAL_LIMIT = 2000 // Aumentado para cargar más leads inicialmente
 
   if (user.role === "SELLER") {
     // Vendedor ve:
@@ -102,18 +100,44 @@ export default async function LeadsPage() {
     leadsError = myLeadsError || unassignedError
   } else {
     // Admin/otros: ver todos los leads de sus agencias
-    let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
+    // Para Trello, cargar TODOS los leads sin límite usando paginación
+    let allLeads: any[] = []
+    let page = 0
+    const pageSize = 1000 // Tamaño de página para Supabase
+    let hasMore = true
     
-    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      query = query.in("agency_id", agencyIds)
-    }
+    while (hasMore) {
+      let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
+      
+      if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+        query = query.in("agency_id", agencyIds)
+      }
 
-    const { data, error } = await query
-      .order("created_at", { ascending: false })
-      .limit(INITIAL_LIMIT)
+      const { data, error } = await query
+        .order("created_at", { ascending: false })
+        .range(page * pageSize, (page + 1) * pageSize - 1)
+      
+      if (error) {
+        leadsError = error
+        hasMore = false
+        break
+      }
+      
+      if (data && data.length > 0) {
+        allLeads = [...allLeads, ...data]
+        hasMore = data.length === pageSize
+        page++
+      } else {
+        hasMore = false
+      }
+      
+      // Limite de seguridad
+      if (page > 10) {
+        hasMore = false
+      }
+    }
     
-    leads = data || []
-    leadsError = error
+    leads = allLeads
   }
 
   if (leadsError) {
