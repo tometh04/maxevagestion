@@ -283,8 +283,11 @@ export async function POST(request: Request) {
 
     // Process different action types
     // IMPORTANTE: Procesar TODOS los eventos relacionados con cards
+    // CRÍTICO: Incluir todas las variaciones de creación de cards
     const cardActions = [
       "createCard",
+      "addCardToBoard", // Variante de createCard
+      "copyCard", // Cuando se copia una card
       "updateCard",
       "moveCardFromList",
       "moveCardToList",
@@ -296,6 +299,9 @@ export async function POST(request: Request) {
       "addAttachmentToCard",
       "addLabelToCard",
       "removeLabelFromCard",
+      "updateCheckItemStateOnCard", // Cambios en checklists
+      "addChecklistToCard",
+      "removeChecklistFromCard",
     ]
 
     if (cardActions.includes(actionType || "")) {
