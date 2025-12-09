@@ -4,6 +4,10 @@
  */
 
 import { createClient } from "@supabase/supabase-js"
+import * as dotenv from "dotenv"
+import { resolve } from "path"
+
+dotenv.config({ path: resolve(__dirname, "../.env.local") })
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -15,11 +19,12 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
+// Usar variables de entorno - NO hardcodear tokens
 const TRELLO_API_KEY = process.env.TRELLO_API_KEY || ""
 const TRELLO_TOKEN = process.env.TRELLO_TOKEN || ""
 
 if (!TRELLO_API_KEY || !TRELLO_TOKEN) {
-  console.error("Missing Trello environment variables (TRELLO_API_KEY, TRELLO_TOKEN)")
+  console.error("❌ Faltan TRELLO_API_KEY o TRELLO_TOKEN en variables de entorno")
   process.exit(1)
 }
 const BOARD_ID = "kZh4zJ0J"
@@ -119,9 +124,8 @@ async function configureMapping() {
       listStatusMapping[list.id] = AUTO_STATUS_MAPPING[listName]
     } else {
       // Por defecto, si el nombre es un vendedor conocido, IN_PROGRESS
-      const isVendedor = ["Ramiro", "Pau", "Candela", "Josefina", "Micaela", "Nazarena", "Santiago", "Emilia", "Maximiliano"].some(
-        v => listName.includes(v)
-      )
+      const vendedores = ["Ramiro", "Pau", "Candela", "Josefina", "Micaela", "Nazarena", "Santiago", "Emilia", "Maximiliano", "Malena", "Julieta"]
+      const isVendedor = vendedores.some(v => listName.includes(v))
       listStatusMapping[list.id] = isVendedor ? "IN_PROGRESS" : "NEW"
     }
 
@@ -130,18 +134,21 @@ async function configureMapping() {
       listRegionMapping[list.id] = AUTO_REGION_MAPPING[listName]
     } else {
       // Intentar detectar región del nombre
-      if (listName.toLowerCase().includes("caribe")) {
+      const listNameLower = listName.toLowerCase()
+      if (listNameLower.includes("caribe")) {
         listRegionMapping[list.id] = "CARIBE"
-      } else if (listName.toLowerCase().includes("brasil")) {
+      } else if (listNameLower.includes("brasil")) {
         listRegionMapping[list.id] = "BRASIL"
-      } else if (listName.toLowerCase().includes("europa")) {
+      } else if (listNameLower.includes("europa")) {
         listRegionMapping[list.id] = "EUROPA"
-      } else if (listName.toLowerCase().includes("argentina")) {
+      } else if (listNameLower.includes("argentina")) {
         listRegionMapping[list.id] = "ARGENTINA"
-      } else if (listName.toLowerCase().includes("crucero")) {
+      } else if (listNameLower.includes("crucero")) {
         listRegionMapping[list.id] = "CRUCEROS"
-      } else if (listName.toLowerCase().includes("eeuu") || listName.toLowerCase().includes("usa")) {
+      } else if (listNameLower.includes("eeuu") || listNameLower.includes("usa")) {
         listRegionMapping[list.id] = "EEUU"
+      } else if (listNameLower.includes("cupos")) {
+        listRegionMapping[list.id] = "CRUCEROS"
       } else {
         listRegionMapping[list.id] = "OTROS"
       }
