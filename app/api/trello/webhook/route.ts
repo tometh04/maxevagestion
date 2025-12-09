@@ -61,11 +61,21 @@ export async function POST(request: Request) {
     }
 
     // Extract card ID early for logging
-    cardId = webhook.action?.data?.card?.id || webhook.model?.id || null
+    // CRÍTICO: Para createCard, el cardId puede estar en action.data.card.id o action.data.card.shortLink
+    // También puede estar en webhook.model.id si el modelo es una card
+    cardId = webhook.action?.data?.card?.id || 
+             webhook.action?.data?.card?.shortLink ||
+             webhook.model?.id || 
+             webhook.action?.data?.cardId || // Algunos webhooks lo envían aquí
+             null
+    
+    // Extract board ID from multiple possible locations
     boardId = webhook.model?.idBoard || 
               webhook.action?.data?.board?.id || 
+              webhook.action?.data?.board?.shortLink ||
               webhook.action?.data?.list?.idBoard ||
               webhook.action?.data?.card?.idBoard ||
+              webhook.action?.data?.card?.board?.id ||
               null
 
     console.log("📥 ========== TRELLO WEBHOOK RECEIVED ==========")
@@ -88,7 +98,18 @@ export async function POST(request: Request) {
     console.log("🔍 Model type:", modelType)
 
     // Only process card-related actions
-    const hasCard = webhook.action?.data?.card !== undefined || modelType === "card"
+    // Para createCard, el card puede estar en action.data.card
+    // Para otros eventos, puede estar en webhook.model
+    const hasCard = webhook.action?.data?.card !== undefined || 
+                    modelType === "card" || 
+                    webhook.action?.type?.includes("Card") ||
+                    webhook.action?.type === "createCard"
+    
+    // Si no hay card ID pero la acción es relacionada con cards, intentar obtenerlo de la card
+    if (!cardId && hasCard && webhook.action?.data?.card) {
+      cardId = webhook.action.data.card.id || webhook.action.data.card.shortLink
+    }
+    
     if (!hasCard && !cardId) {
       console.log("⏭️ Skipping non-card action (no card data found)")
       return NextResponse.json({ received: true, skipped: true, reason: "Not a card action" })
@@ -96,6 +117,13 @@ export async function POST(request: Request) {
 
     if (!cardId) {
       console.log("⏭️ No card ID found in webhook")
+      console.log("📦 Webhook structure:", JSON.stringify({
+        actionType: webhook.action?.type,
+        modelType: modelType,
+        hasActionDataCard: !!webhook.action?.data?.card,
+        actionDataKeys: webhook.action?.data ? Object.keys(webhook.action.data) : [],
+        modelKeys: webhook.model ? Object.keys(webhook.model) : [],
+      }, null, 2))
       return NextResponse.json({ received: true, skipped: true, reason: "No card ID" })
     }
 
