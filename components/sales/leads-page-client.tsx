@@ -81,6 +81,51 @@ export function LeadsPageClient({
     }
   }, [])
 
+  // Definir loadLeads como useCallback para poder usarla en Realtime
+  const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
+    setLoading(true)
+    try {
+      // Cargar TODOS los leads usando paginación correcta (page en vez de offset)
+      let allLeads: Lead[] = []
+      let page = 1
+      const limit = 1000 // Aumentado para cargar más leads por página
+      let hasMore = true
+      let maxPages = 20 // Limite de seguridad para evitar loops infinitos
+
+      while (hasMore && page <= maxPages) {
+        let url = agencyId === "ALL"
+          ? `/api/leads?page=${page}&limit=${limit}`
+          : `/api/leads?agencyId=${agencyId}&page=${page}&limit=${limit}`
+        
+        if (trelloListId && trelloListId !== "ALL") {
+          url += `&trelloListId=${trelloListId}`
+        }
+        
+        // Cache busting para asegurar datos frescos
+        url += `&_t=${Date.now()}`
+
+        const response = await fetch(url, { cache: 'no-store' })
+        const data = await response.json()
+        
+        if (data.leads && data.leads.length > 0) {
+          allLeads = [...allLeads, ...data.leads]
+          hasMore = data.pagination?.hasMore || false
+          console.log(`📥 Página ${page}: ${data.leads.length} leads (Total: ${allLeads.length})`)
+          page++
+        } else {
+          hasMore = false
+        }
+      }
+
+      setLeads(allLeads)
+      console.log(`✅ Cargados ${allLeads.length} leads en total`)
+    } catch (error) {
+      console.error("Error loading leads:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   // 🔄 SUPABASE REALTIME - Actualización automática sin recargar
   useEffect(() => {
     const supabase = supabaseRef.current
@@ -159,7 +204,7 @@ export function LeadsPageClient({
       console.log('🔌 Desconectando de Supabase Realtime...')
       supabase.removeChannel(channel)
     }
-  }, [selectedAgencyId, selectedTrelloListId]) // Agregar selectedTrelloListId a dependencias
+  }, [selectedAgencyId, selectedTrelloListId, loadLeads]) // Agregar loadLeads a dependencias
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
