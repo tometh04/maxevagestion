@@ -222,6 +222,26 @@ export function LeadsPageClient({
     await loadLeads(selectedAgencyId, selectedTrelloListId)
   }
 
+  const handleRefreshLeads = async () => {
+    if (!selectedAgencyId || selectedAgencyId === "ALL") {
+      toast.error("Selecciona una agencia específica para refrescar leads")
+      return
+    }
+
+    setSyncingTrello(true)
+    try {
+      // Simplemente recargar los leads desde la BD (sin sincronizar con Trello)
+      // Esto es mucho más rápido y trae los leads actualizados
+      await loadLeads(selectedAgencyId, selectedTrelloListId)
+      toast.success("✅ Leads actualizados", { duration: 2000 })
+    } catch (error) {
+      console.error("Error refreshing leads:", error)
+      toast.error("Error al refrescar leads")
+    } finally {
+      setSyncingTrello(false)
+    }
+  }
+
   const handleSyncTrello = async (forceFullSync = false) => {
     if (!selectedAgencyId || selectedAgencyId === "ALL") {
       toast.error("Selecciona una agencia específica para sincronizar con Trello")
@@ -244,7 +264,7 @@ export function LeadsPageClient({
           `Sincronización ${syncType} completada: ${data.summary.total} tarjetas (${data.summary.created} nuevas, ${data.summary.updated} actualizadas)`
         )
         // Recargar leads después de sincronizar
-        await loadLeads(selectedAgencyId)
+        await loadLeads(selectedAgencyId, selectedTrelloListId)
       } else {
         toast.error(data.error || "Error al sincronizar con Trello")
       }
@@ -354,23 +374,44 @@ export function LeadsPageClient({
             </div>
           )}
           {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && (
-            <Button
-              variant="outline"
-              onClick={() => handleSyncTrello(false)}
-              disabled={syncingTrello}
-            >
-              {syncingTrello ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sincronizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Sincronizar Trello
-                </>
-              )}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={handleRefreshLeads}
+                disabled={syncingTrello}
+                title="Refrescar leads desde la base de datos (rápido)"
+              >
+                {syncingTrello ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Actualizando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Actualizar Leads
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleSyncTrello(false)}
+                disabled={syncingTrello}
+                title="Sincronizar con Trello (puede tardar)"
+              >
+                {syncingTrello ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sincronizando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Sync Trello
+                  </>
+                )}
+              </Button>
+            </>
           )}
           <Button onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
