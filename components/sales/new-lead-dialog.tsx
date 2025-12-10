@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
 import { CalendarIcon } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -81,7 +82,6 @@ export function NewLeadDialog({
   const [loading, setLoading] = useState(false)
   const [trelloLists, setTrelloLists] = useState<TrelloList[]>([])
   const [loadingLists, setLoadingLists] = useState(false)
-  const selectedAgencyId = useForm<LeadFormValues>().watch("agency_id")
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema) as any,
@@ -337,6 +337,39 @@ export function NewLeadDialog({
               )}
             />
 
+            {/* Selector de Lista de Trello - Solo si hay listas disponibles */}
+            {watchedAgencyId && trelloLists.length > 0 && (
+              <FormField
+                control={form.control}
+                name="trello_list_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Lista de Trello (Opcional)</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                      value={field.value || "none"}
+                      disabled={loadingLists}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={loadingLists ? "Cargando listas..." : "Sin lista de Trello"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Sin lista de Trello</SelectItem>
+                        {trelloLists.map((list) => (
+                          <SelectItem key={list.id} value={list.id}>
+                            {list.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -440,18 +473,20 @@ export function NewLeadDialog({
                   control={form.control}
                   name="has_deposit"
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                    <FormItem>
+                      <FormLabel>¿Tiene depósito recibido?</FormLabel>
                       <FormControl>
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                          className="h-4 w-4 rounded border-gray-300"
-                        />
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {field.value ? "Sí" : "No"}
+                          </span>
+                        </div>
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel>¿Tiene depósito recibido?</FormLabel>
-                      </div>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
