@@ -126,6 +126,11 @@ export async function applyCustomersFilters(
 ): Promise<any> {
   const userRole = user.role as UserRole
 
+  // SUPER_ADMIN ve todos los clientes sin filtros
+  if (userRole === "SUPER_ADMIN") {
+    return query
+  }
+
   // CONTABLE no ve clientes
   if (userRole === "CONTABLE") {
     throw new Error("No tiene permiso para ver clientes")
@@ -161,8 +166,8 @@ export async function applyCustomersFilters(
     return query.in("id", customerIds)
   }
 
-  // Filtrar por agencias si no es SUPER_ADMIN
-  if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
+  // Filtrar por agencias si tiene agencias asignadas
+  if (agencyIds.length > 0) {
     // ADMIN y VIEWER pueden ver todos los clientes sin filtros por operaciones
     // ya que los clientes pueden existir sin operaciones asociadas
     if (userRole === "ADMIN" || userRole === "VIEWER") {
