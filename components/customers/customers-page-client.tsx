@@ -6,6 +6,15 @@ import { CustomersTable } from "./customers-table"
 import { NewCustomerDialog } from "./new-customer-dialog"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import Link from "next/link"
 
 export function CustomersPageClient() {
   const [filters, setFilters] = useState({ search: "" })
@@ -19,6 +28,20 @@ export function CustomersPageClient() {
 
   return (
     <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Clientes</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Clientes</h1>

@@ -4,6 +4,15 @@ import { useCallback, useEffect, useState } from "react"
 import { AlertsTable, Alert } from "./alerts-table"
 import { AlertsFilters, AlertsFiltersState } from "./alerts-filters"
 import { Button } from "@/components/ui/button"
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import Link from "next/link"
 
 interface AlertsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -83,6 +92,20 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
 
   return (
     <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Alertas</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <div>
         <h1 className="text-3xl font-bold">Alertas</h1>
         <p className="text-muted-foreground">Gestiona alertas y recordatorios importantes</p>

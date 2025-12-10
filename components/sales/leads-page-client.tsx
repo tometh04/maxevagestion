@@ -19,6 +19,15 @@ import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from "lucide-react"
 import { toast } from "sonner"
 import { createBrowserClient } from "@supabase/ssr"
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import Link from "next/link"
 
 interface Lead {
   id: string
@@ -289,6 +298,20 @@ export function LeadsPageClient({
 
   return (
     <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Leads</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">

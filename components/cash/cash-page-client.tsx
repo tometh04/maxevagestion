@@ -7,6 +7,14 @@ import { CashFilters, CashFiltersState } from "./cash-filters"
 import { CashKPIs, CashSummary } from "./cash-kpis"
 import { PaymentsTable, Payment } from "./payments-table"
 import { MovementsTable, CashMovement } from "./movements-table"
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
 
 interface CashPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -120,6 +128,20 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
 
   return (
     <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Caja</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       <div>
         <h1 className="text-3xl font-bold">Caja & Finanzas</h1>
         <p className="text-muted-foreground">Monitorea el estado de la caja y los pagos pendientes</p>

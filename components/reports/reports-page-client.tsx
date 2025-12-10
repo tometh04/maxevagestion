@@ -7,6 +7,15 @@ import { BarChart3, TrendingUp, Wallet, Download, Percent } from "lucide-react"
 import { SalesReport } from "./sales-report"
 import { CashFlowReport } from "./cash-flow-report"
 import { MarginsReport } from "./margins-report"
+import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbSeparator,
+  BreadcrumbPage,
+} from "@/components/ui/breadcrumb"
+import Link from "next/link"
 
 interface ReportsPageClientProps {
   userRole: string
@@ -22,6 +31,20 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
 
   return (
     <div className="space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard">Dashboard</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Reportes</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
+
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">Reportes</h1>
