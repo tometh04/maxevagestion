@@ -163,15 +163,15 @@ export async function applyCustomersFilters(
 
   // Filtrar por agencias si no es SUPER_ADMIN
   if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
-    // ADMIN y otros roles pueden ver todos los clientes (no filtramos por operaciones)
+    // ADMIN y VIEWER pueden ver todos los clientes sin filtros por operaciones
     // ya que los clientes pueden existir sin operaciones asociadas
     if (userRole === "ADMIN" || userRole === "VIEWER") {
       // No aplicar filtro adicional, devolver todos los clientes
       return query
     }
 
-    // Para otros roles (si hay), aplicar filtros similares a SELLER
-    // Obtener customer_ids de operaciones
+    // Para SELLER y otros roles, aplicar filtros
+    // Obtener customer_ids de operaciones de las agencias del usuario
     const { data: operations } = await supabase
       .from("operations")
       .select("id")
@@ -186,7 +186,9 @@ export async function applyCustomersFilters(
         .select("customer_id")
         .in("operation_id", operationIds)
 
-      customerIdsFromOperations.push(...((operationCustomers || []).map((oc: any) => oc.customer_id)))
+      if (operationCustomers) {
+        customerIdsFromOperations.push(...operationCustomers.map((oc: any) => oc.customer_id))
+      }
     }
 
     // También obtener customer_ids de leads de las agencias
@@ -231,7 +233,7 @@ export async function applyCustomersFilters(
       return query.in("id", allCustomerIds)
     }
 
-    // Si no hay matches, retornar query vacío solo si no es ADMIN
+    // Si no hay matches, retornar query vacío
     return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
   }
 
