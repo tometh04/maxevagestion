@@ -16,6 +16,7 @@ import {
   GalleryVerticalEnd,
   Calendar as CalendarIcon,
   MessageSquare,
+  Heart,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -80,6 +81,7 @@ const allNavigation: NavItem[] = [
   { title: "Reportes", url: "/reports", icon: FileText, module: "reports" },
   { title: "Mi Balance", url: "/my/balance", icon: DollarSign },
   { title: "Mis Comisiones", url: "/my/commissions", icon: DollarSign },
+  { title: "Emilia", url: "/emilia", icon: Heart },
   { title: "Configuración", url: "/settings", icon: Settings, module: "settings" },
 ]
 
