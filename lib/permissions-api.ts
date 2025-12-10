@@ -163,13 +163,14 @@ export async function applyCustomersFilters(
 
   // Filtrar por agencias si no es SUPER_ADMIN
   if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
-    // Filtrar por agencias a través de operaciones
+    // Obtener customer_ids de operaciones
     const { data: operations } = await supabase
       .from("operations")
       .select("id")
       .in("agency_id", agencyIds)
 
     const operationIds = (operations || []).map((op: any) => op.id)
+    const customerIdsFromOperations: string[] = []
 
     if (operationIds.length > 0) {
       const { data: operationCustomers } = await supabase
@@ -177,11 +178,48 @@ export async function applyCustomersFilters(
         .select("customer_id")
         .in("operation_id", operationIds)
 
-      const customerIds = (operationCustomers || []).map((oc: any) => oc.customer_id)
+      customerIdsFromOperations.push(...((operationCustomers || []).map((oc: any) => oc.customer_id)))
+    }
 
-      if (customerIds.length > 0) {
-        return query.in("id", customerIds)
+    // También obtener customer_ids de leads de las agencias
+    // Los clientes se identifican por matching de phone/email con leads
+    const { data: leads } = await supabase
+      .from("leads")
+      .select("contact_phone, contact_email")
+      .in("agency_id", agencyIds)
+
+    const customerIdsFromLeads: string[] = []
+    if (leads && leads.length > 0) {
+      // Buscar clientes que coincidan con los leads por phone o email
+      const phones = leads.map((l: any) => l.contact_phone).filter(Boolean)
+      const emails = leads.map((l: any) => l.contact_email).filter(Boolean)
+
+      if (phones.length > 0 || emails.length > 0) {
+        let customerQuery = supabase
+          .from("customers")
+          .select("id")
+
+        const orConditions: string[] = []
+        if (phones.length > 0) {
+          orConditions.push(`phone.in.(${phones.join(",")})`)
+        }
+        if (emails.length > 0) {
+          orConditions.push(`email.in.(${emails.join(",")})`)
+        }
+
+        if (orConditions.length > 0) {
+          customerQuery = customerQuery.or(orConditions.join(","))
+          const { data: customersFromLeads } = await customerQuery
+          customerIdsFromLeads.push(...((customersFromLeads || []).map((c: any) => c.id)))
+        }
       }
+    }
+
+    // Combinar ambos conjuntos de IDs
+    const allCustomerIds = [...new Set([...customerIdsFromOperations, ...customerIdsFromLeads])]
+
+    if (allCustomerIds.length > 0) {
+      return query.in("id", allCustomerIds)
     }
 
     return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
