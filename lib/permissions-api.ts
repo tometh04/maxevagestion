@@ -225,7 +225,7 @@ export async function applyCustomersFilters(
     }
 
     // Combinar ambos conjuntos de IDs
-    const allCustomerIds = [...new Set([...customerIdsFromOperations, ...customerIdsFromLeads])]
+    const allCustomerIds = Array.from(new Set([...customerIdsFromOperations, ...customerIdsFromLeads]))
 
     if (allCustomerIds.length > 0) {
       return query.in("id", allCustomerIds)
