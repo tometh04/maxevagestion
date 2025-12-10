@@ -198,8 +198,8 @@ export async function applyCustomersFilters(
     const customerIdsFromLeads: string[] = []
     if (leads && leads.length > 0) {
       // Buscar clientes que coincidan con los leads por phone o email
-      const phones = [...new Set(leads.map((l: any) => l.contact_phone).filter(Boolean))]
-      const emails = [...new Set(leads.map((l: any) => l.contact_email).filter(Boolean))]
+      const phones = Array.from(new Set(leads.map((l: any) => l.contact_phone).filter(Boolean)))
+      const emails = Array.from(new Set(leads.map((l: any) => l.contact_email).filter(Boolean)))
 
       if (phones.length > 0) {
         const { data: customersByPhone } = await supabase
