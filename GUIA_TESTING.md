@@ -27,25 +27,56 @@ Antes de comenzar, verifica que tengas:
 1. Ir a **Sales → Leads**
 2. Click en botón **"+ Nuevo Lead"**
 3. Completar formulario:
+   - **Agencia:** Seleccionar tu agencia (ej: "Rosario" o "Madero")
+   - **Lista de Trello:** Se mostrará automáticamente todas las listas activas de Trello según la agencia seleccionada
+     - Seleccionar una lista de Trello (opcional, pero recomendado si quieres que aparezca en el Kanban de Trello)
+     - Si seleccionas "Rosario", verás listas como "Campaña - Caribe Mayo/Junio", etc.
+     - Si seleccionas "Madero", verás las listas correspondientes a esa agencia
    - Nombre del contacto: "Juan Pérez Test"
    - Teléfono: "+5493412345678"
    - Email: "juan.perez@test.com" (opcional)
    - Destino: "Punta Cana"
    - Región: "CARIBE"
    - Estado: "NEW"
-   - Agencia: Seleccionar tu agencia
-4. Click en **"Guardar"**
+   - Vendedor Asignado: Seleccionar o dejar "Sin asignar"
+4. Click en **"Crear Lead"**
 
 **✅ Resultado Esperado:**
 - Aparece notificación de éxito
-- El lead aparece en la columna "NEW" del Kanban
+- Si seleccionaste una lista de Trello: El lead aparece en el Kanban de Trello en la lista correspondiente
+- Si no seleccionaste lista: El lead aparece en la columna "NEW" del Kanban estándar
 - El lead aparece en la tabla de leads
 - El lead tiene un ID único
+- Si seleccionaste una lista de Trello, el lead tiene `trello_list_id` asignado
 
 **❌ Si falla:**
 - Verificar permisos del usuario
 - Verificar que la agencia esté seleccionada
+- Si no aparecen listas de Trello, verificar que la agencia tenga Trello configurado
 - Revisar consola del navegador para errores
+
+---
+
+### PASO 1.5: "Agarrar" un Lead Sin Asignar (Claim Lead)
+
+**📍 Acción:**
+1. En el Kanban de Leads, encontrar un lead **sin asignar** (sin vendedor)
+2. Click en el botón **"Agarrar"** o **"Asignar"** (si eres vendedor)
+3. O abrir el detalle del lead y click en **"Agarrar Lead"**
+
+**✅ Resultado Esperado:**
+- El lead se asigna automáticamente al vendedor que hizo click
+- Si el lead tiene `external_id` (viene de Trello):
+  - Se busca la lista de Trello con el nombre del vendedor
+  - Se mueve la card en Trello a la lista del vendedor
+  - Se actualiza `trello_list_id` en la base de datos
+- El lead aparece ahora en la lista/columna del vendedor
+- Notificación de éxito: "Lead asignado a [Nombre] y movido a su lista en Trello"
+
+**❌ Si falla:**
+- Verificar que el lead no esté ya asignado a otro vendedor
+- Si viene de Trello, verificar que exista una lista con el nombre del vendedor
+- Revisar logs del endpoint `/api/leads/claim`
 
 ---
 
@@ -66,19 +97,25 @@ Antes de comenzar, verifica que tengas:
 
 ---
 
-### PASO 3: Convertir Lead a Operación
+### PASO 3: Convertir Lead a Operación (Desde Lead Existente)
 
 **📍 Acción:**
-1. Click en el lead creado (abrir detalle)
-2. Click en botón **"Convertir a Operación"**
-3. Completar formulario de operación:
+1. Buscar un lead existente (puede ser uno nuevo que creaste o uno de Trello)
+2. Click en el lead (abrir detalle)
+3. Verificar que el lead tenga la información necesaria:
+   - Nombre de contacto ✓
+   - Teléfono ✓
+   - Destino ✓
+4. Click en botón **"Convertir a Operación"**
+5. Completar formulario de operación:
    - Código: Se genera automáticamente (verificar que sea único)
    - Operador: Seleccionar un operador
-   - Destino: "Punta Cana"
+   - Destino: Se precarga desde el lead (verificar que sea correcto)
    - Fecha de viaje: Fecha futura
    - Moneda: "USD" o "ARS"
    - Precio total: 1000
-4. Click en **"Crear Operación"**
+   - **Cliente:** Se crea automáticamente con los datos del lead
+6. Click en **"Crear Operación"**
 
 **✅ Resultado Esperado:**
 - Aparece notificación de éxito
@@ -86,9 +123,15 @@ Antes de comenzar, verifica que tengas:
 - Se crea la operación con el código generado
 - La operación tiene estado "PRE_RESERVATION"
 - Se redirige a la página de detalle de la operación
-- El cliente se crea automáticamente si no existía
+- El cliente se crea automáticamente con:
+  - Nombre del lead (`contact_name`)
+  - Teléfono del lead (`contact_phone`)
+  - Email del lead (`contact_email` si existe)
+- El vendedor asignado al lead se asigna automáticamente a la operación
+- Si el lead venía de Trello, se mantiene la referencia (`lead_id`)
 
 **❌ Si falla:**
+- Verificar que el lead tenga los datos mínimos requeridos
 - Verificar que el operador existe
 - Verificar permisos
 - Revisar logs de la API
