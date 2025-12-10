@@ -163,6 +163,14 @@ export async function applyCustomersFilters(
 
   // Filtrar por agencias si no es SUPER_ADMIN
   if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
+    // ADMIN y otros roles pueden ver todos los clientes (no filtramos por operaciones)
+    // ya que los clientes pueden existir sin operaciones asociadas
+    if (userRole === "ADMIN" || userRole === "VIEWER") {
+      // No aplicar filtro adicional, devolver todos los clientes
+      return query
+    }
+
+    // Para otros roles (si hay), aplicar filtros similares a SELLER
     // Obtener customer_ids de operaciones
     const { data: operations } = await supabase
       .from("operations")
@@ -182,7 +190,6 @@ export async function applyCustomersFilters(
     }
 
     // También obtener customer_ids de leads de las agencias
-    // Los clientes se identifican por matching de phone/email con leads
     const { data: leads } = await supabase
       .from("leads")
       .select("contact_phone, contact_email")
@@ -191,26 +198,28 @@ export async function applyCustomersFilters(
     const customerIdsFromLeads: string[] = []
     if (leads && leads.length > 0) {
       // Buscar clientes que coincidan con los leads por phone o email
-      const phones = leads.map((l: any) => l.contact_phone).filter(Boolean)
-      const emails = leads.map((l: any) => l.contact_email).filter(Boolean)
+      const phones = [...new Set(leads.map((l: any) => l.contact_phone).filter(Boolean))]
+      const emails = [...new Set(leads.map((l: any) => l.contact_email).filter(Boolean))]
 
-      if (phones.length > 0 || emails.length > 0) {
-        let customerQuery = supabase
+      if (phones.length > 0) {
+        const { data: customersByPhone } = await supabase
           .from("customers")
           .select("id")
-
-        const orConditions: string[] = []
-        if (phones.length > 0) {
-          orConditions.push(`phone.in.(${phones.join(",")})`)
+          .in("phone", phones)
+        
+        if (customersByPhone) {
+          customerIdsFromLeads.push(...customersByPhone.map((c: any) => c.id))
         }
-        if (emails.length > 0) {
-          orConditions.push(`email.in.(${emails.join(",")})`)
-        }
+      }
 
-        if (orConditions.length > 0) {
-          customerQuery = customerQuery.or(orConditions.join(","))
-          const { data: customersFromLeads } = await customerQuery
-          customerIdsFromLeads.push(...((customersFromLeads || []).map((c: any) => c.id)))
+      if (emails.length > 0) {
+        const { data: customersByEmail } = await supabase
+          .from("customers")
+          .select("id")
+          .in("email", emails)
+        
+        if (customersByEmail) {
+          customerIdsFromLeads.push(...customersByEmail.map((c: any) => c.id))
         }
       }
     }
@@ -222,6 +231,7 @@ export async function applyCustomersFilters(
       return query.in("id", allCustomerIds)
     }
 
+    // Si no hay matches, retornar query vacío solo si no es ADMIN
     return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
   }
 
