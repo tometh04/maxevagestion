@@ -9,7 +9,7 @@ import * as dotenv from "dotenv"
 import { resolve } from "path"
 import { fetchTrelloCard, syncTrelloCardToLead } from "../lib/trello/sync"
 
-dotenv.config({ path: resolve(__dirname, "../.env.local") })
+dotenv.config({ path: resolve(process.cwd(), ".env.local") })
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -28,13 +28,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
   },
 })
 
-const TRELLO_API_KEY = process.env.TRELLO_API_KEY || ""
-const TRELLO_TOKEN = process.env.TRELLO_TOKEN || ""
-
-if (!TRELLO_API_KEY || !TRELLO_TOKEN) {
-  console.error("❌ Faltan TRELLO_API_KEY o TRELLO_TOKEN")
-  process.exit(1)
-}
+// Las credenciales de Trello se obtienen de la base de datos por agencia
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
@@ -164,7 +158,16 @@ async function syncAgency(agencyName: string) {
   
   const settings = trelloSettings as any
   const boardId = settings.board_id
+  const trelloApiKey = settings.trello_api_key
+  const trelloToken = settings.trello_token
+  
+  if (!trelloApiKey || !trelloToken) {
+    console.error(`❌ No hay credenciales de Trello para ${agencyName}`)
+    return { success: false, synced: 0, created: 0, errors: 0 }
+  }
+  
   console.log(`✅ Board ID: ${boardId}`)
+  console.log(`✅ API Key: ${trelloApiKey.substring(0, 10)}...`)
   
   // 3. BORRAR TODOS LOS LEADS DE TRELLO
   await deleteAllTrelloLeads(agencyId, agencyName)
@@ -172,7 +175,7 @@ async function syncAgency(agencyName: string) {
   // 4. Obtener TODAS las cards del board (solo IDs primero)
   console.log(`\n📥 Obteniendo todas las cards de Trello...`)
   const cardsResponse = await fetch(
-    `https://api.trello.com/1/boards/${boardId}/cards/open?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name,dateLastActivity&limit=1000`
+    `https://api.trello.com/1/boards/${boardId}/cards/open?key=${trelloApiKey}&token=${trelloToken}&fields=id,name,dateLastActivity&limit=1000`
   )
   
   if (!cardsResponse.ok) {
@@ -189,7 +192,7 @@ async function syncAgency(agencyName: string) {
     let hasMore = true
     while (hasMore) {
       const nextPageResponse = await fetch(
-        `https://api.trello.com/1/boards/${boardId}/cards/open?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name,dateLastActivity&limit=1000&page=${page}`
+        `https://api.trello.com/1/boards/${boardId}/cards/open?key=${trelloApiKey}&token=${trelloToken}&fields=id,name,dateLastActivity&limit=1000&page=${page}`
       )
       if (nextPageResponse.ok) {
         const nextCards = await nextPageResponse.json()
@@ -212,8 +215,8 @@ async function syncAgency(agencyName: string) {
   
   const trelloSettingsForSync = {
     agency_id: agencyId,
-    trello_api_key: TRELLO_API_KEY,
-    trello_token: TRELLO_TOKEN,
+    trello_api_key: trelloApiKey,
+    trello_token: trelloToken,
     board_id: boardId,
     list_status_mapping: (settings.list_status_mapping || {}) as Record<string, string>,
     list_region_mapping: (settings.list_region_mapping || {}) as Record<string, string>,
@@ -234,7 +237,7 @@ async function syncAgency(agencyName: string) {
     
     try {
       // Fetch full card details with retry
-      const fullCard = await fetchCardWithRetry(card.id, TRELLO_API_KEY, TRELLO_TOKEN)
+      const fullCard = await fetchCardWithRetry(card.id, trelloApiKey, trelloToken)
       
       if (!fullCard) {
         console.error(`❌ Card ${card.id} not found or deleted`)
