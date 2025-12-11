@@ -138,34 +138,11 @@ export function parseDestination(card: TrelloCard): string {
 
 /**
  * Extract phone number from card description or name
- * Primero busca en la descripción, luego en el nombre
  */
 export function extractPhone(desc: string, name: string): string {
   const phoneRegex = /(\+?\d{1,4}[\s-]?)?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,4}[\s-]?\d{1,9}/
-  
-  // Primero intentar desde la descripción
-  if (desc) {
-    const descMatch = desc.match(phoneRegex)
-    if (descMatch) {
-      return descMatch[0].trim()
-    }
-  }
-  
-  // Si no está en la descripción, intentar extraer del nombre
-  // El formato puede ser: "NOMBRE - DESTINO - TELEFONO"
-  const parts = splitCardName(name)
-  if (parts.length >= 3) {
-    // El teléfono puede estar en la última parte
-    const phonePart = parts[parts.length - 1].trim()
-    const phoneMatch = phonePart.match(phoneRegex)
-    if (phoneMatch && phoneMatch[0].replace(/\D/g, '').length >= 8) {
-      return phoneMatch[0].trim()
-    }
-  }
-  
-  // Fallback: buscar en todo el nombre completo
-  const nameMatch = name.match(phoneRegex)
-  return nameMatch ? nameMatch[0].trim() : ""
+  const match = (desc + " " + name).match(phoneRegex)
+  return match ? match[0].trim() : ""
 }
 
 /**
