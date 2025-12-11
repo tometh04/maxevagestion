@@ -138,30 +138,32 @@ export function parseDestination(card: TrelloCard): string {
 
 /**
  * Extract phone number from card description or name
- * El formato del nombre de la card es: "NOMBRE - DESTINO - TELEFONO"
- * Primero intenta desde la descripción, luego del nombre (última parte después del último "-")
+ * Primero busca en la descripción, luego en el nombre
  */
 export function extractPhone(desc: string, name: string): string {
-  // Primero intentar desde la descripción
   const phoneRegex = /(\+?\d{1,4}[\s-]?)?\(?\d{1,4}\)?[\s-]?\d{1,4}[\s-]?\d{1,4}[\s-]?\d{1,9}/
-  const descMatch = desc.match(phoneRegex)
-  if (descMatch) {
-    return descMatch[0].trim()
+  
+  // Primero intentar desde la descripción
+  if (desc) {
+    const descMatch = desc.match(phoneRegex)
+    if (descMatch) {
+      return descMatch[0].trim()
+    }
   }
   
-  // Si no está en la descripción, extraer del nombre (formato: NOMBRE - DESTINO - TELEFONO)
+  // Si no está en la descripción, intentar extraer del nombre
+  // El formato puede ser: "NOMBRE - DESTINO - TELEFONO"
   const parts = splitCardName(name)
   if (parts.length >= 3) {
-    // El teléfono es la última parte
+    // El teléfono puede estar en la última parte
     const phonePart = parts[parts.length - 1].trim()
-    // Verificar que sea un número válido
-    const phoneMatch = phonePart.match(/[\d\s\-\+\(\)]+/)
+    const phoneMatch = phonePart.match(phoneRegex)
     if (phoneMatch && phoneMatch[0].replace(/\D/g, '').length >= 8) {
       return phoneMatch[0].trim()
     }
   }
   
-  // Fallback: buscar en todo el nombre
+  // Fallback: buscar en todo el nombre completo
   const nameMatch = name.match(phoneRegex)
   return nameMatch ? nameMatch[0].trim() : ""
 }
