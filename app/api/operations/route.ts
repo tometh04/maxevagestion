@@ -284,12 +284,16 @@ export async function POST(request: Request) {
               first_name: firstName,
               last_name: lastName,
               phone: phone || "",
-              email: leadData.contact_email || "",
+              email: leadData.contact_email || null, // Email puede ser null
               instagram_handle: leadData.contact_instagram || null,
-              destination: destination,
+              destination: destination || null,
             })
             .select()
             .single()
+          
+          if (customerError) {
+            console.error(`❌ Error creating customer from lead ${lead_id}:`, customerError)
+          }
           
           if (!customerError && newCustomer) {
             customerId = newCustomer.id
