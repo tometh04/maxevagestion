@@ -277,18 +277,30 @@ export async function getUserAgencyIds(
   userId: string,
   userRole: UserRole
 ): Promise<string[]> {
-  if (userRole === "SUPER_ADMIN") {
-    // SUPER_ADMIN ve todas las agencias
-    const { data: allAgencies } = await supabase.from("agencies").select("id")
-    return (allAgencies || []).map((a: any) => a.id)
-  }
+  // Usar caché para evitar consultas repetidas (TTL: 5 minutos)
+  const { unstable_cache } = await import('next/cache')
+  
+  return unstable_cache(
+    async () => {
+      if (userRole === "SUPER_ADMIN") {
+        // SUPER_ADMIN ve todas las agencias
+        const { data: allAgencies } = await supabase.from("agencies").select("id")
+        return (allAgencies || []).map((a: any) => a.id)
+      }
 
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id")
-    .eq("user_id", userId)
+      const { data: userAgencies } = await supabase
+        .from("user_agencies")
+        .select("agency_id")
+        .eq("user_id", userId)
 
-  return (userAgencies || []).map((ua: any) => ua.agency_id)
+      return (userAgencies || []).map((ua: any) => ua.agency_id)
+    },
+    [`user-agencies-${userId}-${userRole}`],
+    {
+      revalidate: 5 * 60, // 5 minutos
+      tags: [`user-agencies-${userId}`],
+    }
+  )()
 }
 
 /**

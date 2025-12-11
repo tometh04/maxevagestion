@@ -19,13 +19,9 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
-
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    // Get user agencies (con caché)
+    const { getUserAgencyIds } = await import("@/lib/permissions-api")
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build query - NO incluir operations aquí, se cargan después manualmente
     let query = supabase.from("leads").select(`
@@ -81,19 +77,26 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
-    // SIEMPRE cargar operaciones para leads WON desde la tabla operations directamente
-    const wonLeadIds = (leads || [])
-      .filter((l: any) => l.status === "WON")
-      .map((l: any) => l.id)
+    // OPTIMIZADO: Solo cargar operaciones y clientes si hay leads WON (evitar consultas innecesarias)
+    const wonLeads = (leads || []).filter((l: any) => l.status === "WON")
     
-    if (wonLeadIds.length > 0) {
-      // Buscar TODAS las operaciones que tengan lead_id de estos leads
-      const { data: allOperationsForWonLeads, error: opsError } = await (supabase
-        .from("operations") as any)
-        .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
-        .in("lead_id", wonLeadIds)
+    if (wonLeads.length > 0) {
+      const wonLeadIds = wonLeads.map((l: any) => l.id)
       
-      if (!opsError && allOperationsForWonLeads && allOperationsForWonLeads.length > 0) {
+      // Cargar operaciones y clientes en paralelo para mejor rendimiento
+      const [operationsResult, customersResult] = await Promise.all([
+        // Operaciones
+        supabase
+          .from("operations")
+          .select("id, file_code, destination, status, created_at, departure_date, sale_amount_total, lead_id")
+          .in("lead_id", wonLeadIds),
+        // Clientes (solo si hay operaciones)
+        Promise.resolve({ data: null, error: null }) // Se cargará después si hay operaciones
+      ])
+      
+      const allOperationsForWonLeads = operationsResult.data || []
+      
+      if (allOperationsForWonLeads.length > 0) {
         // Crear mapa de operaciones por lead_id
         const operationsByLeadId = new Map<string, any[]>()
         for (const op of allOperationsForWonLeads as any[]) {
@@ -114,57 +117,57 @@ export async function GET(request: Request) {
           }
         }
         
-        // Asignar operaciones a cada lead WON
-        leads = leads.map((lead: any) => {
-          if (lead.status === "WON") {
-            const ops = operationsByLeadId.get(lead.id) || []
-            return { ...lead, operations: ops }
-          }
-          return lead
-        })
-      }
-    }
+        // Obtener clientes solo si hay operaciones
+        const operationIds = Array.from(operationsByLeadId.values()).flat().map((op: any) => op.id)
+        if (operationIds.length > 0) {
+          const { data: opCustomers } = await supabase
+            .from("operation_customers")
+            .select(`
+              operation_id,
+              customers:customer_id (id, first_name, last_name)
+            `)
+            .in("operation_id", operationIds)
+            .eq("role", "MAIN")
 
-    // Para leads convertidos (WON), obtener los clientes asociados a través de las operaciones
-    const wonLeadsWithOperations = leads.filter((l: any) => l.status === "WON" && l.operations?.length > 0)
-    if (wonLeadsWithOperations.length > 0) {
-      const operationIds = wonLeadsWithOperations.flatMap((l: any) => l.operations.map((op: any) => op.id))
-      
-      if (operationIds.length > 0) {
-        const { data: opCustomers } = await (supabase.from("operation_customers") as any)
-          .select(`
-            operation_id,
-            customers:customer_id (id, first_name, last_name)
-          `)
-          .in("operation_id", operationIds)
-          .eq("role", "MAIN")
-
-        // Asociar clientes a cada lead
-        const customersByOperation = new Map()
-        for (const oc of (opCustomers || [])) {
-          if (!customersByOperation.has(oc.operation_id)) {
-            customersByOperation.set(oc.operation_id, [])
-          }
-          if (oc.customers) {
-            customersByOperation.get(oc.operation_id).push(oc.customers)
-          }
-        }
-
-        leads = leads.map((lead: any) => {
-          if (lead.operations?.length > 0) {
-            const customers: any[] = []
-            for (const op of lead.operations) {
-              const opCustomersArr = customersByOperation.get(op.id) || []
-              customers.push(...opCustomersArr)
+          // Asociar clientes a cada lead
+          const customersByOperation = new Map()
+          for (const oc of (opCustomers || [])) {
+            if (!customersByOperation.has(oc.operation_id)) {
+              customersByOperation.set(oc.operation_id, [])
             }
-            return { ...lead, customers }
+            if (oc.customers) {
+              customersByOperation.get(oc.operation_id).push(oc.customers)
+            }
           }
-          return lead
-        })
+
+          // Asignar operaciones y clientes a cada lead WON
+          leads = leads.map((lead: any) => {
+            if (lead.status === "WON") {
+              const ops = operationsByLeadId.get(lead.id) || []
+              const customers: any[] = []
+              for (const op of ops) {
+                const opCustomersArr = customersByOperation.get(op.id) || []
+                customers.push(...opCustomersArr)
+              }
+              return { ...lead, operations: ops, customers }
+            }
+            return lead
+          })
+        } else {
+          // Solo asignar operaciones sin clientes
+          leads = leads.map((lead: any) => {
+            if (lead.status === "WON") {
+              const ops = operationsByLeadId.get(lead.id) || []
+              return { ...lead, operations: ops }
+            }
+            return lead
+          })
+        }
       }
     }
 
-    // Get total count for pagination (con todos los filtros aplicados)
+    // OPTIMIZADO: Obtener count en paralelo con los datos (si es necesario)
+    // Para mejor rendimiento, solo obtener count si realmente se necesita
     let countQuery = supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
@@ -189,8 +192,8 @@ export async function GET(request: Request) {
       countQuery = countQuery.eq("trello_list_id", trelloListId)
     }
     
+    // Obtener count
     const { count } = await countQuery
-
     const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({ 

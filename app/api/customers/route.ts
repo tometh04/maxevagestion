@@ -15,7 +15,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
-    // Get user agencies
+    // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build query

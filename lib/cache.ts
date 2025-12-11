@@ -13,6 +13,7 @@ export const CACHE_TTL = {
   OPERATORS: 60 * 60, // 1 hora
   DASHBOARD_KPIS: 5 * 60, // 5 minutos
   TRELLO_CONFIG: 10 * 60, // 10 minutos
+  USER_AGENCIES: 5 * 60, // 5 minutos - agencias del usuario
 } as const
 
 // Tags para invalidación selectiva

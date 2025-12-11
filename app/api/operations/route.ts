@@ -346,13 +346,9 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
-
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    // Get user agencies (con caché)
+    const { getUserAgencyIds } = await import("@/lib/permissions-api")
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build query - Optimizado: cargar todas las relaciones en una sola query
     let query = supabase
@@ -405,7 +401,7 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = (page - 1) * limit
     
-    // Get total count first (con todos los filtros aplicados)
+    // OPTIMIZADO: Obtener count y datos en paralelo para mejor rendimiento
     let countQuery = supabase
       .from("operations")
       .select("*", { count: "exact", head: true })
@@ -433,15 +429,15 @@ export async function GET(request: Request) {
       countQuery = countQuery.lte("departure_date", dateTo)
     }
     
-    const { count } = await countQuery
-    
-    // Ahora obtener los datos con paginación
-    // El count ya lo obtuvimos antes, solo necesitamos los datos
-    const { data: operations, error } = await query
-      .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
-      .order("operation_date", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
+    // OPTIMIZADO: Ejecutar count y query de datos en paralelo
+    const [{ count }, { data: operations, error }] = await Promise.all([
+      countQuery,
+      query
+        .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
+        .order("operation_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1)
+    ])
 
     if (error) {
       console.error("Error fetching operations:", error)
