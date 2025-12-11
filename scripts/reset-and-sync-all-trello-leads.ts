@@ -76,52 +76,19 @@ async function deleteAllTrelloLeads(agencyId: string, agencyName: string) {
     return
   }
   
-  // Eliminar en batches para evitar timeouts
-  const BATCH_SIZE = 500
-  let deleted = 0
-  let page = 0
-  let hasMore = true
+  // Eliminar TODOS directamente (más eficiente)
+  const { error: deleteError, count: deletedCount } = await supabase
+    .from("leads")
+    .delete({ count: "exact" })
+    .eq("source", "Trello")
+    .eq("agency_id", agencyId)
   
-  while (hasMore) {
-    // Obtener batch de IDs
-    const { data: leadsBatch } = await supabase
-      .from("leads")
-      .select("id")
-      .eq("source", "Trello")
-      .eq("agency_id", agencyId)
-      .range(page * BATCH_SIZE, (page + 1) * BATCH_SIZE - 1)
-    
-    if (!leadsBatch || leadsBatch.length === 0) {
-      hasMore = false
-      break
-    }
-    
-    const leadIds = leadsBatch.map(l => l.id)
-    
-    // Eliminar batch
-    const { error } = await supabase
-      .from("leads")
-      .delete()
-      .in("id", leadIds)
-    
-    if (error) {
-      console.error(`   ❌ Error eliminando batch:`, error)
-      break
-    }
-    
-    deleted += leadIds.length
-    console.log(`   🗑️  Eliminados ${deleted}/${totalCount} leads...`)
-    
-    hasMore = leadsBatch.length === BATCH_SIZE
-    page++
-    
-    // Pequeño delay entre batches
-    if (hasMore) {
-      await delay(100)
-    }
+  if (deleteError) {
+    console.error(`   ❌ Error eliminando leads:`, deleteError)
+    return
   }
   
-  console.log(`   ✅ ${deleted} leads eliminados de ${agencyName}`)
+  console.log(`   ✅ ${deletedCount || 0} leads eliminados de ${agencyName}`)
 }
 
 async function syncAgency(agencyName: string) {
@@ -172,43 +139,53 @@ async function syncAgency(agencyName: string) {
   // 3. BORRAR TODOS LOS LEADS DE TRELLO
   await deleteAllTrelloLeads(agencyId, agencyName)
   
-  // 4. Obtener TODAS las cards del board (solo IDs primero)
+  // 4. Obtener TODAS las cards del board usando el endpoint correcto
   console.log(`\n📥 Obteniendo todas las cards de Trello...`)
-  const cardsResponse = await fetch(
-    `https://api.trello.com/1/boards/${boardId}/cards/open?key=${trelloApiKey}&token=${trelloToken}&fields=id,name,dateLastActivity&limit=1000`
-  )
   
-  if (!cardsResponse.ok) {
-    console.error(`❌ Error al obtener cards: ${cardsResponse.status}`)
-    return { success: false, synced: 0, created: 0, errors: 0 }
-  }
+  // Usar /boards/{id}/cards/open que devuelve todas las cards activas sin límite
+  let allCards: any[] = []
+  let hasMore = true
+  let before = null
   
-  let allCards: any[] = await cardsResponse.json()
-  console.log(`✅ ${allCards.length} cards encontradas`)
-  
-  // Si hay más de 1000, obtener el resto con paginación
-  if (allCards.length === 1000) {
-    let page = 1
-    let hasMore = true
-    while (hasMore) {
-      const nextPageResponse = await fetch(
-        `https://api.trello.com/1/boards/${boardId}/cards/open?key=${trelloApiKey}&token=${trelloToken}&fields=id,name,dateLastActivity&limit=1000&page=${page}`
-      )
-      if (nextPageResponse.ok) {
-        const nextCards = await nextPageResponse.json()
-        if (nextCards.length > 0) {
-          allCards = [...allCards, ...nextCards]
-          page++
-          hasMore = nextCards.length === 1000
-        } else {
-          hasMore = false
-        }
-      } else {
-        hasMore = false
-      }
+  while (hasMore) {
+    let url = `https://api.trello.com/1/boards/${boardId}/cards/open?key=${trelloApiKey}&token=${trelloToken}&fields=id,name,dateLastActivity&limit=1000`
+    if (before) {
+      url += `&before=${before}`
     }
-    console.log(`✅ Total: ${allCards.length} cards`)
+    
+    const cardsResponse = await fetch(url)
+    
+    if (!cardsResponse.ok) {
+      if (cardsResponse.status === 429) {
+        console.log(`⚠️ Rate limit, esperando 10 segundos...`)
+        await delay(10000)
+        continue
+      }
+      console.error(`❌ Error al obtener cards: ${cardsResponse.status}`)
+      break
+    }
+    
+    const cards = await cardsResponse.json()
+    
+    if (cards.length === 0) {
+      hasMore = false
+      break
+    }
+    
+    allCards = [...allCards, ...cards]
+    console.log(`   📥 Obtenidas ${allCards.length} cards...`)
+    
+    // Si obtuvimos menos de 1000, no hay más
+    if (cards.length < 1000) {
+      hasMore = false
+    } else {
+      // Usar el último ID como cursor para la siguiente página
+      before = cards[cards.length - 1].id
+      await delay(500) // Pequeño delay entre requests
+    }
   }
+  
+  console.log(`✅ Total: ${allCards.length} cards encontradas`)
   
   // 5. Sincronizar cada card
   console.log(`\n🔄 Sincronizando ${allCards.length} cards...`)
