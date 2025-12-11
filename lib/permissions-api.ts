@@ -126,8 +126,9 @@ export async function applyCustomersFilters(
 ): Promise<any> {
   const userRole = user.role as UserRole
 
-  // SUPER_ADMIN ve todos los clientes sin filtros
-  if (userRole === "SUPER_ADMIN") {
+  // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes sin filtros
+  // Esto es crítico porque los clientes pueden existir sin operaciones asociadas
+  if (userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "VIEWER") {
     return query
   }
 
@@ -166,83 +167,8 @@ export async function applyCustomersFilters(
     return query.in("id", customerIds)
   }
 
-  // Filtrar por agencias si tiene agencias asignadas
-  if (agencyIds.length > 0) {
-    // ADMIN y VIEWER pueden ver todos los clientes sin filtros por operaciones
-    // ya que los clientes pueden existir sin operaciones asociadas
-    if (userRole === "ADMIN" || userRole === "VIEWER") {
-      // No aplicar filtro adicional, devolver todos los clientes
-      return query
-    }
-
-    // Para SELLER y otros roles, aplicar filtros
-    // Obtener customer_ids de operaciones de las agencias del usuario
-    const { data: operations } = await supabase
-      .from("operations")
-      .select("id")
-      .in("agency_id", agencyIds)
-
-    const operationIds = (operations || []).map((op: any) => op.id)
-    const customerIdsFromOperations: string[] = []
-
-    if (operationIds.length > 0) {
-      const { data: operationCustomers } = await supabase
-        .from("operation_customers")
-        .select("customer_id")
-        .in("operation_id", operationIds)
-
-      if (operationCustomers) {
-        customerIdsFromOperations.push(...operationCustomers.map((oc: any) => oc.customer_id))
-      }
-    }
-
-    // También obtener customer_ids de leads de las agencias
-    const { data: leads } = await supabase
-      .from("leads")
-      .select("contact_phone, contact_email")
-      .in("agency_id", agencyIds)
-
-    const customerIdsFromLeads: string[] = []
-    if (leads && leads.length > 0) {
-      // Buscar clientes que coincidan con los leads por phone o email
-      const phones = Array.from(new Set(leads.map((l: any) => l.contact_phone).filter(Boolean)))
-      const emails = Array.from(new Set(leads.map((l: any) => l.contact_email).filter(Boolean)))
-
-      if (phones.length > 0) {
-        const { data: customersByPhone } = await supabase
-          .from("customers")
-          .select("id")
-          .in("phone", phones)
-        
-        if (customersByPhone) {
-          customerIdsFromLeads.push(...customersByPhone.map((c: any) => c.id))
-        }
-      }
-
-      if (emails.length > 0) {
-        const { data: customersByEmail } = await supabase
-          .from("customers")
-          .select("id")
-          .in("email", emails)
-        
-        if (customersByEmail) {
-          customerIdsFromLeads.push(...customersByEmail.map((c: any) => c.id))
-        }
-      }
-    }
-
-    // Combinar ambos conjuntos de IDs
-    const allCustomerIds = Array.from(new Set([...customerIdsFromOperations, ...customerIdsFromLeads]))
-
-    if (allCustomerIds.length > 0) {
-      return query.in("id", allCustomerIds)
-    }
-
-    // Si no hay matches, retornar query vacío
-    return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
-  }
-
-  return query
+  // Para otros roles no contemplados, retornar query vacío por seguridad
+  return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
 }
 
 /**
