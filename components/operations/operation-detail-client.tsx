@@ -334,7 +334,7 @@ export function OperationDetailClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nombre</TableHead>
-                      <TableHead>Email</TableHead>
+                      <TableHead>Destino</TableHead>
                       <TableHead>Teléfono</TableHead>
                       <TableHead>Creado</TableHead>
                       <TableHead>Rol</TableHead>
@@ -348,7 +348,7 @@ export function OperationDetailClient({
                             {oc.customers?.first_name} {oc.customers?.last_name}
                           </Link>
                         </TableCell>
-                        <TableCell>{oc.customers?.email || "-"}</TableCell>
+                        <TableCell>{oc.customers?.destination || "-"}</TableCell>
                         <TableCell>{oc.customers?.phone || "-"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {(() => {

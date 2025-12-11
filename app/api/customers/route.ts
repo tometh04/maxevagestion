@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { applyCustomersFilters, getUserAgencyIds } from "@/lib/permissions-api"
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -38,6 +40,7 @@ export async function GET(request: Request) {
     try {
       query = await applyCustomersFilters(query, user, agencyIds, supabase)
     } catch (error: any) {
+      console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
 
