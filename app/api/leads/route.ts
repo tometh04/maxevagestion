@@ -130,13 +130,13 @@ export async function GET(request: Request) {
             .eq("role", "MAIN")
 
           // Asociar clientes a cada lead
-          const customersByOperation = new Map()
-          for (const oc of (opCustomers || [])) {
+          const customersByOperation = new Map<string, any[]>()
+          for (const oc of (opCustomers || []) as any[]) {
             if (!customersByOperation.has(oc.operation_id)) {
               customersByOperation.set(oc.operation_id, [])
             }
             if (oc.customers) {
-              customersByOperation.get(oc.operation_id).push(oc.customers)
+              customersByOperation.get(oc.operation_id)!.push(oc.customers)
             }
           }
 
