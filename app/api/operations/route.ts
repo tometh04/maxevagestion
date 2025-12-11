@@ -241,28 +241,59 @@ export async function POST(request: Request) {
         
         // Si no existe, crear el cliente
         if (!customerId) {
-          // Separar nombre en first_name y last_name
-          const nameParts = (leadData.contact_name || "").trim().split(" ")
-          const firstName = nameParts[0] || "Sin nombre"
-          const lastName = nameParts.slice(1).join(" ") || "-"
+          // Parsear nombre de formato: "NOMBRE - DESTINO - TELEFONO" o solo "NOMBRE"
+          const contactName = (leadData.contact_name || "").trim()
+          const parts = contactName.split(" - ").map((p: string) => p.trim())
+          
+          // Si tiene formato "NOMBRE - DESTINO - TELEFONO", extraer cada parte
+          let firstName = parts[0] || "Sin nombre"
+          let lastName = "-"
+          let phone = leadData.contact_phone || ""
+          let destination = leadData.destination || null
+          
+          if (parts.length >= 3) {
+            // Formato completo: NOMBRE - DESTINO - TELEFONO
+            firstName = parts[0] || "Sin nombre"
+            destination = parts[1] || leadData.destination || null
+            phone = parts[2] || leadData.contact_phone || ""
+          } else if (parts.length === 2) {
+            // Formato: NOMBRE - DESTINO (sin teléfono)
+            firstName = parts[0] || "Sin nombre"
+            destination = parts[1] || leadData.destination || null
+            phone = leadData.contact_phone || ""
+          } else {
+            // Solo nombre, usar datos del lead
+            const nameParts = firstName.split(" ")
+            firstName = nameParts[0] || "Sin nombre"
+            lastName = nameParts.slice(1).join(" ") || "-"
+            phone = leadData.contact_phone || ""
+            destination = leadData.destination || null
+          }
+          
+          // Si el teléfono está vacío pero hay partes, intentar extraer de la última parte
+          if (!phone && parts.length >= 3) {
+            const phonePart = parts[parts.length - 1]
+            const phoneMatch = phonePart.match(/[\d\s\-\+\(\)]+/)
+            if (phoneMatch && phoneMatch[0].replace(/\D/g, '').length >= 8) {
+              phone = phoneMatch[0].trim()
+            }
+          }
           
           const { data: newCustomer, error: customerError } = await (supabase.from("customers") as any)
             .insert({
               first_name: firstName,
               last_name: lastName,
-              phone: leadData.contact_phone || "",
-              email: leadData.contact_email || null, // Email puede ser null
+              phone: phone || "",
+              email: leadData.contact_email || "",
               instagram_handle: leadData.contact_instagram || null,
-              destination: leadData.destination || null,
+              destination: destination,
             })
             .select()
             .single()
           
           if (!customerError && newCustomer) {
             customerId = newCustomer.id
-            console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
-          } else if (customerError) {
-            console.error(`❌ Error creating customer from lead ${lead_id}:`, customerError)
+            console.log(`✅ Created customer ${customerId} from lead ${lead_id} (destination: ${destination})`)
           }
         }
         
