@@ -151,7 +151,31 @@ export function MessagesPageClient({
       const data = await response.json()
       
       if (data.success) {
-        toast.success(`Se generaron ${data.messagesGenerated} mensajes de ${data.operationsProcessed} operaciones`)
+        let message = `Se generaron ${data.messagesGenerated} mensajes de ${data.operationsProcessed} operaciones`
+        if (data.details) {
+          const details = []
+          if (data.details.alertsCreated > 0) {
+            details.push(`${data.details.alertsCreated} alertas creadas`)
+          }
+          if (data.details.alertsSkipped > 0) {
+            details.push(`${data.details.alertsSkipped} alertas ya existían`)
+          }
+          if (data.details.operationsWithoutDates > 0) {
+            details.push(`${data.details.operationsWithoutDates} sin fechas`)
+          }
+          if (data.details.operationsWithoutCustomers > 0) {
+            details.push(`${data.details.operationsWithoutCustomers} sin clientes`)
+          }
+          if (details.length > 0) {
+            message += ` (${details.join(", ")})`
+          }
+        }
+        
+        if (data.messagesGenerated === 0) {
+          toast.warning(message + ". Verifica que existan templates activos y clientes con teléfono.")
+        } else {
+          toast.success(message)
+        }
         fetchMessages()
       } else {
         toast.error(data.error || "Error al generar mensajes")

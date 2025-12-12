@@ -101,7 +101,7 @@ export async function generateMessageFromAlert(
     )?.customers
 
     if (!mainCustomer?.phone) {
-      console.log("No hay cliente con teléfono para esta alerta")
+      console.log(`⚠️ Operación ${alert.operation_id}: No hay cliente con teléfono para generar mensaje`)
       return false
     }
 
@@ -119,7 +119,7 @@ export async function generateMessageFromAlert(
       .maybeSingle()
 
     if (!template) {
-      console.log(`No hay template activo para trigger: ${triggerType}`)
+      console.log(`⚠️ Operación ${alert.operation_id}: No hay template activo para trigger: ${triggerType}`)
       return false
     }
 
@@ -180,7 +180,7 @@ export async function generateMessageFromAlert(
       .maybeSingle()
 
     if (existingMessage) {
-      console.log("Ya existe un mensaje para esta alerta")
+      console.log(`ℹ️ Operación ${alert.operation_id}: Ya existe un mensaje para esta alerta (template: ${template.id})`)
       return false
     }
 

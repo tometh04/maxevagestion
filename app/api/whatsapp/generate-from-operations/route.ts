@@ -54,6 +54,10 @@ export async function POST(request: Request) {
 
     let operationsProcessed = 0
     let messagesGenerated = 0
+    let alertsCreated = 0
+    let alertsSkipped = 0
+    let operationsWithoutDates = 0
+    let operationsWithoutCustomers = 0
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
@@ -62,6 +66,20 @@ export async function POST(request: Request) {
       const operation = op as any // Type assertion para evitar errores de TypeScript
       try {
         const alertsToCreate: any[] = []
+        
+        // Verificar si hay clientes
+        const customers = (operation.operation_customers || []) as any[]
+        if (customers.length === 0) {
+          operationsWithoutCustomers++
+          continue
+        }
+        
+        // Verificar si hay fechas relevantes
+        const hasDates = operation.checkin_date || operation.departure_date || operation.checkout_date || operation.return_date
+        if (!hasDates) {
+          operationsWithoutDates++
+          continue
+        }
 
         // 1. Alerta de CHECK-IN
         const checkInDate = operation.checkin_date || operation.departure_date
@@ -89,6 +107,8 @@ export async function POST(request: Request) {
                 date_due: checkInAlertDate.toISOString().split("T")[0],
                 status: "PENDING",
               })
+            } else {
+              alertsSkipped++
             }
           }
         }
@@ -119,12 +139,13 @@ export async function POST(request: Request) {
                 date_due: checkOutAlertDate.toISOString().split("T")[0],
                 status: "PENDING",
               })
+            } else {
+              alertsSkipped++
             }
           }
         }
 
         // 3. Alertas de CUMPLEAÑOS
-        const customers = (operation.operation_customers || []) as any[]
         for (const oc of customers) {
           const customer = oc.customers
           if (customer?.date_of_birth) {
@@ -165,6 +186,8 @@ export async function POST(request: Request) {
                   date_due: birthdayAlertDate.toISOString().split("T")[0],
                   status: "PENDING",
                 })
+              } else {
+                alertsSkipped++
               }
             }
           }
@@ -182,11 +205,19 @@ export async function POST(request: Request) {
             continue
           }
 
+          alertsCreated += alertsToCreate.length
+          
           // Generar mensajes desde las alertas creadas
           if (createdAlerts && createdAlerts.length > 0) {
+            console.log(`📝 Generando mensajes para ${createdAlerts.length} alertas de operación ${operation.id}...`)
             const msgsGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
             messagesGenerated += msgsGenerated
+            if (msgsGenerated === 0) {
+              console.log(`⚠️ No se generaron mensajes para las alertas de operación ${operation.id} (puede ser: sin template, sin teléfono, o mensaje ya existe)`)
+            }
           }
+        } else {
+          console.log(`ℹ️ Operación ${operation.id}: No se crearon nuevas alertas (ya existen o no cumplen condiciones)`)
         }
 
         operationsProcessed++
@@ -196,13 +227,28 @@ export async function POST(request: Request) {
       }
     }
 
-    console.log(`✅ Procesadas ${operationsProcessed} operaciones, generados ${messagesGenerated} mensajes`)
+    console.log(`✅ Procesadas ${operationsProcessed} operaciones`)
+    console.log(`   - Alertas creadas: ${alertsCreated}`)
+    console.log(`   - Alertas omitidas (ya existían): ${alertsSkipped}`)
+    console.log(`   - Mensajes generados: ${messagesGenerated}`)
+    console.log(`   - Operaciones sin fechas: ${operationsWithoutDates}`)
+    console.log(`   - Operaciones sin clientes: ${operationsWithoutCustomers}`)
 
     return NextResponse.json({
       success: true,
       operationsProcessed,
+      alertsCreated,
+      alertsSkipped,
       messagesGenerated,
-      message: `Se procesaron ${operationsProcessed} operaciones y se generaron ${messagesGenerated} mensajes nuevos`,
+      operationsWithoutDates,
+      operationsWithoutCustomers,
+      message: `Se procesaron ${operationsProcessed} operaciones. Creadas ${alertsCreated} alertas, generados ${messagesGenerated} mensajes nuevos.`,
+      details: {
+        alertsCreated,
+        alertsSkipped,
+        operationsWithoutDates,
+        operationsWithoutCustomers,
+      },
     })
   } catch (error: any) {
     console.error("Error en generate-from-operations:", error)
