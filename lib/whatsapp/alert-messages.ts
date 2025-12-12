@@ -153,8 +153,9 @@ export async function generateMessageFromAlert(
           .eq("id", mainCustomer.id)
           .single()
 
-        if (customerData?.date_of_birth) {
-          const birthDate = new Date(customerData.date_of_birth)
+        const typedCustomerData = customerData as { date_of_birth: string | null } | null
+        if (typedCustomerData?.date_of_birth) {
+          const birthDate = new Date(typedCustomerData.date_of_birth)
           variables.fecha_cumpleanos = format(birthDate, "dd/MM", { locale: es })
         }
       }
