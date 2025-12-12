@@ -89,8 +89,8 @@ export function MessagesPageClient({
     // Filtro por estado
     if (filter !== "ALL" && msg.status !== filter) return false
     
-    // Filtro por fecha (solo para pendientes)
-    if (filter === "PENDING" && dateFilter !== "ALL") {
+    // Filtro por fecha (aplica a todos los estados)
+    if (dateFilter !== "ALL") {
       const scheduledDate = new Date(msg.scheduled_for)
       const today = new Date()
       today.setHours(0, 0, 0, 0)
@@ -134,7 +134,7 @@ export function MessagesPageClient({
   async function fetchMessages() {
     setLoading(true)
     try {
-      const response = await fetch("/api/whatsapp/messages?status=ALL&limit=100")
+      const response = await fetch("/api/whatsapp/messages?status=ALL&limit=2000")
       const data = await response.json()
       setMessages(data.messages || [])
     } catch (error) {
@@ -147,14 +147,14 @@ export function MessagesPageClient({
   async function generateMessages() {
     setLoading(true)
     try {
-      const response = await fetch("/api/cron/whatsapp", { method: "POST" })
+      const response = await fetch("/api/whatsapp/generate-from-operations", { method: "POST" })
       const data = await response.json()
       
       if (data.success) {
-        toast.success(`Se generaron ${data.totalGenerated} mensajes`)
+        toast.success(`Se generaron ${data.messagesGenerated} mensajes de ${data.operationsProcessed} operaciones`)
         fetchMessages()
       } else {
-        toast.error("Error al generar mensajes")
+        toast.error(data.error || "Error al generar mensajes")
       }
     } catch (error) {
       toast.error("Error al generar mensajes")
@@ -228,10 +228,13 @@ export function MessagesPageClient({
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats - KPIs clickeables como filtros */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className={filter === "PENDING" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("PENDING")}>
+        <Card 
+          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("PENDING")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Clock className="h-4 w-4" />
               Pendientes
@@ -241,8 +244,11 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold">{counts.PENDING}</div>
           </CardContent>
         </Card>
-        <Card className={filter === "SENT" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("SENT")}>
+        <Card 
+          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("SENT")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
               Enviados
@@ -252,8 +258,11 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold text-green-600">{counts.SENT}</div>
           </CardContent>
         </Card>
-        <Card className={filter === "SKIPPED" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("SKIPPED")}>
+        <Card 
+          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("SKIPPED")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <XCircle className="h-4 w-4 text-muted-foreground" />
               Omitidos
@@ -276,24 +285,14 @@ export function MessagesPageClient({
             className="pl-9"
           />
         </div>
-        <Tabs value={filter} onValueChange={setFilter}>
+        <Tabs value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
           <TabsList>
-            <TabsTrigger value="PENDING">Pendientes</TabsTrigger>
-            <TabsTrigger value="SENT">Enviados</TabsTrigger>
-            <TabsTrigger value="SKIPPED">Omitidos</TabsTrigger>
-            <TabsTrigger value="ALL">Todos</TabsTrigger>
+            <TabsTrigger value="TODAY">Hoy</TabsTrigger>
+            <TabsTrigger value="TOMORROW">Mañana</TabsTrigger>
+            <TabsTrigger value="THIS_WEEK">Esta Semana</TabsTrigger>
+            <TabsTrigger value="ALL">Todas las Fechas</TabsTrigger>
           </TabsList>
         </Tabs>
-        {filter === "PENDING" && (
-          <Tabs value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
-            <TabsList>
-              <TabsTrigger value="TODAY">Hoy</TabsTrigger>
-              <TabsTrigger value="TOMORROW">Mañana</TabsTrigger>
-              <TabsTrigger value="THIS_WEEK">Esta Semana</TabsTrigger>
-              <TabsTrigger value="ALL">Todas las Fechas</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        )}
       </div>
 
       {/* Messages List */}
@@ -303,7 +302,11 @@ export function MessagesPageClient({
           title="No hay mensajes"
           description={
             filter === "PENDING"
-              ? "No hay mensajes pendientes de envío. Hacé clic en 'Generar Mensajes' para crear nuevos."
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} pendientes de envío. Hacé clic en 'Generar Mensajes' para crear nuevos.`
+              : filter === "SENT"
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} enviados.`
+              : filter === "SKIPPED"
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} omitidos.`
               : "No hay mensajes que mostrar con los filtros actuales."
           }
           action={
