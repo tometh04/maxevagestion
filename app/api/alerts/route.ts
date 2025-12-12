@@ -124,7 +124,18 @@ export async function GET(request: Request) {
         .eq("status", "PENDING")
 
       if (messages) {
-        for (const msg of messages) {
+        const typedMessages = messages as Array<{
+          id: string
+          message: string
+          whatsapp_link: string
+          status: string
+          scheduled_for: string
+          phone: string
+          customer_name: string
+          operation_id: string | null
+        }>
+        
+        for (const msg of typedMessages) {
           if (msg.operation_id) {
             if (!messagesByOperation[msg.operation_id]) {
               messagesByOperation[msg.operation_id] = []
