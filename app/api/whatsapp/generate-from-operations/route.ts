@@ -59,8 +59,8 @@ export async function POST(request: Request) {
 
     // Procesar cada operación
     for (const op of operations) {
+      const operation = op as any // Type assertion para evitar errores de TypeScript
       try {
-        const operation = op as any // Type assertion para evitar errores de TypeScript
         const alertsToCreate: any[] = []
 
         // 1. Alerta de CHECK-IN
@@ -191,7 +191,7 @@ export async function POST(request: Request) {
 
         operationsProcessed++
       } catch (error) {
-        console.error(`Error procesando operación ${operation.id}:`, error)
+        console.error(`Error procesando operación ${op.id}:`, error)
         continue
       }
     }
