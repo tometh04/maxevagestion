@@ -7,6 +7,7 @@ import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 
 export async function POST(request: Request) {
   try {
@@ -302,6 +303,8 @@ export async function POST(request: Request) {
       await generateOperationAlerts(supabase, operation.id, {
         departure_date,
         return_date,
+        checkin_date,
+        checkout_date,
         destination,
         seller_id,
       })
@@ -550,7 +553,7 @@ async function generateDestinationRequirementAlerts(
 }
 
 /**
- * Genera alertas automáticas para una operación (check-in, check-out)
+ * Genera alertas automáticas para una operación (check-in, check-out, cumpleaños)
  */
 async function generateOperationAlerts(
   supabase: any,
@@ -558,20 +561,23 @@ async function generateOperationAlerts(
   data: {
     departure_date: string
     return_date?: string | null
+    checkin_date?: string | null
+    checkout_date?: string | null
     destination: string
     seller_id: string
   }
 ) {
-  const { departure_date, return_date, destination, seller_id } = data
+  const { departure_date, return_date, checkin_date, checkout_date, destination, seller_id } = data
   const today = new Date()
   today.setHours(0, 0, 0, 0)
   
   const alertsToCreate: any[] = []
 
-  // 1. ALERTA DE CHECK-IN (3 días antes de la salida)
-  if (departure_date) {
-    const departureDate = new Date(departure_date + 'T12:00:00')
-    const checkInAlertDate = new Date(departureDate)
+  // 1. ALERTA DE CHECK-IN (3 días antes de la salida o check-in_date si existe)
+  const checkInDate = checkin_date || departure_date
+  if (checkInDate) {
+    const checkInDateObj = new Date(checkInDate + 'T12:00:00')
+    const checkInAlertDate = new Date(checkInDateObj)
     checkInAlertDate.setDate(checkInAlertDate.getDate() - 3)
 
     if (checkInAlertDate >= today) {
@@ -579,17 +585,18 @@ async function generateOperationAlerts(
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
-        description: `✈️ Check-in próximo: ${destination} - Salida ${departure_date}`,
+        description: `✈️ Check-in próximo: ${destination} - ${checkin_date ? `Check-in ${checkin_date}` : `Salida ${departure_date}`}`,
         date_due: checkInAlertDate.toISOString().split("T")[0],
         status: "PENDING",
       })
     }
   }
 
-  // 2. ALERTA DE CHECK-OUT (día antes del regreso)
-  if (return_date) {
-    const returnDate = new Date(return_date + 'T12:00:00')
-    const checkOutAlertDate = new Date(returnDate)
+  // 2. ALERTA DE CHECK-OUT (día antes del regreso o checkout_date si existe)
+  const checkOutDate = checkout_date || return_date
+  if (checkOutDate) {
+    const checkOutDateObj = new Date(checkOutDate + 'T12:00:00')
+    const checkOutAlertDate = new Date(checkOutDateObj)
     checkOutAlertDate.setDate(checkOutAlertDate.getDate() - 1)
 
     if (checkOutAlertDate >= today) {
@@ -597,10 +604,58 @@ async function generateOperationAlerts(
         operation_id: operationId,
         user_id: seller_id,
         type: "UPCOMING_TRIP",
-        description: `🏨 Check-out próximo: ${destination} - Regreso ${return_date}`,
+        description: `🏨 Check-out próximo: ${destination} - ${checkout_date ? `Check-out ${checkout_date}` : `Regreso ${return_date}`}`,
         date_due: checkOutAlertDate.toISOString().split("T")[0],
         status: "PENDING",
       })
+    }
+  }
+
+  // 3. ALERTAS DE CUMPLEAÑOS DE CLIENTES (7 días antes del cumpleaños)
+  const { data: operationCustomers } = await supabase
+    .from("operation_customers")
+    .select(`
+      customer_id,
+      customers:customer_id (
+        id,
+        first_name,
+        last_name,
+        date_of_birth
+      )
+    `)
+    .eq("operation_id", operationId)
+
+  const customers = (operationCustomers || []) as any[]
+  for (const oc of customers) {
+    const customer = oc.customers
+    if (customer?.date_of_birth) {
+      const birthDate = new Date(customer.date_of_birth + 'T12:00:00')
+      const thisYearBirthday = new Date(today.getFullYear(), birthDate.getMonth(), birthDate.getDate())
+      
+      // Si ya pasó este año, usar el próximo
+      if (thisYearBirthday < today) {
+        thisYearBirthday.setFullYear(thisYearBirthday.getFullYear() + 1)
+      }
+
+      // Alerta 7 días antes del cumpleaños
+      const birthdayAlertDate = new Date(thisYearBirthday)
+      birthdayAlertDate.setDate(birthdayAlertDate.getDate() - 7)
+
+      // Solo si es dentro de los próximos 60 días
+      const sixtyDaysFromNow = new Date(today)
+      sixtyDaysFromNow.setDate(sixtyDaysFromNow.getDate() + 60)
+
+      if (birthdayAlertDate >= today && birthdayAlertDate <= sixtyDaysFromNow) {
+        alertsToCreate.push({
+          operation_id: operationId,
+          customer_id: customer.id,
+          user_id: seller_id,
+          type: "GENERIC",
+          description: `🎂 Cumpleaños próximo: ${customer.first_name} ${customer.last_name} - ${birthDate.getDate()}/${birthDate.getMonth() + 1}`,
+          date_due: birthdayAlertDate.toISOString().split("T")[0],
+          status: "PENDING",
+        })
+      }
     }
   }
 
@@ -611,6 +666,17 @@ async function generateOperationAlerts(
       console.error("Error creando alertas de operación:", insertError)
     } else {
       console.log(`✅ Creadas ${alertsToCreate.length} alertas de check-in/check-out para operación ${operationId}`)
+      
+      // Generar mensajes de WhatsApp para las alertas creadas
+      try {
+        const messagesGenerated = await generateMessagesFromAlerts(supabase, alertsToCreate)
+        if (messagesGenerated > 0) {
+          console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para las alertas`)
+        }
+      } catch (error) {
+        console.error("Error generando mensajes de WhatsApp:", error)
+        // No lanzamos error para no romper la creación de alertas
+      }
     }
   }
 }

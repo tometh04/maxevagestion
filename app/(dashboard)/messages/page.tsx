@@ -15,16 +15,16 @@ export default async function MessagesPage() {
   const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
   const agencies = (userAgencies || []).map((ua: any) => ua.agencies).filter(Boolean)
 
-  // Obtener mensajes pendientes
+  // Obtener mensajes pendientes (hasta 2000 para cubrir todos los mensajes)
   let messagesQuery = (supabase.from("whatsapp_messages") as any)
     .select(`
       *,
       message_templates:template_id (name, emoji_prefix, category),
       customers:customer_id (first_name, last_name, email),
-      operations:operation_id (destination, departure_date)
+      operations:operation_id (destination, departure_date, checkin_date, checkout_date)
     `)
     .order("scheduled_for", { ascending: true })
-    .limit(100)
+    .limit(2000)
 
   if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
     messagesQuery = messagesQuery.in("agency_id", agencyIds)

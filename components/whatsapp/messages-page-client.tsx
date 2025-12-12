@@ -82,9 +82,38 @@ export function MessagesPageClient({
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [dateFilter, setDateFilter] = useState<"TODAY" | "TOMORROW" | "THIS_WEEK" | "ALL">("TODAY")
 
+  // Filtrar mensajes por fecha y estado
   const filteredMessages = messages.filter((msg) => {
+    // Filtro por estado
     if (filter !== "ALL" && msg.status !== filter) return false
+    
+    // Filtro por fecha (solo para pendientes)
+    if (filter === "PENDING" && dateFilter !== "ALL") {
+      const scheduledDate = new Date(msg.scheduled_for)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const scheduledDay = new Date(scheduledDate)
+      scheduledDay.setHours(0, 0, 0, 0)
+      
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      const thisWeekEnd = new Date(today)
+      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7)
+      
+      if (dateFilter === "TODAY") {
+        if (scheduledDay.getTime() !== today.getTime()) return false
+      } else if (dateFilter === "TOMORROW") {
+        if (scheduledDay.getTime() !== tomorrow.getTime()) return false
+      } else if (dateFilter === "THIS_WEEK") {
+        if (scheduledDay < today || scheduledDay > thisWeekEnd) return false
+      }
+    }
+    
+    // Filtro por búsqueda
     if (search) {
       const searchLower = search.toLowerCase()
       return (
@@ -237,7 +266,7 @@ export function MessagesPageClient({
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-4 items-center flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -255,6 +284,16 @@ export function MessagesPageClient({
             <TabsTrigger value="ALL">Todos</TabsTrigger>
           </TabsList>
         </Tabs>
+        {filter === "PENDING" && (
+          <Tabs value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
+            <TabsList>
+              <TabsTrigger value="TODAY">Hoy</TabsTrigger>
+              <TabsTrigger value="TOMORROW">Mañana</TabsTrigger>
+              <TabsTrigger value="THIS_WEEK">Esta Semana</TabsTrigger>
+              <TabsTrigger value="ALL">Todas las Fechas</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
       </div>
 
       {/* Messages List */}

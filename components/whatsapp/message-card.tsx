@@ -174,11 +174,17 @@ export function MessageCard({ message, onMarkSent, onSkip }: MessageCardProps) {
             </div>
 
             {/* Timestamps */}
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground flex items-center gap-2">
               {isPending && (
-                <span>
-                  Programado: {formatDistanceToNow(new Date(message.scheduled_for), { addSuffix: true, locale: es })}
-                </span>
+                <>
+                  <span>
+                    Programado: {format(new Date(message.scheduled_for), "dd/MM/yyyy HH:mm", { locale: es })}
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {formatDistanceToNow(new Date(message.scheduled_for), { addSuffix: true, locale: es })}
+                  </span>
+                </>
               )}
               {isSent && message.sent_at && (
                 <span>
