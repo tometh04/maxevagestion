@@ -66,7 +66,7 @@ export async function GET(request: Request) {
     const offset = (page - 1) * limit
     
     const result = await query
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false }) // Ordenar por updated_at para ver los más recientes primero (incluye Trello)
       .range(offset, offset + limit - 1)
     
     let leads: any[] = result.data || []

@@ -70,10 +70,11 @@ export default async function LeadsPage() {
     .order("name")
 
   // Get leads (including trello_list_id)
-  // Cargar solo una muestra inicial - el cliente cargará más con paginación
+  // Para Trello, necesitamos cargar más leads inicialmente (hasta 2000 por agencia)
+  // El cliente cargará el resto con paginación si es necesario
   let leads: any[] = []
   let leadsError: any = null
-  const INITIAL_LIMIT = 100 // Reducido para carga rápida inicial
+  const INITIAL_LIMIT = 2000 // Aumentado para Trello (máximo 2000 leads por agencia según el usuario)
 
   if (user.role === "SELLER") {
     // Vendedor ve:
@@ -83,7 +84,7 @@ export default async function LeadsPage() {
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("assigned_seller_id", user.id)
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false }) // Ordenar por updated_at para ver los más recientes primero
       .limit(INITIAL_LIMIT)
 
     const { data: unassignedLeads, error: unassignedError } = await supabase
@@ -91,13 +92,13 @@ export default async function LeadsPage() {
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .is("assigned_seller_id", null)
       .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
 
     leads = [...(myLeads || []), ...(unassignedLeads || [])]
     leadsError = myLeadsError || unassignedError
   } else {
-    // Admin/otros: cargar solo muestra inicial
+    // Admin/otros: cargar leads iniciales (hasta 2000)
     let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
     
     if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
@@ -105,7 +106,7 @@ export default async function LeadsPage() {
     }
 
     const { data, error } = await query
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false }) // Ordenar por updated_at para ver los más recientes primero
       .limit(INITIAL_LIMIT)
     
     leads = data || []

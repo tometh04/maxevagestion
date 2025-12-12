@@ -20,14 +20,8 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-// Credenciales de Trello desde variables de entorno
-const TRELLO_API_KEY = process.env.TRELLO_API_KEY || ""
-const TRELLO_TOKEN = process.env.TRELLO_TOKEN || ""
-
-if (!TRELLO_API_KEY || !TRELLO_TOKEN) {
-  console.error("Missing Trello environment variables (TRELLO_API_KEY, TRELLO_TOKEN)")
-  process.exit(1)
-}
+// Helper para delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Configuración de agencias
 const AGENCIES = [
@@ -69,23 +63,45 @@ async function syncAgency(agencyName: string, boardId: string) {
     return { success: false, agencyName, synced: 0, created: 0, updated: 0, errors: 0 }
   }
 
-  console.log(`   ✓ Board ID: ${(trelloSettings as any).board_id}`)
-  console.log(`   ✓ Mapeos configurados: ${Object.keys((trelloSettings as any).list_status_mapping || {}).length} listas`)
+  const settingsData = trelloSettings as any
+  console.log(`   ✓ Board ID: ${settingsData.board_id}`)
+  console.log(`   ✓ Mapeos configurados: ${Object.keys(settingsData.list_status_mapping || {}).length} listas`)
+  
+  // Obtener credenciales desde la base de datos
+  const TRELLO_API_KEY = settingsData.trello_api_key
+  const TRELLO_TOKEN = settingsData.trello_token
+  
+  if (!TRELLO_API_KEY || !TRELLO_TOKEN) {
+    console.error(`   ❌ No hay credenciales de Trello configuradas para ${agencyName}`)
+    return { success: false, agencyName, synced: 0, created: 0, updated: 0, errors: 0 }
+  }
+  
+  console.log(`   ✓ API Key: ${TRELLO_API_KEY.substring(0, 10)}...`)
 
   const settings = {
     agency_id: agencyId,
     trello_api_key: TRELLO_API_KEY,
     trello_token: TRELLO_TOKEN,
     board_id: boardId,
-    list_status_mapping: (trelloSettings.list_status_mapping as Record<string, string>) || {},
-    list_region_mapping: (trelloSettings.list_region_mapping as Record<string, string>) || {},
+    list_status_mapping: (settingsData.list_status_mapping as Record<string, string>) || {},
+    list_region_mapping: (settingsData.list_region_mapping as Record<string, string>) || {},
   }
 
-  // 3. Obtener todas las tarjetas del board
-  console.log(`\n3. Obteniendo todas las tarjetas de Trello...`)
-  const cardsResponse = await fetch(
-    `https://api.trello.com/1/boards/${boardId}/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name`
+  // 3. Obtener todas las tarjetas activas del board (solo no archivadas)
+  console.log(`\n3. Obteniendo todas las tarjetas activas de Trello...`)
+  
+  let cardsResponse = await fetch(
+    `https://api.trello.com/1/boards/${boardId}/cards/open?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name,idList`
   )
+
+  // Manejar rate limits
+  if (cardsResponse.status === 429) {
+    console.log(`   ⚠️  Rate limit detectado, esperando 10 segundos...`)
+    await delay(10000)
+    cardsResponse = await fetch(
+      `https://api.trello.com/1/boards/${boardId}/cards/open?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=id,name,idList`
+    )
+  }
 
   if (!cardsResponse.ok) {
     const errorText = await cardsResponse.text()
@@ -94,24 +110,27 @@ async function syncAgency(agencyName: string, boardId: string) {
   }
 
   const cards = await cardsResponse.json()
-  console.log(`   ✓ ${cards.length} tarjetas encontradas en Trello`)
+  console.log(`   ✓ ${cards.length} tarjetas activas encontradas en Trello`)
 
   if (cards.length === 0) {
     console.log(`   ⚠️  No hay tarjetas para sincronizar`)
     return { success: true, agencyName, synced: 0, created: 0, updated: 0, errors: 0 }
   }
 
-  // 4. Sincronizar cada tarjeta
-  console.log(`\n4. Sincronizando tarjetas...`)
+  // 4. Sincronizar cada tarjeta con TODA la información (fotos, comentarios, descripción, responsable, etc.)
+  console.log(`\n4. Sincronizando tarjetas con información completa...`)
+  console.log(`   📸 Traerá: fotos, comentarios, descripción, responsable asignado, checklists, etc.`)
+  console.log("")
   let synced = 0
   let created = 0
   let updated = 0
   let errors = 0
+  const startTime = Date.now()
 
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i]
     try {
-      // Fetch full card details with ALL information
+      // Fetch full card details with ALL information (fotos, comentarios, etc.)
       const fullCard = await fetchTrelloCard(card.id, TRELLO_API_KEY, TRELLO_TOKEN)
 
       if (!fullCard) {
@@ -120,29 +139,50 @@ async function syncAgency(agencyName: string, boardId: string) {
         continue
       }
 
-      // Sync to lead - esto guarda con el agency_id correcto
+      // Log información adicional cada 50 cards
+      if ((i + 1) % 50 === 0 || i === 0) {
+        const attachmentsCount = fullCard.attachments?.length || 0
+        const commentsCount = fullCard.actions?.filter((a: any) => a.type === "commentCard").length || 0
+        const membersCount = fullCard.members?.length || 0
+        console.log(`   📊 [${i + 1}/${cards.length}] ${card.name.substring(0, 40)}... | 📸${attachmentsCount} 💬${commentsCount} 👤${membersCount}`)
+      }
+
+      // Sync to lead - esto guarda con el agency_id correcto y TODA la información
       const result = await syncTrelloCardToLead(fullCard, settings, supabase as any)
 
       if (result.created) {
         created++
-        if ((i + 1) % 50 === 0 || i === 0) {
-          console.log(`   ✓ [${i + 1}/${cards.length}] Creado: ${card.name.substring(0, 50)}...`)
-        }
       } else {
         updated++
-        if ((i + 1) % 50 === 0 || i === 0) {
-          console.log(`   ✓ [${i + 1}/${cards.length}] Actualizado: ${card.name.substring(0, 50)}...`)
-        }
       }
       synced++
 
-      // Log progress every 50 cards
-      if ((i + 1) % 50 === 0) {
-        console.log(`   📊 Progreso: ${i + 1}/${cards.length} tarjetas procesadas...`)
+      // Log progress cada 10 cards para mejor feedback
+      if ((i + 1) % 10 === 0 || i === cards.length - 1) {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+        const percentage = ((synced / cards.length) * 100).toFixed(1)
+        const rate = synced > 0 ? (synced / (Date.now() - startTime) * 1000).toFixed(1) : "0"
+        console.log(`   📈 ${percentage}% - ${synced}/${cards.length} (${created} nuevas, ${updated} actualizadas, ${errors} errores) - ${rate} cards/seg`)
+      }
+
+      // Delay entre cards para evitar rate limits
+      if (i < cards.length - 1) {
+        await delay(50) // 50ms entre cards
+      }
+
+      // Pausa más larga cada 100 cards
+      if ((i + 1) % 100 === 0 && i < cards.length - 1) {
+        await delay(1000) // 1 segundo cada 100 cards
       }
     } catch (error: any) {
       console.error(`   ❌ [${i + 1}/${cards.length}] Error sincronizando ${card.name}:`, error.message)
       errors++
+      
+      // Si hay muchos errores, esperar más
+      if (errors > 10 && errors % 10 === 0) {
+        console.log(`   ⚠️  Muchos errores, esperando 5 segundos...`)
+        await delay(5000)
+      }
     }
   }
 

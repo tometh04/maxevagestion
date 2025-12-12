@@ -91,13 +91,15 @@ export function LeadsPageClient({
   }, [])
 
   // Definir loadLeads como useCallback para poder usarla en Realtime
-  // OPTIMIZADO: Cargar solo la primera página, usar paginación real
+  // OPTIMIZADO: Para Trello, cargar más leads (hasta 2000 por agencia)
   const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
     setLoading(true)
     try {
+      // Para Trello, aumentar el límite a 2000 (máximo por agencia según el usuario)
+      const limit = 2000
       let url = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=50`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=50`
+        ? `/api/leads?page=1&limit=${limit}`
+        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}`
       
       if (trelloListId && trelloListId !== "ALL") {
         url += `&trelloListId=${trelloListId}`
@@ -108,9 +110,10 @@ export function LeadsPageClient({
       
       if (data.leads && data.leads.length > 0) {
         setLeads(data.leads)
-        console.log(`✅ Cargados ${data.leads.length} leads (página 1)`)
+        console.log(`✅ Cargados ${data.leads.length} leads de ${data.pagination?.total || 'N/A'} totales`)
       } else {
         setLeads([])
+        console.log("ℹ️ No se encontraron leads")
       }
     } catch (error) {
       console.error("Error loading leads:", error)
@@ -201,15 +204,26 @@ export function LeadsPageClient({
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
-    // SIEMPRE cargar leads para Trello (initialLeads puede tener solo 500 por límite de Supabase)
+    // SIEMPRE cargar leads desde la API cuando se selecciona una agencia
+    // Esto asegura que se carguen todos los leads (hasta 2000) y no solo los initialLeads
     if (selectedAgencyId && selectedAgencyId !== "ALL") {
-      // Pequeño delay para asegurar que el componente está montado
+      // Si es la carga inicial, usar un delay más corto
+      const delay = initialLoad ? 50 : 100
       const timer = setTimeout(() => {
         loadLeads(selectedAgencyId, selectedTrelloListId)
-      }, 100)
+        if (initialLoad) {
+          setInitialLoad(false)
+        }
+      }, delay)
       return () => clearTimeout(timer)
+    } else if (selectedAgencyId === "ALL") {
+      // Si se selecciona "Todas las agencias", usar los initialLeads
+      setLeads(initialLeads)
+      if (initialLoad) {
+        setInitialLoad(false)
+      }
     }
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads])
+  }, [selectedAgencyId, selectedTrelloListId, loadLeads, initialLeads])
 
   const handleRefresh = async () => {
     await loadLeads(selectedAgencyId, selectedTrelloListId)
