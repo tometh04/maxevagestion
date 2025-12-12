@@ -24,17 +24,24 @@ const ALERT_TO_TRIGGER_MAP: Record<string, string> = {
 
 /**
  * Determina el trigger_type basado en la descripción de la alerta
+ * CRITERIO: Usar la descripción exacta de la alerta para identificar el tipo correcto
  */
 function getTriggerTypeFromAlert(alert: { type: string; description: string }): string {
   const desc = alert.description.toLowerCase()
   
-  // Check-in (3 días antes de salida)
-  if (desc.includes("check-in") || desc.includes("salida")) {
-    return "TRIP_7D_BEFORE" // O TRIP_1D_BEFORE según el template disponible
+  // Check-in (3 días antes de salida) - usar TRIP_1D_BEFORE (más cercano a los 3 días)
+  if (desc.includes("check-in")) {
+    return "TRIP_1D_BEFORE"
   }
   
-  // Check-out (día antes de regreso)
-  if (desc.includes("check-out") || desc.includes("regreso")) {
+  // Check-out (1 día antes de regreso) - usar TRIP_1D_BEFORE 
+  // IMPORTANTE: TRIP_RETURN es para POST-VIAJE (día de regreso), no para check-out
+  if (desc.includes("check-out")) {
+    return "TRIP_1D_BEFORE"
+  }
+  
+  // Post-viaje / regreso (día de regreso) - usar TRIP_RETURN
+  if (desc.includes("regreso") && !desc.includes("check-out")) {
     return "TRIP_RETURN"
   }
   
