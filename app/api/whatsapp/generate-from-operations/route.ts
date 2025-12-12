@@ -58,8 +58,9 @@ export async function POST(request: Request) {
     today.setHours(0, 0, 0, 0)
 
     // Procesar cada operación
-    for (const operation of operations) {
+    for (const op of operations) {
       try {
+        const operation = op as any // Type assertion para evitar errores de TypeScript
         const alertsToCreate: any[] = []
 
         // 1. Alerta de CHECK-IN
