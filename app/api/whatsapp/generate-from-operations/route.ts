@@ -191,7 +191,7 @@ export async function POST(request: Request) {
 
         operationsProcessed++
       } catch (error) {
-        console.error(`Error procesando operación ${op.id}:`, error)
+        console.error(`Error procesando operación ${operation.id}:`, error)
         continue
       }
     }
