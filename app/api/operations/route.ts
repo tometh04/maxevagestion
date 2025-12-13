@@ -477,6 +477,11 @@ export async function GET(request: Request) {
           )
         )
       `)
+    
+    // Inicializar countQuery desde el principio
+    let countQuery = supabase
+      .from("operations")
+      .select("*", { count: "exact", head: true })
 
     // Apply permissions-based filtering
     const { applyOperationsFilters } = await import("@/lib/permissions-api")
