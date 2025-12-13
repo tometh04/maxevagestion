@@ -637,7 +637,8 @@ export async function GET(request: Request) {
     const paymentsByOperation: Record<string, { paid: number; pending: number; currency: string }> = {}
     
     if (payments) {
-      for (const payment of payments) {
+      const paymentsArray = (payments || []) as any[]
+      for (const payment of paymentsArray) {
         const opId = payment.operation_id
         if (!paymentsByOperation[opId]) {
           paymentsByOperation[opId] = { paid: 0, pending: 0, currency: payment.currency || "ARS" }
