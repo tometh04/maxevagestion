@@ -219,8 +219,7 @@ export async function POST(request: Request) {
                 })
 
             // Actualizar conversación
-            await supabase
-                .from("conversations")
+            await (supabase.from("conversations") as any)
                 .update({ last_message_at: new Date().toISOString() })
                 .eq("id", conversationId)
 
