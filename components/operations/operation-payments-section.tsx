@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -92,6 +92,7 @@ export function OperationPaymentsSection({
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
+  const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -143,6 +144,68 @@ export function OperationPaymentsSection({
       alert(error instanceof Error ? error.message : "Error al eliminar pago")
     } finally {
       setDeletingPaymentId(null)
+    }
+  }
+
+  const handleSendReceiptWhatsApp = async (paymentId: string) => {
+    setSendingReceiptId(paymentId)
+    try {
+      const response = await fetch("/api/whatsapp/send-receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al enviar recibo por WhatsApp")
+      }
+
+      const data = await response.json()
+      
+      // Abrir WhatsApp en nueva pestaña
+      if (data.whatsappLink) {
+        window.open(data.whatsappLink, "_blank")
+      }
+      
+      alert("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
+      router.refresh()
+    } catch (error) {
+      console.error("Error sending receipt via WhatsApp:", error)
+      alert(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
+    } finally {
+      setSendingReceiptId(null)
+    }
+  }
+
+  const handleSendReceiptWhatsApp = async (paymentId: string) => {
+    setSendingReceiptId(paymentId)
+    try {
+      const response = await fetch("/api/whatsapp/send-receipt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al enviar recibo por WhatsApp")
+      }
+
+      const data = await response.json()
+      
+      // Abrir WhatsApp en nueva pestaña
+      if (data.whatsappLink) {
+        window.open(data.whatsappLink, "_blank")
+      }
+      
+      alert("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
+      router.refresh()
+    } catch (error) {
+      console.error("Error sending receipt via WhatsApp:", error)
+      alert(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
+    } finally {
+      setSendingReceiptId(null)
     }
   }
 
@@ -544,21 +607,37 @@ export function OperationPaymentsSection({
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         {/* Botón de recibo - solo para pagos pagados */}
-                        {payment.status === "PAID" && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
-                            onClick={() => handleDownloadReceipt(payment.id)}
-                            disabled={downloadingReceiptId === payment.id}
-                            title="Descargar recibo PDF"
-                          >
-                            {downloadingReceiptId === payment.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileText className="h-4 w-4" />
-                            )}
-                          </Button>
+                        {payment.status === "PAID" && payment.direction === "INCOME" && payment.payer_type === "CUSTOMER" && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                              onClick={() => handleDownloadReceipt(payment.id)}
+                              disabled={downloadingReceiptId === payment.id}
+                              title="Descargar recibo PDF"
+                            >
+                              {downloadingReceiptId === payment.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-green-500 hover:text-green-700 hover:bg-green-100"
+                              onClick={() => handleSendReceiptWhatsApp(payment.id)}
+                              disabled={sendingReceiptId === payment.id}
+                              title="Enviar recibo por WhatsApp"
+                            >
+                              {sendingReceiptId === payment.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <MessageSquare className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </>
                         )}
                         {/* Botón de eliminar */}
                         <Button

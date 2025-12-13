@@ -39,7 +39,11 @@ export async function GET(request: Request) {
       .or(`first_name.ilike.${searchTerm},last_name.ilike.${searchTerm},email.ilike.${searchTerm},phone.ilike.${searchTerm}`)
       .limit(5)
     
-    searchPromises.push(customerQuery.then((r: any) => ({ type: 'customers', data: r.data, error: r.error })))
+    searchPromises.push(
+      customerQuery
+        .then((r: any) => ({ type: 'customers', data: r.data, error: r.error }))
+        .catch((err: any) => ({ type: 'customers', data: null, error: err }))
+    )
 
     // Buscar operaciones (por código, destino)
     let operationQuery = (supabase.from("operations") as any)
@@ -54,7 +58,11 @@ export async function GET(request: Request) {
       operationQuery = operationQuery.eq("seller_id", user.id)
     }
     
-    searchPromises.push(operationQuery.then((r: any) => ({ type: 'operations', data: r.data, error: r.error })))
+    searchPromises.push(
+      operationQuery
+        .then((r: any) => ({ type: 'operations', data: r.data, error: r.error }))
+        .catch((err: any) => ({ type: 'operations', data: null, error: err }))
+    )
 
     // Buscar operadores
     const operatorQuery = (supabase.from("operators") as any)
@@ -62,7 +70,11 @@ export async function GET(request: Request) {
       .or(`name.ilike.${searchTerm},contact_email.ilike.${searchTerm}`)
       .limit(5)
     
-    searchPromises.push(operatorQuery.then((r: any) => ({ type: 'operators', data: r.data, error: r.error })))
+    searchPromises.push(
+      operatorQuery
+        .then((r: any) => ({ type: 'operators', data: r.data, error: r.error }))
+        .catch((err: any) => ({ type: 'operators', data: null, error: err }))
+    )
 
     // Buscar leads (con filtros de permisos)
     let leadQuery = (supabase.from("leads") as any)
@@ -82,7 +94,11 @@ export async function GET(request: Request) {
       }
     }
     
-    searchPromises.push(leadQuery.then((r: any) => ({ type: 'leads', data: r.data, error: r.error })))
+    searchPromises.push(
+      leadQuery
+        .then((r: any) => ({ type: 'leads', data: r.data, error: r.error }))
+        .catch((err: any) => ({ type: 'leads', data: null, error: err }))
+    )
 
     // Ejecutar todas las búsquedas en paralelo
     const searchResults = await Promise.all(searchPromises)

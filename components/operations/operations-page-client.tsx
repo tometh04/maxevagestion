@@ -43,6 +43,9 @@ export function OperationsPageClient({
     agencyId: "ALL",
     dateFrom: "",
     dateTo: "",
+    paymentDateFrom: undefined as string | undefined,
+    paymentDateTo: undefined as string | undefined,
+    paymentDateType: undefined as string | undefined,
   })
   const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
 

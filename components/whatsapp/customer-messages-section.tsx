@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -79,12 +79,7 @@ export function CustomerMessagesSection({
   const [customMessage, setCustomMessage] = useState("")
   const [sending, setSending] = useState(false)
 
-  useEffect(() => {
-    fetchMessages()
-    fetchTemplates()
-  }, [customerId])
-
-  async function fetchMessages() {
+  const fetchMessages = useCallback(async () => {
     try {
       const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}`)
       if (!response.ok) {
@@ -99,9 +94,9 @@ export function CustomerMessagesSection({
     } finally {
       setLoading(false)
     }
-  }
+  }, [customerId])
 
-  async function fetchTemplates() {
+  const fetchTemplates = useCallback(async () => {
     try {
       const response = await fetch("/api/whatsapp/templates?isActive=true")
       if (!response.ok) {
@@ -114,7 +109,12 @@ export function CustomerMessagesSection({
       // Silently fail - table might not exist yet
       setTemplates([])
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    fetchMessages()
+    fetchTemplates()
+  }, [fetchMessages, fetchTemplates])
 
   function handleTemplateSelect(templateId: string) {
     setSelectedTemplate(templateId)

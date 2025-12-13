@@ -70,6 +70,7 @@ const allNavigation: NavItem[] = [
       { title: "Libro Mayor", url: "/accounting/ledger" },
       { title: "IVA", url: "/accounting/iva" },
       { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
+      { title: "Posición Mensual", url: "/accounting/monthly-position" },
       { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
       { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
       { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },

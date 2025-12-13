@@ -14,7 +14,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
-type ReminderType = "7_DAYS" | "3_DAYS" | "DUE_TODAY" | "OVERDUE"
+type ReminderType = "30_DAYS" | "7_DAYS" | "3_DAYS" | "DUE_TODAY" | "OVERDUE"
 
 interface PaymentReminder {
   paymentId: string
@@ -43,6 +43,8 @@ function calculateReminderType(dueDate: Date, today: Date): ReminderType | null 
     return "3_DAYS"
   } else if (daysUntilDue === 7) {
     return "7_DAYS"
+  } else if (daysUntilDue === 30) {
+    return "30_DAYS"
   }
 
   return null
@@ -216,6 +218,7 @@ async function createReminderAlert(
   
   // Etiquetas de recordatorio para buscar en descripción
   const reminderLabels: Record<ReminderType, string> = {
+    "30_DAYS": "Vence en 30 días",
     "7_DAYS": "Vence en 7 días",
     "3_DAYS": "Vence en 3 días",
     DUE_TODAY: "Vence hoy",
@@ -254,6 +257,7 @@ async function createReminderAlert(
 
   // Agregar información del recordatorio en la descripción (con emojis)
   const reminderLabelsWithEmojis: Record<ReminderType, string> = {
+    "30_DAYS": "📅 Vence en 30 días",
     "7_DAYS": "⏰ Vence en 7 días",
     "3_DAYS": "⚠️ Vence en 3 días",
     DUE_TODAY: "🔴 Vence hoy",

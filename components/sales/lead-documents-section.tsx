@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Upload, FileText, X, Eye, Trash2, Loader2, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react"
 import {
@@ -81,11 +81,7 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
   const [documentType, setDocumentType] = useState<string>("")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    loadDocuments()
-  }, [leadId])
-
-  const loadDocuments = async () => {
+  const loadDocuments = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/leads/${leadId}/documents`)
@@ -100,7 +96,11 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [leadId])
+
+  useEffect(() => {
+    loadDocuments()
+  }, [loadDocuments])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

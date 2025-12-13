@@ -26,7 +26,8 @@ export async function POST(request: Request) {
       agency_id,
       seller_id,
       seller_secondary_id,
-      operator_id,
+      operator_id, // Compatibilidad hacia atrás: operador único
+      operators, // Nuevo formato: array de operadores [{operator_id, cost, cost_currency, notes?}]
       type,
       product_type,
       origin,
@@ -42,16 +43,65 @@ export async function POST(request: Request) {
       passengers,
       status,
       sale_amount_total,
-      operator_cost,
+      operator_cost, // Compatibilidad hacia atrás: costo único
       currency,
       sale_currency,
-      operator_cost_currency,
+      operator_cost_currency, // Compatibilidad hacia atrás
       commission_percentage, // Porcentaje de comisión del vendedor
     } = body
 
-    // Validate required fields
-    if (!agency_id || !seller_id || !type || !destination || !departure_date || sale_amount_total === undefined || operator_cost === undefined) {
+    // Validar campos requeridos
+    if (!agency_id || !seller_id || !type || !destination || !departure_date || sale_amount_total === undefined) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, notes?: string}> = []
+    let totalOperatorCost = 0
+    let finalOperatorCostCurrency = operator_cost_currency || currency || "ARS"
+    let primaryOperatorId: string | null = operator_id || null
+
+    if (operators && Array.isArray(operators) && operators.length > 0) {
+      // Formato nuevo: array de operadores
+      for (const op of operators) {
+        if (!op.operator_id || op.cost === undefined) {
+          return NextResponse.json({ error: "Cada operador debe tener operator_id y cost" }, { status: 400 })
+        }
+        if (op.cost < 0) {
+          return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
+        }
+        operatorsList.push({
+          operator_id: op.operator_id,
+          cost: Number(op.cost),
+          cost_currency: op.cost_currency || currency || "ARS",
+          notes: op.notes || undefined
+        })
+        totalOperatorCost += Number(op.cost)
+        // Usar la moneda del primer operador como moneda principal
+        if (operatorsList.length === 1) {
+          finalOperatorCostCurrency = op.cost_currency || currency || "ARS"
+        }
+      }
+      // El primer operador es el principal
+      if (operatorsList.length > 0) {
+        primaryOperatorId = operatorsList[0].operator_id
+      }
+    } else if (operator_id && operator_cost !== undefined) {
+      // Formato antiguo: un solo operador (compatibilidad hacia atrás)
+      if (operator_cost < 0) {
+        return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
+      }
+      operatorsList.push({
+        operator_id: operator_id,
+        cost: Number(operator_cost),
+        cost_currency: operator_cost_currency || currency || "ARS"
+      })
+      totalOperatorCost = Number(operator_cost)
+      finalOperatorCostCurrency = operator_cost_currency || currency || "ARS"
+      primaryOperatorId = operator_id
+    } else {
+      // Sin operadores: permitir operaciones sin operador (costo = 0)
+      totalOperatorCost = 0
     }
 
     // Validaciones de fechas
@@ -79,32 +129,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
     }
 
-    if (operator_cost < 0) {
-      return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
-    }
-
     // Check permissions
     if (user.role === "SELLER" && seller_id !== user.id) {
       return NextResponse.json({ error: "No puedes crear operaciones para otros vendedores" }, { status: 403 })
     }
 
-    // Calculate margin
-    const marginAmount = sale_amount_total - operator_cost
+    // Calculate margin usando el costo total de todos los operadores
+    const marginAmount = sale_amount_total - totalOperatorCost
     const marginPercentage = sale_amount_total > 0 ? (marginAmount / sale_amount_total) * 100 : 0
+    
+    // Por defecto, billing_margin es igual a margin (se puede ajustar después)
+    const billingMarginAmount = body.billing_margin_amount !== undefined ? body.billing_margin_amount : marginAmount
+    const billingMarginPercentage = sale_amount_total > 0 ? (billingMarginAmount / sale_amount_total) * 100 : 0
 
     // Infer product_type from type if not provided
     const inferredProductType = product_type || (type === 'FLIGHT' ? 'AEREO' : type === 'HOTEL' ? 'HOTEL' : type === 'PACKAGE' ? 'PAQUETE' : type === 'CRUISE' ? 'CRUCERO' : 'OTRO')
 
-    // Use sale_currency and operator_cost_currency, fallback to currency
+    // Use sale_currency, fallback to currency
     const finalSaleCurrency = sale_currency || currency || "ARS"
-    const finalOperatorCostCurrency = operator_cost_currency || currency || "ARS"
 
     const operationData: Record<string, any> = {
       agency_id,
       lead_id: lead_id || null,
       seller_id,
       seller_secondary_id: seller_secondary_id || null,
-      operator_id: operator_id || null,
+      operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,
       origin: origin || null,
@@ -120,12 +169,14 @@ export async function POST(request: Request) {
       passengers: passengers ? JSON.stringify(passengers) : null,
       status: status || "PRE_RESERVATION",
       sale_amount_total,
-      operator_cost,
+      operator_cost: totalOperatorCost, // Costo total de todos los operadores
       currency: currency || "ARS", // Mantener para compatibilidad
       sale_currency: finalSaleCurrency,
       operator_cost_currency: finalOperatorCostCurrency,
       margin_amount: marginAmount,
       margin_percentage: marginPercentage,
+      billing_margin_amount: billingMarginAmount,
+      billing_margin_percentage: billingMarginPercentage,
     }
 
     const { data: operation, error: operationError } = await (supabase.from("operations") as any)
@@ -161,45 +212,82 @@ export async function POST(request: Request) {
         console.log(`✅ Created sale IVA record for operation ${operation.id}`)
       }
 
-      if (operator_cost > 0 && operator_id) {
-        await createPurchaseIVA(
-          supabase,
-          op.id,
-          operator_id,
-          operator_cost,
-          finalOperatorCostCurrency,
-          departure_date
-        )
-        console.log(`✅ Created purchase IVA record for operation ${operation.id}`)
+      // Crear IVA para cada operador (si hay operadores)
+      if (operatorsList.length > 0) {
+        for (const operatorData of operatorsList) {
+          if (operatorData.cost > 0) {
+            try {
+              await createPurchaseIVA(
+                supabase,
+                op.id,
+                operatorData.operator_id,
+                operatorData.cost,
+                operatorData.cost_currency,
+                departure_date
+              )
+              console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
+            } catch (error) {
+              console.error(`Error creating IVA for operator ${operatorData.operator_id}:`, error)
+            }
+          }
+        }
       }
     } catch (error) {
       console.error("Error creating IVA records:", error)
       // No lanzamos error para no romper la creación de la operación
     }
 
-    // Auto-generate operator payment
-    if (operator_id && operator_cost > 0) {
+    // Crear registros en operation_operators para múltiples operadores
+    if (operatorsList.length > 0) {
       try {
-        const dueDate = calculateDueDate(
-          inferredProductType,
-          departure_date, // purchase_date (usar departure_date como aproximación)
-          checkin_date || undefined,
-          departure_date
-        )
-
-        await createOperatorPayment(
-          supabase,
-          op.id,
-          operator_id,
-          operator_cost,
-          finalOperatorCostCurrency,
-          dueDate,
-          `Pago automático generado para operación ${operation.id}`
-        )
-        console.log(`✅ Created operator payment for operation ${operation.id}, due: ${dueDate}`)
+        const operationOperatorsData = operatorsList.map(operatorData => ({
+          operation_id: op.id, // ID de la operación creada
+          operator_id: operatorData.operator_id,
+          cost: operatorData.cost,
+          cost_currency: operatorData.cost_currency,
+          notes: operatorData.notes || null
+        }))
+        
+        const { error: opOpError } = await (supabase.from("operation_operators") as any)
+          .insert(operationOperatorsData)
+        
+        if (opOpError) {
+          console.error("Error creating operation_operators:", opOpError)
+        } else {
+          console.log(`✅ Created ${operatorsList.length} operation_operators records for operation ${op.id}`)
+        }
       } catch (error) {
-        console.error("Error creating operator payment:", error)
-        // No lanzamos error para no romper la creación de la operación
+        console.error("Error creating operation_operators:", error)
+      }
+    }
+
+    // Auto-generate operator payments para cada operador
+    if (operatorsList.length > 0) {
+      for (const operatorData of operatorsList) {
+        if (operatorData.cost > 0) {
+          try {
+            const dueDate = calculateDueDate(
+              inferredProductType,
+              departure_date,
+              checkin_date || undefined,
+              departure_date
+            )
+
+            await createOperatorPayment(
+              supabase,
+              op.id,
+              operatorData.operator_id,
+              operatorData.cost,
+              operatorData.cost_currency,
+              dueDate,
+              `Pago automático generado para operación ${operation.id}`
+            )
+            console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)
+          } catch (error) {
+            console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
+            // No lanzamos error para no romper la creación de la operación
+          }
+        }
       }
     }
 
@@ -313,6 +401,14 @@ export async function POST(request: Request) {
       // No lanzamos error para no romper la creación de la operación
     }
 
+    // Generar alertas a 30 días para pagos a operadores y cobros de clientes
+    try {
+      await generatePaymentAlerts30Days(supabase, operation.id, seller_id, destination)
+    } catch (error) {
+      console.error("Error generating payment alerts:", error)
+      // No lanzamos error para no romper la creación de la operación
+    }
+
     // Crear registro de comisión del vendedor si se especificó porcentaje
     if (commission_percentage && commission_percentage > 0 && marginAmount > 0) {
       try {
@@ -361,7 +457,25 @@ export async function GET(request: Request) {
         sellers:seller_id(id, name, email),
         operators:operator_id(id, name),
         agencies:agency_id(id, name, city),
-        leads:lead_id(id, contact_name, destination, trello_url, status)
+        leads:lead_id(id, contact_name, destination, trello_url, status),
+        operation_customers(
+          role,
+          customers:customer_id(
+            id,
+            first_name,
+            last_name
+          )
+        ),
+        operation_operators(
+          id,
+          cost,
+          cost_currency,
+          notes,
+          operators:operator_id(
+            id,
+            name
+          )
+        )
       `)
 
     // Apply permissions-based filtering
@@ -396,6 +510,67 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     if (dateTo) {
       query = query.lte("departure_date", dateTo)
+    }
+
+    // Filtros por fecha de cobro/pago
+    const paymentDateFrom = searchParams.get("paymentDateFrom")
+    const paymentDateTo = searchParams.get("paymentDateTo")
+    const paymentDateType = searchParams.get("paymentDateType") // "COBRO" | "PAGO" | "VENCIMIENTO"
+    
+    // Si hay filtros de fecha de cobro/pago, primero obtener los operation_ids que cumplen
+    let operationIdsWithPayments: string[] = []
+    if (paymentDateFrom || paymentDateTo) {
+      if (paymentDateType === "COBRO" || paymentDateType === "PAGO" || paymentDateType === "VENCIMIENTO") {
+        let paymentFilterQuery = supabase
+          .from("payments")
+          .select("operation_id")
+        
+        if (paymentDateType === "COBRO") {
+          paymentFilterQuery = paymentFilterQuery.eq("direction", "INCOME")
+          if (paymentDateFrom) {
+            paymentFilterQuery = paymentFilterQuery.gte("date_paid", paymentDateFrom)
+          }
+          if (paymentDateTo) {
+            paymentFilterQuery = paymentFilterQuery.lte("date_paid", paymentDateTo)
+          }
+        } else if (paymentDateType === "PAGO") {
+          paymentFilterQuery = paymentFilterQuery.eq("direction", "EXPENSE")
+          if (paymentDateFrom) {
+            paymentFilterQuery = paymentFilterQuery.gte("date_paid", paymentDateFrom)
+          }
+          if (paymentDateTo) {
+            paymentFilterQuery = paymentFilterQuery.lte("date_paid", paymentDateTo)
+          }
+        } else if (paymentDateType === "VENCIMIENTO") {
+          if (paymentDateFrom) {
+            paymentFilterQuery = paymentFilterQuery.gte("date_due", paymentDateFrom)
+          }
+          if (paymentDateTo) {
+            paymentFilterQuery = paymentFilterQuery.lte("date_due", paymentDateTo)
+          }
+        }
+        
+        const { data: filteredPayments } = await paymentFilterQuery
+        operationIdsWithPayments = [...new Set((filteredPayments || []).map((p: any) => p.operation_id))]
+        
+        // Aplicar filtro a la query de operaciones
+        if (operationIdsWithPayments.length > 0) {
+          query = query.in("id", operationIdsWithPayments)
+          countQuery = countQuery.in("id", operationIdsWithPayments)
+        } else {
+          // Si no hay operaciones que cumplan, retornar vacío
+          return NextResponse.json({ 
+            operations: [],
+            pagination: {
+              total: 0,
+              page: 1,
+              limit,
+              totalPages: 0,
+              hasMore: false
+            }
+          })
+        }
+      }
     }
 
     // Add pagination: usar page en vez de offset para mejor UX
@@ -436,7 +611,7 @@ export async function GET(request: Request) {
     const [{ count }, { data: operations, error }] = await Promise.all([
       countQuery,
       query
-        .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url)")
+        .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url), operation_customers(role, customers:customer_id(id, first_name, last_name)), operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))")
         .order("operation_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1)
@@ -447,10 +622,60 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
     }
 
+    // Obtener IDs de operaciones para buscar pagos
+    const operationIds = (operations || []).map((op: any) => op.id)
+    
+    // Obtener TODOS los pagos de estas operaciones para calcular montos (sin filtros de fecha)
+    const { data: payments } = await supabase
+      .from("payments")
+      .select("operation_id, amount, currency, status, direction, payer_type")
+      .in("operation_id", operationIds)
+    
+    // Agrupar pagos por operación y calcular montos
+    const paymentsByOperation: Record<string, { paid: number; pending: number; currency: string }> = {}
+    
+    if (payments) {
+      for (const payment of payments) {
+        const opId = payment.operation_id
+        if (!paymentsByOperation[opId]) {
+          paymentsByOperation[opId] = { paid: 0, pending: 0, currency: payment.currency || "ARS" }
+        }
+        
+        if (payment.direction === "INCOME") {
+          // Cobros de clientes
+          if (payment.status === "PAID") {
+            paymentsByOperation[opId].paid += Number(payment.amount) || 0
+          } else {
+            paymentsByOperation[opId].pending += Number(payment.amount) || 0
+          }
+        }
+      }
+    }
+    
+    // Enriquecer operaciones con datos de pagos y cliente principal
+    const enrichedOperations = (operations || []).map((op: any) => {
+      const mainCustomer = op.operation_customers?.find(
+        (oc: any) => oc.role === "MAIN"
+      )?.customers
+      
+      const customerName = mainCustomer 
+        ? `${mainCustomer.first_name || ""} ${mainCustomer.last_name || ""}`.trim()
+        : op.leads?.contact_name || "-"
+      
+      const paymentData = paymentsByOperation[op.id] || { paid: 0, pending: 0, currency: op.currency || "ARS" }
+      
+      return {
+        ...op,
+        customer_name: customerName,
+        paid_amount: paymentData.paid,
+        pending_amount: paymentData.pending,
+      }
+    })
+
     const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({ 
-      operations: operations || [],
+      operations: enrichedOperations,
       pagination: {
         total: count || 0,
         page,
@@ -553,6 +778,71 @@ async function generateDestinationRequirementAlerts(
 }
 
 /**
+ * Genera alertas a 30 días para pagos a operadores y cobros de clientes
+ */
+async function generatePaymentAlerts30Days(
+  supabase: any,
+  operationId: string,
+  sellerId: string,
+  destination: string
+) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const alertsToCreate: any[] = []
+
+  // Obtener todos los pagos de la operación
+  const { data: payments } = await (supabase.from("payments") as any)
+    .select("id, amount, currency, date_due, direction, payer_type, status")
+    .eq("operation_id", operationId)
+    .eq("status", "PENDING")
+
+  if (!payments || payments.length === 0) {
+    return
+  }
+
+  for (const payment of payments) {
+    const dueDate = new Date(payment.date_due + 'T12:00:00')
+    const alertDate = new Date(dueDate)
+    alertDate.setDate(alertDate.getDate() - 30)
+
+    // Solo crear alerta si la fecha de alerta es en el futuro
+    if (alertDate >= today) {
+      if (payment.direction === "INCOME" && payment.payer_type === "CUSTOMER") {
+        // Alerta de cobro de cliente
+        alertsToCreate.push({
+          operation_id: operationId,
+          user_id: sellerId,
+          type: "PAYMENT_DUE",
+          description: `💰 Cobro de cliente: ${payment.currency} ${payment.amount} - ${destination} (Vence: ${payment.date_due})`,
+          date_due: alertDate.toISOString().split("T")[0],
+          status: "PENDING",
+        })
+      } else if (payment.direction === "EXPENSE" && payment.payer_type === "OPERATOR") {
+        // Alerta de pago a operador
+        alertsToCreate.push({
+          operation_id: operationId,
+          user_id: sellerId,
+          type: "OPERATOR_DUE",
+          description: `💸 Pago a operador: ${payment.currency} ${payment.amount} - ${destination} (Vence: ${payment.date_due})`,
+          date_due: alertDate.toISOString().split("T")[0],
+          status: "PENDING",
+        })
+      }
+    }
+  }
+
+  // Insertar alertas
+  if (alertsToCreate.length > 0) {
+    const { error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate)
+    if (insertError) {
+      console.error("Error creando alertas de pagos:", insertError)
+    } else {
+      console.log(`✅ Creadas ${alertsToCreate.length} alertas de pagos a 30 días para operación ${operationId}`)
+    }
+  }
+}
+
+/**
  * Genera alertas automáticas para una operación (check-in, check-out, cumpleaños)
  */
 async function generateOperationAlerts(
@@ -573,12 +863,12 @@ async function generateOperationAlerts(
   
   const alertsToCreate: any[] = []
 
-  // 1. ALERTA DE CHECK-IN (3 días antes de la salida o check-in_date si existe)
+  // 1. ALERTA DE CHECK-IN (30 días antes de la salida o check-in_date si existe)
   const checkInDate = checkin_date || departure_date
   if (checkInDate) {
     const checkInDateObj = new Date(checkInDate + 'T12:00:00')
     const checkInAlertDate = new Date(checkInDateObj)
-    checkInAlertDate.setDate(checkInAlertDate.getDate() - 3)
+    checkInAlertDate.setDate(checkInAlertDate.getDate() - 30)
 
     if (checkInAlertDate >= today) {
       alertsToCreate.push({

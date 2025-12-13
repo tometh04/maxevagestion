@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -49,11 +49,7 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
     overduePayments: 0,
   })
 
-  useEffect(() => {
-    fetchOperatorPayments()
-  }, [operatorId])
-
-  const fetchOperatorPayments = async () => {
+  const fetchOperatorPayments = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/operators/${operatorId}/payments`)
@@ -94,7 +90,11 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
     } finally {
       setLoading(false)
     }
-  }
+  }, [operatorId])
+
+  useEffect(() => {
+    fetchOperatorPayments()
+  }, [fetchOperatorPayments])
 
   const formatCurrency = (amount: number, currency: string = "ARS") => {
     return `${currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -53,11 +53,7 @@ export function RecurringPaymentsPageClient() {
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [tableError, setTableError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchData()
-  }, [isActiveFilter])
-
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
     setLoading(true)
     setTableError(null)
     try {
@@ -82,7 +78,11 @@ export function RecurringPaymentsPageClient() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [isActiveFilter])
+
+  useEffect(() => {
+    fetchData()
+  }, [fetchData])
 
   async function handleGeneratePayments() {
     try {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
@@ -71,11 +71,7 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
 
-  useEffect(() => {
-    fetchPreferences()
-  }, [userId])
-
-  async function fetchPreferences() {
+  const fetchPreferences = useCallback(async () => {
     try {
       const response = await fetch(`/api/users/${userId}/notification-preferences`)
       if (response.ok) {
@@ -91,7 +87,11 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
     } catch (error) {
       console.error("Error fetching preferences:", error)
     }
-  }
+  }, [userId])
+
+  useEffect(() => {
+    fetchPreferences()
+  }, [fetchPreferences])
 
   function handleToggle(type: string) {
     setPreferences(prev => prev.map(p => 

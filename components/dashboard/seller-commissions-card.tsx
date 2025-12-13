@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -30,11 +30,7 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
   const [loading, setLoading] = useState(true)
   const [totals, setTotals] = useState({ pending: 0, paid: 0, total: 0 })
 
-  useEffect(() => {
-    fetchCommissions()
-  }, [sellerId])
-
-  async function fetchCommissions() {
+  const fetchCommissions = useCallback(async () => {
     try {
       const response = await fetch(`/api/commissions?sellerId=${sellerId}&limit=5`)
       if (response.ok) {
@@ -57,7 +53,11 @@ export function SellerCommissionsCard({ sellerId, className }: SellerCommissions
     } finally {
       setLoading(false)
     }
-  }
+  }, [sellerId])
+
+  useEffect(() => {
+    fetchCommissions()
+  }, [fetchCommissions])
 
   if (loading) {
     return (
