@@ -222,7 +222,7 @@ export async function POST(request: Request) {
                 op.id,
                 operatorData.operator_id,
                 operatorData.cost,
-                operatorData.cost_currency,
+                operatorData.cost_currency as "ARS" | "USD",
                 departure_date
               )
               console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
