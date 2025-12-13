@@ -115,7 +115,8 @@ export async function GET(request: Request) {
     const balances: Record<string, number> = {}
 
     // Calcular balances de cuentas financieras
-    for (const account of financialAccounts || []) {
+    const financialAccountsArray = (financialAccounts || []) as any[]
+    for (const account of financialAccountsArray) {
       try {
         const balance = await getAccountBalance(account.id, supabase)
         const chartAccount = account.chart_of_accounts
