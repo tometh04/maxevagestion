@@ -292,8 +292,7 @@ export async function POST(request: Request) {
             updates.title = generateTitle(data.parsed_request)
         }
 
-        await supabase
-            .from("conversations")
+        await (supabase.from("conversations") as any)
             .update(updates)
             .eq("id", conversationId)
 
