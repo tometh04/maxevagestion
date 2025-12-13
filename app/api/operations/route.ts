@@ -278,7 +278,7 @@ export async function POST(request: Request) {
               op.id,
               operatorData.operator_id,
               operatorData.cost,
-              operatorData.cost_currency,
+              operatorData.cost_currency as "ARS" | "USD",
               dueDate,
               `Pago automático generado para operación ${operation.id}`
             )
