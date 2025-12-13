@@ -76,8 +76,7 @@ export async function POST(request: Request) {
         const userClientId = clientId || generateClientId()
         const requestId = generateRequestId()
 
-        const { error: userMsgError } = await supabase
-            .from("messages")
+        const { error: userMsgError } = await (supabase.from("messages") as any)
             .insert({
                 conversation_id: conversationId,
                 role: "user",
@@ -209,8 +208,7 @@ export async function POST(request: Request) {
                 },
             }
 
-            await supabase
-                .from("messages")
+            await (supabase.from("messages") as any)
                 .insert({
                     conversation_id: conversationId,
                     role: "assistant",
@@ -264,8 +262,7 @@ export async function POST(request: Request) {
             },
         }
 
-        const { error: assistantMsgError } = await supabase
-            .from("messages")
+        const { error: assistantMsgError } = await (supabase.from("messages") as any)
             .insert({
                 conversation_id: conversationId,
                 role: "assistant",
