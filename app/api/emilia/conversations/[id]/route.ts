@@ -48,13 +48,13 @@ export async function GET(
 
     return NextResponse.json({
       conversation: {
-        id: conversation.id,
-        title: conversation.title,
-        state: conversation.state,
-        channel: conversation.channel,
-        last_search_context: conversation.last_search_context,
-        last_message_at: conversation.last_message_at,
-        created_at: conversation.created_at,
+        id: (conversation as any).id,
+        title: (conversation as any).title,
+        state: (conversation as any).state,
+        channel: (conversation as any).channel,
+        last_search_context: (conversation as any).last_search_context,
+        last_message_at: (conversation as any).last_message_at,
+        created_at: (conversation as any).created_at,
       },
       messages: messages.map((msg: any) => ({
         id: msg.id,
@@ -102,8 +102,7 @@ export async function DELETE(
     }
 
     // Soft delete: cambiar estado a 'closed'
-    const { error: updateError } = await supabase
-      .from("conversations")
+    const { error: updateError } = await (supabase.from("conversations") as any)
       .update({ state: "closed" })
       .eq("id", conversationId)
 
