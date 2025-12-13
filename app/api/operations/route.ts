@@ -564,12 +564,13 @@ export async function GET(request: Request) {
           countQuery = countQuery.in("id", operationIdsWithPayments)
         } else {
           // Si no hay operaciones que cumplan, retornar vacío
+          const defaultLimit = 50
           return NextResponse.json({ 
             operations: [],
             pagination: {
               total: 0,
               page: 1,
-              limit,
+              limit: defaultLimit,
               totalPages: 0,
               hasMore: false
             }
