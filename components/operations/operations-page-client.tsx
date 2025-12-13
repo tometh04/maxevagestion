@@ -37,15 +37,21 @@ export function OperationsPageClient({
   defaultAgencyId,
   defaultSellerId,
 }: OperationsPageClientProps) {
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<{
+    status: string
+    sellerId: string
+    agencyId: string
+    dateFrom: string
+    dateTo: string
+    paymentDateFrom?: string
+    paymentDateTo?: string
+    paymentDateType?: string
+  }>({
     status: "ALL",
     sellerId: "ALL",
     agencyId: "ALL",
     dateFrom: "",
     dateTo: "",
-    paymentDateFrom: undefined as string | undefined,
-    paymentDateTo: undefined as string | undefined,
-    paymentDateType: undefined as string | undefined,
   })
   const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
 
