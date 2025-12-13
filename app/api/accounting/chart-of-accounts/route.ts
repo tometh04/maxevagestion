@@ -34,11 +34,12 @@ export async function GET(request: Request) {
     }
 
     // Organizar en jerarquía (padres e hijos)
-    const accountsMap = new Map((accounts || []).map((acc: any) => [acc.id, acc]))
+    const accountsArray = (accounts || []) as any[]
+    const accountsMap = new Map(accountsArray.map((acc: any) => [acc.id, acc]))
     const rootAccounts: any[] = []
     const childrenMap = new Map<string, any[]>()
 
-    for (const account of accounts || []) {
+    for (const account of accountsArray) {
       if (!account.parent_id) {
         rootAccounts.push(account)
       } else {

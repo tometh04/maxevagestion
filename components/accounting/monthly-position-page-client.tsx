@@ -88,6 +88,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
 
   useEffect(() => {
     fetchPosition()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month, agencyId])
 
   const handleDateSelect = (date: Date | undefined) => {
