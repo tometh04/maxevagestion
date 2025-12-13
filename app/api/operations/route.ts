@@ -551,7 +551,7 @@ export async function GET(request: Request) {
         }
         
         const { data: filteredPayments } = await paymentFilterQuery
-        operationIdsWithPayments = [...new Set((filteredPayments || []).map((p: any) => p.operation_id))]
+        operationIdsWithPayments = Array.from(new Set((filteredPayments || []).map((p: any) => p.operation_id)))
         
         // Aplicar filtro a la query de operaciones
         if (operationIdsWithPayments.length > 0) {
