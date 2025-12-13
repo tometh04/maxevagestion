@@ -178,37 +178,6 @@ export function OperationPaymentsSection({
     }
   }
 
-  const handleSendReceiptWhatsApp = async (paymentId: string) => {
-    setSendingReceiptId(paymentId)
-    try {
-      const response = await fetch("/api/whatsapp/send-receipt", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentId }),
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Error al enviar recibo por WhatsApp")
-      }
-
-      const data = await response.json()
-      
-      // Abrir WhatsApp en nueva pestaña
-      if (data.whatsappLink) {
-        window.open(data.whatsappLink, "_blank")
-      }
-      
-      alert("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
-      router.refresh()
-    } catch (error) {
-      console.error("Error sending receipt via WhatsApp:", error)
-      alert(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
-    } finally {
-      setSendingReceiptId(null)
-    }
-  }
-
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId)
     try {
