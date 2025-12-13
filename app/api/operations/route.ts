@@ -584,11 +584,7 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = (page - 1) * limit
     
-    // OPTIMIZADO: Obtener count y datos en paralelo para mejor rendimiento
-    let countQuery = supabase
-      .from("operations")
-      .select("*", { count: "exact", head: true })
-    
+    // Aplicar mismos filtros al countQuery (ya declarado arriba)
     try {
       countQuery = applyOperationsFilters(countQuery, user, agencyIds)
     } catch {
