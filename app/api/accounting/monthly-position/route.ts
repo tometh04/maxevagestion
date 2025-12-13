@@ -83,7 +83,8 @@ export async function GET(request: Request) {
 
     if (agencyId !== "ALL") {
       // Filtrar por agencia a través de las cuentas financieras
-      const accountIds = (financialAccounts || [])
+      const financialAccountsArray = (financialAccounts || []) as any[]
+      const accountIds = financialAccountsArray
         .filter((fa: any) => fa.agency_id === agencyId)
         .map((fa: any) => fa.id)
       
@@ -115,8 +116,8 @@ export async function GET(request: Request) {
     const balances: Record<string, number> = {}
 
     // Calcular balances de cuentas financieras
-    const financialAccountsArray = (financialAccounts || []) as any[]
-    for (const account of financialAccountsArray) {
+    const financialAccountsArrayForBalance = (financialAccounts || []) as any[]
+    for (const account of financialAccountsArrayForBalance) {
       try {
         const balance = await getAccountBalance(account.id, supabase)
         const chartAccount = account.chart_of_accounts
@@ -152,7 +153,8 @@ export async function GET(request: Request) {
     let costos = 0
     let gastos = 0
 
-    for (const movement of monthMovements || []) {
+    const monthMovementsArray = (monthMovements || []) as any[]
+    for (const movement of monthMovementsArray) {
       const chartAccount = (movement.financial_accounts as any)?.chart_of_accounts
       if (chartAccount?.category === "RESULTADO") {
         const amount = parseFloat(movement.amount_ars_equivalent || "0")
