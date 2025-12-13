@@ -113,7 +113,7 @@ export async function POST(request: Request) {
             request_id: requestId,
             prompt: message,
             context: {
-                previous_request: conversation.last_search_context,
+                previous_request: (conversation as any).last_search_context,
                 conversation_history: conversationHistory,
             },
             options: {
