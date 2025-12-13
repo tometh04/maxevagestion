@@ -289,7 +289,7 @@ export async function POST(request: Request) {
         }
 
         // Generar título automático si es la primera búsqueda exitosa
-        if (conversation.title.startsWith("Chat ") && data.status === "completed" && data.parsed_request) {
+        if ((conversation as any).title?.startsWith("Chat ") && data.status === "completed" && data.parsed_request) {
             updates.title = generateTitle(data.parsed_request)
         }
 
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
                 } : undefined,
             },
             timestamp: new Date().toISOString(),
-            conversationTitle: updates.title || conversation.title,
+            conversationTitle: updates.title || (conversation as any).title,
         })
     } catch (error: any) {
         console.error("Error en /api/emilia/chat:", error?.message || error)
