@@ -91,43 +91,30 @@ export function LeadsPageClient({
   }, [])
 
   // Definir loadLeads como useCallback para poder usarla en Realtime
+  // OPTIMIZADO: Para Trello, cargar más leads (hasta 2000 por agencia)
   const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
     setLoading(true)
     try {
-      // Cargar TODOS los leads usando paginación correcta (page en vez de offset)
-      let allLeads: Lead[] = []
-      let page = 1
-      const limit = 1000 // Aumentado para cargar más leads por página
-      let hasMore = true
-      let maxPages = 20 // Limite de seguridad para evitar loops infinitos
-
-      while (hasMore && page <= maxPages) {
-        let url = agencyId === "ALL"
-          ? `/api/leads?page=${page}&limit=${limit}`
-          : `/api/leads?agencyId=${agencyId}&page=${page}&limit=${limit}`
-        
-        if (trelloListId && trelloListId !== "ALL") {
-          url += `&trelloListId=${trelloListId}`
-        }
-        
-        // Cache busting para asegurar datos frescos
-        url += `&_t=${Date.now()}`
-
-        const response = await fetch(url, { cache: 'no-store' })
-        const data = await response.json()
-        
-        if (data.leads && data.leads.length > 0) {
-          allLeads = [...allLeads, ...data.leads]
-          hasMore = data.pagination?.hasMore || false
-          console.log(`📥 Página ${page}: ${data.leads.length} leads (Total: ${allLeads.length})`)
-          page++
-        } else {
-          hasMore = false
-        }
+      // Para Trello, aumentar el límite a 2000 (máximo por agencia según el usuario)
+      const limit = 2000
+      let url = agencyId === "ALL"
+        ? `/api/leads?page=1&limit=${limit}`
+        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}`
+      
+      if (trelloListId && trelloListId !== "ALL") {
+        url += `&trelloListId=${trelloListId}`
       }
 
-      setLeads(allLeads)
-      console.log(`✅ Cargados ${allLeads.length} leads en total`)
+      const response = await fetch(url, { cache: 'no-store' })
+      const data = await response.json()
+      
+      if (data.leads && data.leads.length > 0) {
+        setLeads(data.leads)
+        console.log(`✅ Cargados ${data.leads.length} leads de ${data.pagination?.total || 'N/A'} totales`)
+      } else {
+        setLeads([])
+        console.log("ℹ️ No se encontraron leads")
+      }
     } catch (error) {
       console.error("Error loading leads:", error)
     } finally {
@@ -217,15 +204,26 @@ export function LeadsPageClient({
 
   // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
   useEffect(() => {
-    // SIEMPRE cargar leads para Trello (initialLeads puede tener solo 500 por límite de Supabase)
+    // SIEMPRE cargar leads desde la API cuando se selecciona una agencia
+    // Esto asegura que se carguen todos los leads (hasta 2000) y no solo los initialLeads
     if (selectedAgencyId && selectedAgencyId !== "ALL") {
-      // Pequeño delay para asegurar que el componente está montado
+      // Si es la carga inicial, usar un delay más corto
+      const delay = initialLoad ? 50 : 100
       const timer = setTimeout(() => {
         loadLeads(selectedAgencyId, selectedTrelloListId)
-      }, 100)
+        if (initialLoad) {
+          setInitialLoad(false)
+        }
+      }, delay)
       return () => clearTimeout(timer)
+    } else if (selectedAgencyId === "ALL") {
+      // Si se selecciona "Todas las agencias", usar los initialLeads
+      setLeads(initialLeads)
+      if (initialLoad) {
+        setInitialLoad(false)
+      }
     }
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads])
+  }, [selectedAgencyId, selectedTrelloListId, loadLeads, initialLeads])
 
   const handleRefresh = async () => {
     await loadLeads(selectedAgencyId, selectedTrelloListId)

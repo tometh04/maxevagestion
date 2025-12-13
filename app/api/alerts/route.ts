@@ -109,7 +109,50 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener alertas" }, { status: 500 })
     }
 
-    return NextResponse.json({ alerts: alerts || [] })
+    // Obtener mensajes de WhatsApp asociados a las operaciones de las alertas
+    const operationIds = (alerts || [])
+      .filter((a: any) => a.operation_id)
+      .map((a: any) => a.operation_id)
+      .filter((id: string, index: number, self: string[]) => self.indexOf(id) === index) // Únicos
+
+    let messagesByOperation: Record<string, any[]> = {}
+    if (operationIds.length > 0) {
+      const { data: messages } = await supabase
+        .from("whatsapp_messages")
+        .select("id, message, whatsapp_link, status, scheduled_for, phone, customer_name, operation_id")
+        .in("operation_id", operationIds)
+        .eq("status", "PENDING")
+
+      if (messages) {
+        const typedMessages = messages as Array<{
+          id: string
+          message: string
+          whatsapp_link: string
+          status: string
+          scheduled_for: string
+          phone: string
+          customer_name: string
+          operation_id: string | null
+        }>
+        
+        for (const msg of typedMessages) {
+          if (msg.operation_id) {
+            if (!messagesByOperation[msg.operation_id]) {
+              messagesByOperation[msg.operation_id] = []
+            }
+            messagesByOperation[msg.operation_id].push(msg)
+          }
+        }
+      }
+    }
+
+    // Agregar mensajes a cada alerta
+    const alertsWithMessages = (alerts || []).map((alert: any) => ({
+      ...alert,
+      whatsapp_messages: alert.operation_id ? (messagesByOperation[alert.operation_id] || []) : [],
+    }))
+
+    return NextResponse.json({ alerts: alertsWithMessages })
   } catch (error) {
     console.error("Error in GET /api/alerts:", error)
     return NextResponse.json({ error: "Error al obtener alertas" }, { status: 500 })

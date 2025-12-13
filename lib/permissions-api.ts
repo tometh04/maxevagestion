@@ -126,6 +126,12 @@ export async function applyCustomersFilters(
 ): Promise<any> {
   const userRole = user.role as UserRole
 
+  // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes sin filtros
+  // Esto es crítico porque los clientes pueden existir sin operaciones asociadas
+  if (userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "VIEWER") {
+    return query
+  }
+
   // CONTABLE no ve clientes
   if (userRole === "CONTABLE") {
     throw new Error("No tiene permiso para ver clientes")
@@ -161,33 +167,8 @@ export async function applyCustomersFilters(
     return query.in("id", customerIds)
   }
 
-  // Filtrar por agencias si no es SUPER_ADMIN
-  if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
-    // Filtrar por agencias a través de operaciones
-    const { data: operations } = await supabase
-      .from("operations")
-      .select("id")
-      .in("agency_id", agencyIds)
-
-    const operationIds = (operations || []).map((op: any) => op.id)
-
-    if (operationIds.length > 0) {
-      const { data: operationCustomers } = await supabase
-        .from("operation_customers")
-        .select("customer_id")
-        .in("operation_id", operationIds)
-
-      const customerIds = (operationCustomers || []).map((oc: any) => oc.customer_id)
-
-      if (customerIds.length > 0) {
-        return query.in("id", customerIds)
-      }
-    }
-
-    return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
-  }
-
-  return query
+  // Para otros roles no contemplados, retornar query vacío por seguridad
+  return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
 }
 
 /**
@@ -222,18 +203,30 @@ export async function getUserAgencyIds(
   userId: string,
   userRole: UserRole
 ): Promise<string[]> {
-  if (userRole === "SUPER_ADMIN") {
-    // SUPER_ADMIN ve todas las agencias
-    const { data: allAgencies } = await supabase.from("agencies").select("id")
-    return (allAgencies || []).map((a: any) => a.id)
-  }
+  // Usar caché para evitar consultas repetidas (TTL: 5 minutos)
+  const { unstable_cache } = await import('next/cache')
+  
+  return unstable_cache(
+    async () => {
+      if (userRole === "SUPER_ADMIN") {
+        // SUPER_ADMIN ve todas las agencias
+        const { data: allAgencies } = await supabase.from("agencies").select("id")
+        return (allAgencies || []).map((a: any) => a.id)
+      }
 
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id")
-    .eq("user_id", userId)
+      const { data: userAgencies } = await supabase
+        .from("user_agencies")
+        .select("agency_id")
+        .eq("user_id", userId)
 
-  return (userAgencies || []).map((ua: any) => ua.agency_id)
+      return (userAgencies || []).map((ua: any) => ua.agency_id)
+    },
+    [`user-agencies-${userId}-${userRole}`],
+    {
+      revalidate: 5 * 60, // 5 minutos
+      tags: [`user-agencies-${userId}`],
+    }
+  )()
 }
 
 /**

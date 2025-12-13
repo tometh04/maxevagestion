@@ -63,10 +63,12 @@ export async function POST(request: Request) {
     // Extract card ID early for logging
     // CRÍTICO: Para createCard, el cardId puede estar en action.data.card.id o action.data.card.shortLink
     // También puede estar en webhook.model.id si el modelo es una card
+    // Para deleteCard, puede estar en action.data.card.id, action.data.cardId, o action.data.old.id
     cardId = webhook.action?.data?.card?.id || 
              webhook.action?.data?.card?.shortLink ||
-             webhook.model?.id || 
              webhook.action?.data?.cardId || // Algunos webhooks lo envían aquí
+             webhook.action?.data?.old?.id || // Para deleteCard, puede estar en old.id
+             webhook.model?.id || 
              null
     
     // Extract board ID from multiple possible locations
@@ -379,16 +381,38 @@ export async function POST(request: Request) {
       }
     } else if (actionType === "deleteCard") {
       // Delete the lead
+      // MEJORADO: Para deleteCard, intentar obtener cardId de múltiples ubicaciones
+      let deleteCardId = cardId || 
+                        webhook.action?.data?.card?.id ||
+                        webhook.action?.data?.cardId ||
+                        webhook.action?.data?.old?.id ||
+                        webhook.model?.id ||
+                        null
+      
+      if (!deleteCardId) {
+        console.warn("⚠️ deleteCard received but no cardId found in webhook")
+        console.log("📦 Webhook structure for deleteCard:", JSON.stringify({
+          actionType: webhook.action?.type,
+          actionData: webhook.action?.data,
+          model: webhook.model,
+        }, null, 2))
+        return NextResponse.json({ received: true, skipped: true, reason: "No cardId found in deleteCard webhook" })
+      }
+      
       try {
-        console.log("🗑️ Deleting lead for card:", cardId)
-        const deleted = await deleteLeadByExternalId(cardId, supabase)
+        console.log("🗑️ Deleting lead for card:", deleteCardId)
+        const deleted = await deleteLeadByExternalId(deleteCardId, supabase)
         const duration = Date.now() - startTime
-        console.log("✅ Lead deleted:", deleted, `(${duration}ms)`)
-        return NextResponse.json({ received: true, deleted: true, cardId })
+        if (deleted) {
+          console.log("✅ Lead deleted successfully:", deleteCardId, `(${duration}ms)`)
+        } else {
+          console.log("⚠️ Lead not found or already deleted:", deleteCardId, `(${duration}ms)`)
+        }
+        return NextResponse.json({ received: true, deleted: deleted, cardId: deleteCardId })
       } catch (error: any) {
         console.error("❌ Error deleting lead:", error)
         // Return 200 to prevent Trello from retrying
-        return NextResponse.json({ received: true, error: "Error deleting lead", message: error.message })
+        return NextResponse.json({ received: true, error: "Error deleting lead", message: error.message, cardId: deleteCardId })
       }
     } else {
       // Log ignored actions for debugging

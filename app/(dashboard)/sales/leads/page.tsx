@@ -70,12 +70,11 @@ export default async function LeadsPage() {
     .order("name")
 
   // Get leads (including trello_list_id)
-  // Para Trello, necesitamos cargar MÁS leads inicialmente para que el Kanban funcione
-  // El cliente cargará más según sea necesario
+  // Para Trello, necesitamos cargar más leads inicialmente (hasta 2000 por agencia)
+  // El cliente cargará el resto con paginación si es necesario
   let leads: any[] = []
   let leadsError: any = null
-  // Aumentar límite inicial para Trello (hay 1,400+ leads en Rosario)
-  const INITIAL_LIMIT = 2000 // Aumentado para cargar más leads inicialmente
+  const INITIAL_LIMIT = 2000 // Aumentado para Trello (máximo 2000 leads por agencia según el usuario)
 
   if (user.role === "SELLER") {
     // Vendedor ve:
@@ -85,7 +84,7 @@ export default async function LeadsPage() {
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("assigned_seller_id", user.id)
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false }) // Ordenar por updated_at para ver los más recientes primero
       .limit(INITIAL_LIMIT)
 
     const { data: unassignedLeads, error: unassignedError } = await supabase
@@ -93,51 +92,25 @@ export default async function LeadsPage() {
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .is("assigned_seller_id", null)
       .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
-      .order("created_at", { ascending: false })
+      .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
 
     leads = [...(myLeads || []), ...(unassignedLeads || [])]
     leadsError = myLeadsError || unassignedError
   } else {
-    // Admin/otros: ver todos los leads de sus agencias
-    // Para Trello, cargar TODOS los leads sin límite usando paginación
-    let allLeads: any[] = []
-    let page = 0
-    const pageSize = 1000 // Tamaño de página para Supabase
-    let hasMore = true
+    // Admin/otros: cargar leads iniciales (hasta 2000)
+    let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
     
-    while (hasMore) {
-      let query = supabase.from("leads").select("*, agencies(name), users:assigned_seller_id(name, email)")
-      
-      if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-        query = query.in("agency_id", agencyIds)
-      }
-
-      const { data, error } = await query
-        .order("created_at", { ascending: false })
-        .range(page * pageSize, (page + 1) * pageSize - 1)
-      
-      if (error) {
-        leadsError = error
-        hasMore = false
-        break
-      }
-      
-      if (data && data.length > 0) {
-        allLeads = [...allLeads, ...data]
-        hasMore = data.length === pageSize
-        page++
-      } else {
-        hasMore = false
-      }
-      
-      // Limite de seguridad
-      if (page > 10) {
-        hasMore = false
-      }
+    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      query = query.in("agency_id", agencyIds)
     }
+
+    const { data, error } = await query
+      .order("updated_at", { ascending: false }) // Ordenar por updated_at para ver los más recientes primero
+      .limit(INITIAL_LIMIT)
     
-    leads = allLeads
+    leads = data || []
+    leadsError = error
   }
 
   if (leadsError) {

@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { applyCustomersFilters, getUserAgencyIds } from "@/lib/permissions-api"
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -15,7 +17,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
     }
 
-    // Get user agencies
+    // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Build query
@@ -38,6 +40,7 @@ export async function GET(request: Request) {
     try {
       query = await applyCustomersFilters(query, user, agencyIds, supabase)
     } catch (error: any) {
+      console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
 

@@ -45,8 +45,8 @@ export async function GET(request: Request) {
       query = query.eq("customer_id", customerId)
     }
 
-    const limit = parseInt(searchParams.get("limit") || "50")
-    query = query.limit(limit)
+    const limit = parseInt(searchParams.get("limit") || "2000")
+    query = query.limit(Math.min(limit, 2000)) // Máximo 2000 para cubrir todos los mensajes
 
     const { data: messages, error } = await query
 

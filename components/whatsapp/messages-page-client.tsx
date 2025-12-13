@@ -82,9 +82,38 @@ export function MessagesPageClient({
   const [search, setSearch] = useState("")
   const [loading, setLoading] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
+  const [dateFilter, setDateFilter] = useState<"TODAY" | "TOMORROW" | "THIS_WEEK" | "ALL">("TODAY")
 
+  // Filtrar mensajes por fecha y estado
   const filteredMessages = messages.filter((msg) => {
+    // Filtro por estado
     if (filter !== "ALL" && msg.status !== filter) return false
+    
+    // Filtro por fecha (aplica a todos los estados)
+    if (dateFilter !== "ALL") {
+      const scheduledDate = new Date(msg.scheduled_for)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      
+      const scheduledDay = new Date(scheduledDate)
+      scheduledDay.setHours(0, 0, 0, 0)
+      
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      
+      const thisWeekEnd = new Date(today)
+      thisWeekEnd.setDate(thisWeekEnd.getDate() + 7)
+      
+      if (dateFilter === "TODAY") {
+        if (scheduledDay.getTime() !== today.getTime()) return false
+      } else if (dateFilter === "TOMORROW") {
+        if (scheduledDay.getTime() !== tomorrow.getTime()) return false
+      } else if (dateFilter === "THIS_WEEK") {
+        if (scheduledDay < today || scheduledDay > thisWeekEnd) return false
+      }
+    }
+    
+    // Filtro por búsqueda
     if (search) {
       const searchLower = search.toLowerCase()
       return (
@@ -105,7 +134,7 @@ export function MessagesPageClient({
   async function fetchMessages() {
     setLoading(true)
     try {
-      const response = await fetch("/api/whatsapp/messages?status=ALL&limit=100")
+      const response = await fetch("/api/whatsapp/messages?status=ALL&limit=2000")
       const data = await response.json()
       setMessages(data.messages || [])
     } catch (error) {
@@ -118,14 +147,38 @@ export function MessagesPageClient({
   async function generateMessages() {
     setLoading(true)
     try {
-      const response = await fetch("/api/cron/whatsapp", { method: "POST" })
+      const response = await fetch("/api/whatsapp/generate-from-operations", { method: "POST" })
       const data = await response.json()
       
       if (data.success) {
-        toast.success(`Se generaron ${data.totalGenerated} mensajes`)
+        let message = `Se generaron ${data.messagesGenerated} mensajes de ${data.operationsProcessed} operaciones`
+        if (data.details) {
+          const details = []
+          if (data.details.alertsCreated > 0) {
+            details.push(`${data.details.alertsCreated} alertas creadas`)
+          }
+          if (data.details.alertsSkipped > 0) {
+            details.push(`${data.details.alertsSkipped} alertas ya existían`)
+          }
+          if (data.details.operationsWithoutDates > 0) {
+            details.push(`${data.details.operationsWithoutDates} sin fechas`)
+          }
+          if (data.details.operationsWithoutCustomers > 0) {
+            details.push(`${data.details.operationsWithoutCustomers} sin clientes`)
+          }
+          if (details.length > 0) {
+            message += ` (${details.join(", ")})`
+          }
+        }
+        
+        if (data.messagesGenerated === 0) {
+          toast.warning(message + ". Verifica que existan templates activos y clientes con teléfono.")
+        } else {
+          toast.success(message)
+        }
         fetchMessages()
       } else {
-        toast.error("Error al generar mensajes")
+        toast.error(data.error || "Error al generar mensajes")
       }
     } catch (error) {
       toast.error("Error al generar mensajes")
@@ -199,10 +252,13 @@ export function MessagesPageClient({
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats - KPIs clickeables como filtros */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className={filter === "PENDING" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("PENDING")}>
+        <Card 
+          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("PENDING")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <Clock className="h-4 w-4" />
               Pendientes
@@ -212,8 +268,11 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold">{counts.PENDING}</div>
           </CardContent>
         </Card>
-        <Card className={filter === "SENT" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("SENT")}>
+        <Card 
+          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("SENT")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
               Enviados
@@ -223,8 +282,11 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold text-green-600">{counts.SENT}</div>
           </CardContent>
         </Card>
-        <Card className={filter === "SKIPPED" ? "ring-2 ring-primary" : ""}>
-          <CardHeader className="pb-2 cursor-pointer" onClick={() => setFilter("SKIPPED")}>
+        <Card 
+          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          onClick={() => setFilter("SKIPPED")}
+        >
+          <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
               <XCircle className="h-4 w-4 text-muted-foreground" />
               Omitidos
@@ -237,7 +299,7 @@ export function MessagesPageClient({
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 items-center">
+      <div className="flex gap-4 items-center flex-wrap">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -247,12 +309,12 @@ export function MessagesPageClient({
             className="pl-9"
           />
         </div>
-        <Tabs value={filter} onValueChange={setFilter}>
+        <Tabs value={dateFilter} onValueChange={(v) => setDateFilter(v as any)}>
           <TabsList>
-            <TabsTrigger value="PENDING">Pendientes</TabsTrigger>
-            <TabsTrigger value="SENT">Enviados</TabsTrigger>
-            <TabsTrigger value="SKIPPED">Omitidos</TabsTrigger>
-            <TabsTrigger value="ALL">Todos</TabsTrigger>
+            <TabsTrigger value="TODAY">Hoy</TabsTrigger>
+            <TabsTrigger value="TOMORROW">Mañana</TabsTrigger>
+            <TabsTrigger value="THIS_WEEK">Esta Semana</TabsTrigger>
+            <TabsTrigger value="ALL">Todas las Fechas</TabsTrigger>
           </TabsList>
         </Tabs>
       </div>
@@ -264,7 +326,11 @@ export function MessagesPageClient({
           title="No hay mensajes"
           description={
             filter === "PENDING"
-              ? "No hay mensajes pendientes de envío. Hacé clic en 'Generar Mensajes' para crear nuevos."
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} pendientes de envío. Hacé clic en 'Generar Mensajes' para crear nuevos.`
+              : filter === "SENT"
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} enviados.`
+              : filter === "SKIPPED"
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} omitidos.`
               : "No hay mensajes que mostrar con los filtros actuales."
           }
           action={

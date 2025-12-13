@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 
 export async function POST(request: Request) {
   try {
@@ -146,14 +147,29 @@ export async function POST(request: Request) {
     }
 
     // Insertar alertas
+    let createdAlerts: any[] = []
     if (alertsToCreate.length > 0) {
-      const { error: insertError } = await (supabase
+      const { data: insertedAlerts, error: insertError } = await (supabase
         .from("alerts") as any)
         .insert(alertsToCreate)
+        .select()
 
       if (insertError) {
         console.error("Error inserting alerts:", insertError)
         return NextResponse.json({ error: "Error al crear alertas" }, { status: 500 })
+      }
+
+      createdAlerts = insertedAlerts || []
+
+      // Generar mensajes de WhatsApp para las alertas creadas
+      try {
+        const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
+        if (messagesGenerated > 0) {
+          console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para las alertas`)
+        }
+      } catch (error) {
+        console.error("Error generando mensajes de WhatsApp:", error)
+        // No lanzamos error para no romper la creación de alertas
       }
     }
 

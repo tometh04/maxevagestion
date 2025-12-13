@@ -12,9 +12,10 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { format } from "date-fns"
+import { format, differenceInDays, isToday, isTomorrow } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
+import { MessageSquare, ExternalLink } from "lucide-react"
 
 export interface Alert {
   id: string
@@ -47,6 +48,15 @@ export interface Alert {
     first_name: string
     last_name: string
   } | null
+  whatsapp_messages?: Array<{
+    id: string
+    message: string
+    whatsapp_link: string
+    status: string
+    scheduled_for: string
+    phone: string
+    customer_name: string
+  }> | null
 }
 
 interface AlertsTableProps {
@@ -127,7 +137,54 @@ export function AlertsTable({
           </div>
         </TableCell>
         <TableCell>
-          {format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })}
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span>{format(new Date(alert.date_due), "dd/MM/yyyy", { locale: es })}</span>
+              {alert.status === "PENDING" && (
+                <>
+                  {isToday(new Date(alert.date_due)) && (
+                    <Badge variant="destructive" className="text-xs">Hoy</Badge>
+                  )}
+                  {isTomorrow(new Date(alert.date_due)) && (
+                    <Badge variant="outline" className="text-xs">Mañana</Badge>
+                  )}
+                  {!isToday(new Date(alert.date_due)) && !isTomorrow(new Date(alert.date_due)) && (
+                    <Badge variant="outline" className="text-xs">
+                      {differenceInDays(new Date(alert.date_due), new Date())} días
+                    </Badge>
+                  )}
+                </>
+              )}
+            </div>
+            {/* Mostrar mensaje asociado si existe */}
+            {alert.whatsapp_messages && alert.whatsapp_messages.length > 0 && (
+              <div className="mt-2 p-2 bg-muted rounded-md">
+                {alert.whatsapp_messages
+                  .filter((msg) => msg.status === "PENDING")
+                  .map((msg) => (
+                    <div key={msg.id} className="space-y-1">
+                      <div className="flex items-center gap-2 text-xs">
+                        <MessageSquare className="h-3 w-3" />
+                        <span className="font-medium">Mensaje pendiente:</span>
+                        <span className="text-muted-foreground">
+                          {format(new Date(msg.scheduled_for), "dd/MM/yyyy", { locale: es })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{msg.message.substring(0, 100)}...</p>
+                      <a
+                        href={msg.whatsapp_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Enviar a {msg.customer_name} ({msg.phone})
+                      </a>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </TableCell>
         <TableCell>
           <Badge
