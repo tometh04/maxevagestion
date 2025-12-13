@@ -8,6 +8,8 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
+import { EmiliaPageClient } from "@/components/emilia/emilia-page-client"
+import { Sparkles } from "lucide-react"
 
 export default async function EmiliaPage() {
   const { user } = await getCurrentUser()
@@ -28,11 +30,19 @@ export default async function EmiliaPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div>
-        <h1 className="text-3xl font-bold">Emilia</h1>
-        <p className="text-muted-foreground">Bienvenido a la sección de Emilia</p>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-200 dark:shadow-amber-900/30">
+          <Sparkles className="h-5 w-5 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold">Emilia</h1>
+          <p className="text-sm text-muted-foreground">
+            Asistente de búsqueda de viajes
+          </p>
+        </div>
       </div>
+
+      <EmiliaPageClient userId={user.id} userName={user.name} />
     </div>
   )
 }
-
