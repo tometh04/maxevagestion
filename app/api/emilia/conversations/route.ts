@@ -46,8 +46,8 @@ export async function GET(request: Request) {
           .limit(1)
           .single()
 
-        const lastMessagePreview = lastMessage?.content?.text 
-          ? lastMessage.content.text.substring(0, 100)
+        const lastMessagePreview = (lastMessage as any)?.content?.text
+          ? (lastMessage as any).content.text.substring(0, 100)
           : "[Búsqueda de viaje]"
 
         return {
@@ -90,8 +90,7 @@ export async function POST(request: Request) {
       year: "numeric",
     })
 
-    const { data: conversation, error } = await supabase
-      .from("conversations")
+    const { data: conversation, error } = await (supabase.from("conversations") as any)
       .insert({
         user_id: user.id,
         title: `Chat ${dateStr}`,
@@ -112,10 +111,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({
-      id: conversation.id,
-      title: conversation.title,
-      state: conversation.state,
-      createdAt: conversation.created_at,
+      id: (conversation as any).id,
+      title: (conversation as any).title,
+      state: (conversation as any).state,
+      createdAt: (conversation as any).created_at,
     })
   } catch (error: any) {
     console.error("Error in POST /api/emilia/conversations:", error)
