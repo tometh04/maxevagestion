@@ -4,9 +4,14 @@ import { getCurrentUser } from "@/lib/auth"
 import { fetchTrelloCard, syncTrelloCardToLead } from "@/lib/trello/sync"
 
 // Aumentar timeout para sincronizaciones largas (5 minutos)
+// NOTA: En Vercel, el máximo es 60s para Hobby, 300s para Pro
 export const maxDuration = 300
+export const runtime = 'nodejs' // Asegurar que use Node.js runtime
 
 export async function POST(request: Request) {
+  const startTime = Date.now()
+  console.log(`[Trello Sync] Iniciando sincronización a las ${new Date().toISOString()}`)
+  
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
@@ -16,6 +21,8 @@ export async function POST(request: Request) {
     if (!agencyId) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
+    
+    console.log(`[Trello Sync] Agency ID: ${agencyId}, Force Full Sync: ${forceFullSync}`)
 
     // Get Trello settings
     const { data: trelloSettings } = await supabase
@@ -41,22 +48,35 @@ export async function POST(request: Request) {
     // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
     const cardsUrl = `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList`
 
-    const cardsResponse = await fetch(cardsUrl)
+    console.log(`[Trello Sync] Obteniendo cards de Trello...`)
+    const cardsResponse = await fetch(cardsUrl, {
+      signal: AbortSignal.timeout(30000) // Timeout de 30s para obtener cards
+    })
 
     if (!cardsResponse.ok) {
-      return NextResponse.json({ error: "Error al obtener tarjetas de Trello" }, { status: 400 })
+      const errorText = await cardsResponse.text()
+      console.error(`[Trello Sync] Error obteniendo cards: ${cardsResponse.status} - ${errorText}`)
+      return NextResponse.json({ 
+        error: `Error al obtener tarjetas de Trello: ${cardsResponse.status}` 
+      }, { status: 400 })
     }
 
     let allCards = await cardsResponse.json()
+    console.log(`[Trello Sync] ${allCards.length} cards obtenidas de Trello`)
     
     // Obtener solo listas activas (no archivadas) del board para validación y limpieza
+    console.log(`[Trello Sync] Obteniendo listas de Trello...`)
     const listsResponse = await fetch(
-      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=open&fields=id,name`
+      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=open&fields=id,name`,
+      {
+        signal: AbortSignal.timeout(30000) // Timeout de 30s
+      }
     )
     
     let allLists: any[] = []
     if (listsResponse.ok) {
       allLists = await listsResponse.json()
+      console.log(`[Trello Sync] ${allLists.length} listas obtenidas`)
       // Actualizar mapeo de listas si hay nuevas
       const activeLists = allLists // Ya vienen solo las activas con filter=open
       const listStatusMapping: Record<string, string> = settings.list_status_mapping || {}
@@ -184,8 +204,17 @@ export async function POST(request: Request) {
     const DELAY_BETWEEN_CARDS = 100 // 100ms entre cada card
     const DELAY_BETWEEN_BATCHES = 2000 // 2 segundos entre batches
 
+    console.log(`[Trello Sync] Iniciando sincronización de ${cards.length} cards...`)
+    const syncStartTime = Date.now()
+    
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i]
+      
+      // Log cada 50 cards para tracking
+      if (i % 50 === 0 && i > 0) {
+        const elapsed = Date.now() - syncStartTime
+        console.log(`[Trello Sync] Progreso: ${i}/${cards.length} cards (${Math.floor(elapsed/1000)}s)`)
+      }
       
       try {
         // Fetch full card details with ALL information (con retry)
@@ -365,9 +394,22 @@ export async function POST(request: Request) {
         lastSyncAt: isIncrementalSync ? lastSyncAt : null,
       },
     })
-  } catch (error) {
-    console.error("Trello sync error:", error)
-    return NextResponse.json({ error: "Error al sincronizar" }, { status: 500 })
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime
+    console.error(`[Trello Sync] Error después de ${Math.floor(elapsed/1000)}s:`, error)
+    
+    // Detectar si es timeout
+    if (error.name === 'AbortError' || error.message?.includes('timeout') || error.message?.includes('TIMEOUT')) {
+      return NextResponse.json({ 
+        error: "La sincronización tardó demasiado. Intenta con menos cards o contacta al administrador.",
+        timeout: true
+      }, { status: 504 })
+    }
+    
+    return NextResponse.json({ 
+      error: error.message || "Error al sincronizar",
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    }, { status: 500 })
   }
 }
 
