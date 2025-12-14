@@ -14,6 +14,8 @@ import {
     AlertCircle,
     Sparkles,
     ChevronRight,
+    FileText,
+    Hotel as HotelIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -34,6 +36,7 @@ interface MessageContent {
     cards?: {
         flights?: SearchResultsFlights
         hotels?: SearchResultsHotels
+        requestType?: 'combined' | 'flights-only' | 'hotels-only'
     }
     metadata?: {
         search_id?: string
@@ -257,6 +260,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 cards: data.results ? {
                     flights: data.results.flights,
                     hotels: data.results.hotels,
+                    requestType: data.requestType || (data.results.flights && data.results.hotels ? 'combined' : data.results.flights ? 'flights-only' : 'hotels-only'),
                 } : undefined,
                 metadata: {
                     search_id: data.search_id,
@@ -549,6 +553,7 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
                     <SearchResultsDisplay 
                         flights={content.cards.flights}
                         hotels={content.cards.hotels}
+                        requestType={content.cards.requestType}
                     />
                 )}
 
@@ -567,77 +572,288 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
 interface SearchResultsDisplayProps {
     flights?: SearchResultsFlights
     hotels?: SearchResultsHotels
+    requestType?: 'combined' | 'flights-only' | 'hotels-only'
 }
 
-function SearchResultsDisplay({ flights, hotels }: SearchResultsDisplayProps) {
+function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDisplayProps) {
+    const [selectedFlights, setSelectedFlights] = useState<Set<string>>(new Set())
+    const [selectedHotels, setSelectedHotels] = useState<Set<string>>(new Set())
+    const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
+
     const hasFlights = flights && flights.items && flights.items.length > 0
     const hasHotels = hotels && hotels.items && hotels.items.length > 0
 
-    // Si solo hay uno, mostrar sin tabs
-    if (hasFlights && !hasHotels) {
-        return (
-            <div className="w-full space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                    <Plane className="h-4 w-4" />
-                    <span>Vuelos disponibles ({flights.count})</span>
-                </div>
-                <div className="space-y-2">
-                    {flights.items.slice(0, 10).map((flight) => (
-                        <FlightResultCard key={flight.id} flight={flight} />
-                    ))}
-                </div>
-            </div>
-        )
+    // Determinar requestType si no viene
+    const effectiveRequestType = requestType || 
+        (hasFlights && hasHotels ? 'combined' : hasFlights ? 'flights-only' : 'hotels-only')
+
+    const handleFlightSelection = (flightId: string, selected: boolean) => {
+        setSelectedFlights((prev) => {
+            const next = new Set(prev)
+            if (selected) {
+                if (next.size >= 4) {
+                    toast.warning("Solo se pueden seleccionar hasta 4 vuelos")
+                    return prev
+                }
+                next.add(flightId)
+            } else {
+                next.delete(flightId)
+            }
+            return next
+        })
     }
 
-    if (hasHotels && !hasFlights) {
-        return (
-            <div className="w-full space-y-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                    <Building2 className="h-4 w-4" />
-                    <span>Hoteles disponibles ({hotels.count})</span>
-                </div>
-                <div className="space-y-2">
-                    {hotels.items.slice(0, 10).map((hotel) => (
-                        <HotelResultCard key={hotel.id} hotel={hotel} />
-                    ))}
-                </div>
-            </div>
-        )
+    const handleHotelSelection = (hotelId: string, selected: boolean) => {
+        setSelectedHotels((prev) => {
+            const next = new Set(prev)
+            if (selected) {
+                if (next.size >= 2) {
+                    toast.warning("Solo se pueden seleccionar hasta 2 hoteles")
+                    return prev
+                }
+                next.add(hotelId)
+            } else {
+                next.delete(hotelId)
+            }
+            return next
+        })
     }
 
-    // Si hay ambos, mostrar con tabs
-    if (hasFlights && hasHotels) {
+    const handleGeneratePdf = async () => {
+        if (selectedFlights.size === 0 && selectedHotels.size === 0) return
+
+        setIsGeneratingPdf(true)
+        try {
+            // TODO: Implementar generación de PDF
+            toast.success("Generando PDF...")
+            await new Promise(resolve => setTimeout(resolve, 2000))
+        } catch (error) {
+            toast.error("Error al generar PDF")
+        } finally {
+            setIsGeneratingPdf(false)
+        }
+    }
+
+    const hasAnyResults = hasFlights || hasHotels
+    const hasSelection = selectedFlights.size > 0 || selectedHotels.size > 0
+
+    // Determinar tab inicial según requestType
+    const defaultTab = effectiveRequestType === 'hotels-only' ? 'hotels' : 'flights'
+
+    // Si es combined, usar Tabs; si no, renderizar contenido directo
+    if (effectiveRequestType === 'combined') {
         return (
-            <div className="w-full">
-                <Tabs defaultValue="flights" className="w-full">
+            <div className="w-full space-y-4">
+                <Tabs defaultValue={defaultTab} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-3">
                         <TabsTrigger value="flights" className="flex items-center gap-2">
                             <Plane className="h-4 w-4" />
-                            <span>Vuelos ({flights.count})</span>
+                            <span>Vuelos ({flights?.count || 0})</span>
                         </TabsTrigger>
                         <TabsTrigger value="hotels" className="flex items-center gap-2">
                             <Building2 className="h-4 w-4" />
-                            <span>Hoteles ({hotels.count})</span>
+                            <span>Hoteles ({hotels?.count || 0})</span>
                         </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="flights" className="space-y-2 mt-0">
-                        {flights.items.slice(0, 10).map((flight) => (
-                            <FlightResultCard key={flight.id} flight={flight} />
-                        ))}
+                        {hasFlights ? (
+                            flights.items.slice(0, 10).map((flight) => (
+                                <FlightResultCard 
+                                    key={flight.id} 
+                                    flight={flight}
+                                    selected={selectedFlights.has(flight.id)}
+                                    onSelectionChange={handleFlightSelection}
+                                />
+                            ))
+                        ) : (
+                            <FlightsEmptyState />
+                        )}
                     </TabsContent>
 
                     <TabsContent value="hotels" className="space-y-2 mt-0">
-                        {hotels.items.slice(0, 10).map((hotel) => (
-                            <HotelResultCard key={hotel.id} hotel={hotel} />
-                        ))}
+                        {hasHotels ? (
+                            hotels.items.slice(0, 10).map((hotel) => (
+                                <HotelResultCard 
+                                    key={hotel.id} 
+                                    hotel={hotel}
+                                    selected={selectedHotels.has(hotel.id)}
+                                    onSelectionChange={handleHotelSelection}
+                                />
+                            ))
+                        ) : (
+                            <HotelsEmptyState />
+                        )}
                     </TabsContent>
                 </Tabs>
+
+                {/* Footer: Generar PDF */}
+                {hasAnyResults && (
+                    <div className="border-t pt-4 mt-4">
+                        <div className="flex items-center justify-between">
+                            <div className="text-sm text-muted-foreground">
+                                {selectedFlights.size > 0 && selectedHotels.size > 0 && (
+                                    <span>
+                                        {selectedFlights.size} vuelo{selectedFlights.size > 1 ? 's' : ''} y {selectedHotels.size} hotel{selectedHotels.size > 1 ? 'es' : ''} seleccionado{selectedFlights.size + selectedHotels.size > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                {selectedFlights.size > 0 && selectedHotels.size === 0 && (
+                                    <span>
+                                        {selectedFlights.size} vuelo{selectedFlights.size > 1 ? 's' : ''} seleccionado{selectedFlights.size > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                {selectedFlights.size === 0 && selectedHotels.size > 0 && (
+                                    <span>
+                                        {selectedHotels.size} hotel{selectedHotels.size > 1 ? 'es' : ''} seleccionado{selectedHotels.size > 1 ? 's' : ''}
+                                    </span>
+                                )}
+                                {!hasSelection && (
+                                    <span>Seleccioná vuelos y/o hoteles para generar la cotización</span>
+                                )}
+                            </div>
+                            <Button
+                                onClick={handleGeneratePdf}
+                                disabled={!hasSelection || isGeneratingPdf}
+                                className="gap-2"
+                            >
+                                {isGeneratingPdf ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        Generando...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FileText className="h-4 w-4" />
+                                        Generar PDF
+                                    </>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                )}
             </div>
         )
     }
 
-    return null
+    // Si es flights-only o hotels-only, renderizar sin tabs
+    return (
+        <div className="w-full space-y-4">
+            {effectiveRequestType === 'flights-only' && (
+                <div className="space-y-2">
+                    {hasFlights ? (
+                        flights.items.slice(0, 10).map((flight) => (
+                            <FlightResultCard 
+                                key={flight.id} 
+                                flight={flight}
+                                selected={selectedFlights.has(flight.id)}
+                                onSelectionChange={handleFlightSelection}
+                            />
+                        ))
+                    ) : (
+                        <FlightsEmptyState />
+                    )}
+                </div>
+            )}
+
+            {effectiveRequestType === 'hotels-only' && (
+                <div className="space-y-2">
+                    {hasHotels ? (
+                        hotels.items.slice(0, 10).map((hotel) => (
+                            <HotelResultCard 
+                                key={hotel.id} 
+                                hotel={hotel}
+                                selected={selectedHotels.has(hotel.id)}
+                                onSelectionChange={handleHotelSelection}
+                            />
+                        ))
+                    ) : (
+                        <HotelsEmptyState />
+                    )}
+                </div>
+            )}
+
+            {/* Footer: Generar PDF */}
+            {hasAnyResults && (
+                <div className="border-t pt-4 mt-4">
+                    <div className="flex items-center justify-between">
+                        <div className="text-sm text-muted-foreground">
+                            {selectedFlights.size > 0 && selectedHotels.size > 0 && (
+                                <span>
+                                    {selectedFlights.size} vuelo{selectedFlights.size > 1 ? 's' : ''} y {selectedHotels.size} hotel{selectedHotels.size > 1 ? 'es' : ''} seleccionado{selectedFlights.size + selectedHotels.size > 1 ? 's' : ''}
+                                </span>
+                            )}
+                            {selectedFlights.size > 0 && selectedHotels.size === 0 && (
+                                <span>
+                                    {selectedFlights.size} vuelo{selectedFlights.size > 1 ? 's' : ''} seleccionado{selectedFlights.size > 1 ? 's' : ''}
+                                </span>
+                            )}
+                            {selectedFlights.size === 0 && selectedHotels.size > 0 && (
+                                <span>
+                                    {selectedHotels.size} hotel{selectedHotels.size > 1 ? 'es' : ''} seleccionado{selectedHotels.size > 1 ? 's' : ''}
+                                </span>
+                            )}
+                            {!hasSelection && (
+                                <span>Seleccioná vuelos y/o hoteles para generar la cotización</span>
+                            )}
+                        </div>
+                        <Button
+                            onClick={handleGeneratePdf}
+                            disabled={!hasSelection || isGeneratingPdf}
+                            className="gap-2"
+                        >
+                            {isGeneratingPdf ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Generando...
+                                </>
+                            ) : (
+                                <>
+                                    <FileText className="h-4 w-4" />
+                                    Generar PDF
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </div>
+    )
+}
+
+// Empty States según especificación
+function FlightsEmptyState() {
+    const handleRetryWithStops = () => {
+        // TODO: Implementar retry con escalas
+        toast.info("Función de repetir búsqueda con escalas pendiente")
+    }
+
+    return (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <Plane className="h-16 w-16 text-muted-foreground/50 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+                No se encontraron vuelos directos para este itinerario
+            </h3>
+            <p className="text-sm text-muted-foreground mb-4">
+                ¿Quieres repetir la búsqueda permitiendo escalas?
+            </p>
+            <Button variant="outline" onClick={handleRetryWithStops}>
+                Repetir búsqueda con escalas
+            </Button>
+        </div>
+    )
+}
+
+function HotelsEmptyState() {
+    return (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <HotelIcon className="h-16 w-16 text-muted-foreground/50 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">
+                No se encontraron hoteles disponibles
+            </h3>
+            <p className="text-sm text-muted-foreground">
+                Verificando códigos de destino en EUROVIPS
+            </p>
+        </div>
+    )
 }
 

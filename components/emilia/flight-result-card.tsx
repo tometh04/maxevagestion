@@ -3,6 +3,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Plane,
   Clock,
@@ -64,11 +65,18 @@ interface FlightData {
 interface FlightResultCardProps {
   flight: FlightData
   onSelect?: (flight: FlightData) => void
+  selected?: boolean
+  onSelectionChange?: (flightId: string, selected: boolean) => void
 }
 
 const lightAirlines = ["LA", "H2", "AV", "AM", "JA", "AR"]
 
-export function FlightResultCard({ flight, onSelect }: FlightResultCardProps) {
+export function FlightResultCard({ 
+  flight, 
+  onSelect, 
+  selected = false,
+  onSelectionChange 
+}: FlightResultCardProps) {
   const formatPrice = (amount: number, currency: string) => {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -76,6 +84,10 @@ export function FlightResultCard({ flight, onSelect }: FlightResultCardProps) {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(amount)
+  }
+  
+  const handleCheckboxChange = (checked: boolean) => {
+    onSelectionChange?.(flight.id, checked)
   }
 
   const getBaggageText = (leg: FlightLeg, airlineCode: string): string => {
@@ -113,23 +125,30 @@ export function FlightResultCard({ flight, onSelect }: FlightResultCardProps) {
   const childrens = flight.childrens || flight.children || 0
 
   return (
-    <Card className="overflow-hidden border-border/50">
+    <Card className={cn("overflow-hidden border-border/50", selected && "ring-2 ring-primary")}>
       <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <Plane className="h-4 w-4 text-primary" />
-              <span className="font-semibold">{flight.airline.name}</span>
-              <Badge variant="secondary" className="text-xs">
-                {flight.airline.code}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Users className="h-3 w-3" />
-              <span>
-                {flight.adults} adulto{flight.adults > 1 ? "s" : ""}
-                {childrens > 0 && `, ${childrens} niño${childrens > 1 ? "s" : ""}`}
-              </span>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3 flex-1">
+            <Checkbox 
+              checked={selected}
+              onCheckedChange={handleCheckboxChange}
+              className="mt-1"
+            />
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <Plane className="h-4 w-4 text-primary" />
+                <span className="font-semibold">{flight.airline.name}</span>
+                <Badge variant="secondary" className="text-xs">
+                  {flight.airline.code}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <Users className="h-3 w-3" />
+                <span>
+                  {flight.adults} adulto{flight.adults > 1 ? "s" : ""}
+                  {childrens > 0 && `, ${childrens} niño${childrens > 1 ? "s" : ""}`}
+                </span>
+              </div>
             </div>
           </div>
           <div className="text-right">
@@ -187,12 +206,8 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return ""
     try {
-      const date = new Date(dateStr)
-      return date.toLocaleDateString("es-AR", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      })
+      // Mantener formato YYYY-MM-DD según especificación
+      return dateStr
     } catch {
       return ""
     }
@@ -200,11 +215,11 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
 
   return (
     <div className="space-y-3">
-      {/* Leg Header */}
+      {/* Leg Header - Equipaje al lado del label según spec */}
       <div className="flex items-center gap-2 text-sm font-medium">
         <span>{legIcon}</span>
         <span>{legLabel}</span>
-        <Luggage className="h-3 w-3 ml-auto text-muted-foreground" />
+        <Luggage className="h-3 w-3 text-muted-foreground" />
         <span className="text-xs text-muted-foreground">{baggageText}</span>
       </div>
 
@@ -251,14 +266,9 @@ function FlightLegCard({ leg, airlineCode, departureDate }: FlightLegCardProps) 
                 </Badge>
               )}
             </div>
-            {departureDate && leg.arrival_next_day && (
-              <div className="text-xs text-muted-foreground">
-                {formatDate(new Date(new Date(departureDate).getTime() + 86400000).toISOString())}
-              </div>
-            )}
-            {departureDate && !leg.arrival_next_day && (
-              <div className="text-xs text-muted-foreground">{formatDate(departureDate)}</div>
-            )}
+            <div className="text-xs text-muted-foreground">
+              {departureDate ? formatDate(departureDate) : ""}
+            </div>
             <div className="text-xs text-muted-foreground">{leg.arrival?.city_name || ""}</div>
           </div>
         </div>
