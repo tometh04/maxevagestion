@@ -273,17 +273,33 @@ export async function POST(request: Request) {
             ? transformHotels(data.results.hotels.items)
             : undefined
 
+        // Construir objetos de resultados transformados
+        const resultsFlights = transformedFlights
+            ? {
+                count: data.results.flights.count,
+                items: transformedFlights,
+            }
+            : data.results?.flights
+
+        const resultsHotels = transformedHotels
+            ? {
+                count: data.results.hotels.count,
+                items: transformedHotels,
+            }
+            : data.results?.hotels
+
         // 7. Guardar mensaje del asistente
         const assistantClientId = generateClientId()
         const assistantContent = {
             text: buildAssistantContent(data),
-            cards: data.results?.flights || data.results?.hotels ? {
-                flights: data.results.flights,
-                hotels: data.results.hotels,
+            cards: resultsFlights || resultsHotels ? {
+                flights: resultsFlights,
+                hotels: resultsHotels,
+                requestType: data.requestType || (resultsFlights && resultsHotels ? 'combined' : resultsFlights ? 'flights-only' : 'hotels-only'),
             } : undefined,
             metadata: {
                 search_id: data.search_id,
-                results_count: (data.results?.flights?.count || 0) + (data.results?.hotels?.count || 0),
+                results_count: (resultsFlights?.count || 0) + (resultsHotels?.count || 0),
             },
         }
 
@@ -322,9 +338,14 @@ export async function POST(request: Request) {
             .update(updates)
             .eq("id", conversationId)
 
-        // 8. Retornar respuesta completa
+        // 8. Retornar respuesta completa con datos transformados
         return NextResponse.json({
             ...data,
+            results: resultsFlights || resultsHotels ? {
+                flights: resultsFlights,
+                hotels: resultsHotels,
+            } : data.results,
+            requestType: data.requestType || (resultsFlights && resultsHotels ? 'combined' : resultsFlights ? 'flights-only' : 'hotels-only'),
             timestamp: new Date().toISOString(),
             conversationTitle: updates.title || (conversation as any).title,
         })
