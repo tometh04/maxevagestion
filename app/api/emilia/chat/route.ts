@@ -7,6 +7,7 @@ import {
     generateTitle,
     buildAssistantContent,
 } from "@/lib/emilia/utils"
+import { transformFlights, transformHotels } from "@/lib/emilia/transformers"
 
 interface ChatRequest {
     message: string
