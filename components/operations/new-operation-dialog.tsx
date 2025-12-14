@@ -138,7 +138,12 @@ export function NewOperationDialog({
   React.useEffect(() => {
     if (useMultipleOperators && operatorList.length > 0) {
       form.setValue("operator_cost", totalOperatorCost)
-      form.setValue("operators", operatorList)
+      // Asegurar que cost_currency tenga un valor por defecto
+      const operatorsWithDefaults = operatorList.map(op => ({
+        ...op,
+        cost_currency: (op.cost_currency || "ARS") as "ARS" | "USD"
+      }))
+      form.setValue("operators", operatorsWithDefaults)
     } else if (!useMultipleOperators) {
       form.setValue("operators", undefined)
     }
