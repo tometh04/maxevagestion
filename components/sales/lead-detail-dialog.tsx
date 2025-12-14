@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
@@ -220,7 +220,7 @@ export function LeadDetailDialog({
   if (!lead) return null
 
   // Actualizar notesValue cuando cambia el lead
-  React.useEffect(() => {
+  useEffect(() => {
     setNotesValue(lead.notes || "")
   }, [lead.notes])
 
