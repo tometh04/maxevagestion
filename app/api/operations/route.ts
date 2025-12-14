@@ -2,13 +2,13 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { generateFileCode } from "@/lib/accounting/file-code"
-import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement } from "@/lib/accounting/ledger"
+import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
-import { getExchangeRate, getLatestExchangeRate, calculateARSEquivalent } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export async function POST(request: Request) {
   try {
