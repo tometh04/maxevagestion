@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -72,7 +72,7 @@ export function PassengersSection({
   const [adding, setAdding] = useState(false)
 
   // Buscar clientes
-  const searchCustomers = async (query: string) => {
+  const searchCustomers = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
       setSearchResults([])
       return
@@ -94,7 +94,7 @@ export function PassengersSection({
     } finally {
       setSearching(false)
     }
-  }
+  }, [customers])
 
   // Debounce search
   useEffect(() => {
@@ -102,7 +102,7 @@ export function PassengersSection({
       searchCustomers(searchQuery)
     }, 300)
     return () => clearTimeout(timer)
-  }, [searchQuery])
+  }, [searchQuery, searchCustomers])
 
   // Agregar pasajero
   const handleAddPassenger = async () => {

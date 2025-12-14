@@ -230,6 +230,44 @@ export function LeadsPageClient({
   }
 
   const handleRefreshLeads = async () => {
+    if (selectedAgencyId === "ALL") {
+      // Si es "ALL", solo recargar desde BD
+      await loadLeads(selectedAgencyId, selectedTrelloListId)
+      return
+    }
+
+    setSyncingTrello(true)
+    try {
+      // Usar sincronización rápida con Trello
+      const response = await fetch("/api/trello/sync-quick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyId: selectedAgencyId }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        const summary = data.summary
+        toast.success(
+          `✅ Sincronizado: ${summary.created || 0} nuevos, ${summary.updated || 0} actualizados, ${summary.deleted || 0} eliminados`,
+          { duration: 3000 }
+        )
+        
+        // Recargar leads desde BD después de la sincronización
+        await loadLeads(selectedAgencyId, selectedTrelloListId)
+      } else {
+        toast.error(data.error || "Error al sincronizar con Trello")
+      }
+    } catch (error: any) {
+      console.error("Error syncing Trello:", error)
+      toast.error("Error al sincronizar con Trello")
+    } finally {
+      setSyncingTrello(false)
+    }
+  }
+
+  const handleRefreshLeadsOld = async () => {
     if (!selectedAgencyId || selectedAgencyId === "ALL") {
       toast.error("Selecciona una agencia específica para refrescar leads")
       return
@@ -366,7 +404,7 @@ export function LeadsPageClient({
               variant="outline"
               onClick={handleRefreshLeads}
               disabled={syncingTrello}
-              title="Refrescar leads desde la base de datos"
+              title="Sincronizar con Trello y actualizar leads"
             >
               {syncingTrello ? (
                 <>

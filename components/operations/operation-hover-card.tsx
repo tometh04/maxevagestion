@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   HoverCard,
   HoverCardContent,
@@ -61,13 +61,7 @@ export function OperationHoverCard({ operationId, children }: OperationHoverCard
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => {
-    if (open && !operation) {
-      fetchOperationData()
-    }
-  }, [open])
-
-  const fetchOperationData = async () => {
+  const fetchOperationData = useCallback(async () => {
     setLoading(true)
     try {
       const response = await fetch(`/api/operations/${operationId}`)
@@ -78,7 +72,13 @@ export function OperationHoverCard({ operationId, children }: OperationHoverCard
     } finally {
       setLoading(false)
     }
-  }
+  }, [operationId])
+
+  useEffect(() => {
+    if (open && !operation) {
+      fetchOperationData()
+    }
+  }, [open, operation, fetchOperationData])
 
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`

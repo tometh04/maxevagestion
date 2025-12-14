@@ -17,25 +17,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
 
-    const result = await getCachedTrelloConfig(async () => {
-      const supabase = await createServerClient()
+    const supabase = await createServerClient()
 
-      const { data: trelloSettings, error } = await supabase
-        .from("settings_trello")
-        .select("*")
-        .eq("agency_id", agencyId)
-        .maybeSingle()
+    // Obtener directamente sin caché para evitar problemas
+    const { data: trelloSettings, error } = await supabase
+      .from("settings_trello")
+      .select("*")
+      .eq("agency_id", agencyId)
+      .maybeSingle()
 
-      if (error) {
-        throw new Error("Error al cargar configuración")
-      }
+    if (error) {
+      console.error("Error obteniendo settings de Trello:", error)
+      return NextResponse.json({ 
+        error: `Error al cargar configuración: ${error.message}`,
+        code: error.code,
+        details: error.details
+      }, { status: 500 })
+    }
 
-      return trelloSettings || null
-    })
-
-    return NextResponse.json({ settings: result })
+    return NextResponse.json({ settings: trelloSettings || null })
   } catch (error: any) {
-    return NextResponse.json({ error: error.message || "Error al cargar configuración" }, { status: 500 })
+    console.error("Error en GET /api/settings/trello:", error)
+    return NextResponse.json({ 
+      error: error.message || "Error al cargar configuración",
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    }, { status: 500 })
   }
 }
 

@@ -306,10 +306,77 @@ export async function POST(request: Request) {
       "removeChecklistFromCard",
     ]
 
-    if (cardActions.includes(actionType || "")) {
+    // NUEVO: Procesar eventos de listas
+    const listActions = [
+      "updateList",
+      "createList",
+      "updateList:closed",
+      "updateList:name",
+    ]
+
+    // Si es un evento de card archivada, eliminar el lead
+    let processedActionType = actionType
+    if (actionType === "updateCard:closed") {
+      const isClosed = webhook.action?.data?.card?.closed || webhook.action?.data?.old?.closed === false
+      if (isClosed) {
+        // Card fue archivada, eliminar lead
+        try {
+          console.log("🗑️ Card archived, deleting lead:", cardId)
+          const deleted = await deleteLeadByExternalId(cardId || "", supabase)
+          const duration = Date.now() - startTime
+          if (deleted) {
+            console.log("✅ Lead deleted (card archived):", cardId, `(${duration}ms)`)
+          }
+          return NextResponse.json({ received: true, deleted: deleted, cardId, action: actionType })
+        } catch (error: any) {
+          console.error("❌ Error deleting lead (archived card):", error)
+          return NextResponse.json({ received: true, error: "Error deleting lead", message: error.message, cardId })
+        }
+      } else {
+        // Card fue desarchivada, sincronizar como update normal
+        processedActionType = "updateCard"
+      }
+    }
+
+    // Si es un evento de lista archivada/eliminada, eliminar leads de esa lista
+    if (listActions.includes(actionType || "")) {
+      const listId = webhook.action?.data?.list?.id || webhook.model?.id || null
+      const isListClosed = webhook.action?.data?.list?.closed || webhook.action?.data?.old?.closed === false
+      
+      if (isListClosed && listId) {
+        try {
+          console.log("🗑️ List archived/closed, deleting leads from list:", listId)
+          // Eliminar todos los leads de esta lista
+          const { error } = await (supabase.from("leads") as any)
+            .delete()
+            .eq("trello_list_id", listId)
+            .eq("source", "Trello")
+          
+          if (error) {
+            console.error("❌ Error deleting leads from archived list:", error)
+          } else {
+            console.log("✅ Leads deleted from archived list:", listId)
+          }
+          
+          // Actualizar mapeo de listas si es necesario
+          // (Las listas archivadas ya no aparecerán en /api/trello/lists porque filtramos por closed=false)
+          
+          return NextResponse.json({ received: true, listId, action: actionType, deleted: true })
+        } catch (error: any) {
+          console.error("❌ Error processing list action:", error)
+          return NextResponse.json({ received: true, error: "Error processing list", message: error.message })
+        }
+      } else if (actionType === "createList") {
+        // Nueva lista creada - no hacer nada, se actualizará en la próxima sincronización
+        console.log("📋 New list created:", listId)
+        return NextResponse.json({ received: true, listId, action: actionType })
+      }
+    }
+
+    if (cardActions.includes(processedActionType || "")) {
       // Sync the card
       try {
-        console.log("🔄 Syncing card:", cardId, "for action:", actionType)
+        console.log("🔄 Syncing card:", cardId, "for action:", processedActionType)
         
         // MEJORADO: Usar retry logic (fetchTrelloCard ya tiene retry integrado)
         const card = await fetchTrelloCard(
@@ -319,6 +386,13 @@ export async function POST(request: Request) {
         )
         
         if (card) {
+          // Si la card está archivada, eliminar el lead
+          if (card.closed) {
+            console.log("🗑️ Card is archived, deleting lead:", cardId)
+            const deleted = await deleteLeadByExternalId(cardId, supabase)
+            return NextResponse.json({ received: true, deleted: deleted, cardId, action: actionType })
+          }
+          
           console.log("✅ Card fetched successfully:", card.name)
           console.log("📋 Card details:", {
             id: card.id,
@@ -343,11 +417,15 @@ export async function POST(request: Request) {
             cardId, 
             created: result.created, 
             leadId: result.leadId,
-            action: actionType,
+            action: processedActionType,
             duration: `${duration}ms`,
           })
         } else {
           console.log("⚠️ Card not found or deleted in Trello")
+          // Si la card no existe, eliminar el lead
+          if (cardId) {
+            await deleteLeadByExternalId(cardId, supabase)
+          }
           // Return 200 to prevent Trello from retrying
           return NextResponse.json({ received: true, skipped: true, reason: "Card not found in Trello" })
         }

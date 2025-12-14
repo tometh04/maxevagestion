@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -46,11 +46,7 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
     overduePayments: 0,
   })
 
-  useEffect(() => {
-    fetchCustomerPayments()
-  }, [customerId])
-
-  const fetchCustomerPayments = async () => {
+  const fetchCustomerPayments = useCallback(async () => {
     try {
       setLoading(true)
       // Obtener operaciones del cliente y sus pagos
@@ -92,7 +88,11 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
     } finally {
       setLoading(false)
     }
-  }
+  }, [customerId])
+
+  useEffect(() => {
+    fetchCustomerPayments()
+  }, [fetchCustomerPayments])
 
   const formatCurrency = (amount: number, currency: string = "ARS") => {
     return `${currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`

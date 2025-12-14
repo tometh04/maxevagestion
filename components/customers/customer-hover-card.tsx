@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   HoverCard,
   HoverCardContent,
@@ -33,13 +33,7 @@ export function CustomerHoverCard({ customerId, children }: CustomerHoverCardPro
   const [loading, setLoading] = useState(false)
   const [open, setOpen] = useState(false)
 
-  useEffect(() => {
-    if (open && !customer) {
-      fetchCustomerData()
-    }
-  }, [open])
-
-  const fetchCustomerData = async () => {
+  const fetchCustomerData = useCallback(async () => {
     setLoading(true)
     try {
       const response = await fetch(`/api/customers/${customerId}`)
@@ -58,7 +52,13 @@ export function CustomerHoverCard({ customerId, children }: CustomerHoverCardPro
     } finally {
       setLoading(false)
     }
-  }
+  }, [customerId])
+
+  useEffect(() => {
+    if (open && !customer) {
+      fetchCustomerData()
+    }
+  }, [open, customer, fetchCustomerData])
 
   const getInitials = (firstName: string, lastName: string) => {
     return `${firstName?.[0] || ""}${lastName?.[0] || ""}`.toUpperCase()

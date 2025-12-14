@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -48,15 +48,7 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
   const [matchedDestinations, setMatchedDestinations] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    if (destination) {
-      fetchRequirements()
-    } else {
-      setLoading(false)
-    }
-  }, [destination])
-
-  const fetchRequirements = async () => {
+  const fetchRequirements = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch(`/api/destination-requirements/match?destination=${encodeURIComponent(destination)}`)
@@ -79,7 +71,15 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
     } finally {
       setLoading(false)
     }
-  }
+  }, [destination])
+
+  useEffect(() => {
+    if (destination) {
+      fetchRequirements()
+    } else {
+      setLoading(false)
+    }
+  }, [destination, fetchRequirements])
 
   // Calcular días hasta el viaje
   const getDaysUntilTrip = () => {

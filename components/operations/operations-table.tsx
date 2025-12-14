@@ -38,6 +38,13 @@ interface Operation {
   return_date: string | null
   sellers: { name: string } | null
   operators: { name: string } | null
+  operation_operators?: Array<{
+    id: string
+    cost: number
+    cost_currency: string
+    notes?: string | null
+    operators?: { id: string; name: string } | null
+  }>
   leads: { contact_name: string | null; destination: string | null; trello_url: string | null } | null
   currency: string
   sale_amount_total: number
@@ -45,6 +52,9 @@ interface Operation {
   margin_percentage: number
   status: string
   created_at: string
+  customer_name?: string
+  paid_amount?: number
+  pending_amount?: number
 }
 
 interface OperationsTableProps {
@@ -54,6 +64,9 @@ interface OperationsTableProps {
     agencyId: string
     dateFrom: string
     dateTo: string
+    paymentDateFrom?: string
+    paymentDateTo?: string
+    paymentDateType?: string
   }
   userRole: string
   userId: string
@@ -124,6 +137,9 @@ export function OperationsTable({
       if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
       if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
       if (filters.dateTo) params.append("dateTo", filters.dateTo)
+      if (filters.paymentDateFrom) params.append("paymentDateFrom", filters.paymentDateFrom)
+      if (filters.paymentDateTo) params.append("paymentDateTo", filters.paymentDateTo)
+      if (filters.paymentDateType) params.append("paymentDateType", filters.paymentDateType)
       
       // Agregar parámetros de paginación
       params.append("page", page.toString())
@@ -176,16 +192,15 @@ export function OperationsTable({
         },
       },
       {
-        accessorKey: "leads.contact_name",
+        accessorKey: "customer_name",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Cliente" />
         ),
         cell: ({ row }) => {
-          const lead = row.original.leads
-          const clientName = lead?.contact_name
+          const customerName = row.original.customer_name || row.original.leads?.contact_name || "-"
           return (
-            <div className="max-w-[140px] truncate text-xs" title={clientName || "-"}>
-              {clientName || "-"}
+            <div className="max-w-[140px] truncate text-xs" title={customerName}>
+              {customerName}
             </div>
           )
         },
@@ -238,15 +253,31 @@ export function OperationsTable({
         ),
       },
       {
-        accessorKey: "operators.name",
+        accessorKey: "operators",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Operador" />
+          <DataTableColumnHeader column={column} title="Operador(es)" />
         ),
-        cell: ({ row }) => (
-          <div className="text-xs max-w-[80px] truncate" title={row.original.operators?.name || "-"}>
-            {row.original.operators?.name || "-"}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const operation = row.original as any
+          // Si hay operation_operators, mostrar todos; si no, mostrar el operador principal
+          if (operation.operation_operators && operation.operation_operators.length > 0) {
+            const operatorsList = operation.operation_operators
+              .map((oo: any) => oo.operators?.name || "Sin nombre")
+              .join(", ")
+            return (
+              <div className="text-xs max-w-[120px] truncate" title={operatorsList}>
+                {operatorsList}
+              </div>
+            )
+          } else if (operation.operators?.name) {
+            return (
+              <div className="text-xs max-w-[80px] truncate" title={operation.operators.name}>
+                {operation.operators.name}
+              </div>
+            )
+          }
+          return <div className="text-xs">-</div>
+        },
       },
       {
         accessorKey: "sale_amount_total",
@@ -258,6 +289,36 @@ export function OperationsTable({
             {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
           </div>
         ),
+      },
+      {
+        accessorKey: "paid_amount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Pagado" />
+        ),
+        cell: ({ row }) => {
+          const paid = row.original.paid_amount || 0
+          return (
+            <div className="text-xs text-green-600 font-medium">
+              {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "pending_amount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Pendiente" />
+        ),
+        cell: ({ row }) => {
+          const pending = row.original.pending_amount || 0
+          const total = row.original.sale_amount_total || 0
+          const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
+          return (
+            <div className="text-xs text-orange-600 font-medium">
+              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "margin_amount",

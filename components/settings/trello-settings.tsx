@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Progress } from "@/components/ui/progress"
 import {
   Table,
   TableBody,
@@ -55,6 +56,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
   const [syncing, setSyncing] = useState(false)
   const [forceFullSync, setForceFullSync] = useState(false)
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number; status: string; created: number; updated: number; errors: number } | null>(null)
   const [webhooks, setWebhooks] = useState<Array<{ id: string; callbackURL: string; active: boolean; description: string }>>([])
   const [webhookUrl, setWebhookUrl] = useState("")
   const [webhookLoading, setWebhookLoading] = useState(false)
@@ -243,16 +245,57 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
 
     setSyncing(true)
     setSyncResult(null)
+    setSyncProgress({ current: 0, total: 0, status: "Iniciando sincronización...", created: 0, updated: 0, errors: 0 })
+
+    // Iniciar sincronización
+    const startTime = Date.now()
+    let progressInterval: NodeJS.Timeout | null = null
 
     try {
+      // Mostrar progreso estimado basado en tiempo con barra animada
+      let progressValue = 0
+      progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const seconds = Math.floor(elapsed / 1000)
+        // Simular progreso animado (0-90%) mientras espera respuesta
+        progressValue = Math.min(90, Math.floor((elapsed / 100) % 100))
+        setSyncProgress(prev => prev ? {
+          ...prev,
+          current: progressValue,
+          total: 100,
+          status: `Sincronizando... (${seconds}s)`
+        } : null)
+      }, 500) // Actualizar cada 500ms para animación más suave
+
+      // Timeout de 5 minutos para la sincronización
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 5 * 60 * 1000)
+
       const res = await fetch("/api/trello/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ agencyId, forceFullSync }),
+        signal: controller.signal,
       })
+      
+      clearTimeout(timeoutId)
       const data = await res.json()
+      
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
+
       if (res.ok && data.success) {
         setSyncResult(data.summary)
+        // Mostrar progreso final (100%)
+        setSyncProgress({
+          current: data.summary.totalCards || data.summary.total || 100,
+          total: data.summary.totalCards || data.summary.total || 100,
+          status: "✅ Sincronización completada",
+          created: data.summary.created || 0,
+          updated: data.summary.updated || 0,
+          errors: data.summary.errors || 0
+        })
         // Actualizar lastSyncAt si está disponible
         if (data.summary.lastSyncAt !== undefined) {
           setLastSyncAt(data.summary.lastSyncAt)
@@ -260,13 +303,42 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
         // Recargar settings para obtener el nuevo last_sync_at
         await loadSettings()
       } else {
-        setSyncResult({ total: 0, created: 0, updated: 0 })
+        setSyncResult({ total: 0, created: 0, updated: 0, error: data.error || "Error desconocido" })
+        setSyncProgress(null)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error syncing:", error)
-      setSyncResult({ total: 0, created: 0, updated: 0 })
+      let errorMessage = "Error al sincronizar"
+      
+      if (error.name === "AbortError") {
+        errorMessage = "La sincronización tardó demasiado (timeout de 5 minutos). Intenta nuevamente."
+      } else if (error.message?.includes("Failed to fetch") || error.message?.includes("ERR_CONNECTION_CLOSED")) {
+        errorMessage = "Error de conexión con el servidor. Verifica tu conexión a internet o intenta más tarde."
+      } else {
+        errorMessage = error.message || "Error al sincronizar"
+      }
+      
+      setSyncResult({ total: 0, created: 0, updated: 0, error: errorMessage })
+      setSyncProgress({
+        current: 0,
+        total: 100,
+        status: "❌ Error en sincronización",
+        created: 0,
+        updated: 0,
+        errors: 1
+      })
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
     } finally {
       setSyncing(false)
+      if (progressInterval) {
+        clearInterval(progressInterval)
+      }
+      // Limpiar progreso después de 5 segundos
+      setTimeout(() => {
+        setSyncProgress(null)
+      }, 5000)
     }
   }
 
@@ -685,6 +757,28 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
               <Button onClick={handleSync} disabled={syncing}>
                 {syncing ? "Sincronizando..." : forceFullSync ? "Ejecutar Sincronización Completa" : "Ejecutar Sincronización"}
               </Button>
+              
+              {/* Barra de progreso */}
+              {syncing && syncProgress && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{syncProgress.status}</span>
+                    <span className="text-muted-foreground">
+                      {syncProgress.current} / {syncProgress.total} tarjetas
+                    </span>
+                  </div>
+                  <Progress 
+                    value={syncProgress.total > 0 ? (syncProgress.current / syncProgress.total) * 100 : 0} 
+                    className="h-2"
+                  />
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>✅ Creados: {syncProgress.created}</span>
+                    <span>🔄 Actualizados: {syncProgress.updated}</span>
+                    {syncProgress.errors > 0 && <span>❌ Errores: {syncProgress.errors}</span>}
+                  </div>
+                </div>
+              )}
+
               {syncResult && (
                 <Alert variant={syncResult.error || (syncResult.errors && syncResult.errors > 0) ? "destructive" : "default"}>
                   <AlertDescription>

@@ -146,8 +146,6 @@ const cityNames: Record<string, string> = {
   // Otros destinos populares
   HAV: "La Habana",
   SDQ: "Santo Domingo",
-  PTY: "Ciudad de Panamá",
-  BOG: "Bogotá",
   LPB: "La Paz",
 }
 

@@ -33,6 +33,9 @@ interface OperationsFiltersProps {
     agencyId: string
     dateFrom: string
     dateTo: string
+    paymentDateFrom?: string
+    paymentDateTo?: string
+    paymentDateType?: string
   }) => void
 }
 
@@ -42,6 +45,9 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
   const [agencyId, setAgencyId] = useState("ALL")
   const [dateFrom, setDateFrom] = useState("")
   const [dateTo, setDateTo] = useState("")
+  const [paymentDateFrom, setPaymentDateFrom] = useState("")
+  const [paymentDateTo, setPaymentDateTo] = useState("")
+  const [paymentDateType, setPaymentDateType] = useState("")
 
   const handleApplyFilters = () => {
     onFilterChange({
@@ -50,6 +56,9 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
       agencyId,
       dateFrom,
       dateTo,
+      paymentDateFrom: paymentDateType ? paymentDateFrom : undefined,
+      paymentDateTo: paymentDateType ? paymentDateTo : undefined,
+      paymentDateType: paymentDateType || undefined,
     })
   }
 
@@ -59,12 +68,18 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
     setAgencyId("ALL")
     setDateFrom("")
     setDateTo("")
+    setPaymentDateFrom("")
+    setPaymentDateTo("")
+    setPaymentDateType("")
     onFilterChange({
       status: "ALL",
       sellerId: "ALL",
       agencyId: "ALL",
       dateFrom: "",
       dateTo: "",
+      paymentDateFrom: undefined,
+      paymentDateTo: undefined,
+      paymentDateType: undefined,
     })
   }
 
@@ -73,7 +88,8 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
     sellerId !== "ALL" ||
     agencyId !== "ALL" ||
     dateFrom !== "" ||
-    dateTo !== ""
+    dateTo !== "" ||
+    (paymentDateType !== "" && (paymentDateFrom !== "" || paymentDateTo !== ""))
 
   return (
     <Card>
@@ -130,7 +146,7 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
           </div>
 
           <div className="space-y-2">
-            <Label>Rango de fechas</Label>
+            <Label>Rango de fechas (viaje)</Label>
             <DateRangePicker
               dateFrom={dateFrom}
               dateTo={dateTo}
@@ -141,6 +157,36 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
               placeholder="Seleccionar rango"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="paymentDateType">Filtrar por fecha de</Label>
+            <Select value={paymentDateType} onValueChange={setPaymentDateType}>
+              <SelectTrigger id="paymentDateType">
+                <SelectValue placeholder="Ninguno" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="NONE">Ninguno</SelectItem>
+                <SelectItem value="COBRO">Cobro (fecha de pago recibido)</SelectItem>
+                <SelectItem value="PAGO">Pago a operador (fecha de pago realizado)</SelectItem>
+                <SelectItem value="VENCIMIENTO">Vencimiento (fecha de vencimiento)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {paymentDateType && (
+            <div className="space-y-2">
+              <Label>Rango de fechas ({paymentDateType === "COBRO" ? "cobro" : paymentDateType === "PAGO" ? "pago" : "vencimiento"})</Label>
+              <DateRangePicker
+                dateFrom={paymentDateFrom}
+                dateTo={paymentDateTo}
+                onChange={(from, to) => {
+                  setPaymentDateFrom(from)
+                  setPaymentDateTo(to)
+                }}
+                placeholder="Seleccionar rango"
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">

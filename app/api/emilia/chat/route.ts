@@ -75,8 +75,7 @@ export async function POST(request: Request) {
         const userClientId = clientId || generateClientId()
         const requestId = generateRequestId()
 
-        const { error: userMsgError } = await supabase
-            .from("messages")
+        const { error: userMsgError } = await (supabase.from("messages") as any)
             .insert({
                 conversation_id: conversationId,
                 role: "user",
@@ -126,7 +125,7 @@ export async function POST(request: Request) {
             request_id: requestId,
             prompt: message,
             context: {
-                previous_request: conversation.last_search_context,
+                previous_request: (conversation as any).last_search_context,
                 conversation_history: conversationHistory,
             },
             options: {
@@ -221,10 +220,57 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json()
-        console.log("[Emilia API] ✅ Response exitosa!")
-        console.log("[Emilia API] Response data:", JSON.stringify(data, null, 2).substring(0, 500) + "...")
+        console.log("[Emilia API] Response data:", JSON.stringify(data, null, 2))
 
-        // 6. Guardar mensaje del asistente
+        // Manejar caso de información incompleta
+        if (data.status === "incomplete" || data.request_type === "missing_info_request") {
+            console.log("[Emilia API] Incomplete request detected")
+
+            // Guardar mensaje del asistente pidiendo más información
+            const assistantClientId = generateClientId()
+            const assistantContent = {
+                text: data.message || "Necesito más información para completar la búsqueda. ¿Podrías especificar las fechas, cantidad de personas y destino?",
+                metadata: {
+                    request_type: "missing_info_request",
+                    missing_fields: data.missing_fields || [],
+                    suggested_followups: data.suggested_followups || [],
+                },
+            }
+
+            await (supabase.from("messages") as any)
+                .insert({
+                    conversation_id: conversationId,
+                    role: "assistant",
+                    content: assistantContent,
+                    client_id: assistantClientId,
+                    api_request_id: requestId,
+                    api_search_id: data.search_id,
+                })
+
+            // Actualizar conversación
+            await (supabase.from("conversations") as any)
+                .update({ last_message_at: new Date().toISOString() })
+                .eq("id", conversationId)
+
+            return NextResponse.json({
+                status: "incomplete",
+                message: assistantContent.text,
+                missing_fields: data.missing_fields || [],
+                suggested_followups: data.suggested_followups || [],
+                timestamp: new Date().toISOString(),
+            })
+        }
+
+        // 6. Transformar los datos de la API al formato del frontend
+        const transformedFlights = data.results?.flights?.items
+            ? transformFlights(data.results.flights.items)
+            : undefined
+
+        const transformedHotels = data.results?.hotels?.items
+            ? transformHotels(data.results.hotels.items)
+            : undefined
+
+        // 7. Guardar mensaje del asistente
         const assistantClientId = generateClientId()
         const assistantContent = {
             text: buildAssistantContent(data),
@@ -238,8 +284,7 @@ export async function POST(request: Request) {
             },
         }
 
-        const { error: assistantMsgError } = await supabase
-            .from("messages")
+        const { error: assistantMsgError } = await (supabase.from("messages") as any)
             .insert({
                 conversation_id: conversationId,
                 role: "assistant",
@@ -266,12 +311,11 @@ export async function POST(request: Request) {
         }
 
         // Generar título automático si es la primera búsqueda exitosa
-        if (conversation.title.startsWith("Chat ") && data.status === "completed" && data.parsed_request) {
+        if ((conversation as any).title?.startsWith("Chat ") && data.status === "completed" && data.parsed_request) {
             updates.title = generateTitle(data.parsed_request)
         }
 
-        await supabase
-            .from("conversations")
+        await (supabase.from("conversations") as any)
             .update(updates)
             .eq("id", conversationId)
 
@@ -279,7 +323,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
             ...data,
             timestamp: new Date().toISOString(),
-            conversationTitle: updates.title || conversation.title,
+            conversationTitle: updates.title || (conversation as any).title,
         })
     } catch (error: any) {
         console.error("Error en /api/emilia/chat:", error?.message || error)

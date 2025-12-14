@@ -238,7 +238,7 @@ export function EditLeadDialog({
         toast.error("Error al cargar los datos del lead")
       }
     }
-  }, [lead, open, form])
+  }, [lead, open, form, agencies])
 
   const handleSubmit = async (values: LeadFormValues) => {
     if (!lead) return

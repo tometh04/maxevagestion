@@ -120,15 +120,26 @@ async function syncAgency(agencyName: string, boardId: string) {
   // 4. Sincronizar cada tarjeta con TODA la información (fotos, comentarios, descripción, responsable, etc.)
   console.log(`\n4. Sincronizando tarjetas con información completa...`)
   console.log(`   📸 Traerá: fotos, comentarios, descripción, responsable asignado, checklists, etc.`)
+  console.log(`   📊 Total de cards a sincronizar: ${cards.length}`)
   console.log("")
   let synced = 0
   let created = 0
   let updated = 0
   let errors = 0
   const startTime = Date.now()
+  const BATCH_SIZE = 50 // Procesar en batches de 50 para mostrar progreso
 
   for (let i = 0; i < cards.length; i++) {
     const card = cards[i]
+    
+    // Mostrar progreso cada 50 cards
+    if (i % BATCH_SIZE === 0 && i > 0) {
+      const elapsed = Date.now() - startTime
+      const rate = synced / (elapsed / 1000)
+      const remaining = cards.length - i
+      const estimatedTime = remaining / rate
+      console.log(`   📊 Progreso: ${i}/${cards.length} (${Math.floor((i/cards.length)*100)}%) - ${synced} sincronizadas (${created} nuevas, ${updated} actualizadas) - Tiempo estimado: ${Math.floor(estimatedTime)}s`)
+    }
     try {
       // Fetch full card details with ALL information (fotos, comentarios, etc.)
       const fullCard = await fetchTrelloCard(card.id, TRELLO_API_KEY, TRELLO_TOKEN)
@@ -165,14 +176,14 @@ async function syncAgency(agencyName: string, boardId: string) {
         console.log(`   📈 ${percentage}% - ${synced}/${cards.length} (${created} nuevas, ${updated} actualizadas, ${errors} errores) - ${rate} cards/seg`)
       }
 
-      // Delay entre cards para evitar rate limits
+      // Delay entre cards para evitar rate limits (reducido para ser más rápido)
       if (i < cards.length - 1) {
-        await delay(50) // 50ms entre cards
+        await delay(20) // 20ms entre cards (más rápido)
       }
 
-      // Pausa más larga cada 100 cards
-      if ((i + 1) % 100 === 0 && i < cards.length - 1) {
-        await delay(1000) // 1 segundo cada 100 cards
+      // Pausa más larga cada 200 cards (menos frecuente)
+      if ((i + 1) % 200 === 0 && i < cards.length - 1) {
+        await delay(500) // 500ms cada 200 cards
       }
     } catch (error: any) {
       console.error(`   ❌ [${i + 1}/${cards.length}] Error sincronizando ${card.name}:`, error.message)
