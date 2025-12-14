@@ -3,6 +3,9 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { fetchTrelloCard, syncTrelloCardToLead } from "@/lib/trello/sync"
 
+// Aumentar timeout para sincronizaciones largas (5 minutos)
+export const maxDuration = 300
+
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
