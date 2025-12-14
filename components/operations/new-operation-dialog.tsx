@@ -33,7 +33,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
-  cost_currency: z.enum(["ARS", "USD"]).default("ARS"),
+  cost_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
   notes: z.string().optional(),
 })
 
