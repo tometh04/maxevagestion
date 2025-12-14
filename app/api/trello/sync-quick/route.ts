@@ -114,11 +114,12 @@ export async function POST(request: Request) {
         )
 
         if (!fullCard) {
-          // Card eliminada, eliminar lead
+          // Card eliminada, eliminar lead (solo de esta agencia)
           const { error } = await (supabase.from("leads") as any)
             .delete()
             .eq("external_id", card.id)
             .eq("source", "Trello")
+            .eq("agency_id", agencyId) // CRÍTICO: Solo de esta agencia
           
           if (!error) {
             deleted++

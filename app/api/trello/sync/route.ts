@@ -189,11 +189,12 @@ export async function POST(request: Request) {
         const fullCard = await fetchCardWithRetry(card.id)
 
         if (!fullCard) {
-          // Card eliminada o no existe, eliminar lead
+          // Card eliminada o no existe, eliminar lead (solo de esta agencia)
           const { error: deleteError } = await (supabase.from("leads") as any)
             .delete()
             .eq("external_id", card.id)
             .eq("source", "Trello")
+            .eq("agency_id", agencyId) // CRÍTICO: Solo de esta agencia
           
           if (!deleteError) {
             deleted++
@@ -208,11 +209,20 @@ export async function POST(request: Request) {
             .delete()
             .eq("external_id", fullCard.id)
             .eq("source", "Trello")
+            .eq("agency_id", agencyId) // CRÍTICO: Solo de esta agencia
           
           if (!deleteError) {
             deleted++
             console.log(`🗑️ Lead eliminado (card archivada): ${fullCard.id}`)
           }
+          continue
+        }
+
+        // CRÍTICO: Verificar que la card tenga idList antes de sincronizar
+        // Cada card DEBE estar asociada a una lista
+        if (!fullCard.idList && !fullCard.list?.id) {
+          console.error(`⚠️ Card sin idList, saltando: ${fullCard.id} - ${fullCard.name}`)
+          errors++
           continue
         }
 
@@ -260,10 +270,11 @@ export async function POST(request: Request) {
       // allLists ya contiene solo listas activas (filter=open)
       const activeListIds = new Set(allLists.map((list: any) => list.id))
       if (activeListIds.size > 0) {
-        // Obtener todos los leads de Trello con trello_list_id
+        // Obtener todos los leads de Trello con trello_list_id (SOLO de esta agencia)
         const { data: allTrelloLeadsWithList } = await (supabase.from("leads") as any)
           .select("id, trello_list_id")
           .eq("source", "Trello")
+          .eq("agency_id", agencyId) // CRÍTICO: Solo leads de esta agencia
           .not("trello_list_id", "is", null)
         
         // Filtrar los que no están en listas activas
