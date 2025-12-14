@@ -245,46 +245,22 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
 
     setSyncing(true)
     setSyncResult(null)
-    setSyncProgress(null)
-
-    // Primero obtener el total de cards para mostrar progreso estimado
-    let totalCards = 0
-    try {
-      const settingsRes = await fetch(`/api/settings/trello?agencyId=${agencyId}`)
-      const settingsData = await settingsRes.json()
-      if (settingsData.settings) {
-        // Obtener total de cards de Trello para estimar progreso
-        const cardsRes = await fetch(
-          `https://api.trello.com/1/boards/${settingsData.settings.board_id}/cards/open?key=${settingsData.settings.trello_api_key}&token=${settingsData.settings.trello_token}&fields=id`
-        )
-        if (cardsRes.ok) {
-          const cards = await cardsRes.json()
-          totalCards = cards.length
-          setSyncProgress({ current: 0, total: totalCards, status: "Iniciando sincronización...", created: 0, updated: 0, errors: 0 })
-        }
-      }
-    } catch (error) {
-      console.error("Error obteniendo total de cards:", error)
-    }
+    setSyncProgress({ current: 0, total: 0, status: "Iniciando sincronización...", created: 0, updated: 0, errors: 0 })
 
     // Iniciar sincronización
     const startTime = Date.now()
     let progressInterval: NodeJS.Timeout | null = null
 
     try {
-      // Simular progreso mientras se sincroniza (polling cada 2 segundos)
-      if (totalCards > 0) {
-        progressInterval = setInterval(() => {
-          const elapsed = Date.now() - startTime
-          // Estimar progreso basado en tiempo (asumiendo ~100ms por card)
-          const estimatedProgress = Math.min(Math.floor((elapsed / 100) / totalCards * 100), 95)
-          setSyncProgress(prev => prev ? {
-            ...prev,
-            current: Math.floor((estimatedProgress / 100) * totalCards),
-            status: `Sincronizando... (${Math.floor(estimatedProgress)}%)`
-          } : null)
-        }, 2000)
-      }
+      // Mostrar progreso estimado basado en tiempo (sin necesidad de total de cards)
+      progressInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime
+        const seconds = Math.floor(elapsed / 1000)
+        setSyncProgress(prev => prev ? {
+          ...prev,
+          status: `Sincronizando... (${seconds}s)`
+        } : null)
+      }, 1000)
 
       const res = await fetch("/api/trello/sync", {
         method: "POST",
@@ -302,7 +278,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
         // Mostrar progreso final
         setSyncProgress({
           current: data.summary.total || 0,
-          total: data.summary.totalCards || totalCards || data.summary.total || 0,
+          total: data.summary.totalCards || data.summary.total || 0,
           status: "Sincronización completada",
           created: data.summary.created || 0,
           updated: data.summary.updated || 0,

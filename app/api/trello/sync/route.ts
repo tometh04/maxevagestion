@@ -357,7 +357,7 @@ export async function POST(request: Request) {
         orphanedDeleted,
         errors,
         rateLimited,
-        totalCards: cards.length,
+        totalCards: cards.length, // Total de cards que se intentaron sincronizar
         incremental: isIncrementalSync,
         lastSyncAt: isIncrementalSync ? lastSyncAt : null,
       },
