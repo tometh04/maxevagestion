@@ -23,4 +23,3 @@ WHERE billing_margin_amount IS NULL;
 
 -- Índice para búsquedas
 CREATE INDEX IF NOT EXISTS idx_operations_billing_margin ON operations(billing_margin_amount) WHERE billing_margin_amount IS NOT NULL;
-
