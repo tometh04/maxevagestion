@@ -244,13 +244,16 @@ export async function POST(request: Request) {
       console.log("🧹 Limpiando leads huérfanos...")
       
       // 1. Eliminar leads de listas archivadas/eliminadas
-      const activeListIds = allLists.filter((list: any) => !list.closed).map((list: any) => list.id)
-      if (activeListIds.length > 0) {
-        const { data: orphanedByList } = await (supabase.from("leads") as any)
+      const activeListIds = new Set(allLists.filter((list: any) => !list.closed).map((list: any) => list.id))
+      if (activeListIds.size > 0) {
+        // Obtener todos los leads de Trello con trello_list_id
+        const { data: allTrelloLeadsWithList } = await (supabase.from("leads") as any)
           .select("id, trello_list_id")
           .eq("source", "Trello")
           .not("trello_list_id", "is", null)
-          .not("trello_list_id", "in", `(${activeListIds.join(",")})`)
+        
+        // Filtrar los que no están en listas activas
+        const orphanedByList = allTrelloLeadsWithList?.filter((lead: any) => !activeListIds.has(lead.trello_list_id)) || []
         
         if (orphanedByList.length > 0) {
           const orphanedIds = orphanedByList.map((l: any) => l.id)
