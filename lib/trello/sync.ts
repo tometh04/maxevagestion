@@ -158,9 +158,56 @@ export function extractEmail(desc: string, name: string): string | null {
  * Extract Instagram handle from card description or name
  */
 export function extractInstagram(desc: string, name: string): string | null {
+  // Primero intentar extraer de formato estructurado "Instagram: username"
+  const structuredMatch = desc.match(/Instagram:\s*(.+)/i)
+  if (structuredMatch) {
+    const instagramValue = structuredMatch[1].trim()
+    // Remover @ si está presente
+    return instagramValue.replace(/^@/, "").trim() || null
+  }
+  
+  // Fallback: buscar @username en descripción o nombre
   const instagramRegex = /@([a-zA-Z0-9._]+)/
   const match = (desc + " " + name).match(instagramRegex)
   return match ? match[1] : null
+}
+
+/**
+ * Parse structured description from Zapier format
+ * Extrae campos específicos de la descripción estructurada que viene de Zapier
+ * Formato esperado:
+ * 📍 Destino: ...
+ * 📅 Fechas: ...
+ * 👥 Personas: ...
+ * etc.
+ */
+export function parseZapierDescription(desc: string): Record<string, string> {
+  const fields: Record<string, string> = {}
+  
+  if (!desc) return fields
+  
+  // Patrones para extraer cada campo estructurado
+  const patterns = {
+    destino: /📍\s*Destino:\s*(.+?)(?=\n|$)/i,
+    fechas: /📅\s*Fechas:\s*(.+?)(?=\n|$)/i,
+    personas: /👥\s*Personas:\s*(.+?)(?=\n|$)/i,
+    menores: /👶\s*Menores:\s*(.+?)(?=\n|$)/i,
+    presupuesto: /💰\s*Presupuesto:\s*(.+?)(?=\n|$)/i,
+    servicio: /✈️\s*Servicio:\s*(.+?)(?=\n|$)/i,
+    evento: /🎟\s*Evento:\s*(.+?)(?=\n|$)/i,
+    whatsapp: /📱\s*WhatsApp:\s*(.+?)(?=\n|$)/i,
+    instagram: /Instagram:\s*(.+?)(?=\n|$)/i,
+    fase: /Fase:\s*(.+?)(?=\n|$)/i,
+  }
+  
+  for (const [key, pattern] of Object.entries(patterns)) {
+    const match = desc.match(pattern)
+    if (match && match[1]) {
+      fields[key] = match[1].trim()
+    }
+  }
+  
+  return fields
 }
 
 /**
@@ -189,13 +236,17 @@ export async function syncTrelloCardToLead(
   // Usar el nombre EXACTO de la tarjeta (sin parsear)
   const contactName = card.name.trim()
   
-  // Extraer información adicional de la descripción (opcional)
-  const phone = extractPhone(card.desc || "", card.name)
-  const email = extractEmail(card.desc || "", card.name)
-  const instagram = extractInstagram(card.desc || "", card.name)
+  // MEJORADO: Parsear descripción estructurada de Zapier primero
+  const zapierFields = parseZapierDescription(card.desc || "")
   
-  // Destino: intentar de labels primero, luego del nombre
-  let destination = parseDestination(card)
+  // Extraer información adicional de la descripción (opcional)
+  // Priorizar campos estructurados de Zapier si existen, sino usar regex genérico
+  const phone = zapierFields.whatsapp || extractPhone(card.desc || "", card.name)
+  const email = extractEmail(card.desc || "", card.name)
+  const instagram = zapierFields.instagram || extractInstagram(card.desc || "", card.name)
+  
+  // Destino: priorizar campo estructurado de Zapier, luego labels, luego del nombre
+  let destination = zapierFields.destino || parseDestination(card)
 
   // Mapear miembros de Trello a vendedores
   // MEJORADO: Usar los miembros que ya vienen en el card (si están disponibles)
@@ -358,6 +409,9 @@ export async function syncTrelloCardToLead(
     // Board y List info
     board: card.board || null,
     list: card.list || null,
+    
+    // MEJORADO: Campos estructurados parseados de Zapier (si existen)
+    zapierFields: Object.keys(zapierFields).length > 0 ? zapierFields : undefined,
     
     // Fecha de sincronización
     syncedAt: new Date().toISOString(),
