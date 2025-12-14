@@ -315,6 +315,7 @@ export async function POST(request: Request) {
     ]
 
     // Si es un evento de card archivada, eliminar el lead
+    let processedActionType = actionType
     if (actionType === "updateCard:closed") {
       const isClosed = webhook.action?.data?.card?.closed || webhook.action?.data?.old?.closed === false
       if (isClosed) {
@@ -332,8 +333,8 @@ export async function POST(request: Request) {
           return NextResponse.json({ received: true, error: "Error deleting lead", message: error.message, cardId })
         }
       } else {
-        // Card fue desarchivada, sincronizar
-        actionType = "updateCard" // Tratar como update normal
+        // Card fue desarchivada, sincronizar como update normal
+        processedActionType = "updateCard"
       }
     }
 
@@ -372,10 +373,10 @@ export async function POST(request: Request) {
       }
     }
 
-    if (cardActions.includes(actionType || "")) {
+    if (cardActions.includes(processedActionType || "")) {
       // Sync the card
       try {
-        console.log("🔄 Syncing card:", cardId, "for action:", actionType)
+        console.log("🔄 Syncing card:", cardId, "for action:", processedActionType)
         
         // MEJORADO: Usar retry logic (fetchTrelloCard ya tiene retry integrado)
         const card = await fetchTrelloCard(
@@ -416,7 +417,7 @@ export async function POST(request: Request) {
             cardId, 
             created: result.created, 
             leadId: result.leadId,
-            action: actionType,
+            action: processedActionType,
             duration: `${duration}ms`,
           })
         } else {
