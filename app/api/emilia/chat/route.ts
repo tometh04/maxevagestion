@@ -7,7 +7,6 @@ import {
     generateTitle,
     buildAssistantContent,
 } from "@/lib/emilia/utils"
-import { transformFlights, transformHotels } from "@/lib/emilia/transformers"
 
 interface ChatRequest {
     message: string
@@ -101,6 +100,19 @@ export async function POST(request: Request) {
         const EMILIA_API_URL = process.env.EMILIA_API_URL || "https://api.vibook.ai/search"
         const EMILIA_API_KEY = process.env.EMILIA_API_KEY
 
+        // LOGS TEMPORALES PARA DEBUGGING
+        console.log("=== [Emilia API DEBUG] Inicio ===")
+        console.log("[Emilia API] URL:", EMILIA_API_URL)
+        console.log("[Emilia API] API Key presente:", !!EMILIA_API_KEY)
+        console.log("[Emilia API] API Key prefix:", EMILIA_API_KEY?.substring(0, 20) + "...")
+        console.log("[Emilia API] API Key length:", EMILIA_API_KEY?.length)
+        console.log("[Emilia API] Request host:", request.headers.get('host'))
+        console.log("[Emilia API] Request origin:", request.headers.get('origin'))
+        console.log("[Emilia API] Request referer:", request.headers.get('referer'))
+        console.log("[Emilia API] User ID:", user.id)
+        console.log("[Emilia API] Conversation ID:", conversationId)
+        console.log("[Emilia API] Message:", message.substring(0, 50))
+
         if (!EMILIA_API_KEY) {
             console.error("EMILIA_API_KEY no configurada en .env.local")
             return NextResponse.json(
@@ -124,30 +136,46 @@ export async function POST(request: Request) {
             external_conversation_ref: conversationId,
         }
 
-        console.log("[Emilia API] Enviando request a:", EMILIA_API_URL)
-        console.log("[Emilia API] API Key (primeros 15):", EMILIA_API_KEY?.substring(0, 15))
         console.log("[Emilia API] Payload:", JSON.stringify(apiPayload, null, 2))
+        console.log("[Emilia API] Enviando request a Vibook...")
 
         const response = await fetch(EMILIA_API_URL, {
             method: "POST",
             headers: {
-                "Authorization": `Bearer ${EMILIA_API_KEY}`,
                 "X-API-Key": EMILIA_API_KEY,
                 "Content-Type": "application/json",
             },
             body: JSON.stringify(apiPayload),
         })
 
+        console.log("[Emilia API] Response status:", response.status)
+        console.log("[Emilia API] Response headers:", Object.fromEntries(response.headers.entries()))
+
         if (!response.ok) {
             const errorText = await response.text()
-            console.error("[Emilia API] Error response:", response.status, errorText)
+
+            // LOGS DETALLADOS DE ERROR
+            console.error("=== [Emilia API ERROR] ===")
+            console.error("[Emilia API] Status code:", response.status)
+            console.error("[Emilia API] Status text:", response.statusText)
+            console.error("[Emilia API] Error body:", errorText)
 
             let errorData: any
             try {
                 errorData = JSON.parse(errorText)
+                console.error("[Emilia API] Error JSON:", JSON.stringify(errorData, null, 2))
             } catch {
+                console.error("[Emilia API] Error no es JSON válido")
                 errorData = { message: errorText }
             }
+
+            console.error("[Emilia API] Resumen del request que falló:")
+            console.error("  - URL:", EMILIA_API_URL)
+            console.error("  - API Key prefix:", EMILIA_API_KEY?.substring(0, 25) + "...")
+            console.error("  - Host:", request.headers.get('host'))
+            console.error("  - Origin:", request.headers.get('origin'))
+            console.error("  - Referer:", request.headers.get('referer'))
+            console.error("=== [Fin Emilia API ERROR] ===")
 
             if (response.status === 429) {
                 return NextResponse.json(
@@ -158,105 +186,51 @@ export async function POST(request: Request) {
 
             if (response.status === 401) {
                 return NextResponse.json(
-                    { error: "API key inválida o expirada. Contactá al administrador." },
+                    {
+                        error: "API key inválida o expirada. Contactá al administrador.",
+                        debug: process.env.NODE_ENV === 'development' ? {
+                            apiKeyPrefix: EMILIA_API_KEY?.substring(0, 20),
+                            errorDetails: errorData
+                        } : undefined
+                    },
                     { status: 401 }
                 )
             }
 
             if (response.status === 403) {
                 return NextResponse.json(
-                    { error: "Sin permisos para realizar búsquedas. Contactá al administrador." },
-                    { status: 403 }
-                )
-            }
-
-            if (response.status === 500) {
-                // Manejo específico para errores 500 de la API externa
-                const errorMessage = errorData?.error?.message || errorData?.message || "Error interno de la API de búsqueda"
-                return NextResponse.json(
                     {
-                        error: `Error de búsqueda: ${errorMessage}. Intentá reformular tu búsqueda o contactá al administrador si el problema persiste.`,
-                        details: errorData
+                        error: "Sin permisos para realizar búsquedas. Contactá al administrador.",
+                        debug: process.env.NODE_ENV === 'development' ? {
+                            apiKeyPrefix: EMILIA_API_KEY?.substring(0, 20),
+                            host: request.headers.get('host'),
+                            errorDetails: errorData
+                        } : undefined
                     },
-                    { status: 500 }
+                    { status: 403 }
                 )
             }
 
             return NextResponse.json(
                 {
                     error: `Error al procesar la búsqueda (${response.status})`,
-                    details: errorData
+                    debug: process.env.NODE_ENV === 'development' ? errorData : undefined
                 },
                 { status: response.status }
             )
         }
 
         const data = await response.json()
-        console.log("[Emilia API] Response data:", JSON.stringify(data, null, 2))
+        console.log("[Emilia API] ✅ Response exitosa!")
+        console.log("[Emilia API] Response data:", JSON.stringify(data, null, 2).substring(0, 500) + "...")
 
-        // Manejar caso de información incompleta
-        if (data.status === "incomplete" || data.request_type === "missing_info_request") {
-            console.log("[Emilia API] Incomplete request detected")
-
-            // Guardar mensaje del asistente pidiendo más información
-            const assistantClientId = generateClientId()
-            const assistantContent = {
-                text: data.message || "Necesito más información para completar la búsqueda. ¿Podrías especificar las fechas, cantidad de personas y destino?",
-                metadata: {
-                    request_type: "missing_info_request",
-                    missing_fields: data.missing_fields || [],
-                    suggested_followups: data.suggested_followups || [],
-                },
-            }
-
-            await supabase
-                .from("messages")
-                .insert({
-                    conversation_id: conversationId,
-                    role: "assistant",
-                    content: assistantContent,
-                    client_id: assistantClientId,
-                    api_request_id: requestId,
-                    api_search_id: data.search_id,
-                })
-
-            // Actualizar conversación
-            await supabase
-                .from("conversations")
-                .update({ last_message_at: new Date().toISOString() })
-                .eq("id", conversationId)
-
-            return NextResponse.json({
-                status: "incomplete",
-                message: assistantContent.text,
-                missing_fields: data.missing_fields || [],
-                suggested_followups: data.suggested_followups || [],
-                timestamp: new Date().toISOString(),
-            })
-        }
-
-        // 6. Transformar los datos de la API al formato del frontend
-        const transformedFlights = data.results?.flights?.items
-            ? transformFlights(data.results.flights.items)
-            : undefined
-
-        const transformedHotels = data.results?.hotels?.items
-            ? transformHotels(data.results.hotels.items)
-            : undefined
-
-        // 7. Guardar mensaje del asistente
+        // 6. Guardar mensaje del asistente
         const assistantClientId = generateClientId()
         const assistantContent = {
             text: buildAssistantContent(data),
-            cards: (transformedFlights || transformedHotels) ? {
-                flights: transformedFlights ? {
-                    count: data.results.flights.count,
-                    items: transformedFlights
-                } : undefined,
-                hotels: transformedHotels ? {
-                    count: data.results.hotels.count,
-                    items: transformedHotels
-                } : undefined,
+            cards: data.results?.flights || data.results?.hotels ? {
+                flights: data.results.flights,
+                hotels: data.results.hotels,
             } : undefined,
             metadata: {
                 search_id: data.search_id,
@@ -279,7 +253,7 @@ export async function POST(request: Request) {
             console.error("Error saving assistant message:", assistantMsgError)
         }
 
-        // 8. Actualizar contexto y título de la conversación
+        // 7. Actualizar contexto y título de la conversación
         const updates: any = {
             last_message_at: new Date().toISOString(),
         }
@@ -301,20 +275,9 @@ export async function POST(request: Request) {
             .update(updates)
             .eq("id", conversationId)
 
-        // 9. Retornar respuesta completa con datos transformados
+        // 8. Retornar respuesta completa
         return NextResponse.json({
             ...data,
-            results: {
-                ...data.results,
-                flights: transformedFlights ? {
-                    count: data.results.flights.count,
-                    items: transformedFlights
-                } : undefined,
-                hotels: transformedHotels ? {
-                    count: data.results.hotels.count,
-                    items: transformedHotels
-                } : undefined,
-            },
             timestamp: new Date().toISOString(),
             conversationTitle: updates.title || conversation.title,
         })
