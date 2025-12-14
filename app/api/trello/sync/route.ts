@@ -34,11 +34,9 @@ export async function POST(request: Request) {
       console.log(`📅 Última sincronización: ${lastSyncAt}`)
     }
 
-    // MEJORADO: Obtener todas las tarjetas (activas y archivadas) para sincronización completa
+    // Obtener solo tarjetas activas (no archivadas)
     // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
-    const cardsUrl = forceFullSync
-      ? `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=all&fields=id,name,dateLastActivity,closed`
-      : `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,closed`
+    const cardsUrl = `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity`
 
     const cardsResponse = await fetch(cardsUrl)
 
@@ -48,16 +46,16 @@ export async function POST(request: Request) {
 
     let allCards = await cardsResponse.json()
     
-    // MEJORADO: Obtener todas las listas del board para validación y limpieza
+    // Obtener solo listas activas (no archivadas) del board para validación y limpieza
     const listsResponse = await fetch(
-      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=all&fields=id,name,closed`
+      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=open&fields=id,name`
     )
     
     let allLists: any[] = []
     if (listsResponse.ok) {
       allLists = await listsResponse.json()
       // Actualizar mapeo de listas si hay nuevas
-      const activeLists = allLists.filter((list: any) => !list.closed)
+      const activeLists = allLists // Ya vienen solo las activas con filter=open
       const listStatusMapping: Record<string, string> = settings.list_status_mapping || {}
       const listRegionMapping: Record<string, string> = settings.list_region_mapping || {}
       
@@ -176,7 +174,7 @@ export async function POST(request: Request) {
         const fullCard = await fetchCardWithRetry(card.id)
 
         if (!fullCard) {
-          // Card eliminada, eliminar lead
+          // Card eliminada o no existe, eliminar lead
           const { error: deleteError } = await (supabase.from("leads") as any)
             .delete()
             .eq("external_id", card.id)
@@ -189,7 +187,7 @@ export async function POST(request: Request) {
           continue
         }
 
-        // Si la card está archivada, eliminar lead
+        // Si la card está archivada (no debería pasar porque filtramos por open, pero por seguridad)
         if (fullCard.closed) {
           const { error: deleteError } = await (supabase.from("leads") as any)
             .delete()
@@ -243,8 +241,9 @@ export async function POST(request: Request) {
     if (forceFullSync) {
       console.log("🧹 Limpiando leads huérfanos...")
       
-      // 1. Eliminar leads de listas archivadas/eliminadas
-      const activeListIds = new Set(allLists.filter((list: any) => !list.closed).map((list: any) => list.id))
+      // 1. Eliminar leads de listas que ya no existen o están archivadas
+      // allLists ya contiene solo listas activas (filter=open)
+      const activeListIds = new Set(allLists.map((list: any) => list.id))
       if (activeListIds.size > 0) {
         // Obtener todos los leads de Trello con trello_list_id
         const { data: allTrelloLeadsWithList } = await (supabase.from("leads") as any)
