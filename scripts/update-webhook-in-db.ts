@@ -67,26 +67,39 @@ async function updateWebhookInDB() {
 
       const allWebhooks = await webhooksResponse.json()
       
-      // Buscar webhook para este board
+      // Obtener board ID completo desde Trello para matching preciso
+      let fullBoardId = trelloSettings.board_id
+      try {
+        const boardResponse = await fetch(
+          `https://api.trello.com/1/boards/${trelloSettings.board_id}?key=${trelloSettings.trello_api_key}&token=${trelloSettings.trello_token}&fields=id,shortLink`
+        )
+        if (boardResponse.ok) {
+          const boardData = await boardResponse.json()
+          fullBoardId = boardData.id
+          console.log(`   Board ID completo: ${fullBoardId}`)
+        }
+      } catch (error) {
+        console.warn(`   ⚠️  No se pudo obtener Board ID completo, usando corto`)
+      }
+
+      // Buscar webhook para este board (match exacto con board ID completo o corto)
       const boardWebhooks = allWebhooks.filter((wh: any) => {
         const whBoardId = wh.idModel || ""
-        const settingsBoardId = trelloSettings.board_id || ""
+        const shortBoardId = trelloSettings.board_id || ""
         
-        // Match exacto
-        if (whBoardId === settingsBoardId) return true
+        // Match exacto con ID completo
+        if (whBoardId === fullBoardId) return true
         
-        // Match por substring
-        if (whBoardId.includes(settingsBoardId) || settingsBoardId.includes(whBoardId)) return true
+        // Match exacto con ID corto
+        if (whBoardId === shortBoardId) return true
+        
+        // Match por substring (para variaciones)
+        if (whBoardId.includes(shortBoardId) || shortBoardId.includes(whBoardId)) return true
+        if (whBoardId.includes(fullBoardId) || fullBoardId.includes(whBoardId)) return true
         
         // Match por primeros 8 caracteres
-        if (whBoardId.length >= 8 && settingsBoardId.length >= 8) {
-          if (whBoardId.substring(0, 8) === settingsBoardId.substring(0, 8)) return true
-        }
-        
-        // También buscar por URL
-        if (wh.callbackURL?.includes("/api/trello/webhook")) {
-          // Verificar si el board ID del webhook coincide (necesitamos obtener el board completo)
-          return true
+        if (whBoardId.length >= 8 && shortBoardId.length >= 8) {
+          if (whBoardId.substring(0, 8) === shortBoardId.substring(0, 8)) return true
         }
         
         return false
