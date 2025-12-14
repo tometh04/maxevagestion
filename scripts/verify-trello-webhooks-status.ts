@@ -69,6 +69,16 @@ async function verifyWebhooks() {
 
       const allWebhooks = await webhooksResponse.json()
       
+      console.log(`   📊 Total webhooks en Trello: ${allWebhooks.length}`)
+      
+      // Mostrar TODOS los webhooks primero para debugging
+      if (allWebhooks.length > 0) {
+        console.log(`   📋 Todos los webhooks encontrados:`)
+        allWebhooks.forEach((wh: any, idx: number) => {
+          console.log(`      ${idx + 1}. ID: ${wh.id} | Board: ${wh.idModel} | URL: ${wh.callbackURL} | Activo: ${wh.active ? "✅" : "❌"}`)
+        })
+      }
+      
       // Buscar webhooks para este board
       const boardWebhooks = allWebhooks.filter((wh: any) => {
         // Match por board ID (puede ser short o long ID)
@@ -84,6 +94,11 @@ async function verifyWebhooks() {
         // Match por primeros 8 caracteres
         if (whBoardId.length >= 8 && settingsBoardId.length >= 8) {
           if (whBoardId.substring(0, 8) === settingsBoardId.substring(0, 8)) return true
+        }
+        
+        // También buscar por URL que contenga nuestro endpoint
+        if (wh.callbackURL?.includes("/api/trello/webhook")) {
+          return true
         }
         
         return false
