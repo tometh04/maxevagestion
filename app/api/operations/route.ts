@@ -610,14 +610,48 @@ export async function GET(request: Request) {
     }
     
     // OPTIMIZADO: Ejecutar count y query de datos en paralelo
-    const [{ count }, { data: operations, error }] = await Promise.all([
+    const [{ count }, operationsResult] = await Promise.all([
       countQuery,
       query
-        .select("*, sellers:seller_id(name), operators:operator_id(name), agencies:agency_id(name), leads:lead_id(contact_name, destination, trello_url), operation_customers(role, customers:customer_id(id, first_name, last_name)), operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))")
+        .select(`
+          *,
+          sellers:seller_id(name),
+          operators:operator_id(name),
+          agencies:agency_id(name),
+          leads:lead_id(contact_name, destination, trello_url),
+          operation_customers(role, customers:customer_id(id, first_name, last_name)),
+          operation_operators(id, cost, cost_currency, notes, operators:operator_id(id, name))
+        `)
         .order("operation_date", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1)
     ])
+
+    let { data: operations, error } = operationsResult
+
+    // Si hay error y es porque operation_operators no existe, intentar sin esa relación
+    if (error && (error.message?.includes("operation_operators") || error.message?.includes("relation") || error.code === "PGRST116")) {
+      console.log("operation_operators table not found, retrying without it...")
+      const retryResult = await query
+        .select(`
+          *,
+          sellers:seller_id(name),
+          operators:operator_id(name),
+          agencies:agency_id(name),
+          leads:lead_id(contact_name, destination, trello_url),
+          operation_customers(role, customers:customer_id(id, first_name, last_name))
+        `)
+        .order("operation_date", { ascending: false, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1)
+      
+      if (retryResult.error) {
+        console.error("Error fetching operations:", retryResult.error)
+        return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
+      }
+      operations = retryResult.data
+      error = null
+    }
 
     if (error) {
       console.error("Error fetching operations:", error)
