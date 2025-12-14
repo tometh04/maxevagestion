@@ -2,12 +2,13 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { generateFileCode } from "@/lib/accounting/file-code"
-import { transferLeadToOperation, getOrCreateDefaultAccount } from "@/lib/accounting/ledger"
+import { transferLeadToOperation, getOrCreateDefaultAccount, createLedgerMovement } from "@/lib/accounting/ledger"
 import { createSaleIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
+import { getExchangeRate, getLatestExchangeRate, calculateARSEquivalent } from "@/lib/accounting/exchange-rates"
 
 export async function POST(request: Request) {
   try {
@@ -289,6 +290,147 @@ export async function POST(request: Request) {
           }
         }
       }
+    }
+
+    // Registrar operación en el plan de cuentas (sumarización automática)
+    try {
+      // 1. Obtener o crear cuenta financiera para "Cuentas por Cobrar"
+      const { data: accountsReceivableChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "1.1.03")
+        .eq("is_active", true)
+        .maybeSingle()
+
+      if (accountsReceivableChart) {
+        // Buscar o crear financial_account asociada a esta cuenta del plan
+        let accountsReceivableFinancialAccount = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", accountsReceivableChart.id)
+          .eq("is_active", true)
+          .maybeSingle()
+
+        if (!accountsReceivableFinancialAccount) {
+          // Crear financial_account para cuentas por cobrar si no existe
+          const { data: newFA } = await (supabase.from("financial_accounts") as any)
+            .insert({
+              name: "Cuentas por Cobrar",
+              type: "ASSETS",
+              currency: finalSaleCurrency,
+              chart_account_id: accountsReceivableChart.id,
+              initial_balance: 0,
+              is_active: true,
+              created_by: user.id,
+            })
+            .select("id")
+            .single()
+          accountsReceivableFinancialAccount = newFA
+        }
+
+        // Calcular ARS equivalent para la venta
+        let saleExchangeRate: number | null = null
+        if (finalSaleCurrency === "USD") {
+          saleExchangeRate = await getExchangeRate(supabase, new Date(departure_date))
+          if (!saleExchangeRate) {
+            saleExchangeRate = await getLatestExchangeRate(supabase)
+          }
+          if (!saleExchangeRate) saleExchangeRate = 1000
+        }
+        const saleAmountARS = calculateARSEquivalent(sale_amount_total, finalSaleCurrency as "ARS" | "USD", saleExchangeRate)
+
+        // Crear movimiento de ledger para "Cuentas por Cobrar" (ACTIVO - aumenta)
+        await createLedgerMovement(
+          {
+            operation_id: op.id,
+            lead_id: null,
+            type: "INCOME",
+            concept: `Venta - Operación ${op.file_code || op.id.slice(0, 8)}`,
+            currency: finalSaleCurrency as "ARS" | "USD",
+            amount_original: sale_amount_total,
+            exchange_rate: saleExchangeRate,
+            amount_ars_equivalent: saleAmountARS,
+            method: "OTHER", // Cuenta por cobrar, no es efectivo aún
+            account_id: accountsReceivableFinancialAccount.id,
+            seller_id: seller_id,
+            operator_id: null,
+            receipt_number: null,
+            notes: `Operación creada: ${destination}`,
+            created_by: user.id,
+          },
+          supabase
+        )
+        console.log(`✅ Registered sale in chart of accounts (Accounts Receivable) for operation ${op.id}`)
+      }
+
+      // 2. Registrar costos de operadores en "Cuentas por Pagar"
+      if (operatorsList.length > 0 && totalOperatorCost > 0) {
+        const { data: accountsPayableChart } = await (supabase.from("chart_of_accounts") as any)
+          .select("id")
+          .eq("account_code", "2.1.01")
+          .eq("is_active", true)
+          .maybeSingle()
+
+        if (accountsPayableChart) {
+          // Buscar o crear financial_account asociada
+          let accountsPayableFinancialAccount = await (supabase.from("financial_accounts") as any)
+            .select("id")
+            .eq("chart_account_id", accountsPayableChart.id)
+            .eq("is_active", true)
+            .maybeSingle()
+
+          if (!accountsPayableFinancialAccount) {
+            const { data: newFA } = await (supabase.from("financial_accounts") as any)
+              .insert({
+                name: "Cuentas por Pagar",
+                type: "ASSETS", // Temporal, se puede ajustar después
+                currency: finalOperatorCostCurrency,
+                chart_account_id: accountsPayableChart.id,
+                initial_balance: 0,
+                is_active: true,
+                created_by: user.id,
+              })
+              .select("id")
+              .single()
+            accountsPayableFinancialAccount = newFA
+          }
+
+          // Calcular ARS equivalent para el costo total
+          let costExchangeRate: number | null = null
+          if (finalOperatorCostCurrency === "USD") {
+            costExchangeRate = await getExchangeRate(supabase, new Date(departure_date))
+            if (!costExchangeRate) {
+              costExchangeRate = await getLatestExchangeRate(supabase)
+            }
+            if (!costExchangeRate) costExchangeRate = 1000
+          }
+          const costAmountARS = calculateARSEquivalent(totalOperatorCost, finalOperatorCostCurrency as "ARS" | "USD", costExchangeRate)
+
+          // Crear movimiento de ledger para "Cuentas por Pagar" (PASIVO - aumenta)
+          await createLedgerMovement(
+            {
+              operation_id: op.id,
+              lead_id: null,
+              type: "EXPENSE",
+              concept: `Costo de Operadores - Operación ${op.file_code || op.id.slice(0, 8)}`,
+              currency: finalOperatorCostCurrency as "ARS" | "USD",
+              amount_original: totalOperatorCost,
+              exchange_rate: costExchangeRate,
+              amount_ars_equivalent: costAmountARS,
+              method: "OTHER", // Cuenta por pagar, no es efectivo aún
+              account_id: accountsPayableFinancialAccount.id,
+              seller_id: seller_id,
+              operator_id: primaryOperatorId,
+              receipt_number: null,
+              notes: `Operación creada: ${destination} - ${operatorsList.length} operador(es)`,
+              created_by: user.id,
+            },
+            supabase
+          )
+          console.log(`✅ Registered operator costs in chart of accounts (Accounts Payable) for operation ${op.id}`)
+        }
+      }
+    } catch (error) {
+      console.error("Error registering operation in chart of accounts:", error)
+      // No lanzamos error para no romper la creación de la operación
     }
 
     // NOTA: Los pagos se registran manualmente cuando el cliente paga
