@@ -17,44 +17,25 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
 
-    // Intentar usar caché, pero si falla, obtener directamente
-    let result
-    try {
-      result = await getCachedTrelloConfig(async () => {
-        const supabase = await createServerClient()
+    const supabase = await createServerClient()
 
-        const { data: trelloSettings, error } = await supabase
-          .from("settings_trello")
-          .select("*")
-          .eq("agency_id", agencyId)
-          .maybeSingle()
+    // Obtener directamente sin caché para evitar problemas
+    const { data: trelloSettings, error } = await supabase
+      .from("settings_trello")
+      .select("*")
+      .eq("agency_id", agencyId)
+      .maybeSingle()
 
-        if (error) {
-          console.error("Error obteniendo settings de Trello:", error)
-          throw new Error(`Error al cargar configuración: ${error.message}`)
-        }
-
-        return trelloSettings || null
-      })
-    } catch (cacheError: any) {
-      // Si falla el caché, obtener directamente
-      console.warn("Error en caché, obteniendo directamente:", cacheError)
-      const supabase = await createServerClient()
-      const { data: trelloSettings, error } = await supabase
-        .from("settings_trello")
-        .select("*")
-        .eq("agency_id", agencyId)
-        .maybeSingle()
-
-      if (error) {
-        console.error("Error obteniendo settings de Trello (directo):", error)
-        throw new Error(`Error al cargar configuración: ${error.message}`)
-      }
-
-      result = trelloSettings || null
+    if (error) {
+      console.error("Error obteniendo settings de Trello:", error)
+      return NextResponse.json({ 
+        error: `Error al cargar configuración: ${error.message}`,
+        code: error.code,
+        details: error.details
+      }, { status: 500 })
     }
 
-    return NextResponse.json({ settings: result })
+    return NextResponse.json({ settings: trelloSettings || null })
   } catch (error: any) {
     console.error("Error en GET /api/settings/trello:", error)
     return NextResponse.json({ 
