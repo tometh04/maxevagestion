@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     console.log(`⚡ Iniciando sincronización rápida (últimos ${RECENT_MINUTES} minutos)`)
 
-    // Obtener todas las tarjetas del board (solo IDs y fecha de última actividad)
+    // Obtener todas las tarjetas activas del board (solo IDs, fecha de última actividad e idList)
     const cardsResponse = await fetch(
       `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList`
     )

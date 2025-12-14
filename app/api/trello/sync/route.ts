@@ -34,9 +34,9 @@ export async function POST(request: Request) {
       console.log(`📅 Última sincronización: ${lastSyncAt}`)
     }
 
-    // Obtener solo tarjetas activas (no archivadas)
+    // Obtener solo tarjetas activas (no archivadas) con idList para saber en qué lista están
     // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
-    const cardsUrl = `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity`
+    const cardsUrl = `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList`
 
     const cardsResponse = await fetch(cardsUrl)
 
@@ -101,10 +101,25 @@ export async function POST(request: Request) {
         const cardDate = new Date(card.dateLastActivity)
         return cardDate >= lastSyncDate
       })
-      console.log(`📊 Cards a sincronizar: ${allCards.length} de ${(await cardsResponse.json()).length} totales`)
+      // Re-fetch para obtener el total (ya que filtramos allCards)
+      const totalCardsResponse = await fetch(cardsUrl)
+      const totalCards = await totalCardsResponse.ok ? await totalCardsResponse.json() : []
+      console.log(`📊 Cards a sincronizar: ${allCards.length} de ${totalCards.length} totales`)
     } else {
-      console.log(`📊 Sincronizando todas las cards: ${allCards.length}`)
+      console.log(`📊 Sincronizando todas las cards activas: ${allCards.length}`)
     }
+
+    // MEJORADO: Agrupar cards por lista para logging
+    const cardsByList = allCards.reduce((acc: Record<string, number>, card: any) => {
+      const listId = card.idList || "unknown"
+      acc[listId] = (acc[listId] || 0) + 1
+      return acc
+    }, {})
+    
+    console.log("📋 Cards por lista en Trello:", Object.entries(cardsByList).map(([listId, count]) => {
+      const listName = allLists.find((l: any) => l.id === listId)?.name || "Unknown"
+      return `${listName}: ${count}`
+    }).join(", "))
 
     const cards = allCards
     
@@ -266,11 +281,12 @@ export async function POST(request: Request) {
         }
       }
       
-      // 2. Eliminar leads con external_id que no existe en Trello
+      // 2. Eliminar leads con external_id que no existe en Trello (solo para la agencia actual)
       const trelloCardIds = new Set(allCards.map((c: any) => c.id))
       const { data: allTrelloLeads } = await (supabase.from("leads") as any)
-        .select("id, external_id")
+        .select("id, external_id, trello_list_id")
         .eq("source", "Trello")
+        .eq("agency_id", agencyId) // IMPORTANTE: Solo leads de esta agencia
         .not("external_id", "is", null)
       
       if (allTrelloLeads) {
@@ -281,8 +297,28 @@ export async function POST(request: Request) {
             .delete()
             .in("id", orphanedIds)
           orphanedDeleted += orphanedIds.length
-          console.log(`🗑️ ${orphanedIds.length} leads eliminados (cards no existen en Trello)`)
+          console.log(`🗑️ ${orphanedIds.length} leads eliminados (cards no existen en Trello o están archivadas)`)
         }
+      }
+      
+      // 3. Log de leads por lista en BD para comparar con Trello
+      const { data: leadsByListInBD } = await (supabase.from("leads") as any)
+        .select("trello_list_id")
+        .eq("source", "Trello")
+        .eq("agency_id", agencyId)
+        .not("trello_list_id", "is", null)
+      
+      if (leadsByListInBD) {
+        const leadsByListCount = leadsByListInBD.reduce((acc: Record<string, number>, lead: any) => {
+          const listId = lead.trello_list_id
+          acc[listId] = (acc[listId] || 0) + 1
+          return acc
+        }, {})
+        
+        console.log("📊 Leads por lista en BD:", Object.entries(leadsByListCount).map(([listId, count]) => {
+          const listName = allLists.find((l: any) => l.id === listId)?.name || "Unknown"
+          return `${listName}: ${count}`
+        }).join(", "))
       }
     }
 
