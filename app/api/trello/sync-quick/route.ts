@@ -128,17 +128,26 @@ export async function POST(request: Request) {
           return { success: false }
         }
 
-        // Si la card está archivada, eliminar lead
+        // Si la card está archivada, eliminar lead (solo de esta agencia)
         if (fullCard.closed) {
           const { error } = await (supabase.from("leads") as any)
             .delete()
             .eq("external_id", card.id)
             .eq("source", "Trello")
+            .eq("agency_id", agencyId) // CRÍTICO: Solo de esta agencia
           
           if (!error) {
             deleted++
             return { success: true, deleted: true }
           }
+          return { success: false }
+        }
+
+        // CRÍTICO: Verificar que la card tenga idList antes de sincronizar
+        // Cada card DEBE estar asociada a una lista
+        if (!fullCard.idList && !fullCard.list?.id) {
+          console.error(`⚠️ Card sin idList, saltando: ${fullCard.id} - ${fullCard.name}`)
+          errors++
           return { success: false }
         }
 
