@@ -2,11 +2,12 @@
 
 import React, { useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
@@ -201,8 +202,102 @@ export function LeadDetailDialog({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [claiming, setClaiming] = useState(false)
+  const [editingNotes, setEditingNotes] = useState(false)
+  const [notesValue, setNotesValue] = useState(lead?.notes || "")
+  const [savingNotes, setSavingNotes] = useState(false)
+  const [comments, setComments] = useState<Array<{
+    id: string
+    comment: string
+    created_at: string
+    updated_at?: string
+    user_id: string
+    users: { id: string; name: string; email: string } | null
+  }>>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [newComment, setNewComment] = useState("")
+  const [savingComment, setSavingComment] = useState(false)
 
   if (!lead) return null
+
+  // Actualizar notesValue cuando cambia el lead
+  React.useEffect(() => {
+    setNotesValue(lead.notes || "")
+  }, [lead.notes])
+
+  // Cargar comentarios cuando se abre el dialog
+  useEffect(() => {
+    if (open && lead) {
+      loadComments()
+    }
+  }, [open, lead?.id])
+
+  const loadComments = async () => {
+    setLoadingComments(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/comments`)
+      if (response.ok) {
+        const data = await response.json()
+        setComments(data.comments || [])
+      }
+    } catch (error) {
+      console.error("Error loading comments:", error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return
+
+    setSavingComment(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment: newComment }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al agregar comentario")
+      }
+
+      const data = await response.json()
+      setComments([data.comment, ...comments])
+      setNewComment("")
+      toast.success("Comentario agregado correctamente")
+    } catch (error) {
+      console.error("Error adding comment:", error)
+      toast.error(error instanceof Error ? error.message : "Error al agregar comentario")
+    } finally {
+      setSavingComment(false)
+    }
+  }
+
+  const handleSaveNotes = async () => {
+    setSavingNotes(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: notesValue }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al guardar descripción")
+      }
+
+      toast.success("Descripción actualizada correctamente")
+      setEditingNotes(false)
+      onEdit?.(lead) // Refrescar datos
+    } catch (error) {
+      console.error("Error saving notes:", error)
+      toast.error(error instanceof Error ? error.message : "Error al guardar descripción")
+    } finally {
+      setSavingNotes(false)
+    }
+  }
 
   const handleClaimLead = async () => {
     setClaiming(true)
@@ -260,12 +355,29 @@ export function LeadDetailDialog({
 
   const isFromTrello = lead.source === "Trello" && lead.trello_url
 
+  // Formatear nombre del lead para mostrar: "Nombre - Destino - WhatsApp" (o Instagram si no hay teléfono)
+  const formatLeadDisplayName = (lead: Lead): string => {
+    const parts = [lead.contact_name]
+    
+    if (lead.destination && lead.destination !== "Sin destino") {
+      parts.push(lead.destination)
+    }
+    
+    if (lead.contact_phone) {
+      parts.push(lead.contact_phone)
+    } else if (lead.contact_instagram) {
+      parts.push(`@${lead.contact_instagram}`)
+    }
+    
+    return parts.join(" - ")
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-            {lead.contact_name}
+            {formatLeadDisplayName(lead)}
             {lead.trello_url && (
               <a
                 href={lead.trello_url}
@@ -326,7 +438,7 @@ export function LeadDetailDialog({
               {lead.destination && lead.destination !== "Sin destino" && (
                 <div className="flex items-center gap-3">
                   <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">Destino: {lead.destination}</span>
+                  <span className="text-sm">{lead.destination}</span>
                 </div>
               )}
               <div className="flex items-center gap-3 flex-wrap">
@@ -431,167 +543,146 @@ export function LeadDetailDialog({
           ) : null}
 
           {/* Descripción/Notas */}
-          {lead.notes && (
-            <>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                    <FileText className="h-4 w-4" />
-                    Descripción
-                  </h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Descripción
+              </h3>
+              {!editingNotes ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditingNotes(true)}
+                  className="h-8"
+                >
+                  <Edit className="h-3 w-3 mr-1" />
+                  Editar
+                </Button>
+              ) : (
+                <div className="flex gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingNotes(false)
+                      setNotesValue(lead.notes || "")
+                    }}
+                    className="h-8"
+                    disabled={savingNotes}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Cancelar
+                  </Button>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handleSaveNotes}
+                    disabled={savingNotes}
+                    className="h-8"
+                  >
+                    {savingNotes ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="h-3 w-3 mr-1" />
+                    )}
+                    Guardar
+                  </Button>
                 </div>
-                <div className="bg-muted/50 rounded-lg p-4">
-                  <DescriptionWithLinks text={lead.notes} />
-                </div>
+              )}
+            </div>
+            <div className="bg-muted/50 rounded-lg p-4">
+              {editingNotes ? (
+                <Textarea
+                  value={notesValue}
+                  onChange={(e) => setNotesValue(e.target.value)}
+                  placeholder="Escribe la descripción del lead..."
+                  className="min-h-[120px] bg-background"
+                  disabled={savingNotes}
+                />
+              ) : (
+                <DescriptionWithLinks text={lead.notes || "Sin descripción"} />
+              )}
+            </div>
+          </div>
+          <Separator />
+
+          {/* Comentarios */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Comentarios
+            </h3>
+            
+            {/* Formulario para agregar comentario */}
+            <div className="flex gap-2">
+              <Textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Escribe un comentario..."
+                className="min-h-[80px] bg-background"
+                disabled={savingComment}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    handleAddComment()
+                  }
+                }}
+              />
+              <Button
+                onClick={handleAddComment}
+                disabled={!newComment.trim() || savingComment}
+                size="sm"
+                className="self-end"
+              >
+                {savingComment ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+
+            {/* Lista de comentarios */}
+            {loadingComments ? (
+              <div className="text-sm text-muted-foreground">Cargando comentarios...</div>
+            ) : comments.length === 0 ? (
+              <div className="text-sm text-muted-foreground">No hay comentarios aún</div>
+            ) : (
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {comments.map((comment) => (
+                  <div key={comment.id} className="bg-muted/50 rounded-lg p-3">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-6 w-6">
+                          <AvatarFallback className="text-xs">
+                            {comment.users?.name
+                              ?.split(" ")
+                              .map((n) => n[0])
+                              .join("")
+                              .toUpperCase()
+                              .slice(0, 2) || "?"}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="text-xs font-medium">{comment.users?.name || "Usuario desconocido"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(comment.created_at), "PPp")}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap">{comment.comment}</p>
+                  </div>
+                ))}
               </div>
-              <Separator />
-            </>
-          )}
+            )}
+          </div>
+          <Separator />
 
           {/* Documentos Escaneados */}
           <LeadDocumentsSection leadId={lead.id} />
           <Separator />
 
-          {/* Información completa de Trello */}
-          {lead.trello_full_data && (
-            <>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                  <ExternalLink className="h-4 w-4" />
-                  Información Completa de Trello
-                </h3>
-                <div className="bg-muted/50 rounded-lg p-4 space-y-4">
-                  {/* Checklists */}
-                  {lead.trello_full_data.checklists && Array.isArray(lead.trello_full_data.checklists) && lead.trello_full_data.checklists.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">📋 Checklists</h4>
-                      {lead.trello_full_data.checklists.map((checklist: any, idx: number) => {
-                        const total = checklist.checkItems?.length || 0
-                        const completed = checklist.checkItems?.filter((item: any) => item.state === "complete").length || 0
-                        return (
-                          <div key={idx} className="mb-2">
-                            <div className="flex items-center justify-between text-sm">
-                              <span className="font-medium">{checklist.name}</span>
-                              <span className="text-muted-foreground">{completed}/{total}</span>
-                            </div>
-                            {checklist.checkItems && checklist.checkItems.length > 0 && (
-                              <ul className="ml-4 mt-1 space-y-1">
-                                {checklist.checkItems.map((item: any, itemIdx: number) => (
-                                  <li key={itemIdx} className="text-xs flex items-center gap-2">
-                                    <span>{item.state === "complete" ? "✅" : "⬜"}</span>
-                                    <span className={item.state === "complete" ? "line-through text-muted-foreground" : ""}>
-                                      {item.name}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-
-                  {/* Attachments */}
-                  {lead.trello_full_data.attachments && Array.isArray(lead.trello_full_data.attachments) && lead.trello_full_data.attachments.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">📎 Attachments</h4>
-                      <div className="space-y-1">
-                        {lead.trello_full_data.attachments.map((att: any, idx: number) => (
-                          <a
-                            key={idx}
-                            href={att.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-primary hover:underline flex items-center gap-2"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            {att.name} {att.bytes ? `(${(att.bytes / 1024).toFixed(1)} KB)` : ""}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Custom Fields */}
-                  {lead.trello_full_data.customFieldsData && Object.keys(lead.trello_full_data.customFieldsData).length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">🏷️ Custom Fields</h4>
-                      <div className="space-y-1">
-                        {Object.entries(lead.trello_full_data.customFieldsData).map(([fieldId, value]: [string, any]) => (
-                          <div key={fieldId} className="text-sm">
-                            <span className="text-muted-foreground">Field {fieldId}:</span>{" "}
-                            <span className="font-medium">
-                              {typeof value === "object" ? JSON.stringify(value) : String(value)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Labels */}
-                  {lead.trello_full_data.labels && Array.isArray(lead.trello_full_data.labels) && lead.trello_full_data.labels.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">🏷️ Labels</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {lead.trello_full_data.labels.map((label: any, idx: number) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            style={{ backgroundColor: label.color ? `#${label.color}` : undefined }}
-                            className={label.color ? "text-white border-0" : ""}
-                          >
-                            {label.name || label.color}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Members */}
-                  {lead.trello_full_data.members && Array.isArray(lead.trello_full_data.members) && lead.trello_full_data.members.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">👥 Members</h4>
-                      <div className="space-y-1">
-                        {lead.trello_full_data.members.map((member: any, idx: number) => (
-                          <div key={idx} className="text-sm">
-                            {member.fullName || member.username || member.id}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Comments/Actions */}
-                  {lead.trello_full_data.actions && Array.isArray(lead.trello_full_data.actions) && lead.trello_full_data.actions.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-semibold text-muted-foreground mb-2">💬 Comments ({lead.trello_full_data.actions.length})</h4>
-                      <div className="space-y-2 max-h-40 overflow-y-auto">
-                        {lead.trello_full_data.actions
-                          .filter((action: any) => action.type === "commentCard")
-                          .slice(0, 5)
-                          .map((action: any, idx: number) => (
-                            <div key={idx} className="text-xs bg-background rounded p-2">
-                              <div className="font-medium mb-1">
-                                {action.memberCreator?.fullName || action.memberCreator?.username || "Unknown"}
-                              </div>
-                              <div className="text-muted-foreground">{action.data?.text || ""}</div>
-                              {action.date && (
-                                <div className="text-xs text-muted-foreground mt-1">
-                                  {format(new Date(action.date), "PPp")}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <Separator />
-            </>
-          )}
 
           {/* Información adicional */}
           <div className="space-y-3">
