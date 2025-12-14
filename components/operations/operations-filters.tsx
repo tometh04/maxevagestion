@@ -165,7 +165,7 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
                 <SelectValue placeholder="Ninguno" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Ninguno</SelectItem>
+                <SelectItem value="NONE">Ninguno</SelectItem>
                 <SelectItem value="COBRO">Cobro (fecha de pago recibido)</SelectItem>
                 <SelectItem value="PAGO">Pago a operador (fecha de pago realizado)</SelectItem>
                 <SelectItem value="VENCIMIENTO">Vencimiento (fecha de vencimiento)</SelectItem>
