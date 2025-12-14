@@ -34,18 +34,66 @@ export async function POST(request: Request) {
       console.log(`📅 Última sincronización: ${lastSyncAt}`)
     }
 
-    // Get cards from board
+    // MEJORADO: Obtener todas las tarjetas (activas y archivadas) para sincronización completa
     // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
-    // La API de Trello no tiene un parámetro directo "since", así que obtenemos todas y filtramos
-    const cardsResponse = await fetch(
-      `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity`
-    )
+    const cardsUrl = forceFullSync
+      ? `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=all&fields=id,name,dateLastActivity,closed`
+      : `https://api.trello.com/1/boards/${settings.board_id}/cards?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,closed`
+
+    const cardsResponse = await fetch(cardsUrl)
 
     if (!cardsResponse.ok) {
       return NextResponse.json({ error: "Error al obtener tarjetas de Trello" }, { status: 400 })
     }
 
     let allCards = await cardsResponse.json()
+    
+    // MEJORADO: Obtener todas las listas del board para validación y limpieza
+    const listsResponse = await fetch(
+      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=all&fields=id,name,closed`
+    )
+    
+    let allLists: any[] = []
+    if (listsResponse.ok) {
+      allLists = await listsResponse.json()
+      // Actualizar mapeo de listas si hay nuevas
+      const activeLists = allLists.filter((list: any) => !list.closed)
+      const listStatusMapping: Record<string, string> = settings.list_status_mapping || {}
+      const listRegionMapping: Record<string, string> = settings.list_region_mapping || {}
+      
+      // Agregar nuevas listas al mapeo si no existen
+      let mappingUpdated = false
+      for (const list of activeLists) {
+        if (!listStatusMapping[list.id]) {
+          // Auto-mapear según nombre de lista
+          const listName = list.name.toLowerCase()
+          if (listName.includes("nuevo") || listName.includes("new") || listName.includes("pendiente")) {
+            listStatusMapping[list.id] = "NEW"
+          } else if (listName.includes("progreso") || listName.includes("progress") || listName.includes("trabajando")) {
+            listStatusMapping[list.id] = "IN_PROGRESS"
+          } else if (listName.includes("cotizado") || listName.includes("quoted") || listName.includes("presupuesto")) {
+            listStatusMapping[list.id] = "QUOTED"
+          } else if (listName.includes("ganado") || listName.includes("won") || listName.includes("cerrado")) {
+            listStatusMapping[list.id] = "WON"
+          } else if (listName.includes("perdido") || listName.includes("lost") || listName.includes("cancelado")) {
+            listStatusMapping[list.id] = "LOST"
+          } else {
+            listStatusMapping[list.id] = "NEW" // Por defecto
+          }
+          mappingUpdated = true
+        }
+      }
+      
+      if (mappingUpdated) {
+        await (supabase.from("settings_trello") as any)
+          .update({
+            list_status_mapping: listStatusMapping,
+            list_region_mapping: listRegionMapping,
+          })
+          .eq("agency_id", agencyId)
+        console.log("✅ Mapeo de listas actualizado")
+      }
+    }
     
     // Filtrar cards para sincronización incremental
     if (isIncrementalSync) {
@@ -74,8 +122,10 @@ export async function POST(request: Request) {
     let synced = 0
     let created = 0
     let updated = 0
+    let deleted = 0
     let errors = 0
     let rateLimited = 0
+    let orphanedDeleted = 0
 
     // Helper para hacer delay
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -126,8 +176,30 @@ export async function POST(request: Request) {
         const fullCard = await fetchCardWithRetry(card.id)
 
         if (!fullCard) {
-          console.error(`Card ${card.id} not found or deleted`)
-          errors++
+          // Card eliminada, eliminar lead
+          const { error: deleteError } = await (supabase.from("leads") as any)
+            .delete()
+            .eq("external_id", card.id)
+            .eq("source", "Trello")
+          
+          if (!deleteError) {
+            deleted++
+            console.log(`🗑️ Lead eliminado (card no existe): ${card.id}`)
+          }
+          continue
+        }
+
+        // Si la card está archivada, eliminar lead
+        if (fullCard.closed) {
+          const { error: deleteError } = await (supabase.from("leads") as any)
+            .delete()
+            .eq("external_id", fullCard.id)
+            .eq("source", "Trello")
+          
+          if (!deleteError) {
+            deleted++
+            console.log(`🗑️ Lead eliminado (card archivada): ${fullCard.id}`)
+          }
           continue
         }
 
@@ -167,6 +239,51 @@ export async function POST(request: Request) {
       }
     }
 
+    // MEJORADO: Limpieza de leads huérfanos (solo en sincronización completa)
+    if (forceFullSync) {
+      console.log("🧹 Limpiando leads huérfanos...")
+      
+      // 1. Eliminar leads de listas archivadas/eliminadas
+      const activeListIds = allLists.filter((list: any) => !list.closed).map((list: any) => list.id)
+      if (activeListIds.length > 0) {
+        const { data: orphanedByList } = await (supabase.from("leads") as any)
+          .select("id, trello_list_id")
+          .eq("source", "Trello")
+          .not("trello_list_id", "is", null)
+          .not("trello_list_id", "in", `(${activeListIds.join(",")})`)
+        
+        if (orphanedByList.length > 0) {
+          const orphanedIds = orphanedByList.map((l: any) => l.id)
+          if (orphanedIds.length > 0) {
+            await (supabase.from("leads") as any)
+              .delete()
+              .in("id", orphanedIds)
+            orphanedDeleted += orphanedIds.length
+            console.log(`🗑️ ${orphanedIds.length} leads eliminados (listas archivadas/eliminadas)`)
+          }
+        }
+      }
+      
+      // 2. Eliminar leads con external_id que no existe en Trello
+      const trelloCardIds = new Set(allCards.map((c: any) => c.id))
+      const { data: allTrelloLeads } = await (supabase.from("leads") as any)
+        .select("id, external_id")
+        .eq("source", "Trello")
+        .not("external_id", "is", null)
+      
+      if (allTrelloLeads) {
+        const orphanedByCard = allTrelloLeads.filter((lead: any) => !trelloCardIds.has(lead.external_id))
+        if (orphanedByCard.length > 0) {
+          const orphanedIds = orphanedByCard.map((l: any) => l.id)
+          await (supabase.from("leads") as any)
+            .delete()
+            .in("id", orphanedIds)
+          orphanedDeleted += orphanedIds.length
+          console.log(`🗑️ ${orphanedIds.length} leads eliminados (cards no existen en Trello)`)
+        }
+      }
+    }
+
     // Actualizar checkpoint de última sincronización solo si fue exitosa
     if (synced > 0 || errors === 0) {
       const now = new Date().toISOString()
@@ -187,6 +304,8 @@ export async function POST(request: Request) {
         total: synced,
         created,
         updated,
+        deleted,
+        orphanedDeleted,
         errors,
         rateLimited,
         totalCards: cards.length,
