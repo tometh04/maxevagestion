@@ -123,6 +123,9 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Eliminar trigger si existe antes de crearlo
+DROP TRIGGER IF EXISTS update_chart_of_accounts_updated_at ON chart_of_accounts;
+
 CREATE TRIGGER update_chart_of_accounts_updated_at
   BEFORE UPDATE ON chart_of_accounts
   FOR EACH ROW
