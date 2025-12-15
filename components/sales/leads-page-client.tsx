@@ -456,13 +456,19 @@ export function LeadsPageClient({
         </div>
       </div>
 
-      <Tabs defaultValue="kanban" className="w-full">
+      <Tabs defaultValue="kanban" className="w-full" onValueChange={(value) => {
+        if (value === "manychat") {
+          setSelectedSource("Manychat")
+        } else if (value === "kanban" || value === "table") {
+          setSelectedSource("ALL")
+        }
+      }}>
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="kanban">
             {shouldUseTrelloKanban ? "Kanban Trello" : "Kanban"}
           </TabsTrigger>
           <TabsTrigger value="table">Tabla</TabsTrigger>
-          <TabsTrigger value="manychat" onClick={() => setSelectedSource("Manychat")}>
+          <TabsTrigger value="manychat">
             Pre-Leads Manychat
           </TabsTrigger>
         </TabsList>
