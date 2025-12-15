@@ -86,25 +86,44 @@ export function CRMManychatPageClient({
     }
   }, [])
 
-  // Cargar leads: SOLO Manychat (integración independiente)
+  // Cargar leads: Manychat (nuevos) + Trello con list_name (migración visual)
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
       const limit = 2000
-      // Cargar SOLO leads de Manychat (integración independiente)
+      // Cargar leads de Manychat (nuevos)
       let manychatUrl = agencyId === "ALL"
         ? `/api/leads?page=1&limit=${limit}&source=Manychat`
         : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Manychat`
-
-      const response = await fetch(manychatUrl, { cache: 'no-store' })
-      const data = await response.json()
       
-      if (data.leads && data.leads.length > 0) {
-        setLeads(data.leads)
-        console.log(`✅ Cargados ${data.leads.length} leads de Manychat`)
+      // Cargar leads de Trello que tienen list_name (migración visual)
+      let trelloUrl = agencyId === "ALL"
+        ? `/api/leads?page=1&limit=${limit}&source=Trello`
+        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
+
+      const [manychatResponse, trelloResponse] = await Promise.all([
+        fetch(manychatUrl, { cache: 'no-store' }),
+        fetch(trelloUrl, { cache: 'no-store' })
+      ])
+      
+      const manychatData = await manychatResponse.json()
+      const trelloData = await trelloResponse.json()
+      
+      // Filtrar leads de Trello que tienen list_name asignado (migración visual)
+      const trelloLeadsWithListName = (trelloData.leads || []).filter((lead: any) => lead.list_name)
+      
+      // Combinar: Manychat (nuevos) + Trello con list_name (migración visual)
+      const allLeads = [
+        ...(manychatData.leads || []),
+        ...trelloLeadsWithListName
+      ]
+      
+      if (allLeads.length > 0) {
+        setLeads(allLeads)
+        console.log(`✅ Cargados ${manychatData.leads?.length || 0} leads de Manychat + ${trelloLeadsWithListName.length} de Trello (con list_name)`)
       } else {
         setLeads([])
-        console.log("ℹ️ No se encontraron leads de Manychat")
+        console.log("ℹ️ No se encontraron leads")
       }
     } catch (error) {
       console.error("Error loading leads:", error)
@@ -120,8 +139,9 @@ export function CRMManychatPageClient({
 
     console.log("🔌 Conectando a Supabase Realtime para Manychat...")
 
-    // Suscribirse a cambios en la tabla leads (SOLO Manychat)
+    // Suscribirse a cambios en la tabla leads (Manychat + Trello con list_name)
     // Manychat: nuevos leads en tiempo real
+    // Trello: leads con list_name (migración visual)
     const channel = supabase
       .channel('crm-manychat-leads-realtime')
       .on(
@@ -130,7 +150,7 @@ export function CRMManychatPageClient({
           event: '*',
           schema: 'public',
           table: 'leads',
-          filter: 'source=eq.Manychat', // SOLO leads de Manychat
+          // Escuchar leads de Manychat Y leads de Trello con list_name
         },
         (payload: RealtimePostgresChangesPayload<Lead>) => {
           console.log('📥 Cambio en tiempo real (Manychat):', payload.eventType, payload.new || payload.old)
@@ -202,16 +222,16 @@ export function CRMManychatPageClient({
     await loadLeads(selectedAgencyId)
   }
 
-  // Filtrar leads de Manychat que tienen list_name asignado
-  const manychatLeads = useMemo(
-    () => leads.filter((lead) => lead.source === "Manychat" && lead.list_name),
+  // Filtrar leads que tienen list_name asignado (Manychat + Trello migrados)
+  const leadsWithListName = useMemo(
+    () => leads.filter((lead) => lead.list_name),
     [leads]
   )
-  const hasManychatLeads = manychatLeads.length > 0
+  const hasLeadsWithListName = leadsWithListName.length > 0
   const effectiveAgencyId = selectedAgencyId !== "ALL" 
     ? selectedAgencyId 
-    : (manychatLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
-  const shouldUseManychatKanban = hasManychatLeads && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
+    : (leadsWithListName[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
+  const shouldUseManychatKanban = hasLeadsWithListName && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
     <div className="space-y-6">
@@ -312,7 +332,7 @@ export function CRMManychatPageClient({
             </div>
           ) : shouldUseManychatKanban ? (
             <LeadsKanbanManychat 
-              leads={manychatLeads as any} 
+              leads={leadsWithListName as any} 
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}
@@ -323,7 +343,7 @@ export function CRMManychatPageClient({
             />
           ) : (
             <div className="flex items-center justify-center p-8">
-              <p className="text-muted-foreground">No hay leads de Manychat. Los nuevos leads aparecerán aquí automáticamente.</p>
+              <p className="text-muted-foreground">No hay leads con list_name asignado. Los nuevos leads aparecerán aquí automáticamente.</p>
             </div>
           )}
         </TabsContent>

@@ -155,29 +155,29 @@ export function LeadsKanbanManychat({
     }
   }, [agencyId])
 
-  // Agrupar leads de Manychat por list_name
-  // Usar las listas de Trello como referencia para el orden, pero agrupar por list_name
-  const leadsByListName = useMemo(() => {
-    const grouped: Record<string, Lead[]> = {}
-    
-    // Inicializar con todas las listas de Trello (para mantener el orden)
-    trelloLists.forEach(list => {
-      grouped[list.name] = []
-    })
-    
-    // Agrupar leads de Manychat por list_name
-    leads.forEach(lead => {
-      if (lead.source === "Manychat" && lead.list_name) {
-        const listName = lead.list_name.trim()
-        if (!grouped[listName]) {
-          grouped[listName] = []
+    // Agrupar leads por list_name (Manychat + Trello migrados)
+    // Usar las listas de Trello como referencia para el orden, pero agrupar por list_name
+    const leadsByListName = useMemo(() => {
+      const grouped: Record<string, Lead[]> = {}
+      
+      // Inicializar con todas las listas de Trello (para mantener el orden)
+      trelloLists.forEach(list => {
+        grouped[list.name] = []
+      })
+      
+      // Agrupar leads por list_name (tanto Manychat como Trello migrados)
+      leads.forEach(lead => {
+        if (lead.list_name) {
+          const listName = lead.list_name.trim()
+          if (!grouped[listName]) {
+            grouped[listName] = []
+          }
+          grouped[listName].push(lead)
         }
-        grouped[listName].push(lead)
-      }
-    })
-    
-    return grouped
-  }, [leads, trelloLists])
+      })
+      
+      return grouped
+    }, [leads, trelloLists])
 
   // Ordenar listas según el orden de Trello, pero incluir listas que no están en Trello al final
   const orderedListNames = useMemo(() => {

@@ -218,14 +218,14 @@ export async function POST(request: Request) {
         for (const operatorData of operatorsList) {
           if (operatorData.cost > 0) {
             try {
-              await createPurchaseIVA(
-                supabase,
-                op.id,
+        await createPurchaseIVA(
+          supabase,
+          op.id,
                 operatorData.operator_id,
                 operatorData.cost,
                 operatorData.cost_currency as "ARS" | "USD",
-                departure_date
-              )
+          departure_date
+        )
               console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
             } catch (error) {
               console.error(`Error creating IVA for operator ${operatorData.operator_id}:`, error)
@@ -266,28 +266,28 @@ export async function POST(request: Request) {
     if (operatorsList.length > 0) {
       for (const operatorData of operatorsList) {
         if (operatorData.cost > 0) {
-          try {
-            const dueDate = calculateDueDate(
-              inferredProductType,
+      try {
+        const dueDate = calculateDueDate(
+          inferredProductType,
               departure_date,
-              checkin_date || undefined,
-              departure_date
-            )
+          checkin_date || undefined,
+          departure_date
+        )
 
-            await createOperatorPayment(
-              supabase,
-              op.id,
+        await createOperatorPayment(
+          supabase,
+          op.id,
               operatorData.operator_id,
               operatorData.cost,
               operatorData.cost_currency as "ARS" | "USD",
-              dueDate,
-              `Pago automático generado para operación ${operation.id}`
-            )
+          dueDate,
+          `Pago automático generado para operación ${operation.id}`
+        )
             console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)
-          } catch (error) {
+      } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
-            // No lanzamos error para no romper la creación de la operación
-          }
+        // No lanzamos error para no romper la creación de la operación
+      }
         }
       }
     }

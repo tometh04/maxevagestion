@@ -64,7 +64,7 @@ export default async function CRMManychatPage() {
     .select("id, name")
     .order("name")
 
-  // IMPORTANTE: Cargar SOLO leads de Manychat (integración independiente)
+  // IMPORTANTE: Cargar leads de Manychat (nuevos) + Trello con list_name (migración visual)
   // Los nuevos leads vendrán de Manychat vía webhook y se agregarán en tiempo real
   let leads: any[] = []
   let leadsError: any = null
@@ -72,7 +72,7 @@ export default async function CRMManychatPage() {
 
   if (user.role === "SELLER") {
     // Vendedor: leads asignados + sin asignar de Manychat
-    const { data: myLeads, error: myLeadsError } = await supabase
+    const { data: myManychatLeads, error: myManychatError } = await supabase
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("assigned_seller_id", user.id)
@@ -80,7 +80,7 @@ export default async function CRMManychatPage() {
       .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
 
-    const { data: unassignedLeads, error: unassignedError } = await supabase
+    const { data: unassignedManychatLeads, error: unassignedManychatError } = await supabase
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .is("assigned_seller_id", null)
@@ -89,25 +89,61 @@ export default async function CRMManychatPage() {
       .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
 
-    leads = [...(myLeads || []), ...(unassignedLeads || [])]
-    leadsError = myLeadsError || unassignedError
+    // También cargar leads de Trello con list_name (migración visual)
+    const { data: myTrelloLeads } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("assigned_seller_id", user.id)
+      .eq("source", "Trello")
+      .not("list_name", "is", null)
+      .order("updated_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
+
+    const { data: unassignedTrelloLeads } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .is("assigned_seller_id", null)
+      .eq("source", "Trello")
+      .not("list_name", "is", null)
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
+      .order("updated_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
+
+    leads = [
+      ...(myManychatLeads || []),
+      ...(unassignedManychatLeads || []),
+      ...(myTrelloLeads || []),
+      ...(unassignedTrelloLeads || [])
+    ]
+    leadsError = myManychatError || unassignedManychatError
   } else {
-    // Admin/otros: cargar leads de Manychat
-    let query = supabase
+    // Admin/otros: cargar leads de Manychat + Trello con list_name
+    let manychatQuery = supabase
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("source", "Manychat")
     
+    let trelloQuery = supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("source", "Trello")
+      .not("list_name", "is", null)
+    
     if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      query = query.in("agency_id", agencyIds)
+      manychatQuery = manychatQuery.in("agency_id", agencyIds)
+      trelloQuery = trelloQuery.in("agency_id", agencyIds)
     }
 
-    const { data, error } = await query
+    const { data: manychatData, error: manychatError } = await manychatQuery
       .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
     
-    leads = data || []
-    leadsError = error
+    const { data: trelloData, error: trelloError } = await trelloQuery
+      .order("updated_at", { ascending: false })
+      .limit(INITIAL_LIMIT)
+    
+    leads = [...(manychatData || []), ...(trelloData || [])]
+    leadsError = manychatError || trelloError
   }
 
   if (leadsError) {
