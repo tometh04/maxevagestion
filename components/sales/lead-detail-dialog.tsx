@@ -239,6 +239,7 @@ export function LeadDetailDialog({
     if (lead) {
       setNotesValue(lead.notes || "")
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.notes])
 
   // Cargar comentarios cuando se abre el dialog

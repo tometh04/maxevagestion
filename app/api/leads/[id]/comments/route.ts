@@ -92,8 +92,7 @@ export async function POST(
     }
 
     // Crear el comentario
-    const { data: newComment, error } = await supabase
-      .from("lead_comments")
+    const { data: newComment, error } = await (supabase.from("lead_comments") as any)
       .insert({
         lead_id: leadId,
         user_id: user.id,
