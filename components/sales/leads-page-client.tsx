@@ -206,7 +206,8 @@ export function LeadsPageClient({
       console.log('🔌 Desconectando de Supabase Realtime...')
       supabase.removeChannel(channel)
     }
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads]) // Agregar loadLeads a dependencias
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId, selectedTrelloListId, selectedSource, loadLeads])
 
   // Cargar leads cuando cambia la agencia seleccionada, el filtro de lista o el source
   useEffect(() => {
@@ -233,6 +234,7 @@ export function LeadsPageClient({
         setInitialLoad(false)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAgencyId, selectedTrelloListId, selectedSource, loadLeads, initialLeads])
 
   const handleRefresh = async () => {

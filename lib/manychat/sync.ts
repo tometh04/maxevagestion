@@ -73,7 +73,7 @@ export async function determineAgencyId(
       .ilike("name", "%rosario%")
       .maybeSingle()
     
-    return rosario?.id || ""
+    return (rosario as { id: string } | null)?.id || ""
   }
   
   // Buscar agencia por nombre (case insensitive)
