@@ -124,33 +124,35 @@ export function LeadsKanbanManychat({
     }
   }
 
-  // Obtener listas de Trello (solo para referencia visual del orden y nombres)
+  // Obtener orden de listas desde manychat_list_order (INDEPENDIENTE de Trello)
   useEffect(() => {
-    async function fetchTrelloLists() {
+    async function fetchListOrder() {
       try {
-        const response = await fetch(`/api/trello/lists?agencyId=${agencyId}`)
+        const response = await fetch(`/api/manychat/list-order?agencyId=${agencyId}`)
         const data = await response.json()
-        if (data.lists && Array.isArray(data.lists)) {
-          // Mapear listas de Trello a ListInfo
-          const listsInfo: ListInfo[] = data.lists.map((list: any) => ({
-            name: list.name,
-            id: list.id,
+        if (data.listNames && Array.isArray(data.listNames)) {
+          // Mapear nombres de listas a ListInfo
+          const listsInfo: ListInfo[] = data.listNames.map((name: string, index: number) => ({
+            name: name,
+            id: `manychat-${index}`, // ID temporal, no se usa pero lo necesitamos para el tipo
           }))
           setTrelloLists(listsInfo)
         } else {
-          console.error("❌ No se obtuvieron listas de Trello:", data)
+          console.warn("⚠️ No se encontró orden de listas. Usando orden alfabético.")
+          // Si no hay orden, usar orden alfabético como fallback
+          setTrelloLists([])
         }
       } catch (error) {
-        console.error("❌ Error fetching Trello lists:", error)
+        console.error("❌ Error fetching manychat list order:", error)
       } finally {
         setLoading(false)
       }
     }
 
     if (agencyId) {
-      fetchTrelloLists()
+      fetchListOrder()
     } else {
-      console.error("❌ No hay agencyId para obtener listas de Trello")
+      console.error("❌ No hay agencyId para obtener orden de listas")
       setLoading(false)
     }
   }, [agencyId])
@@ -179,19 +181,20 @@ export function LeadsKanbanManychat({
       return grouped
     }, [leads, trelloLists])
 
-  // Ordenar listas según el orden de Trello, pero incluir listas que no están en Trello al final
+  // Ordenar listas según el orden guardado en manychat_list_order
+  // Si una lista no está en el orden guardado, agregarla al final
   const orderedListNames = useMemo(() => {
-    const trelloListNames = new Set(trelloLists.map(l => l.name))
-    const manychatListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
+    const savedListNames = new Set(trelloLists.map(l => l.name))
+    const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
     
-    // Primero las listas de Trello (en orden)
+    // Primero las listas guardadas en orden (solo las que tienen leads)
     const ordered: string[] = trelloLists
       .map(l => l.name)
-      .filter(name => manychatListNames.has(name))
+      .filter(name => actualListNames.has(name))
     
-    // Luego las listas de Manychat que no están en Trello
-    const additionalLists = Array.from(manychatListNames).filter(name => !trelloListNames.has(name))
-    ordered.push(...additionalLists)
+    // Luego las listas que no están en el orden guardado (agregadas al final)
+    const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
+    ordered.push(...additionalLists.sort()) // Orden alfabético para las nuevas
     
     return ordered
   }, [trelloLists, leadsByListName])
