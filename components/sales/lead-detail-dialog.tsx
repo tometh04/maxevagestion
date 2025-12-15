@@ -217,19 +217,39 @@ export function LeadDetailDialog({
   const [newComment, setNewComment] = useState("")
   const [savingComment, setSavingComment] = useState(false)
 
-  if (!lead) return null
+  // Cargar comentarios cuando se abre el dialog
+  const loadComments = async () => {
+    if (!lead) return
+    setLoadingComments(true)
+    try {
+      const response = await fetch(`/api/leads/${lead.id}/comments`)
+      if (response.ok) {
+        const data = await response.json()
+        setComments(data.comments || [])
+      }
+    } catch (error) {
+      console.error("Error loading comments:", error)
+    } finally {
+      setLoadingComments(false)
+    }
+  }
 
   // Actualizar notesValue cuando cambia el lead
   useEffect(() => {
-    setNotesValue(lead.notes || "")
-  }, [lead.notes])
+    if (lead) {
+      setNotesValue(lead.notes || "")
+    }
+  }, [lead?.notes])
 
   // Cargar comentarios cuando se abre el dialog
   useEffect(() => {
     if (open && lead) {
       loadComments()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
+
+  if (!lead) return null
 
   const loadComments = async () => {
     setLoadingComments(true)
