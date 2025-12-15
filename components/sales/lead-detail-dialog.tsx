@@ -251,21 +251,6 @@ export function LeadDetailDialog({
 
   if (!lead) return null
 
-  const loadComments = async () => {
-    setLoadingComments(true)
-    try {
-      const response = await fetch(`/api/leads/${lead.id}/comments`)
-      if (response.ok) {
-        const data = await response.json()
-        setComments(data.comments || [])
-      }
-    } catch (error) {
-      console.error("Error loading comments:", error)
-    } finally {
-      setLoadingComments(false)
-    }
-  }
-
   const handleAddComment = async () => {
     if (!newComment.trim()) return
 
