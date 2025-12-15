@@ -429,19 +429,6 @@ export function LeadsPageClient({
               </Select>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Label htmlFor="source-select" className="whitespace-nowrap">Origen:</Label>
-            <Select value={selectedSource} onValueChange={setSelectedSource}>
-              <SelectTrigger id="source-select" className="w-[180px]">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos</SelectItem>
-                <SelectItem value="Trello">Trello</SelectItem>
-                <SelectItem value="Manychat">Pre-Leads Manychat</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
           {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && selectedSource !== "Manychat" && (
             <Button
               variant="outline"
@@ -470,11 +457,14 @@ export function LeadsPageClient({
       </div>
 
       <Tabs defaultValue="kanban" className="w-full">
-        <TabsList>
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="kanban">
             {shouldUseTrelloKanban ? "Kanban Trello" : "Kanban"}
           </TabsTrigger>
           <TabsTrigger value="table">Tabla</TabsTrigger>
+          <TabsTrigger value="manychat" onClick={() => setSelectedSource("Manychat")}>
+            Pre-Leads Manychat
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="kanban">
           {loading ? (
