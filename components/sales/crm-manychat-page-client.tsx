@@ -218,16 +218,17 @@ export function CRMManychatPageClient({
     await loadLeads(selectedAgencyId)
   }
 
-  // Filtrar leads con trello_list_id (para usar el kanban de Trello)
-  const trelloLeads = useMemo(
+  // Filtrar leads que tienen trello_list_id (Trello + Manychat con lista asignada)
+  // Ambos tipos de leads deben aparecer en el kanban usando las listas de Trello como referencia visual
+  const leadsWithList = useMemo(
     () => leads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined),
     [leads]
   )
-  const hasTrelloLeads = trelloLeads.length > 0
+  const hasLeadsWithList = leadsWithList.length > 0
   const effectiveAgencyId = selectedAgencyId !== "ALL" 
     ? selectedAgencyId 
-    : (trelloLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
-  const shouldUseTrelloKanban = hasTrelloLeads && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
+    : (leadsWithList[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
+  const shouldUseTrelloKanban = hasLeadsWithList && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
     <div className="space-y-6">
@@ -330,7 +331,7 @@ export function CRMManychatPageClient({
             </div>
           ) : shouldUseTrelloKanban ? (
             <LeadsKanbanTrello 
-              leads={trelloLeads as any} 
+              leads={leadsWithList as any} 
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}
@@ -341,7 +342,7 @@ export function CRMManychatPageClient({
             />
           ) : (
             <div className="flex items-center justify-center p-8">
-              <p className="text-muted-foreground">No hay leads con listas de Trello. Los nuevos leads de Manychat aparecerán aquí.</p>
+              <p className="text-muted-foreground">No hay leads con listas asignadas. Los nuevos leads de Manychat aparecerán aquí automáticamente.</p>
             </div>
           )}
         </TabsContent>

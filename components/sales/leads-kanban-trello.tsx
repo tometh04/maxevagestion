@@ -149,11 +149,12 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
 
   // Agrupar leads por lista de Trello
   // CRÍTICO: Mostrar EXACTAMENTE las mismas listas que hay en Trello, con las cards en cada lista
+  // IMPORTANTE: Incluir tanto leads de Trello como de Manychat que tengan trello_list_id asignado
   const leadsByList = lists.reduce((acc, list) => {
-    // Filtrar leads que pertenecen a esta lista específica
+    // Filtrar leads que pertenecen a esta lista específica (Trello + Manychat)
     acc[list.id] = leads.filter((lead) => {
-      // Solo leads de Trello que tienen este trello_list_id
-      return lead.source === "Trello" && lead.trello_list_id === list.id
+      // Leads que tienen este trello_list_id (pueden ser de Trello o Manychat)
+      return lead.trello_list_id === list.id
     })
     return acc
   }, {} as Record<string, Lead[]>)
