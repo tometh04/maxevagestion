@@ -209,7 +209,7 @@ export async function syncManychatLeadToLead(
       .maybeSingle()
     
     if (leadByPhone) {
-      existingLead = leadByPhone
+      existingLead = leadByPhone as { id: string }
     }
   }
   
@@ -223,7 +223,7 @@ export async function syncManychatLeadToLead(
       .maybeSingle()
     
     if (leadByInstagram) {
-      existingLead = leadByInstagram
+      existingLead = leadByInstagram as { id: string }
     }
   }
   
