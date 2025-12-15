@@ -174,7 +174,7 @@ export function LeadsPageClient({
               console.log('📋 Lista de Trello cambiada, recargando leads...')
               // Recargar todos los leads para asegurar orden correcto
               if (selectedAgencyId && selectedAgencyId !== "ALL") {
-                loadLeads(selectedAgencyId, selectedTrelloListId)
+                loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
               }
             } else {
               // Actualizar el lead en la lista actual
