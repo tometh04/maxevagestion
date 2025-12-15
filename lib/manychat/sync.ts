@@ -94,7 +94,7 @@ export async function determineAgencyId(
     .maybeSingle()
   
   if (agency) {
-    return agency.id
+    return (agency as { id: string }).id
   }
   
   // Si no se encuentra, buscar Rosario como fallback
@@ -104,7 +104,7 @@ export async function determineAgencyId(
     .ilike("name", "%rosario%")
     .maybeSingle()
   
-  return rosario?.id || ""
+  return (rosario as { id: string } | null)?.id || ""
 }
 
 /**
