@@ -17,6 +17,7 @@ import {
   Calendar as CalendarIcon,
   MessageSquare,
   Heart,
+  MessageCircle,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -47,6 +48,7 @@ interface NavItem {
 const allNavigation: NavItem[] = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
   { title: "Leads", url: "/sales/leads", icon: ShoppingCart, module: "leads" },
+  { title: "CRM Manychat", url: "/sales/crm-manychat", icon: MessageCircle, module: "leads" },
   { title: "Operaciones", url: "/operations", icon: Plane, module: "operations" },
   { title: "Clientes", url: "/customers", icon: Users, module: "customers" },
   { title: "Operadores", url: "/operators", icon: Building2, module: "operators" },
