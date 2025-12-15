@@ -240,9 +240,16 @@ export function LeadsPageClient({
   }
 
   const handleRefreshLeads = async () => {
+    // Solo sincronizar con Trello si el source es "Trello" o "ALL"
+    if (selectedSource === "Manychat") {
+      // Para Manychat, solo recargar desde BD
+      await loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
+      return
+    }
+    
     if (selectedAgencyId === "ALL") {
       // Si es "ALL", solo recargar desde BD
-      await loadLeads(selectedAgencyId, selectedTrelloListId)
+      await loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
       return
     }
 
@@ -265,7 +272,7 @@ export function LeadsPageClient({
         )
         
         // Recargar leads desde BD después de la sincronización
-        await loadLeads(selectedAgencyId, selectedTrelloListId)
+        await loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
       } else {
         toast.error(data.error || "Error al sincronizar con Trello")
       }
