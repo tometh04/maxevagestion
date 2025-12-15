@@ -90,23 +90,53 @@ Agrega un header:
 - **Value:** `application/json`
 
 #### Body (JSON):
-Configura el body como JSON con los campos de Manychat:
+Configura el body como JSON con los campos de Manychat.
 
+**IMPORTANTE:** En Manychat, el formato de variables es diferente. Usa el formato que Manychat te muestra cuando seleccionas campos.
+
+**Formato correcto en Manychat:**
 ```json
 {
-  "ig": "{{user.ig_username}}",
-  "name": "{{user.name}}",
-  "whatsapp": "{{user.whatsapp_1}}",
-  "destino": "{{user.destination}}",
-  "region": "{{user.region}}",
-  "fechas": "{{user.dates_1}}",
-  "personas": "{{user.people}}",
-  "menores": "{{user.minors}}",
-  "presupuesto": "{{user.budget}}",
-  "servicio": "{{user.service_type}}",
-  "evento": "{{user.event}}",
-  "phase": "{{user.mc_phase}}",
-  "bucket": "{{user.bucket}}",
+  "ig": "{{ig_username}}",
+  "name": "{{name}}",
+  "whatsapp": "{{cuf_12894138}}",
+  "destino": "{{cuf_12894138}}",
+  "region": "{{cuf_12926345}}",
+  "fechas": "{{cuf_12903074}}",
+  "personas": "{{cuf_12894141}}",
+  "menores": "{{cuf_XXXXX}}",
+  "presupuesto": "{{cuf_XXXXX}}",
+  "servicio": "{{cuf_XXXXX}}",
+  "evento": "{{cuf_XXXXX}}",
+  "phase": "{{mc_phase}}",
+  "bucket": "{{cuf_XXXXX}}",
+  "agency": "rosario"
+}
+```
+
+**Cómo obtener los IDs correctos de campos custom (CUF):**
+1. En Manychat, cuando estás editando el External Request
+2. Haz clic en el botón **"{+} Añadir un Campo"** o **"+ Añadir Full Contact Data"**
+3. Selecciona el campo que necesitas (ej: "User Destination")
+4. Manychat automáticamente insertará el formato correcto como `{{cuf_12894138}}` o `{{user_destination}}`
+5. Copia ese formato exacto al JSON
+
+**Ejemplo basado en tu configuración actual:**
+```json
+{
+  "ig": "{{ig_username}}",
+  "name": "{{name}}",
+  "whatsapp": "5493412100849",
+  "destino": "{{cuf_12894138}}",
+  "region": "{{cuf_12926345}}",
+  "fechas": "{{cuf_12903074}}",
+  "personas": "{{cuf_12894141}}",
+  "menores": "",
+  "presupuesto": "",
+  "servicio": "",
+  "evento": "",
+  "phase": "{{mc_phase}}",
+  "bucket": "",
   "agency": "rosario"
 }
 ```
