@@ -68,7 +68,7 @@ export default async function CRMManychatPage() {
   // Los nuevos leads vendrán de Manychat vía webhook y se agregarán en tiempo real
   let leads: any[] = []
   let leadsError: any = null
-  const INITIAL_LIMIT = 2000
+  const INITIAL_LIMIT = 5000
 
   if (user.role === "SELLER") {
     // Vendedor: leads asignados + sin asignar de Manychat

@@ -90,7 +90,7 @@ export function CRMManychatPageClient({
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
-      const limit = 2000
+      const limit = 5000
       // Cargar leads de Manychat (nuevos)
       let manychatUrl = agencyId === "ALL"
         ? `/api/leads?page=1&limit=${limit}&source=Manychat`
