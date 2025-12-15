@@ -64,17 +64,20 @@ export default async function CRMManychatPage() {
     .select("id, name")
     .order("name")
 
-  // Get leads de Manychat SOLO
+  // IMPORTANTE: Cargar inicialmente leads de Trello (para migración visual)
+  // Los nuevos leads vendrán de Manychat vía webhook y se agregarán en tiempo real
+  // Esto permite mostrar la migración de Trello a Manychat de forma visual
   let leads: any[] = []
   let leadsError: any = null
   const INITIAL_LIMIT = 2000
 
   if (user.role === "SELLER") {
+    // Vendedor: leads asignados + sin asignar de Trello (para migración visual)
     const { data: myLeads, error: myLeadsError } = await supabase
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("assigned_seller_id", user.id)
-      .eq("source", "Manychat")
+      .eq("source", "Trello") // Inicialmente Trello para migración visual
       .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
 
@@ -82,7 +85,7 @@ export default async function CRMManychatPage() {
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .is("assigned_seller_id", null)
-      .eq("source", "Manychat")
+      .eq("source", "Trello") // Inicialmente Trello para migración visual
       .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
       .order("updated_at", { ascending: false })
       .limit(INITIAL_LIMIT)
@@ -90,10 +93,11 @@ export default async function CRMManychatPage() {
     leads = [...(myLeads || []), ...(unassignedLeads || [])]
     leadsError = myLeadsError || unassignedError
   } else {
+    // Admin/otros: cargar leads de Trello inicialmente (para migración visual)
     let query = supabase
       .from("leads")
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
-      .eq("source", "Manychat")
+      .eq("source", "Trello") // Inicialmente Trello para migración visual
     
     if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
       query = query.in("agency_id", agencyIds)
@@ -106,6 +110,42 @@ export default async function CRMManychatPage() {
     leads = data || []
     leadsError = error
   }
+  
+  // También cargar leads de Manychat para combinarlos
+  let manychatLeads: any[] = []
+  if (user.role === "SELLER") {
+    const { data: myManychatLeads } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("assigned_seller_id", user.id)
+      .eq("source", "Manychat")
+      .limit(INITIAL_LIMIT)
+
+    const { data: unassignedManychatLeads } = await supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .is("assigned_seller_id", null)
+      .eq("source", "Manychat")
+      .in("agency_id", agencyIds.length > 0 ? agencyIds : [])
+      .limit(INITIAL_LIMIT)
+
+    manychatLeads = [...(myManychatLeads || []), ...(unassignedManychatLeads || [])]
+  } else {
+    let manychatQuery = supabase
+      .from("leads")
+      .select("*, agencies(name), users:assigned_seller_id(name, email)")
+      .eq("source", "Manychat")
+    
+    if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      manychatQuery = manychatQuery.in("agency_id", agencyIds)
+    }
+
+    const { data: manychatData } = await manychatQuery.limit(INITIAL_LIMIT)
+    manychatLeads = manychatData || []
+  }
+  
+  // Combinar: Trello (migración visual) + Manychat (nuevos leads)
+  leads = [...leads, ...manychatLeads]
 
   if (leadsError) {
     console.error("Error fetching Manychat leads:", leadsError)
