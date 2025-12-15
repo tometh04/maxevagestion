@@ -491,6 +491,22 @@ export function LeadsPageClient({
             sellerId={defaultSellerId}
           />
         </TabsContent>
+        <TabsContent value="manychat" className="space-y-4">
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <p className="text-muted-foreground">Cargando leads de Manychat...</p>
+            </div>
+          ) : (
+            <LeadsTable
+              agencies={agencies}
+              sellers={sellers}
+              operators={operators}
+              onRefresh={handleRefresh}
+              agencyId={selectedAgencyId}
+              sellerId={defaultSellerId}
+            />
+          )}
+        </TabsContent>
       </Tabs>
 
       <NewLeadDialog
