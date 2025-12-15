@@ -74,6 +74,7 @@ export function LeadsPageClient({
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>(defaultAgencyId || agencies[0]?.id || "ALL")
   const [selectedTrelloListId, setSelectedTrelloListId] = useState<string | null>(null)
+  const [selectedSource, setSelectedSource] = useState<string>("ALL") // "ALL" | "Trello" | "Manychat"
   const [loading, setLoading] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
   const [syncingTrello, setSyncingTrello] = useState(false)
@@ -92,7 +93,7 @@ export function LeadsPageClient({
 
   // Definir loadLeads como useCallback para poder usarla en Realtime
   // OPTIMIZADO: Para Trello, cargar más leads (hasta 2000 por agencia)
-  const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
+  const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null, source: string = "ALL") => {
     setLoading(true)
     try {
       // Para Trello, aumentar el límite a 2000 (máximo por agencia según el usuario)
@@ -103,6 +104,11 @@ export function LeadsPageClient({
       
       if (trelloListId && trelloListId !== "ALL") {
         url += `&trelloListId=${trelloListId}`
+      }
+      
+      // Agregar filtro por source si no es "ALL"
+      if (source && source !== "ALL") {
+        url += `&source=${source}`
       }
 
       const response = await fetch(url, { cache: 'no-store' })
@@ -202,7 +208,7 @@ export function LeadsPageClient({
     }
   }, [selectedAgencyId, selectedTrelloListId, loadLeads]) // Agregar loadLeads a dependencias
 
-  // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
+  // Cargar leads cuando cambia la agencia seleccionada, el filtro de lista o el source
   useEffect(() => {
     // SIEMPRE cargar leads desde la API cuando se selecciona una agencia
     // Esto asegura que se carguen todos los leads (hasta 2000) y no solo los initialLeads
@@ -210,23 +216,27 @@ export function LeadsPageClient({
       // Si es la carga inicial, usar un delay más corto
       const delay = initialLoad ? 50 : 100
       const timer = setTimeout(() => {
-        loadLeads(selectedAgencyId, selectedTrelloListId)
+        loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
         if (initialLoad) {
           setInitialLoad(false)
         }
       }, delay)
       return () => clearTimeout(timer)
     } else if (selectedAgencyId === "ALL") {
-      // Si se selecciona "Todas las agencias", usar los initialLeads
-      setLeads(initialLeads)
+      // Si se selecciona "Todas las agencias", usar los initialLeads (filtrar por source si es necesario)
+      let filtered = initialLeads
+      if (selectedSource !== "ALL") {
+        filtered = initialLeads.filter(lead => lead.source === selectedSource)
+      }
+      setLeads(filtered)
       if (initialLoad) {
         setInitialLoad(false)
       }
     }
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads, initialLeads])
+  }, [selectedAgencyId, selectedTrelloListId, selectedSource, loadLeads, initialLeads])
 
   const handleRefresh = async () => {
-    await loadLeads(selectedAgencyId, selectedTrelloListId)
+    await loadLeads(selectedAgencyId, selectedTrelloListId, selectedSource)
   }
 
   const handleRefreshLeads = async () => {
@@ -289,16 +299,23 @@ export function LeadsPageClient({
 
 
   // Los leads ya vienen filtrados del servidor
-  const filteredLeads = leads
+  // Filtrar por source si es necesario
+  const filteredLeads = useMemo(() => {
+    if (selectedSource === "ALL") return leads
+    return leads.filter(lead => lead.source === selectedSource)
+  }, [leads, selectedSource])
 
-  // SIEMPRE usar Trello Kanban si hay leads con trello_list_id
+  // SIEMPRE usar Trello Kanban si hay leads con trello_list_id Y no estamos filtrando por Manychat
   // Verificar si hay leads con trello_list_id (independientemente del source)
   // Usar useMemo para evitar recalcular en cada render
   const trelloLeads = useMemo(
-    () => filteredLeads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined),
-    [filteredLeads]
+    () => {
+      if (selectedSource === "Manychat") return [] // No usar Trello Kanban para Manychat
+      return filteredLeads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined)
+    },
+    [filteredLeads, selectedSource]
   )
-  const hasTrelloLeadsInState = trelloLeads.length > 0
+  const hasTrelloLeadsInState = trelloLeads.length > 0 && selectedSource !== "Manychat"
   
   // Usar la agencia seleccionada o la primera disponible
   const effectiveAgencyId = selectedAgencyId !== "ALL" 
@@ -375,7 +392,11 @@ export function LeadsPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            {shouldUseTrelloKanban ? "Leads sincronizados desde Trello • Actualización automática" : "Gestiona tus leads y oportunidades"}
+            {selectedSource === "Manychat" 
+              ? "Pre-Leads Manychat • Leads directos desde Manychat" 
+              : shouldUseTrelloKanban 
+                ? "Leads sincronizados desde Trello • Actualización automática" 
+                : "Gestiona tus leads y oportunidades"}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -399,7 +420,20 @@ export function LeadsPageClient({
               </Select>
             </div>
           )}
-          {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && (
+          <div className="flex items-center gap-2">
+            <Label htmlFor="source-select" className="whitespace-nowrap">Origen:</Label>
+            <Select value={selectedSource} onValueChange={setSelectedSource}>
+              <SelectTrigger id="source-select" className="w-[180px]">
+                <SelectValue placeholder="Todos" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="Trello">Trello</SelectItem>
+                <SelectItem value="Manychat">Pre-Leads Manychat</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && selectedSource !== "Manychat" && (
             <Button
               variant="outline"
               onClick={handleRefreshLeads}
