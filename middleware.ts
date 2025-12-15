@@ -7,6 +7,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Permitir webhooks de Manychat sin autenticación (usa API key en header)
+  if (req.nextUrl.pathname === '/api/webhooks/manychat') {
+    return NextResponse.next()
+  }
+
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
     return NextResponse.next()
