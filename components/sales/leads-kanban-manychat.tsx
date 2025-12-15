@@ -363,7 +363,10 @@ export function LeadsKanbanManychat({
           lead={selectedLead as any}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
-          onUpdate={onRefresh}
+          onDelete={onRefresh}
+          onConvert={onRefresh}
+          canClaimLeads={canClaimLeads}
+          onClaim={onRefresh}
           agencies={agencies}
           sellers={sellers}
           operators={operators}
