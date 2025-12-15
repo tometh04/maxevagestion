@@ -30,8 +30,7 @@ export async function GET(
     }
 
     // Obtener comentarios con información del usuario
-    const { data: comments, error } = await supabase
-      .from("lead_comments")
+    const { data: comments, error } = await (supabase.from("lead_comments") as any)
       .select(`
         id,
         comment,
