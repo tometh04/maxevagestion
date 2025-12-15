@@ -172,80 +172,6 @@ export function determineListName(manychatData: ManychatLeadData): string {
   return "Otros"
 }
 
-/**
- * Buscar lista de Trello por nombre (case insensitive, parcial match)
- * Retorna el ID de la lista si se encuentra, null si no
- */
-export async function findTrelloListByName(
-  listName: string,
-  agencyId: string,
-  supabase: Awaited<ReturnType<typeof createServerClient>>
-): Promise<string | null> {
-  try {
-    // Obtener settings de Trello para esta agencia
-    const { data: trelloSettings } = await supabase
-      .from("settings_trello")
-      .select("board_id, trello_api_key, trello_token")
-      .eq("agency_id", agencyId)
-      .maybeSingle()
-    
-    if (!trelloSettings) {
-      console.warn(`⚠️ No hay configuración de Trello para agencia ${agencyId}`)
-      return null
-    }
-    
-    const settings = trelloSettings as any
-    
-    // Obtener listas de Trello
-    const response = await fetch(
-      `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=open&fields=id,name`
-    )
-    
-    if (!response.ok) {
-      console.warn(`⚠️ Error obteniendo listas de Trello: ${response.status}`)
-      return null
-    }
-    
-    const lists = await response.json()
-    
-    // Buscar lista por nombre (case insensitive, puede ser match parcial)
-    const normalizedSearchName = listName.toLowerCase().trim()
-    const foundList = lists.find((list: any) => {
-      const normalizedListName = list.name.toLowerCase().trim()
-      // Match exacto o parcial
-      return normalizedListName === normalizedSearchName || 
-             normalizedListName.includes(normalizedSearchName) ||
-             normalizedSearchName.includes(normalizedListName)
-    })
-    
-    if (foundList) {
-      console.log(`✅ Lista encontrada: "${listName}" → "${foundList.name}" (${foundList.id})`)
-      return foundList.id
-    }
-    
-    // Si no se encuentra, buscar "Otros" como fallback
-    const otrosList = lists.find((list: any) => 
-      list.name.toLowerCase().trim() === "otros"
-    )
-    
-    if (otrosList) {
-      console.log(`⚠️ Lista "${listName}" no encontrada, usando "Otros" (${otrosList.id})`)
-      return otrosList.id
-    }
-    
-    // Si no hay "Otros", usar la primera lista disponible
-    if (lists.length > 0) {
-      console.warn(`⚠️ Lista "${listName}" no encontrada, usando primera lista disponible: "${lists[0].name}"`)
-      return lists[0].id
-    }
-    
-    console.warn(`⚠️ No hay listas disponibles en Trello para agencia ${agencyId}`)
-    return null
-  } catch (error: any) {
-    console.error(`❌ Error buscando lista de Trello:`, error.message)
-    return null
-  }
-}
 
 /**
  * Sync Manychat lead data to a lead in the database
@@ -333,17 +259,10 @@ export async function syncManychatLeadToLead(
     }
   }
   
-  // 6. Determinar lista de Trello según lógica de Zapier
-  // IMPORTANTE: Esto es solo para asignar el lead a una lista en el kanban
-  // NO sincroniza con Trello, solo usa las listas como referencia visual
+  // 6. Determinar nombre de lista según lógica de Zapier (INDEPENDIENTE de Trello)
+  // Este nombre se usa para agrupar leads en el kanban de CRM Manychat
   const listName = determineListName(manychatData)
-  const trelloListId = await findTrelloListByName(listName, agency_id, supabase)
-  
-  if (trelloListId) {
-    console.log(`✅ Lead de Manychat asignado a lista: "${listName}" (${trelloListId})`)
-  } else {
-    console.warn(`⚠️ No se pudo asignar lead de Manychat a lista: "${listName}"`)
-  }
+  console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
   
   // 7. Preparar datos del lead
   const leadData: any = {
@@ -359,7 +278,7 @@ export async function syncManychatLeadToLead(
     assigned_seller_id: null, // No se asigna automáticamente
     notes: notes || null,
     manychat_full_data: manychatFullData, // Similar a trello_full_data
-    trello_list_id: trelloListId, // Asignar lista para que aparezca en el kanban (solo visual, no sincroniza)
+    list_name: listName, // Nombre de la lista para el kanban (INDEPENDIENTE de Trello)
     updated_at: new Date().toISOString(),
   }
   

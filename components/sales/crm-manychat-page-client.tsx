@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
-import { LeadsKanbanTrello } from "@/components/sales/leads-kanban-trello"
+import { LeadsKanbanManychat } from "@/components/sales/leads-kanban-manychat"
 import { LeadsTable } from "@/components/sales/leads-table"
 import { NewLeadDialog } from "@/components/sales/new-lead-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -39,6 +39,7 @@ interface Lead {
   source: string
   trello_url: string | null
   trello_list_id: string | null
+  list_name: string | null
   agency_id?: string
   created_at: string
   assigned_seller_id: string | null
@@ -85,41 +86,25 @@ export function CRMManychatPageClient({
     }
   }, [])
 
-  // Cargar leads: Trello (migración visual) + Manychat (nuevos)
+  // Cargar leads: SOLO Manychat (integración independiente)
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
       const limit = 2000
-      // Cargar leads de Trello (migración visual)
-      let trelloUrl = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Trello`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
-      
-      // Cargar leads de Manychat (nuevos)
+      // Cargar SOLO leads de Manychat (integración independiente)
       let manychatUrl = agencyId === "ALL"
         ? `/api/leads?page=1&limit=${limit}&source=Manychat`
         : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Manychat`
 
-      const [trelloResponse, manychatResponse] = await Promise.all([
-        fetch(trelloUrl, { cache: 'no-store' }),
-        fetch(manychatUrl, { cache: 'no-store' })
-      ])
+      const response = await fetch(manychatUrl, { cache: 'no-store' })
+      const data = await response.json()
       
-      const trelloData = await trelloResponse.json()
-      const manychatData = await manychatResponse.json()
-      
-      // Combinar: Trello (migración) + Manychat (nuevos)
-      const allLeads = [
-        ...(trelloData.leads || []),
-        ...(manychatData.leads || [])
-      ]
-      
-      if (allLeads.length > 0) {
-        setLeads(allLeads)
-        console.log(`✅ Cargados ${trelloData.leads?.length || 0} leads de Trello + ${manychatData.leads?.length || 0} de Manychat`)
+      if (data.leads && data.leads.length > 0) {
+        setLeads(data.leads)
+        console.log(`✅ Cargados ${data.leads.length} leads de Manychat`)
       } else {
         setLeads([])
-        console.log("ℹ️ No se encontraron leads")
+        console.log("ℹ️ No se encontraron leads de Manychat")
       }
     } catch (error) {
       console.error("Error loading leads:", error)
@@ -135,8 +120,7 @@ export function CRMManychatPageClient({
 
     console.log("🔌 Conectando a Supabase Realtime para Manychat...")
 
-    // Suscribirse a cambios en la tabla leads (Trello + Manychat)
-    // Trello: migración visual inicial
+    // Suscribirse a cambios en la tabla leads (SOLO Manychat)
     // Manychat: nuevos leads en tiempo real
     const channel = supabase
       .channel('crm-manychat-leads-realtime')
@@ -146,7 +130,7 @@ export function CRMManychatPageClient({
           event: '*',
           schema: 'public',
           table: 'leads',
-          // Escuchar tanto Trello como Manychat
+          filter: 'source=eq.Manychat', // SOLO leads de Manychat
         },
         (payload: RealtimePostgresChangesPayload<Lead>) => {
           console.log('📥 Cambio en tiempo real (Manychat):', payload.eventType, payload.new || payload.old)
@@ -218,17 +202,16 @@ export function CRMManychatPageClient({
     await loadLeads(selectedAgencyId)
   }
 
-  // Filtrar leads que tienen trello_list_id (Trello + Manychat con lista asignada)
-  // Ambos tipos de leads deben aparecer en el kanban usando las listas de Trello como referencia visual
-  const leadsWithList = useMemo(
-    () => leads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined),
+  // Filtrar leads de Manychat que tienen list_name asignado
+  const manychatLeads = useMemo(
+    () => leads.filter((lead) => lead.source === "Manychat" && lead.list_name),
     [leads]
   )
-  const hasLeadsWithList = leadsWithList.length > 0
+  const hasManychatLeads = manychatLeads.length > 0
   const effectiveAgencyId = selectedAgencyId !== "ALL" 
     ? selectedAgencyId 
-    : (leadsWithList[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
-  const shouldUseTrelloKanban = hasLeadsWithList && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
+    : (manychatLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
+  const shouldUseManychatKanban = hasManychatLeads && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
     <div className="space-y-6">
@@ -272,7 +255,7 @@ export function CRMManychatPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            Migración visual de Trello + Nuevos leads desde Manychat • Actualización en tiempo real
+            Leads desde Manychat • Actualización en tiempo real
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -316,12 +299,10 @@ export function CRMManychatPageClient({
         </div>
       </div>
 
-      {/* Usar LeadsKanbanTrello igual que /leads para mostrar la migración visual */}
+      {/* Usar LeadsKanbanManychat para agrupar por list_name */}
       <Tabs defaultValue="kanban" className="w-full">
         <TabsList>
-          <TabsTrigger value="kanban">
-            {shouldUseTrelloKanban ? "Kanban Trello" : "Kanban"}
-          </TabsTrigger>
+          <TabsTrigger value="kanban">Kanban</TabsTrigger>
           <TabsTrigger value="table">Tabla</TabsTrigger>
         </TabsList>
         <TabsContent value="kanban">
@@ -329,9 +310,9 @@ export function CRMManychatPageClient({
             <div className="flex items-center justify-center p-8">
               <p className="text-muted-foreground">Cargando leads...</p>
             </div>
-          ) : shouldUseTrelloKanban ? (
-            <LeadsKanbanTrello 
-              leads={leadsWithList as any} 
+          ) : shouldUseManychatKanban ? (
+            <LeadsKanbanManychat 
+              leads={manychatLeads as any} 
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}
@@ -342,7 +323,7 @@ export function CRMManychatPageClient({
             />
           ) : (
             <div className="flex items-center justify-center p-8">
-              <p className="text-muted-foreground">No hay leads con listas asignadas. Los nuevos leads de Manychat aparecerán aquí automáticamente.</p>
+              <p className="text-muted-foreground">No hay leads de Manychat. Los nuevos leads aparecerán aquí automáticamente.</p>
             </div>
           )}
         </TabsContent>
