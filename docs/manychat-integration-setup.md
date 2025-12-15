@@ -5,8 +5,8 @@
 - [ ] Paso 1: Generar API Key
 - [ ] Paso 2: Configurar variable de entorno en Vercel
 - [ ] Paso 3: Obtener URL del webhook
-- [ ] Paso 4: Configurar webhook en Manychat
-- [ ] Paso 5: Probar la integración
+- [ ] Paso 4: Configurar Solicitud Externa en Manychat
+- [ ] Paso 5: Probar la integración desde Manychat
 
 ---
 
