@@ -103,6 +103,8 @@ export async function POST(request: Request) {
       uploaded_by_user_id: user.id,
     }
     
+    // Si se sube desde una operación, buscar el cliente principal de esa operación
+    let finalCustomerId = customerId
     if (operationId) {
       documentData.operation_id = operationId
       
@@ -116,8 +118,27 @@ export async function POST(request: Request) {
       if (operation && (operation as any).lead_id) {
         documentData.lead_id = (operation as any).lead_id
       }
+      
+      // Buscar el cliente principal de la operación si no se proporcionó customerId
+      if (!finalCustomerId) {
+        const { data: operationCustomer } = await supabase
+          .from("operation_customers")
+          .select("customer_id")
+          .eq("operation_id", operationId)
+          .eq("role", "MAIN")
+          .limit(1)
+          .maybeSingle()
+        
+        if (operationCustomer) {
+          finalCustomerId = (operationCustomer as any).customer_id
+          console.log(`✅ Documento asociado automáticamente al cliente ${finalCustomerId} de la operación ${operationId}`)
+        }
+      }
     }
-    if (customerId) documentData.customer_id = customerId
+    
+    if (finalCustomerId) {
+      documentData.customer_id = finalCustomerId
+    }
 
     const { data: document, error: docError } = await (supabase.from("documents") as any)
       .insert(documentData)

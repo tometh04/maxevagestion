@@ -993,11 +993,24 @@ async function generateDestinationRequirementAlerts(
   }
 
   if (alertsToCreate.length > 0) {
-    const { error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate)
+    const { data: createdAlerts, error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate).select()
     if (insertError) {
       console.error("Error creando alertas de requisitos:", insertError)
     } else {
       console.log(`✅ Creadas ${alertsToCreate.length} alertas de requisitos para operación ${operationId}`)
+      
+      // Generar mensajes de WhatsApp para las alertas creadas
+      if (createdAlerts && createdAlerts.length > 0) {
+        try {
+          const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
+          if (messagesGenerated > 0) {
+            console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de requisitos`)
+          }
+        } catch (error) {
+          console.error("Error generando mensajes de WhatsApp para alertas de requisitos:", error)
+          // No lanzamos error para no romper la creación de alertas
+        }
+      }
     }
   }
 }
@@ -1058,11 +1071,24 @@ async function generatePaymentAlerts30Days(
 
   // Insertar alertas
   if (alertsToCreate.length > 0) {
-    const { error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate)
+    const { data: createdAlerts, error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate).select()
     if (insertError) {
       console.error("Error creando alertas de pagos:", insertError)
     } else {
       console.log(`✅ Creadas ${alertsToCreate.length} alertas de pagos a 30 días para operación ${operationId}`)
+      
+      // Generar mensajes de WhatsApp para las alertas creadas
+      if (createdAlerts && createdAlerts.length > 0) {
+        try {
+          const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
+          if (messagesGenerated > 0) {
+            console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de pagos`)
+          }
+        } catch (error) {
+          console.error("Error generando mensajes de WhatsApp para alertas de pagos:", error)
+          // No lanzamos error para no romper la creación de alertas
+        }
+      }
     }
   }
 }

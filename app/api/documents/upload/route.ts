@@ -84,11 +84,28 @@ export async function POST(request: Request) {
     const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName)
     const fileUrl = urlData.publicUrl
 
+    // Si se sube desde una operación, buscar el cliente principal de esa operación
+    let finalCustomerId = customerId
+    if (operationId && !finalCustomerId) {
+      const { data: operationCustomer } = await supabase
+        .from("operation_customers")
+        .select("customer_id")
+        .eq("operation_id", operationId)
+        .eq("role", "MAIN")
+        .limit(1)
+        .maybeSingle()
+      
+      if (operationCustomer) {
+        finalCustomerId = (operationCustomer as any).customer_id
+        console.log(`✅ Documento asociado automáticamente al cliente ${finalCustomerId} de la operación ${operationId}`)
+      }
+    }
+
     // Create document record
     const { data: document, error: docError } = await (supabase.from("documents") as any)
       .insert({
         operation_id: operationId || null,
-        customer_id: customerId || null,
+        customer_id: finalCustomerId || null,
         type: type as any,
         file_url: fileUrl,
         uploaded_by_user_id: user.id,
