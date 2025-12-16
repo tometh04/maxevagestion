@@ -295,9 +295,18 @@ export async function POST(request: Request) {
             : hotelsData
 
         // 7. Guardar mensaje del asistente
+        // Normalizar data para buildAssistantContent (debe tener results)
+        const normalizedDataForContent = {
+            ...data,
+            results: resultsFlights || resultsHotels ? {
+                flights: resultsFlights,
+                hotels: resultsHotels,
+            } : data.results,
+        }
+
         const assistantClientId = generateClientId()
         const assistantContent = {
-            text: buildAssistantContent(data),
+            text: buildAssistantContent(normalizedDataForContent),
             cards: resultsFlights || resultsHotels ? {
                 flights: resultsFlights,
                 hotels: resultsHotels,
