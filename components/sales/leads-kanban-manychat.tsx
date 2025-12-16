@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, DollarSign, UserPlus, Loader2 } from "lucide-react"
+import { ExternalLink, DollarSign, UserPlus, Loader2, Settings2 } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -17,6 +17,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
+import { EditListOrderDialog } from "@/components/sales/edit-list-order-dialog"
 import { toast } from "sonner"
 
 const regionColors: Record<string, string> = {
@@ -84,6 +85,7 @@ export function LeadsKanbanManychat({
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedListName, setSelectedListName] = useState<string>("ALL")
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
+  const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false)
 
   // Determinar si el usuario puede "agarrar" leads
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
@@ -375,6 +377,19 @@ export function LeadsKanbanManychat({
           operators={operators}
         />
       )}
+
+      {/* Dialog de editar orden */}
+      <EditListOrderDialog
+        open={editOrderDialogOpen}
+        onOpenChange={setEditOrderDialogOpen}
+        agencyId={agencyId}
+        currentListNames={orderedListNames}
+        onSuccess={() => {
+          // Recargar el orden de listas
+          fetchListOrder()
+          onRefresh?.()
+        }}
+      />
     </div>
   )
 }
