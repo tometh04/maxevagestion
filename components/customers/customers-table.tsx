@@ -79,18 +79,6 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
   const columns: ColumnDef<Customer>[] = useMemo(
     () => [
       {
-        id: "searchText",
-        accessorFn: (row) => {
-          // Texto de búsqueda que incluye nombre, email, teléfono
-          const name = `${row.first_name || ""} ${row.last_name || ""}`.trim()
-          const email = row.email || ""
-          const phone = row.phone || ""
-          return `${name} ${email} ${phone}`.toLowerCase()
-        },
-        enableHiding: false,
-        enableSorting: false,
-      },
-      {
         accessorKey: "first_name",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Nombre" />
@@ -209,8 +197,6 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       columns={columns}
       data={customers}
       // No usar searchKey aquí porque ya hay un filtro de búsqueda arriba
-      // searchKey="searchText"
-      // searchPlaceholder="Nombre, teléfono, email..."
     />
   )
 }
