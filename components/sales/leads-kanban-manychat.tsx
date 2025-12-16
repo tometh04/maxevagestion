@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -127,7 +127,7 @@ export function LeadsKanbanManychat({
   }
 
   // Función para cargar el orden de listas (reutilizable)
-  const fetchListOrder = async () => {
+  const fetchListOrder = useCallback(async () => {
     try {
       const response = await fetch(`/api/manychat/list-order?agencyId=${agencyId}`)
       const data = await response.json()
@@ -148,7 +148,7 @@ export function LeadsKanbanManychat({
     } finally {
       setLoading(false)
     }
-  }
+  }, [agencyId])
 
   // Obtener orden de listas desde manychat_list_order (INDEPENDIENTE de Trello)
   useEffect(() => {
@@ -158,7 +158,7 @@ export function LeadsKanbanManychat({
       console.error("❌ No hay agencyId para obtener orden de listas")
       setLoading(false)
     }
-  }, [agencyId])
+  }, [agencyId, fetchListOrder])
 
     // Agrupar leads por list_name (Manychat + Trello migrados)
     // Usar las listas de Trello como referencia para el orden, pero agrupar por list_name

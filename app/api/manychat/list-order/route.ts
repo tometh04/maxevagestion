@@ -19,8 +19,8 @@ export async function GET(request: Request) {
     }
 
     // Obtener orden de listas ordenado por posición
-    const { data: listOrder, error } = await supabase
-      .from("manychat_list_order")
+    const { data: listOrder, error } = await (supabase
+      .from("manychat_list_order") as any)
       .select("list_name, position")
       .eq("agency_id", agencyId)
       .order("position", { ascending: true })
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     }
 
     // Retornar solo los nombres de las listas en orden
-    const orderedListNames = (listOrder || []).map(item => item.list_name)
+    const orderedListNames = ((listOrder || []) as Array<{ list_name: string; position: number }>).map(item => item.list_name)
 
     return NextResponse.json({ 
       listNames: orderedListNames,
@@ -71,8 +71,8 @@ export async function PUT(request: Request) {
     }
 
     // Eliminar orden anterior
-    const { error: deleteError } = await supabase
-      .from("manychat_list_order")
+    const { error: deleteError } = await (supabase
+      .from("manychat_list_order") as any)
       .delete()
       .eq("agency_id", agencyId)
 
@@ -91,8 +91,8 @@ export async function PUT(request: Request) {
       position: index,
     }))
 
-    const { error: insertError } = await supabase
-      .from("manychat_list_order")
+    const { error: insertError } = await (supabase
+      .from("manychat_list_order") as any)
       .insert(orderData)
 
     if (insertError) {
