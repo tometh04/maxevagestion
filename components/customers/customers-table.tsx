@@ -48,16 +48,25 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       const params = new URLSearchParams()
       if (filters.search) params.append("search", filters.search)
 
-      const response = await fetch(`/api/customers?${params.toString()}`)
+      const url = `/api/customers?${params.toString()}`
+      console.log("[CustomersTable] Fetching:", url)
+      
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
+        console.log("[CustomersTable] Response:", { 
+          customersCount: data.customers?.length || 0,
+          total: data.pagination?.total || 0 
+        })
         setCustomers(data.customers || [])
       } else {
         const errorData = await response.json().catch(() => ({}))
-        console.error("Error fetching customers:", response.status, errorData)
+        console.error("[CustomersTable] Error:", response.status, errorData)
+        setCustomers([])
       }
     } catch (error) {
-      console.error("Error fetching customers:", error)
+      console.error("[CustomersTable] Exception:", error)
+      setCustomers([])
     } finally {
       setLoading(false)
     }
@@ -199,8 +208,9 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
     <DataTable
       columns={columns}
       data={customers}
-      searchKey="searchText"
-      searchPlaceholder="Nombre, teléfono, email..."
+      // No usar searchKey aquí porque ya hay un filtro de búsqueda arriba
+      // searchKey="searchText"
+      // searchPlaceholder="Nombre, teléfono, email..."
     />
   )
 }
