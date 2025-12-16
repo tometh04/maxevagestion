@@ -265,28 +265,34 @@ export async function POST(request: Request) {
         }
 
         // 6. Transformar los datos de la API al formato del frontend
-        const transformedFlights = data.results?.flights?.items
-            ? transformFlights(data.results.flights.items)
+        // La API puede devolver resultados en dos formatos:
+        // 1. data.results.flights (formato anidado)
+        // 2. data.flights (formato plano)
+        const flightsData = data.results?.flights || data.flights
+        const hotelsData = data.results?.hotels || data.hotels
+
+        const transformedFlights = flightsData?.items
+            ? transformFlights(flightsData.items)
             : undefined
 
-        const transformedHotels = data.results?.hotels?.items
-            ? transformHotels(data.results.hotels.items)
+        const transformedHotels = hotelsData?.items
+            ? transformHotels(hotelsData.items)
             : undefined
 
         // Construir objetos de resultados transformados
         const resultsFlights = transformedFlights
             ? {
-                count: data.results.flights.count,
+                count: flightsData.count,
                 items: transformedFlights,
             }
-            : data.results?.flights
+            : flightsData
 
         const resultsHotels = transformedHotels
             ? {
-                count: data.results.hotels.count,
+                count: hotelsData.count,
                 items: transformedHotels,
             }
-            : data.results?.hotels
+            : hotelsData
 
         // 7. Guardar mensaje del asistente
         const assistantClientId = generateClientId()
@@ -338,13 +344,33 @@ export async function POST(request: Request) {
             .update(updates)
             .eq("id", conversationId)
 
+        // 8. Asegurar que siempre haya un status válido
+        // Si la API no devuelve status, inferirlo de los resultados
+        let responseStatus = data.status
+        if (!responseStatus) {
+            if (flightsData || hotelsData) {
+                responseStatus = "completed"
+            } else if (data.message && !data.error) {
+                responseStatus = "completed" // Asumir completado si hay mensaje sin error
+            } else {
+                responseStatus = "completed" // Default a completed
+            }
+        }
+
         // 8. Retornar respuesta completa con datos transformados
+        // Normalizar la estructura para que siempre tenga results
+        const normalizedResults = resultsFlights || resultsHotels ? {
+            flights: resultsFlights,
+            hotels: resultsHotels,
+        } : (data.results || (flightsData || hotelsData ? {
+            flights: resultsFlights,
+            hotels: resultsHotels,
+        } : undefined))
+
         return NextResponse.json({
             ...data,
-            results: resultsFlights || resultsHotels ? {
-                flights: resultsFlights,
-                hotels: resultsHotels,
-            } : data.results,
+            status: responseStatus, // Asegurar que siempre haya status
+            results: normalizedResults,
             requestType: data.requestType || (resultsFlights && resultsHotels ? 'combined' : resultsFlights ? 'flights-only' : 'hotels-only'),
             timestamp: new Date().toISOString(),
             conversationTitle: updates.title || (conversation as any).title,

@@ -159,17 +159,24 @@ export function generateClientId(): string {
  */
 export function buildAssistantContent(data: any): string {
   if (data.status === "error") {
-    return data.error?.message || "Ocurrió un error procesando tu solicitud."
+    return data.error?.message || data.error || "Ocurrió un error procesando tu solicitud."
   }
 
   if (data.status === "incomplete") {
     return (
-      data.error?.message || "Necesito más información para completar la búsqueda."
+      data.message || data.error?.message || "Necesito más información para completar la búsqueda."
     )
   }
 
-  if (data.status === "completed" && data.results) {
-    const { flights, hotels } = data.results
+  // Verificar si hay resultados (incluso si status no es "completed")
+  // La API puede devolver resultados en dos formatos:
+  // 1. data.results.flights (formato anidado)
+  // 2. data.flights (formato plano)
+  const flights = data.results?.flights || data.flights
+  const hotels = data.results?.hotels || data.hotels
+  const hasResults = flights || hotels
+
+  if (hasResults || data.status === "completed") {
     const parts: string[] = []
 
     if (flights?.count > 0) {
@@ -188,11 +195,42 @@ export function buildAssistantContent(data: any): string {
       )
     }
 
-    if (parts.length === 0) {
-      return "No encontré resultados para tu búsqueda. ¿Querés modificar los criterios?"
+    if (parts.length > 0) {
+      return parts.join(" ")
     }
 
-    return parts.join(" ")
+    // Si hay resultados pero sin count, verificar items
+    if ((flights?.items && flights.items.length > 0) || (hotels?.items && hotels.items.length > 0)) {
+      const flightCount = flights?.items?.length || 0
+      const hotelCount = hotels?.items?.length || 0
+      const resultParts: string[] = []
+      
+      if (flightCount > 0) {
+        resultParts.push(`${flightCount} vuelo${flightCount > 1 ? "s" : ""}`)
+      }
+      if (hotelCount > 0) {
+        resultParts.push(`${hotelCount} hotel${hotelCount > 1 ? "es" : ""}`)
+      }
+      
+      if (resultParts.length > 0) {
+        return `Encontré ${resultParts.join(" y ")} disponible${resultParts.length > 1 ? "s" : ""}.`
+      }
+    }
+
+    // Si status es completed pero no hay resultados
+    if (data.status === "completed") {
+      return "No encontré resultados para tu búsqueda. ¿Querés modificar los criterios?"
+    }
+  }
+
+  // Si hay un mensaje de la API, usarlo
+  if (data.message) {
+    return data.message
+  }
+
+  // Fallback: intentar construir mensaje desde los datos disponibles
+  if (data.results) {
+    return "Búsqueda completada. Revisá los resultados a continuación."
   }
 
   return "Búsqueda procesada correctamente."

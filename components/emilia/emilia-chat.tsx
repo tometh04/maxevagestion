@@ -294,7 +294,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
             }
         } catch (error: any) {
             console.error("Error sending message:", error)
-            
+
             const errorContent = error.message || "Error al procesar la solicitud"
             toast.error(errorContent)
 
@@ -304,7 +304,7 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 content: { text: errorContent },
                 created_at: new Date().toISOString(),
             }
-            
+
             setMessages((prev) => {
                 const filtered = prev.filter(m => m.id !== tempId)
                 return [...filtered, optimisticMessage, errorMessage]
@@ -316,6 +316,16 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
     }
 
     const buildAssistantContentText = (data: any): string => {
+        // Log para debugging
+        console.log("[Emilia Chat] Building content from data:", {
+            status: data.status,
+            hasResults: !!data.results,
+            hasMessage: !!data.message,
+            hasError: !!data.error,
+            flightsCount: data.results?.flights?.count,
+            hotelsCount: data.results?.hotels?.count,
+        })
+
         if (data.status === "error") {
             return data.error?.message || data.error || "Ocurrió un error procesando tu solicitud."
         }
@@ -345,8 +355,15 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
             return message
         }
 
-        if (data.status === "completed" && data.results) {
-            const { flights, hotels } = data.results
+        // Verificar si hay resultados (incluso si status no es "completed")
+        // La API puede devolver resultados en dos formatos:
+        // 1. data.results.flights (formato anidado)
+        // 2. data.flights (formato plano)
+        const flights = data.results?.flights || data.flights
+        const hotels = data.results?.hotels || data.hotels
+        const hasResults = flights || hotels
+
+        if (hasResults || data.status === "completed") {
             const parts: string[] = []
 
             if (flights?.count > 0) {
@@ -357,14 +374,46 @@ export function EmiliaChat({ conversationId, userId, userName, onConversationUpd
                 parts.push(`Encontré ${hotels.count} hotel${hotels.count > 1 ? "es" : ""} disponible${hotels.count > 1 ? "s" : ""}.`)
             }
 
-            if (parts.length === 0) {
-                return "No encontré resultados para tu búsqueda. ¿Querés modificar los criterios?"
+            if (parts.length > 0) {
+                return parts.join(" ")
             }
 
-            return parts.join(" ")
+            // Si hay resultados pero sin count, verificar items
+            if ((flights?.items && flights.items.length > 0) || (hotels?.items && hotels.items.length > 0)) {
+                const flightCount = flights?.items?.length || 0
+                const hotelCount = hotels?.items?.length || 0
+                const resultParts: string[] = []
+
+                if (flightCount > 0) {
+                    resultParts.push(`${flightCount} vuelo${flightCount > 1 ? "s" : ""}`)
+                }
+                if (hotelCount > 0) {
+                    resultParts.push(`${hotelCount} hotel${hotelCount > 1 ? "es" : ""}`)
+                }
+
+                if (resultParts.length > 0) {
+                    return `Encontré ${resultParts.join(" y ")} disponible${resultParts.length > 1 ? "s" : ""}.`
+                }
+            }
+
+            // Si status es completed pero no hay resultados
+            if (data.status === "completed") {
+                return "No encontré resultados para tu búsqueda. ¿Querés modificar los criterios?"
+            }
         }
 
-        return data.message || "Búsqueda procesada correctamente."
+        // Si hay un mensaje de la API, usarlo
+        if (data.message) {
+            return data.message
+        }
+
+        // Fallback: intentar construir mensaje desde los datos disponibles
+        if (data.results) {
+            return "Búsqueda completada. Revisá los resultados a continuación."
+        }
+
+        // Último fallback
+        return "Búsqueda procesada correctamente."
     }
 
     const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -550,7 +599,7 @@ function MessageBubble({ message, onFollowupClick }: MessageBubbleProps) {
 
                 {/* Search Results */}
                 {content.cards && (
-                    <SearchResultsDisplay 
+                    <SearchResultsDisplay
                         flights={content.cards.flights}
                         hotels={content.cards.hotels}
                         requestType={content.cards.requestType}
@@ -584,7 +633,7 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
     const hasHotels = hotels && hotels.items && hotels.items.length > 0
 
     // Determinar requestType si no viene
-    const effectiveRequestType = requestType || 
+    const effectiveRequestType = requestType ||
         (hasFlights && hasHotels ? 'combined' : hasFlights ? 'flights-only' : 'hotels-only')
 
     const handleFlightSelection = (flightId: string, selected: boolean) => {
@@ -659,8 +708,8 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                     <TabsContent value="flights" className="space-y-2 mt-0">
                         {hasFlights ? (
                             flights.items.slice(0, 10).map((flight) => (
-                                <FlightResultCard 
-                                    key={flight.id} 
+                                <FlightResultCard
+                                    key={flight.id}
                                     flight={flight}
                                     selected={selectedFlights.has(flight.id)}
                                     onSelectionChange={handleFlightSelection}
@@ -674,8 +723,8 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                     <TabsContent value="hotels" className="space-y-2 mt-0">
                         {hasHotels ? (
                             hotels.items.slice(0, 10).map((hotel) => (
-                                <HotelResultCard 
-                                    key={hotel.id} 
+                                <HotelResultCard
+                                    key={hotel.id}
                                     hotel={hotel}
                                     selected={selectedHotels.has(hotel.id)}
                                     onSelectionChange={handleHotelSelection}
@@ -742,8 +791,8 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                 <div className="space-y-2">
                     {hasFlights ? (
                         flights.items.slice(0, 10).map((flight) => (
-                            <FlightResultCard 
-                                key={flight.id} 
+                            <FlightResultCard
+                                key={flight.id}
                                 flight={flight}
                                 selected={selectedFlights.has(flight.id)}
                                 onSelectionChange={handleFlightSelection}
@@ -759,8 +808,8 @@ function SearchResultsDisplay({ flights, hotels, requestType }: SearchResultsDis
                 <div className="space-y-2">
                     {hasHotels ? (
                         hotels.items.slice(0, 10).map((hotel) => (
-                            <HotelResultCard 
-                                key={hotel.id} 
+                            <HotelResultCard
+                                key={hotel.id}
                                 hotel={hotel}
                                 selected={selectedHotels.has(hotel.id)}
                                 onSelectionChange={handleHotelSelection}
