@@ -37,8 +37,10 @@ export default async function CustomerDetailPage({
     .eq("customer_id", id)
     .order("created_at", { ascending: false })
 
+  // Get operation IDs for payments and documents
+  const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
+  
   // Get payments related to customer's operations
-  const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id)
   let payments: any[] = []
   if (operationIds.length > 0) {
     const { data: paymentsData } = await supabase
@@ -51,7 +53,6 @@ export default async function CustomerDetailPage({
   }
 
   // Get documents - incluir documentos del cliente Y de sus operaciones
-  const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
   
   let documents: any[] = []
   
