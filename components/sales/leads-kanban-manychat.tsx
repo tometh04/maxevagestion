@@ -87,6 +87,8 @@ export function LeadsKanbanManychat({
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
   const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false)
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
+  const [editingListName, setEditingListName] = useState<string | null>(null)
+  const [newListNameValue, setNewListNameValue] = useState("")
 
   // Determinar si el usuario puede "agarrar" leads
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
@@ -165,6 +167,68 @@ export function LeadsKanbanManychat({
     } catch (error: any) {
       console.error("Error creating list:", error)
       toast.error("Error al crear lista")
+    }
+  }
+
+  const handleSaveListName = async (oldListName: string) => {
+    if (!newListNameValue.trim() || newListNameValue.trim() === oldListName) {
+      setEditingListName(null)
+      setNewListNameValue("")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/manychat/lists", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agencyId,
+          oldListName,
+          newListName: newListNameValue.trim(),
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success(`Lista renombrada a "${newListNameValue.trim()}"`)
+        setEditingListName(null)
+        setNewListNameValue("")
+        // Recargar orden de listas
+        fetchListOrder()
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        toast.error(data.error || "Error al renombrar lista")
+      }
+    } catch (error: any) {
+      console.error("Error renaming list:", error)
+      toast.error("Error al renombrar lista")
+    }
+  }
+
+  const handleDeleteList = async (listName: string) => {
+    try {
+      const response = await fetch(`/api/manychat/lists?agencyId=${agencyId}&listName=${encodeURIComponent(listName)}`, {
+        method: "DELETE",
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success(`Lista "${listName}" eliminada correctamente`)
+        // Recargar orden de listas
+        fetchListOrder()
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        toast.error(data.error || "Error al eliminar lista")
+      }
+    } catch (error: any) {
+      console.error("Error deleting list:", error)
+      toast.error("Error al eliminar lista")
     }
   }
 
