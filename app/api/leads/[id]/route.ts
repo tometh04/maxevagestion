@@ -208,108 +208,107 @@ export async function PATCH(
       )
 
     if (depositChanged) {
-        // Buscar ledger movement existente para este lead
-        const { data: existingMovement } = await supabase
-          .from("ledger_movements")
-          .select("id")
-          .eq("lead_id", id)
-          .eq("type", "INCOME")
-          .maybeSingle()
+      // Buscar ledger movement existente para este lead
+      const { data: existingMovement } = await supabase
+        .from("ledger_movements")
+        .select("id")
+        .eq("lead_id", id)
+        .eq("type", "INCOME")
+        .maybeSingle()
 
-        if (hasDeposit && depositAmount && depositCurrency && depositDate) {
-          try {
-            // Usar la cuenta seleccionada por el usuario, o buscar una por defecto
-            let finalAccountId = depositAccountId
-            if (!finalAccountId) {
-              const accountType = getAccountTypeForDeposit(
-                depositMethod,
-                depositCurrency as "ARS" | "USD"
-              )
-              finalAccountId = await getOrCreateDefaultAccount(
-                accountType,
-                depositCurrency as "ARS" | "USD",
-                user.id,
-                supabase
-              )
-            }
-
-            let exchangeRate: number | null = null
-            if (depositCurrency === "USD") {
-              const rateDate = depositDate ? new Date(depositDate) : new Date()
-              exchangeRate = await getExchangeRate(supabase, rateDate)
-
-              if (!exchangeRate) {
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-                exchangeRate = 1000
-              }
-            }
-
-            const amountArsEquivalent = calculateARSEquivalent(
-              depositAmount,
-              depositCurrency as "ARS" | "USD",
-              exchangeRate
+      if (hasDeposit && depositAmount && depositCurrency && depositDate) {
+        try {
+          // Usar la cuenta seleccionada por el usuario, o buscar una por defecto
+          let finalAccountId = depositAccountId
+          if (!finalAccountId) {
+            const accountType = getAccountTypeForDeposit(
+              depositMethod,
+              depositCurrency as "ARS" | "USD"
             )
+            finalAccountId = await getOrCreateDefaultAccount(
+              accountType,
+              depositCurrency as "ARS" | "USD",
+              user.id,
+              supabase
+            )
+          }
 
-            // Mapear método de pago al método del ledger
-            const method = mapDepositMethodToLedgerMethod(depositMethod)
+          let exchangeRate: number | null = null
+          if (depositCurrency === "USD") {
+            const rateDate = depositDate ? new Date(depositDate) : new Date()
+            exchangeRate = await getExchangeRate(supabase, rateDate)
 
-            if (existingMovement) {
-              const { error: updateError } = await (supabase.from("ledger_movements") as any)
-                .update({
-                  concept: `Depósito recibido de lead: ${lead.contact_name}`,
-                  currency: depositCurrency,
-                  amount_original: depositAmount,
-                  exchange_rate: exchangeRate,
-                  amount_ars_equivalent: amountArsEquivalent,
-                  method: method,
-                  account_id: finalAccountId,
-                  notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
-                })
-                .eq("id", (existingMovement as any).id)
-
-              if (updateError) {
-                console.error("Error updating ledger movement:", updateError)
-              } else {
-                console.log(`✅ Updated ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
-              }
-            } else {
-              await createLedgerMovement(
-                {
-                  lead_id: id,
-                  type: "INCOME",
-                  concept: `Depósito recibido de lead: ${lead.contact_name}`,
-                  currency: depositCurrency,
-                  amount_original: depositAmount,
-                  exchange_rate: exchangeRate,
-                  amount_ars_equivalent: amountArsEquivalent,
-                  method: method,
-                  account_id: finalAccountId,
-                  seller_id: lead.assigned_seller_id || (user.role === "SELLER" ? user.id : null),
-                  receipt_number: null,
-                  notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
-                  created_by: user.id,
-                },
-                supabase
-              )
-              console.log(`✅ Created ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
+            if (!exchangeRate) {
+              exchangeRate = await getLatestExchangeRate(supabase)
             }
-          } catch (error) {
-            console.error("Error creating/updating ledger movement for deposit:", error)
-          }
-        } else if (previousHasDeposit && !hasDeposit && existingMovement) {
-          const { error: deleteError } = await (supabase.from("ledger_movements") as any)
-            .delete()
-            .eq("id", (existingMovement as any).id)
 
-          if (deleteError) {
-            console.error("Error deleting ledger movement:", deleteError)
-          } else {
-            console.log(`✅ Deleted ledger movement for lead ${id} (deposit removed)`)
+            if (!exchangeRate) {
+              console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
+              exchangeRate = 1000
+            }
           }
+
+          const amountArsEquivalent = calculateARSEquivalent(
+            depositAmount,
+            depositCurrency as "ARS" | "USD",
+            exchangeRate
+          )
+
+          // Mapear método de pago al método del ledger
+          const method = mapDepositMethodToLedgerMethod(depositMethod)
+
+          if (existingMovement) {
+            const { error: updateError } = await (supabase.from("ledger_movements") as any)
+              .update({
+                concept: `Depósito recibido de lead: ${lead.contact_name}`,
+                currency: depositCurrency,
+                amount_original: depositAmount,
+                exchange_rate: exchangeRate,
+                amount_ars_equivalent: amountArsEquivalent,
+                method: method,
+                account_id: finalAccountId,
+                notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
+              })
+              .eq("id", (existingMovement as any).id)
+
+            if (updateError) {
+              console.error("Error updating ledger movement:", updateError)
+            } else {
+              console.log(`✅ Updated ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
+            }
+          } else {
+            await createLedgerMovement(
+              {
+                lead_id: id,
+                type: "INCOME",
+                concept: `Depósito recibido de lead: ${lead.contact_name}`,
+                currency: depositCurrency,
+                amount_original: depositAmount,
+                exchange_rate: exchangeRate,
+                amount_ars_equivalent: amountArsEquivalent,
+                method: method,
+                account_id: finalAccountId,
+                seller_id: lead.assigned_seller_id || (user.role === "SELLER" ? user.id : null),
+                receipt_number: null,
+                notes: `Depósito recibido el ${depositDate}. Método: ${depositMethod || "No especificado"}`,
+                created_by: user.id,
+              },
+              supabase
+            )
+            console.log(`✅ Created ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
+          }
+        } catch (error) {
+          console.error("Error creating/updating ledger movement for deposit:", error)
+        }
+      } else if (previousHasDeposit && !hasDeposit && existingMovement) {
+        const { error: deleteError } = await (supabase.from("ledger_movements") as any)
+          .delete()
+          .eq("id", (existingMovement as any).id)
+
+        if (deleteError) {
+          console.error("Error deleting ledger movement:", deleteError)
+        } else {
+          console.log(`✅ Deleted ledger movement for lead ${id} (deposit removed)`)
         }
       }
 
