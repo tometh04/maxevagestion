@@ -23,7 +23,7 @@ export default async function CustomerDetailPage({
   }
 
   // Get operations for this customer
-  const { data: operationCustomers } = await supabase
+  const { data: operationCustomers, error: operationCustomersError } = await supabase
     .from("operation_customers")
     .select(`
       *,
@@ -36,6 +36,10 @@ export default async function CustomerDetailPage({
     `)
     .eq("customer_id", id)
     .order("created_at", { ascending: false })
+  
+  if (operationCustomersError) {
+    console.error("[CustomerDetailPage] Error fetching operation_customers:", operationCustomersError)
+  }
 
   // Get operation IDs for payments and documents
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
@@ -43,12 +47,15 @@ export default async function CustomerDetailPage({
   // Get payments related to customer's operations
   let payments: any[] = []
   if (operationIds.length > 0) {
-    const { data: paymentsData } = await supabase
+    const { data: paymentsData, error: paymentsError } = await supabase
       .from("payments")
       .select("*")
       .in("operation_id", operationIds)
       .eq("payer_type", "CUSTOMER")
       .order("date_due", { ascending: true })
+    if (paymentsError) {
+      console.error("[CustomerDetailPage] Error fetching payments:", paymentsError)
+    }
     payments = paymentsData || []
   }
 
@@ -57,11 +64,15 @@ export default async function CustomerDetailPage({
   let documents: any[] = []
   
   // Documentos directamente vinculados al cliente
-  const { data: customerDocs } = await supabase
+  const { data: customerDocs, error: customerDocsError } = await supabase
     .from("documents")
     .select("*")
     .eq("customer_id", id)
     .order("uploaded_at", { ascending: false })
+  
+  if (customerDocsError) {
+    console.error("[CustomerDetailPage] Error fetching customer documents:", customerDocsError)
+  }
   
   if (customerDocs) {
     documents = [...documents, ...customerDocs]
@@ -69,11 +80,15 @@ export default async function CustomerDetailPage({
   
   // Documentos de las operaciones del cliente
   if (operationIds.length > 0) {
-    const { data: operationDocs } = await supabase
+    const { data: operationDocs, error: operationDocsError } = await supabase
       .from("documents")
       .select("*")
       .in("operation_id", operationIds)
       .order("uploaded_at", { ascending: false })
+    
+    if (operationDocsError) {
+      console.error("[CustomerDetailPage] Error fetching operation documents:", operationDocsError)
+    }
     
     if (operationDocs) {
       // Agregar documentos de operaciones que no estén ya en la lista
@@ -84,6 +99,14 @@ export default async function CustomerDetailPage({
       }
     }
   }
+  
+  // Log para debugging
+  console.log(`[CustomerDetailPage] Customer ${id}:`, {
+    operationCustomersCount: operationCustomers?.length || 0,
+    operationIdsCount: operationIds.length,
+    paymentsCount: payments.length,
+    documentsCount: documents.length
+  })
   
   // Ordenar todos los documentos por fecha
   documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
