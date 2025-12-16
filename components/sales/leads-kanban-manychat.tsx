@@ -359,24 +359,53 @@ export function LeadsKanbanManychat({
 
   return (
     <div className="space-y-4">
-      {/* Selector de lista */}
-      <div className="flex items-center gap-4">
-        <Label htmlFor="list-select" className="text-sm font-medium">
-          Filtrar por lista:
-        </Label>
-        <Select value={selectedListName} onValueChange={setSelectedListName}>
-          <SelectTrigger id="list-select" className="w-[200px]">
-            <SelectValue placeholder="Todas las listas" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Todas las listas</SelectItem>
-            {orderedListNames.map((listName) => (
-              <SelectItem key={listName} value={listName}>
-                {listName} ({leadsByListName[listName]?.length || 0})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Selector de lista y botones de gestión */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <Label htmlFor="list-select" className="text-sm font-medium">
+            Filtrar por lista:
+          </Label>
+          <Select value={selectedListName} onValueChange={setSelectedListName}>
+            <SelectTrigger id="list-select" className="w-[200px]">
+              <SelectValue placeholder="Todas las listas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas las listas</SelectItem>
+              {orderedListNames.map((listName) => (
+                <SelectItem key={listName} value={listName}>
+                  {listName} ({leadsByListName[listName]?.length || 0})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          {(currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN") && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const newListName = prompt("Nombre de la nueva lista:")
+                  if (newListName && newListName.trim()) {
+                    handleCreateList(newListName.trim())
+                  }
+                }}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Nueva Lista
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditOrderDialogOpen(true)}
+              >
+                <Settings2 className="mr-2 h-4 w-4" />
+                Editar Orden
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Kanban Board */}
