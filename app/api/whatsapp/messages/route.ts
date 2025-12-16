@@ -42,7 +42,20 @@ export async function GET(request: Request) {
 
     const customerId = searchParams.get("customerId")
     if (customerId) {
-      query = query.eq("customer_id", customerId)
+      // Obtener operaciones del cliente para incluir mensajes de operaciones
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id")
+        .eq("customer_id", customerId)
+      
+      const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
+      
+      // Incluir mensajes del cliente Y de sus operaciones
+      if (operationIds.length > 0) {
+        query = query.or(`customer_id.eq.${customerId},operation_id.in.(${operationIds.join(",")})`)
+      } else {
+        query = query.eq("customer_id", customerId)
+      }
     }
 
     const limit = parseInt(searchParams.get("limit") || "2000")

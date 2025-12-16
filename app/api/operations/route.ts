@@ -218,14 +218,14 @@ export async function POST(request: Request) {
         for (const operatorData of operatorsList) {
           if (operatorData.cost > 0) {
             try {
-              await createPurchaseIVA(
-                supabase,
-                op.id,
+        await createPurchaseIVA(
+          supabase,
+          op.id,
                 operatorData.operator_id,
                 operatorData.cost,
                 operatorData.cost_currency as "ARS" | "USD",
-                departure_date
-              )
+          departure_date
+        )
               console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
             } catch (error) {
               console.error(`Error creating IVA for operator ${operatorData.operator_id}:`, error)
@@ -266,28 +266,28 @@ export async function POST(request: Request) {
     if (operatorsList.length > 0) {
       for (const operatorData of operatorsList) {
         if (operatorData.cost > 0) {
-          try {
-            const dueDate = calculateDueDate(
-              inferredProductType,
+      try {
+        const dueDate = calculateDueDate(
+          inferredProductType,
               departure_date,
-              checkin_date || undefined,
-              departure_date
-            )
+          checkin_date || undefined,
+          departure_date
+        )
 
-            await createOperatorPayment(
-              supabase,
-              op.id,
+        await createOperatorPayment(
+          supabase,
+          op.id,
               operatorData.operator_id,
               operatorData.cost,
               operatorData.cost_currency as "ARS" | "USD",
-              dueDate,
-              `Pago automático generado para operación ${operation.id}`
-            )
+          dueDate,
+          `Pago automático generado para operación ${operation.id}`
+        )
             console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)
-          } catch (error) {
+      } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
-            // No lanzamos error para no romper la creación de la operación
-          }
+        // No lanzamos error para no romper la creación de la operación
+      }
         }
       }
     }
@@ -503,6 +503,52 @@ export async function POST(request: Request) {
               role: "MAIN"
             })
           console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`)
+          
+          // Transferir documentos del lead al cliente
+          try {
+            const { data: leadDocuments, error: docsError } = await supabase
+              .from("documents")
+              .select("id")
+              .eq("lead_id", lead_id)
+              .is("customer_id", null)
+            
+            if (!docsError && leadDocuments && leadDocuments.length > 0) {
+              const { error: updateDocsError } = await (supabase.from("documents") as any)
+                .update({ customer_id: customerId })
+                .in("id", leadDocuments.map((d: any) => d.id))
+              
+              if (!updateDocsError) {
+                console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
+              } else {
+                console.error("Error transferring documents:", updateDocsError)
+              }
+            }
+          } catch (error) {
+            console.error("Error transferring documents from lead to customer:", error)
+          }
+          
+          // Transferir documentos del lead a la operación también
+          try {
+            const { data: leadDocsForOp, error: docsOpError } = await supabase
+              .from("documents")
+              .select("id")
+              .eq("lead_id", lead_id)
+              .is("operation_id", null)
+            
+            if (!docsOpError && leadDocsForOp && leadDocsForOp.length > 0) {
+              const { error: updateDocsOpError } = await (supabase.from("documents") as any)
+                .update({ operation_id: operation.id })
+                .in("id", leadDocsForOp.map((d: any) => d.id))
+              
+              if (!updateDocsOpError) {
+                console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
+              } else {
+                console.error("Error transferring documents to operation:", updateDocsOpError)
+              }
+            }
+          } catch (error) {
+            console.error("Error transferring documents from lead to operation:", error)
+          }
         }
       }
       

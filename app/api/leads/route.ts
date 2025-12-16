@@ -58,6 +58,11 @@ export async function GET(request: Request) {
       query = query.eq("trello_list_id", trelloListId)
     }
 
+    const source = searchParams.get("source")
+    if (source && source !== "ALL") {
+      query = query.eq("source", source)
+    }
+
     // Add pagination: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")

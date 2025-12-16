@@ -141,7 +141,9 @@ export function EditLeadDialog({
 }: EditLeadDialogProps) {
   const [loading, setLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
-  const isFromTrello = lead ? (lead.source === "Trello" && lead.trello_url) : false
+  // Solo bloquear edición si el lead está sincronizado activamente con Trello (tiene external_id)
+  // Los leads de Manychat que crean tarjetas pero no están sincronizados pueden editarse completamente
+  const isSyncedWithTrello = lead ? (lead.source === "Trello" && lead.external_id && lead.trello_url) : false
 
   // Cargar cuentas financieras
   useEffect(() => {
@@ -161,9 +163,9 @@ export function EditLeadDialog({
     }
   }, [open])
 
-  // Usar el esquema de Trello si es un lead de Trello
+  // Usar el esquema de Trello solo si está sincronizado con Trello
   const form = useForm<LeadFormValues>({
-    resolver: zodResolver(isFromTrello ? trelloLeadSchema : leadSchema) as any,
+    resolver: zodResolver(isSyncedWithTrello ? trelloLeadSchema : leadSchema) as any,
     defaultValues: {
       agency_id: "",
       source: "Other",
@@ -249,21 +251,11 @@ export function EditLeadDialog({
       let updateData: any = {
         ...values,
         assigned_seller_id: values.assigned_seller_id === "none" ? null : values.assigned_seller_id,
-        deposit_currency: values.deposit_currency === "none" ? null : values.deposit_currency,
-        deposit_date: values.deposit_date ? (values.deposit_date instanceof Date ? values.deposit_date.toISOString().split("T")[0] : values.deposit_date) : null,
-        estimated_checkin_date: values.estimated_checkin_date ? (values.estimated_checkin_date instanceof Date ? values.estimated_checkin_date.toISOString().split("T")[0] : values.estimated_checkin_date) : null,
-        estimated_departure_date: values.estimated_departure_date ? (values.estimated_departure_date instanceof Date ? values.estimated_departure_date.toISOString().split("T")[0] : values.estimated_departure_date) : null,
-        follow_up_date: values.follow_up_date ? (values.follow_up_date instanceof Date ? values.follow_up_date.toISOString().split("T")[0] : values.follow_up_date) : null,
       }
 
-      // Procesar deposit_account_id
-      if (updateData.deposit_account_id === "none") {
-        updateData.deposit_account_id = null
-      }
-
-      // Si es de Trello, solo enviar campos permitidos
-      if (isFromTrello) {
-        const allowedFields = ["assigned_seller_id", "notes", "quoted_price", "has_deposit", "deposit_amount", "deposit_currency", "deposit_method", "deposit_date", "deposit_account_id"]
+      // Si está sincronizado con Trello, solo enviar campos permitidos
+      if (isSyncedWithTrello) {
+        const allowedFields = ["assigned_seller_id", "notes"]
         const filteredData: any = {}
         for (const field of allowedFields) {
           if (updateData[field] !== undefined) {
@@ -303,7 +295,7 @@ export function EditLeadDialog({
         <DialogHeader>
           <DialogTitle>Editar Lead</DialogTitle>
           <DialogDescription>
-            {isFromTrello && (
+            {isSyncedWithTrello && (
               <span className="text-amber-600 dark:text-amber-400">
                 ⚠️ Este lead está sincronizado con Trello. Solo puedes editar ciertos campos.
               </span>
@@ -327,7 +319,7 @@ export function EditLeadDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Agencia</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isFromTrello}>
+                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar agencia" />
@@ -352,7 +344,7 @@ export function EditLeadDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Origen</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isFromTrello}>
+                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar origen" />
@@ -377,7 +369,7 @@ export function EditLeadDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Estado</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isFromTrello}>
+                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar estado" />
@@ -402,7 +394,7 @@ export function EditLeadDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Región</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isFromTrello}>
+                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Seleccionar región" />
@@ -430,7 +422,7 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Destino</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: Cancún, México" {...field} disabled={!!isFromTrello} />
+                          <Input placeholder="Ej: Cancún, México" {...field} disabled={!!isSyncedWithTrello} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -484,7 +476,7 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Nombre de Contacto</FormLabel>
                         <FormControl>
-                          <Input placeholder="Nombre completo" {...field} disabled={!!isFromTrello} />
+                          <Input placeholder="Nombre completo" {...field} disabled={!!isSyncedWithTrello} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -498,7 +490,7 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Teléfono</FormLabel>
                         <FormControl>
-                          <Input placeholder="+54 11 1234-5678" {...field} disabled={!!isFromTrello} />
+                          <Input placeholder="+54 11 1234-5678" {...field} disabled={!!isSyncedWithTrello} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -512,7 +504,7 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Email</FormLabel>
                         <FormControl>
-                          <Input type="email" placeholder="email@ejemplo.com" {...field} disabled={!!isFromTrello} />
+                          <Input type="email" placeholder="email@ejemplo.com" {...field} disabled={!!isSyncedWithTrello} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -526,7 +518,7 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Instagram</FormLabel>
                         <FormControl>
-                          <Input placeholder="@usuario" {...field} disabled={!!isFromTrello} />
+                          <Input placeholder="@usuario" {...field} disabled={!!isSyncedWithTrello} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -551,305 +543,6 @@ export function EditLeadDialog({
                     </FormItem>
                   )}
                 />
-              </CardContent>
-            </Card>
-
-            {/* Información Financiera */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Información Financiera</CardTitle>
-                <CardDescription>Precios y depósitos</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="quoted_price"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Precio Cotizado</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          placeholder="0"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <Separator />
-
-                <FormField
-                  control={form.control}
-                  name="has_deposit"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 bg-muted/50">
-                      <div className="space-y-0.5">
-                        <FormLabel className="text-base font-semibold">Tiene depósito recibido?</FormLabel>
-                        <p className="text-sm text-muted-foreground">
-                          Activa esta opción si el cliente ya realizó un depósito
-                        </p>
-                      </div>
-                      <FormControl>
-                        <Switch checked={field.value} onCheckedChange={field.onChange} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                {form.watch("has_deposit") && (
-                  <div className="space-y-4 pt-2">
-                    <div className="grid gap-4 md:grid-cols-3">
-                      <FormField
-                        control={form.control}
-                        name="deposit_amount"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Monto del Depósito</FormLabel>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                placeholder="0"
-                                {...field}
-                                value={field.value || ""}
-                                onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="deposit_currency"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Moneda</FormLabel>
-                            <Select 
-                              onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
-                              value={field.value || "none"}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="none">Seleccionar</SelectItem>
-                                <SelectItem value="ARS">ARS</SelectItem>
-                                <SelectItem value="USD">USD</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="deposit_date"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>Fecha del Depósito</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant={"outline"}
-                                    className={cn(
-                                      "w-full pl-3 text-left font-normal",
-                                      !field.value && "text-muted-foreground"
-                                    )}
-                                  >
-                                    {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value || undefined}
-                                  onSelect={field.onChange}
-                                  disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
-                                  initialFocus
-                                />
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <FormField
-                        control={form.control}
-                        name="deposit_method"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Método de Pago</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Ej: Transferencia, Efectivo, Mercado Pago, etc." {...field} value={field.value || ""} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="deposit_account_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Cuenta donde ingresó 💰</FormLabel>
-                            <Select 
-                              onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
-                              value={field.value || "none"}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Seleccionar cuenta" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="none">Seleccionar cuenta</SelectItem>
-                                {financialAccounts
-                                  .filter(acc => !form.watch("deposit_currency") || form.watch("deposit_currency") === "none" || acc.currency === form.watch("deposit_currency"))
-                                  .map((account) => (
-                                    <SelectItem key={account.id} value={account.id}>
-                                      {account.name} ({account.currency})
-                                    </SelectItem>
-                                  ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Fechas Importantes</CardTitle>
-                <CardDescription>Fechas para recordatorios y seguimiento</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="estimated_checkin_date"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Fecha Estimada de Check-in</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full pl-3 text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar</span>}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value || undefined}
-                              onSelect={field.onChange}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="estimated_departure_date"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Fecha Estimada de Salida</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full pl-3 text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar</span>}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value || undefined}
-                              onSelect={field.onChange}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="follow_up_date"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-col">
-                        <FormLabel>Fecha de Seguimiento</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant={"outline"}
-                                className={cn(
-                                  "w-full pl-3 text-left font-normal",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar</span>}
-                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={field.value || undefined}
-                              onSelect={field.onChange}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
               </CardContent>
             </Card>
 

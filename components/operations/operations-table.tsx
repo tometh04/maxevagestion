@@ -172,6 +172,18 @@ export function OperationsTable({
   const columns: ColumnDef<Operation>[] = useMemo(
     () => [
       {
+        id: "searchText",
+        accessorFn: (row) => {
+          // Texto de búsqueda que incluye destino, cliente y otros campos
+          const destination = row.destination || row.leads?.destination || ""
+          const customerName = row.customer_name || row.leads?.contact_name || ""
+          const trelloUrl = row.leads?.trello_url || ""
+          return `${destination} ${customerName} ${trelloUrl}`.toLowerCase()
+        },
+        enableHiding: false,
+        enableSorting: false,
+      },
+      {
         accessorKey: "operation_date",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Fecha" />
@@ -210,11 +222,16 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Destino" />
         ),
-        cell: ({ row }) => (
-          <div className="max-w-[100px] truncate text-xs" title={row.original.destination}>
-            {row.original.destination}
-          </div>
-        ),
+        enableHiding: false, // No permitir ocultar esta columna importante
+        cell: ({ row }) => {
+          // Priorizar destino de la operación, si no existe usar el destino del lead
+          const destination = row.original.destination || row.original.leads?.destination || "-"
+          return (
+            <div className="max-w-[120px] truncate text-xs font-medium" title={destination}>
+              {destination}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "departure_date",
@@ -403,7 +420,7 @@ export function OperationsTable({
         <DataTable 
           columns={columns} 
           data={operations} 
-          searchKey="destination" 
+          searchKey="searchText" 
           searchPlaceholder="Buscar por destino o card..."
           showPagination={false}
         />

@@ -20,36 +20,16 @@ export async function GET(request: Request) {
     // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build query
-    let query = supabase
-      .from("customers")
-      .select(`
-        *,
-        operation_customers(
-          operation_id,
-          operations:operation_id(
-            id,
-            sale_amount_total,
-            currency,
-            status
-          )
-        )
-      `)
+    // Build base query
+    let query = supabase.from("customers")
 
-    // Apply role-based filters
+    // Apply role-based filters FIRST (before select)
     try {
       query = await applyCustomersFilters(query, user, agencyIds, supabase)
+      console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters`)
     } catch (error: any) {
       console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })
-    }
-
-    // Apply search filter
-    const search = searchParams.get("search")
-    if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
     }
 
     // Add pagination with reasonable limits
@@ -57,7 +37,30 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = parseInt(searchParams.get("offset") || "0")
     
-    const { data: customers, error } = await query
+    // Apply search filter and select with relations
+    const search = searchParams.get("search")
+    let selectQuery = query.select(`
+      *,
+      operation_customers(
+        operation_id,
+        operations:operation_id(
+          id,
+          sale_amount_total,
+          currency,
+          status
+        )
+      )
+    `)
+    
+    // Apply search filter AFTER select (or() is only available after select)
+    if (search) {
+      selectQuery = selectQuery.or(
+        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+      )
+    }
+    
+    // Now add order and range
+    const { data: customers, error } = await selectQuery
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
@@ -65,6 +68,8 @@ export async function GET(request: Request) {
       console.error("Error fetching customers:", error)
       return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
     }
+
+    console.log(`[Customers API] Found ${customers?.length || 0} customers`)
 
     // Calculate trips and total spent for each customer
     const customersWithStats = (customers || []).map((customer: any) => {
@@ -89,9 +94,7 @@ export async function GET(request: Request) {
     })
 
     // Get total count for pagination
-    let countQuery = supabase
-      .from("customers")
-      .select("*", { count: "exact", head: true })
+    let countQuery = supabase.from("customers")
     
     try {
       countQuery = await applyCustomersFilters(countQuery, user, agencyIds, supabase)
@@ -99,13 +102,16 @@ export async function GET(request: Request) {
       // Ignore if filtering fails
     }
     
+    // Apply select first, then search filter (or() is only available after select)
+    let countSelectQuery = countQuery.select("*", { count: "exact", head: true })
+    
     if (search) {
-      countQuery = countQuery.or(
+      countSelectQuery = countSelectQuery.or(
         `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
       )
     }
     
-    const { count } = await countQuery
+    const { count } = await countSelectQuery
 
     return NextResponse.json({ 
       customers: customersWithStats,

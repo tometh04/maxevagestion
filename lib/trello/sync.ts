@@ -340,30 +340,10 @@ export async function syncTrelloCardToLead(
     attachmentsInfo = card.attachments.map((att: any) => att.name).join(", ")
   }
 
-  // Construir notas completas con TODA la información de Trello
-  let fullNotes = card.desc || ""
-  
-  // Agregar información de checklists si existe
-  if (checklistsInfo) {
-    fullNotes += (fullNotes ? "\n\n" : "") + `📋 Checklists: ${checklistsInfo}`
-  }
-  
-  // Agregar información de attachments si existe
-  if (attachmentsInfo) {
-    fullNotes += (fullNotes ? "\n\n" : "") + `📎 Attachments: ${attachmentsInfo}`
-  }
-  
-  // Agregar información de due date si existe
-  if (card.due) {
-    const dueDate = new Date(card.due)
-    fullNotes += (fullNotes ? "\n\n" : "") + `📅 Due Date: ${dueDate.toLocaleDateString()} ${card.dueComplete ? "✅ Completed" : ""}`
-  }
-  
-  // Agregar información de labels si existen
-  if (card.labels && card.labels.length > 0) {
-    const labelsNames = card.labels.map((l: any) => l.name).join(", ")
-    fullNotes += (fullNotes ? "\n\n" : "") + `🏷️ Labels: ${labelsNames}`
-  }
+  // IMPORTANTE: La descripción debe ser SOLO la descripción de Trello (card.desc)
+  // Sin agregar checklists, attachments, labels, etc.
+  // Esto es para mantener la descripción limpia y editable en el sistema
+  const fullNotes = card.desc || null
 
   // Preparar datos completos de Trello para guardar en JSONB
   const trelloFullData = {

@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
+import { extractCustomerName, normalizePhone } from "@/lib/customers/utils"
 
 interface Customer {
   id: string
@@ -48,13 +49,25 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       const params = new URLSearchParams()
       if (filters.search) params.append("search", filters.search)
 
-      const response = await fetch(`/api/customers?${params.toString()}`)
+      const url = `/api/customers?${params.toString()}`
+      console.log("[CustomersTable] Fetching:", url)
+      
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
+        console.log("[CustomersTable] Response:", { 
+          customersCount: data.customers?.length || 0,
+          total: data.pagination?.total || 0 
+        })
         setCustomers(data.customers || [])
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("[CustomersTable] Error:", response.status, errorData)
+        setCustomers([])
       }
     } catch (error) {
-      console.error("Error fetching customers:", error)
+      console.error("[CustomersTable] Exception:", error)
+      setCustomers([])
     } finally {
       setLoading(false)
     }
@@ -71,32 +84,45 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Nombre" />
         ),
-        cell: ({ row }) => (
-          <div>
-            {row.original.first_name} {row.original.last_name}
-          </div>
-        ),
+        cell: ({ row }) => {
+          // Extraer nombre inteligentemente del campo first_name
+          const fullName = `${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()
+          const extractedName = extractCustomerName(fullName || row.original.first_name || "")
+          return (
+            <div className="font-medium">
+              {extractedName || fullName || "-"}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "phone",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Teléfono" />
         ),
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <span>{row.original.phone}</span>
-            {row.original.phone && (
+        cell: ({ row }) => {
+          const normalizedPhone = normalizePhone(row.original.phone)
+          const fullName = `${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()
+          const customerName = extractCustomerName(fullName || row.original.first_name || "")
+          
+          if (!normalizedPhone) {
+            return <div className="text-muted-foreground">-</div>
+          }
+          
+          return (
+            <div className="flex items-center gap-2">
+              <span>{normalizedPhone}</span>
               <QuickWhatsAppButton
-                phone={row.original.phone}
-                customerName={`${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()}
+                phone={normalizedPhone}
+                customerName={customerName || fullName}
                 customerId={row.original.id}
                 agencyId={row.original.agency_id || ""}
                 variant="icon"
                 size="icon"
               />
-            )}
-          </div>
-        ),
+            </div>
+          )
+        },
       },
       {
         accessorKey: "email",
@@ -184,8 +210,7 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
     <DataTable
       columns={columns}
       data={customers}
-      searchKey="email"
-      searchPlaceholder="Buscar por email..."
+      // No usar searchKey aquí porque ya hay un filtro de búsqueda arriba
     />
   )
 }
