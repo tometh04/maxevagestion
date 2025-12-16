@@ -32,33 +32,35 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
 
-    // Apply search filter
-    const search = searchParams.get("search")
-    if (search) {
-      query = query.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
-    }
-
     // Add pagination with reasonable limits
     const requestedLimit = parseInt(searchParams.get("limit") || "100")
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = parseInt(searchParams.get("offset") || "0")
     
-    // Now add select with relations, order and range
-    const { data: customers, error } = await query
-      .select(`
-        *,
-        operation_customers(
-          operation_id,
-          operations:operation_id(
-            id,
-            sale_amount_total,
-            currency,
-            status
-          )
+    // Apply search filter and select with relations
+    const search = searchParams.get("search")
+    let selectQuery = query.select(`
+      *,
+      operation_customers(
+        operation_id,
+        operations:operation_id(
+          id,
+          sale_amount_total,
+          currency,
+          status
         )
-      `)
+      )
+    `)
+    
+    // Apply search filter AFTER select (or() is only available after select)
+    if (search) {
+      selectQuery = selectQuery.or(
+        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+      )
+    }
+    
+    // Now add order and range
+    const { data: customers, error } = await selectQuery
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
@@ -100,14 +102,16 @@ export async function GET(request: Request) {
       // Ignore if filtering fails
     }
     
+    // Apply select first, then search filter (or() is only available after select)
+    let countSelectQuery = countQuery.select("*", { count: "exact", head: true })
+    
     if (search) {
-      countQuery = countQuery.or(
+      countSelectQuery = countSelectQuery.or(
         `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
       )
     }
     
-    const { count } = await countQuery
-      .select("*", { count: "exact", head: true })
+    const { count } = await countSelectQuery
 
     return NextResponse.json({ 
       customers: customersWithStats,
