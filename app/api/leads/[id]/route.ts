@@ -312,7 +312,6 @@ export async function PATCH(
           }
         }
       }
-    }
 
     const { data: updatedLead } = await supabase
       .from("leads")
