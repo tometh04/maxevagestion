@@ -50,12 +50,42 @@ export default async function CustomerDetailPage({
     payments = paymentsData || []
   }
 
-  // Get documents
-  const { data: documents } = await supabase
+  // Get documents - incluir documentos del cliente Y de sus operaciones
+  const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
+  
+  let documents: any[] = []
+  
+  // Documentos directamente vinculados al cliente
+  const { data: customerDocs } = await supabase
     .from("documents")
     .select("*")
     .eq("customer_id", id)
     .order("uploaded_at", { ascending: false })
+  
+  if (customerDocs) {
+    documents = [...documents, ...customerDocs]
+  }
+  
+  // Documentos de las operaciones del cliente
+  if (operationIds.length > 0) {
+    const { data: operationDocs } = await supabase
+      .from("documents")
+      .select("*")
+      .in("operation_id", operationIds)
+      .order("uploaded_at", { ascending: false })
+    
+    if (operationDocs) {
+      // Agregar documentos de operaciones que no estén ya en la lista
+      for (const doc of operationDocs) {
+        if (!documents.find(d => d.id === doc.id)) {
+          documents.push(doc)
+        }
+      }
+    }
+  }
+  
+  // Ordenar todos los documentos por fecha
+  documents.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
   const operations = (operationCustomers || []).map((oc: any) => oc.operations).filter(Boolean)
 
