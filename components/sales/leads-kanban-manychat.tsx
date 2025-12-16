@@ -389,7 +389,81 @@ export function LeadsKanbanManychat({
               <Card className="h-full">
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-sm">{listName}</h3>
+                    <div className="flex items-center gap-2 flex-1">
+                      {editingListName === listName ? (
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="text"
+                            value={newListNameValue}
+                            onChange={(e) => setNewListNameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                handleSaveListName(listName)
+                              } else if (e.key === "Escape") {
+                                setEditingListName(null)
+                                setNewListNameValue("")
+                              }
+                            }}
+                            className="flex-1 px-2 py-1 text-sm border rounded"
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2"
+                            onClick={() => handleSaveListName(listName)}
+                          >
+                            Guardar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-2"
+                            onClick={() => {
+                              setEditingListName(null)
+                              setNewListNameValue("")
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <>
+                          <h3 className="font-semibold text-sm">{listName}</h3>
+                          {(currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN") && (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setEditingListName(listName)
+                                  setNewListNameValue(listName)
+                                }}
+                                title="Editar nombre"
+                              >
+                                <Settings2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (confirm(`¿Eliminar la lista "${listName}"? Esto solo eliminará la lista si no tiene leads.`)) {
+                                    handleDeleteList(listName)
+                                  }
+                                }}
+                                title="Eliminar lista"
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                     <Badge variant="secondary">{listLeads.length}</Badge>
                   </div>
                   
