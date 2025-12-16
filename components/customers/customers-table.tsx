@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
+import { extractCustomerName, normalizePhone } from "@/lib/customers/utils"
 
 interface Customer {
   id: string
@@ -83,32 +84,45 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Nombre" />
         ),
-        cell: ({ row }) => (
-          <div>
-            {row.original.first_name} {row.original.last_name}
-          </div>
-        ),
+        cell: ({ row }) => {
+          // Extraer nombre inteligentemente del campo first_name
+          const fullName = `${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()
+          const extractedName = extractCustomerName(fullName || row.original.first_name || "")
+          return (
+            <div className="font-medium">
+              {extractedName || fullName || "-"}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "phone",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Teléfono" />
         ),
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <span>{row.original.phone}</span>
-            {row.original.phone && (
+        cell: ({ row }) => {
+          const normalizedPhone = normalizePhone(row.original.phone)
+          const fullName = `${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()
+          const customerName = extractCustomerName(fullName || row.original.first_name || "")
+          
+          if (!normalizedPhone) {
+            return <div className="text-muted-foreground">-</div>
+          }
+          
+          return (
+            <div className="flex items-center gap-2">
+              <span>{normalizedPhone}</span>
               <QuickWhatsAppButton
-                phone={row.original.phone}
-                customerName={`${row.original.first_name || ""} ${row.original.last_name || ""}`.trim()}
+                phone={normalizedPhone}
+                customerName={customerName || fullName}
                 customerId={row.original.id}
                 agencyId={row.original.agency_id || ""}
                 variant="icon"
                 size="icon"
               />
-            )}
-          </div>
-        ),
+            </div>
+          )
+        },
       },
       {
         accessorKey: "email",
