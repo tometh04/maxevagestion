@@ -296,7 +296,12 @@ export async function PATCH(
     delete updateData.created_at
     delete updateData.external_id
     delete updateData.trello_url
-    delete updateData.trello_list_id
+    // Para leads de Manychat, permitir actualizar list_name
+    // Para leads de Trello, NO permitir actualizar list_name (se sincroniza desde Trello)
+    if (lead.source === "Trello") {
+      delete updateData.list_name
+      delete updateData.trello_list_id
+    }
 
     const { error } = await (supabase.from("leads") as any)
       .update(updateData)

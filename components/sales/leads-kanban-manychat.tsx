@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, DollarSign, UserPlus, Loader2, Settings2 } from "lucide-react"
+import { ExternalLink, DollarSign, UserPlus, Loader2, Settings2, Plus } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -86,9 +86,87 @@ export function LeadsKanbanManychat({
   const [selectedListName, setSelectedListName] = useState<string>("ALL")
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
   const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false)
+  const [draggedLead, setDraggedLead] = useState<string | null>(null)
 
   // Determinar si el usuario puede "agarrar" leads
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
+
+  // Drag and drop de leads entre listas
+  const handleDragStart = (leadId: string) => {
+    setDraggedLead(leadId)
+  }
+
+  const handleDrop = async (targetListName: string) => {
+    if (!draggedLead) return
+
+    // Encontrar el lead
+    const lead = leads.find((l) => l.id === draggedLead)
+    if (!lead) {
+      setDraggedLead(null)
+      return
+    }
+
+    // No hacer nada si se suelta en la misma lista
+    if (lead.list_name === targetListName) {
+      setDraggedLead(null)
+      return
+    }
+
+    // Actualizar list_name del lead (funciona para Manychat y Trello migrados)
+    try {
+      const response = await fetch(`/api/leads/${draggedLead}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ list_name: targetListName }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success(`Lead movido a "${targetListName}"`)
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        console.error("Error moviendo lead:", data.error)
+        toast.error(data.error || "Error al mover lead")
+      }
+    } catch (error) {
+      console.error("Error updating lead list:", error)
+      toast.error("Error al mover lead")
+    } finally {
+      setDraggedLead(null)
+    }
+  }
+
+  const handleCreateList = async (listName: string) => {
+    try {
+      const response = await fetch("/api/manychat/lists", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agencyId,
+          listName,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        toast.success(`Lista "${listName}" creada correctamente`)
+        // Recargar orden de listas
+        fetchListOrder()
+        if (onRefresh) {
+          onRefresh()
+        }
+      } else {
+        toast.error(data.error || "Error al crear lista")
+      }
+    } catch (error: any) {
+      console.error("Error creating list:", error)
+      toast.error("Error al crear lista")
+    }
+  }
 
   // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
@@ -252,7 +330,14 @@ export function LeadsKanbanManychat({
                   </div>
                   
                   <ScrollArea className="h-[calc(100vh-250px)]">
-                    <div className="space-y-2">
+                    <div
+                      className="space-y-2"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        handleDrop(listName)
+                      }}
+                    >
                       {listLeads.length === 0 ? (
                         <div className="text-center text-muted-foreground text-sm py-8">
                           Sin leads
@@ -262,9 +347,13 @@ export function LeadsKanbanManychat({
                           <Card
                             key={lead.id}
                             className="cursor-pointer hover:shadow-md transition-shadow"
+                            draggable
+                            onDragStart={() => handleDragStart(lead.id)}
                             onClick={() => {
-                              setSelectedLead(lead)
-                              setDialogOpen(true)
+                              if (!draggedLead) {
+                                setSelectedLead(lead)
+                                setDialogOpen(true)
+                              }
                             }}
                           >
                             <CardContent className="p-3">
