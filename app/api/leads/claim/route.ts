@@ -7,10 +7,12 @@ import { getCurrentUser } from "@/lib/auth"
  * Permite a un vendedor "agarrar" un lead sin asignar
  * 
  * Lógica:
- * 1. Verificar que el lead está sin asignar
- * 2. Buscar la lista de Trello del vendedor (lista con su nombre)
- * 3. Mover la card en Trello a la lista del vendedor
- * 4. Actualizar assigned_seller_id y trello_list_id en la DB
+ * - Para leads de Manychat: Solo actualizar assigned_seller_id (NO sincronizar con Trello)
+ * - Para leads de Trello: Sincronizar con Trello si está configurado
+ *   1. Verificar que el lead está sin asignar
+ *   2. Buscar la lista de Trello del vendedor (lista con su nombre)
+ *   3. Mover la card en Trello a la lista del vendedor
+ *   4. Actualizar assigned_seller_id y trello_list_id en la DB
  */
 export async function POST(request: Request) {
   try {
@@ -32,7 +34,7 @@ export async function POST(request: Request) {
     // 1. Obtener el lead
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id, agency_id, assigned_seller_id, external_id")
+      .select("id, agency_id, assigned_seller_id, external_id, source")
       .eq("id", leadId)
       .single()
 
@@ -41,14 +43,38 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 
+    const leadData = lead as any
+
     // 2. Verificar que el lead está sin asignar
-    if ((lead as any).assigned_seller_id) {
+    if (leadData.assigned_seller_id) {
       return NextResponse.json({ 
         error: "Este lead ya está asignado a otro vendedor" 
       }, { status: 400 })
     }
 
-    // 3. Obtener el nombre del vendedor para buscar su lista
+    // 3. Si el lead es de Manychat, NO sincronizar con Trello - solo asignar en DB
+    if (leadData.source === "Manychat") {
+      const { error: updateError } = await (supabase
+        .from("leads") as any)
+        .update({
+          assigned_seller_id: user.id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", leadId)
+
+      if (updateError) {
+        console.error("❌ Error updating lead:", updateError)
+        return NextResponse.json({ error: "Error al asignar el lead" }, { status: 500 })
+      }
+
+      return NextResponse.json({ 
+        success: true, 
+        message: "Lead asignado correctamente" 
+      })
+    }
+
+    // 4. Para leads de Trello, sincronizar con Trello si está configurado
+    // Obtener el nombre del vendedor para buscar su lista
     const { data: seller, error: sellerError } = await supabase
       .from("users")
       .select("name")
@@ -62,11 +88,11 @@ export async function POST(request: Request) {
 
     const sellerName = (seller as any).name
 
-    // 4. Obtener configuración de Trello de la agencia
+    // 5. Obtener configuración de Trello de la agencia
     const { data: trelloConfig, error: configError } = await supabase
       .from("settings_trello")
       .select("trello_api_key, trello_token, board_id")
-      .eq("agency_id", (lead as any).agency_id)
+      .eq("agency_id", leadData.agency_id)
       .single()
 
     if (configError || !trelloConfig) {
@@ -149,10 +175,10 @@ export async function POST(request: Request) {
       })
     }
 
-    // 6. Mover la card en Trello a la lista del vendedor
-    if ((lead as any).external_id) {
+    // 6. Mover la card en Trello a la lista del vendedor (solo si tiene external_id)
+    if (leadData.external_id) {
       const moveResponse = await fetch(
-        `https://api.trello.com/1/cards/${(lead as any).external_id}?key=${config.trello_api_key}&token=${config.trello_token}`,
+        `https://api.trello.com/1/cards/${leadData.external_id}?key=${config.trello_api_key}&token=${config.trello_token}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

@@ -55,7 +55,7 @@ interface Lead {
 
 interface ListInfo {
   name: string
-  id: string // ID de la lista de Trello (solo para referencia visual)
+  id: string // ID temporal para referencia visual
 }
 
 interface LeadsKanbanManychatProps {
@@ -79,7 +79,7 @@ export function LeadsKanbanManychat({
   currentUserId, 
   currentUserRole 
 }: LeadsKanbanManychatProps) {
-  const [trelloLists, setTrelloLists] = useState<ListInfo[]>([])
+  const [listOrder, setListOrder] = useState<ListInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -114,7 +114,7 @@ export function LeadsKanbanManychat({
       return
     }
 
-    // Actualizar list_name del lead (funciona para Manychat y Trello migrados)
+    // Actualizar list_name del lead (solo para Manychat - independiente de Trello)
     try {
       const response = await fetch(`/api/leads/${draggedLead}`, {
         method: "PATCH",
@@ -279,11 +279,11 @@ export function LeadsKanbanManychat({
           name: name,
           id: `manychat-${index}`, // ID temporal, no se usa pero lo necesitamos para el tipo
         }))
-        setTrelloLists(listsInfo)
+        setListOrder(listsInfo)
       } else {
         console.warn("⚠️ No se encontró orden de listas. Usando orden alfabético.")
         // Si no hay orden, usar orden alfabético como fallback
-        setTrelloLists([])
+        setListOrder([])
       }
     } catch (error) {
       console.error("❌ Error fetching manychat list order:", error)
@@ -302,17 +302,16 @@ export function LeadsKanbanManychat({
     }
   }, [agencyId, fetchListOrder])
 
-    // Agrupar leads por list_name (Manychat + Trello migrados)
-    // Usar las listas de Trello como referencia para el orden, pero agrupar por list_name
+    // Agrupar leads por list_name (Manychat - independiente de Trello)
     const leadsByListName = useMemo(() => {
       const grouped: Record<string, Lead[]> = {}
       
-      // Inicializar con todas las listas de Trello (para mantener el orden)
-      trelloLists.forEach(list => {
+      // Inicializar con todas las listas del orden guardado (para mantener el orden)
+      listOrder.forEach(list => {
         grouped[list.name] = []
       })
       
-      // Agrupar leads por list_name (tanto Manychat como Trello migrados)
+      // Agrupar leads por list_name
       leads.forEach(lead => {
         if (lead.list_name) {
           const listName = lead.list_name.trim()
@@ -324,16 +323,16 @@ export function LeadsKanbanManychat({
       })
       
       return grouped
-    }, [leads, trelloLists])
+    }, [leads, listOrder])
 
   // Ordenar listas según el orden guardado en manychat_list_order
   // Si una lista no está en el orden guardado, agregarla al final
   const orderedListNames = useMemo(() => {
-    const savedListNames = new Set(trelloLists.map(l => l.name))
+    const savedListNames = new Set(listOrder.map(l => l.name))
     const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
     
     // Primero las listas guardadas en orden (solo las que tienen leads)
-    const ordered: string[] = trelloLists
+    const ordered: string[] = listOrder
       .map(l => l.name)
       .filter(name => actualListNames.has(name))
     
@@ -342,7 +341,7 @@ export function LeadsKanbanManychat({
     ordered.push(...additionalLists.sort()) // Orden alfabético para las nuevas
     
     return ordered
-  }, [trelloLists, leadsByListName])
+  }, [listOrder, leadsByListName])
 
   // Filtrar listas según el selector
   const filteredListNames = selectedListName === "ALL"
