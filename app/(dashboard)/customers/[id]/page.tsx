@@ -77,8 +77,8 @@ export default async function CustomerDetailPage({
     
     if (operationDocs) {
       // Agregar documentos de operaciones que no estén ya en la lista
-      for (const doc of operationDocs) {
-        if (!documents.find(d => d.id === doc.id)) {
+      for (const doc of operationDocs as any[]) {
+        if (!documents.find((d: any) => d.id === (doc as any).id)) {
           documents.push(doc)
         }
       }
@@ -86,7 +86,7 @@ export default async function CustomerDetailPage({
   }
   
   // Ordenar todos los documentos por fecha
-  documents.sort((a, b) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+  documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
   const operations = (operationCustomers || []).map((oc: any) => oc.operations).filter(Boolean)
 

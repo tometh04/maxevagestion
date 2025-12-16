@@ -513,10 +513,9 @@ export async function POST(request: Request) {
               .is("customer_id", null)
             
             if (!docsError && leadDocuments && leadDocuments.length > 0) {
-              const { error: updateDocsError } = await supabase
-                .from("documents")
+              const { error: updateDocsError } = await (supabase.from("documents") as any)
                 .update({ customer_id: customerId })
-                .in("id", leadDocuments.map(d => d.id))
+                .in("id", leadDocuments.map((d: any) => d.id))
               
               if (!updateDocsError) {
                 console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
@@ -537,10 +536,9 @@ export async function POST(request: Request) {
               .is("operation_id", null)
             
             if (!docsOpError && leadDocsForOp && leadDocsForOp.length > 0) {
-              const { error: updateDocsOpError } = await supabase
-                .from("documents")
+              const { error: updateDocsOpError } = await (supabase.from("documents") as any)
                 .update({ operation_id: operation.id })
-                .in("id", leadDocsForOp.map(d => d.id))
+                .in("id", leadDocsForOp.map((d: any) => d.id))
               
               if (!updateDocsOpError) {
                 console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
