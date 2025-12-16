@@ -52,6 +52,9 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       if (response.ok) {
         const data = await response.json()
         setCustomers(data.customers || [])
+      } else {
+        const errorData = await response.json().catch(() => ({}))
+        console.error("Error fetching customers:", response.status, errorData)
       }
     } catch (error) {
       console.error("Error fetching customers:", error)
@@ -66,6 +69,18 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
 
   const columns: ColumnDef<Customer>[] = useMemo(
     () => [
+      {
+        id: "searchText",
+        accessorFn: (row) => {
+          // Texto de búsqueda que incluye nombre, email, teléfono
+          const name = `${row.first_name || ""} ${row.last_name || ""}`.trim()
+          const email = row.email || ""
+          const phone = row.phone || ""
+          return `${name} ${email} ${phone}`.toLowerCase()
+        },
+        enableHiding: false,
+        enableSorting: false,
+      },
       {
         accessorKey: "first_name",
         header: ({ column }) => (
@@ -184,8 +199,8 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
     <DataTable
       columns={columns}
       data={customers}
-      searchKey="email"
-      searchPlaceholder="Buscar por email..."
+      searchKey="searchText"
+      searchPlaceholder="Nombre, teléfono, email..."
     />
   )
 }

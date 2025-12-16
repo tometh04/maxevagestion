@@ -39,6 +39,7 @@ export async function GET(request: Request) {
     // Apply role-based filters
     try {
       query = await applyCustomersFilters(query, user, agencyIds, supabase)
+      console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters`)
     } catch (error: any) {
       console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })
@@ -65,6 +66,8 @@ export async function GET(request: Request) {
       console.error("Error fetching customers:", error)
       return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
     }
+
+    console.log(`[Customers API] Found ${customers?.length || 0} customers`)
 
     // Calculate trips and total spent for each customer
     const customersWithStats = (customers || []).map((customer: any) => {
