@@ -172,6 +172,18 @@ export function OperationsTable({
   const columns: ColumnDef<Operation>[] = useMemo(
     () => [
       {
+        id: "searchText",
+        accessorFn: (row) => {
+          // Texto de búsqueda que incluye destino, cliente y otros campos
+          const destination = row.destination || row.leads?.destination || ""
+          const customerName = row.customer_name || row.leads?.contact_name || ""
+          const trelloUrl = row.leads?.trello_url || ""
+          return `${destination} ${customerName} ${trelloUrl}`.toLowerCase()
+        },
+        enableHiding: false,
+        enableSorting: false,
+      },
+      {
         accessorKey: "operation_date",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Fecha" />
@@ -408,7 +420,7 @@ export function OperationsTable({
         <DataTable 
           columns={columns} 
           data={operations} 
-          searchKey="destination" 
+          searchKey="searchText" 
           searchPlaceholder="Buscar por destino o card..."
           showPagination={false}
         />
