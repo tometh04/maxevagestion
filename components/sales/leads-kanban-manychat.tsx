@@ -126,31 +126,32 @@ export function LeadsKanbanManychat({
     }
   }
 
+  // Función para cargar el orden de listas (reutilizable)
+  const fetchListOrder = async () => {
+    try {
+      const response = await fetch(`/api/manychat/list-order?agencyId=${agencyId}`)
+      const data = await response.json()
+      if (data.listNames && Array.isArray(data.listNames)) {
+        // Mapear nombres de listas a ListInfo
+        const listsInfo: ListInfo[] = data.listNames.map((name: string, index: number) => ({
+          name: name,
+          id: `manychat-${index}`, // ID temporal, no se usa pero lo necesitamos para el tipo
+        }))
+        setTrelloLists(listsInfo)
+      } else {
+        console.warn("⚠️ No se encontró orden de listas. Usando orden alfabético.")
+        // Si no hay orden, usar orden alfabético como fallback
+        setTrelloLists([])
+      }
+    } catch (error) {
+      console.error("❌ Error fetching manychat list order:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Obtener orden de listas desde manychat_list_order (INDEPENDIENTE de Trello)
   useEffect(() => {
-    async function fetchListOrder() {
-      try {
-        const response = await fetch(`/api/manychat/list-order?agencyId=${agencyId}`)
-        const data = await response.json()
-        if (data.listNames && Array.isArray(data.listNames)) {
-          // Mapear nombres de listas a ListInfo
-          const listsInfo: ListInfo[] = data.listNames.map((name: string, index: number) => ({
-            name: name,
-            id: `manychat-${index}`, // ID temporal, no se usa pero lo necesitamos para el tipo
-          }))
-          setTrelloLists(listsInfo)
-        } else {
-          console.warn("⚠️ No se encontró orden de listas. Usando orden alfabético.")
-          // Si no hay orden, usar orden alfabético como fallback
-          setTrelloLists([])
-        }
-      } catch (error) {
-        console.error("❌ Error fetching manychat list order:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     if (agencyId) {
       fetchListOrder()
     } else {
