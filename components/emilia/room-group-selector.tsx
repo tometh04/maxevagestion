@@ -54,8 +54,8 @@ export function RoomGroupSelector({
   const visibleRooms = showAll
     ? rooms
     : Object.values(groupedRooms)
-        .map((group) => group[0]) // Primera de cada grupo
-        .slice(0, maxInitialRooms)
+      .map((group) => group[0]) // Primera de cada grupo
+      .slice(0, maxInitialRooms)
 
   const hiddenCount = rooms.length - visibleRooms.length
 
@@ -278,6 +278,7 @@ function translateRoomDescription(description: string): string {
 
   return translated
 }
+
 
 
 
