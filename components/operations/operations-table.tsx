@@ -210,11 +210,16 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Destino" />
         ),
-        cell: ({ row }) => (
-          <div className="max-w-[100px] truncate text-xs" title={row.original.destination}>
-            {row.original.destination}
-          </div>
-        ),
+        enableHiding: false, // No permitir ocultar esta columna importante
+        cell: ({ row }) => {
+          // Priorizar destino de la operación, si no existe usar el destino del lead
+          const destination = row.original.destination || row.original.leads?.destination || "-"
+          return (
+            <div className="max-w-[120px] truncate text-xs font-medium" title={destination}>
+              {destination}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "departure_date",
