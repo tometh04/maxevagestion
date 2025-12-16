@@ -20,23 +20,10 @@ export async function GET(request: Request) {
     // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build query
-    let query = supabase
-      .from("customers")
-      .select(`
-        *,
-        operation_customers(
-          operation_id,
-          operations:operation_id(
-            id,
-            sale_amount_total,
-            currency,
-            status
-          )
-        )
-      `)
+    // Build base query
+    let query = supabase.from("customers")
 
-    // Apply role-based filters
+    // Apply role-based filters FIRST (before select)
     try {
       query = await applyCustomersFilters(query, user, agencyIds, supabase)
       console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters`)
@@ -58,7 +45,20 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
     const offset = parseInt(searchParams.get("offset") || "0")
     
+    // Now add select with relations, order and range
     const { data: customers, error } = await query
+      .select(`
+        *,
+        operation_customers(
+          operation_id,
+          operations:operation_id(
+            id,
+            sale_amount_total,
+            currency,
+            status
+          )
+        )
+      `)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1)
 
@@ -92,9 +92,7 @@ export async function GET(request: Request) {
     })
 
     // Get total count for pagination
-    let countQuery = supabase
-      .from("customers")
-      .select("*", { count: "exact", head: true })
+    let countQuery = supabase.from("customers")
     
     try {
       countQuery = await applyCustomersFilters(countQuery, user, agencyIds, supabase)
@@ -109,6 +107,7 @@ export async function GET(request: Request) {
     }
     
     const { count } = await countQuery
+      .select("*", { count: "exact", head: true })
 
     return NextResponse.json({ 
       customers: customersWithStats,
