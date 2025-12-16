@@ -98,6 +98,7 @@ interface Lead {
   region: string
   status: string
   source: string
+  external_id?: string | null
   trello_url: string | null
   trello_list_id: string | null
   assigned_seller_id: string | null
