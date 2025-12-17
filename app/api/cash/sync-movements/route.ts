@@ -89,7 +89,8 @@ export async function POST(request: Request) {
 
     for (const payment of paymentsToSync) {
       try {
-        const operation = (payment as any).operations || null
+        const paymentData = payment as any
+        const operation = paymentData.operations || null
 
         // Obtener agency_id
         let agencyId = operation?.agency_id
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
             .from("cash_boxes")
             .select("id")
             .eq("agency_id", agencyId)
-            .eq("currency", payment.currency)
+            .eq("currency", paymentData.currency)
             .eq("is_default", true)
             .eq("is_active", true)
             .maybeSingle()
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
           const { data: defaultCashBox } = await supabase
             .from("cash_boxes")
             .select("id")
-            .eq("currency", payment.currency)
+            .eq("currency", paymentData.currency)
             .eq("is_default", true)
             .eq("is_active", true)
             .maybeSingle()
@@ -139,16 +140,16 @@ export async function POST(request: Request) {
 
         // Crear el movimiento de caja
         const movementData = {
-          operation_id: payment.operation_id,
-          payment_id: payment.id,
+          operation_id: paymentData.operation_id,
+          payment_id: paymentData.id,
           cash_box_id: cashBoxId,
           user_id: userId,
-          type: payment.direction === "INCOME" ? "INCOME" : "EXPENSE",
-          category: payment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
-          amount: parseFloat(payment.amount),
-          currency: payment.currency,
-          movement_date: payment.date_paid,
-          notes: payment.reference || `Pago ${payment.id}`,
+          type: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
+          category: paymentData.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+          amount: parseFloat(paymentData.amount),
+          currency: paymentData.currency,
+          movement_date: paymentData.date_paid,
+          notes: paymentData.reference || `Pago ${paymentData.id}`,
           is_touristic: true,
         }
 
@@ -157,16 +158,17 @@ export async function POST(request: Request) {
           .insert(movementData)
 
         if (insertError) {
-          console.error(`Error creando movimiento para pago ${payment.id}:`, insertError)
+          console.error(`Error creando movimiento para pago ${paymentData.id}:`, insertError)
           errorCount++
-          errors.push(`Pago ${payment.id}: ${insertError.message}`)
+          errors.push(`Pago ${paymentData.id}: ${insertError.message}`)
         } else {
           successCount++
         }
       } catch (error: any) {
-        console.error(`Error procesando pago ${payment.id}:`, error)
+        const paymentData = payment as any
+        console.error(`Error procesando pago ${paymentData.id}:`, error)
         errorCount++
-        errors.push(`Pago ${payment.id}: ${error.message}`)
+        errors.push(`Pago ${paymentData.id}: ${error.message}`)
       }
     }
 
