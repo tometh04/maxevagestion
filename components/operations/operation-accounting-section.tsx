@@ -75,12 +75,16 @@ export function OperationAccountingSection({
   const marginBrutoPercent = saleAmount > 0 ? (marginBruto / saleAmount) * 100 : 0
   
   // IVA (21%)
-  const ivaVentas = saleAmount > 0 ? saleAmount * 0.21 / 1.21 : 0
+  // IVA Venta: calculado sobre la ganancia (margen)
+  const ivaVentas = marginBruto > 0 ? marginBruto * 0.21 : 0
+  // IVA Compra: calculado sobre el costo del operador
   const ivaCompras = operatorCost > 0 ? operatorCost * 0.21 / 1.21 : 0
   const ivaAPagar = ivaVentas - ivaCompras
   
   // Netos (sin IVA)
-  const ventaNeta = saleAmount / 1.21
+  // Venta neta: ganancia sin IVA
+  const ventaNeta = marginBruto - ivaVentas
+  // Costo neto: costo del operador sin IVA
   const costoNeto = operatorCost / 1.21
   const marginNeto = ventaNeta - costoNeto
   

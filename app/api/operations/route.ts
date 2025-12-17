@@ -212,14 +212,41 @@ export async function POST(request: Request) {
     // Auto-generate IVA records
     try {
       if (sale_amount_total > 0) {
+        // Convertir costo del operador a la misma moneda de venta si es necesario
+        let operatorCostForIVA = totalOperatorCost
+        if (finalOperatorCostCurrency !== finalSaleCurrency && totalOperatorCost > 0) {
+          // Si las monedas son diferentes, necesitamos convertir
+          try {
+            const exchangeRate = await getExchangeRate(supabase, departure_date)
+            if (exchangeRate) {
+              if (finalOperatorCostCurrency === "USD" && finalSaleCurrency === "ARS") {
+                // Convertir USD a ARS
+                operatorCostForIVA = totalOperatorCost * exchangeRate
+              } else if (finalOperatorCostCurrency === "ARS" && finalSaleCurrency === "USD") {
+                // Convertir ARS a USD
+                operatorCostForIVA = totalOperatorCost / exchangeRate
+              } else {
+                console.warn(`⚠️ Conversión de moneda no soportada: ${finalOperatorCostCurrency} → ${finalSaleCurrency}`)
+              }
+            } else {
+              console.warn(`⚠️ No se encontró tasa de cambio para ${departure_date}, usando costo sin convertir`)
+            }
+          } catch (error) {
+            console.error("Error convirtiendo moneda para IVA:", error)
+            // Continuar con el costo sin convertir
+          }
+        }
+        
         await createSaleIVA(
           supabase,
           op.id,
           sale_amount_total,
           finalSaleCurrency,
-          departure_date
+          departure_date,
+          operatorCostForIVA // Pasar el costo del operador (convertido si es necesario) para calcular IVA sobre ganancia
         )
-        console.log(`✅ Created sale IVA record for operation ${operation.id}`)
+        const ganancia = sale_amount_total - operatorCostForIVA
+        console.log(`✅ Created sale IVA record for operation ${operation.id} (IVA sobre ganancia: ${ganancia} ${finalSaleCurrency})`)
       }
 
       // Crear IVA para cada operador (si hay operadores)

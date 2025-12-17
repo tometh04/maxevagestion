@@ -10,20 +10,31 @@ import type { Database } from "@/lib/supabase/types"
 const IVA_RATE = 0.21 // 21% de IVA en Argentina
 
 /**
- * Calcular IVA de una venta
- * net = sale_amount_total / 1.21
- * iva = sale_amount_total - net
+ * Calcular IVA de una venta sobre la ganancia (margen)
+ * IVA Venta = 21% de (sale_amount_total - operator_cost_total)
+ * 
+ * Ejemplo: Venta $2000, Costo $1900, Ganancia $100
+ * IVA Venta = 21% de $100 = $21
  */
-export function calculateSaleIVA(saleAmountTotal: number): {
+export function calculateSaleIVA(
+  saleAmountTotal: number,
+  operatorCostTotal: number = 0
+): {
   net_amount: number
   iva_amount: number
+  margin: number // Ganancia sobre la que se calcula el IVA
 } {
-  const net_amount = saleAmountTotal / (1 + IVA_RATE)
-  const iva_amount = saleAmountTotal - net_amount
+  // Calcular ganancia (margen)
+  const margin = saleAmountTotal - operatorCostTotal
+  
+  // IVA sobre la ganancia
+  const iva_amount = margin * IVA_RATE
+  const net_amount = margin - iva_amount
 
   return {
-    net_amount: Math.round(net_amount * 100) / 100, // Redondear a 2 decimales
+    net_amount: Math.round(net_amount * 100) / 100,
     iva_amount: Math.round(iva_amount * 100) / 100,
+    margin: Math.round(margin * 100) / 100,
   }
 }
 
@@ -47,15 +58,17 @@ export function calculatePurchaseIVA(operatorCostTotal: number): {
 
 /**
  * Crear registro de IVA de venta
+ * Calcula IVA sobre la ganancia (margen) = sale_amount_total - operator_cost_total
  */
 export async function createSaleIVA(
   supabase: SupabaseClient<Database>,
   operationId: string,
   saleAmountTotal: number,
   currency: "ARS" | "USD",
-  saleDate: string
+  saleDate: string,
+  operatorCostTotal: number = 0
 ): Promise<{ id: string }> {
-  const { net_amount, iva_amount } = calculateSaleIVA(saleAmountTotal)
+  const { net_amount, iva_amount, margin } = calculateSaleIVA(saleAmountTotal, operatorCostTotal)
 
   const { data, error } = await (supabase.from("iva_sales") as any)
     .insert({
@@ -113,14 +126,16 @@ export async function createPurchaseIVA(
 
 /**
  * Actualizar registro de IVA de venta
+ * Calcula IVA sobre la ganancia (margen)
  */
 export async function updateSaleIVA(
   supabase: SupabaseClient<Database>,
   operationId: string,
   saleAmountTotal: number,
-  currency: "ARS" | "USD"
+  currency: "ARS" | "USD",
+  operatorCostTotal: number = 0
 ): Promise<void> {
-  const { net_amount, iva_amount } = calculateSaleIVA(saleAmountTotal)
+  const { net_amount, iva_amount } = calculateSaleIVA(saleAmountTotal, operatorCostTotal)
 
   // Buscar registro existente
   const { data: existing } = await (supabase.from("iva_sales") as any)

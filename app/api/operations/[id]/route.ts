@@ -206,15 +206,41 @@ export async function PATCH(
     // ============================================
     // ACTUALIZAR IVA SI CAMBIARON LOS MONTOS
     // ============================================
-    if (body.sale_amount_total !== undefined && body.sale_amount_total !== oldSaleAmount) {
+    // Si cambió el monto de venta o el costo del operador, actualizar IVA de venta (calculado sobre ganancia)
+    if ((body.sale_amount_total !== undefined && body.sale_amount_total !== oldSaleAmount) ||
+        (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost)) {
       try {
-        await updateSaleIVA(supabase, operationId, newSaleAmount, currency)
-        console.log(`✅ IVA Ventas actualizado para operación ${operationId}: ${newSaleAmount}`)
+        // Obtener monedas de la operación actualizada
+        const saleCurrency = op.sale_currency || op.currency || "ARS"
+        const operatorCostCurrency = op.operator_cost_currency || op.currency || "ARS"
+        
+        // Convertir costo del operador a la misma moneda de venta si es necesario
+        let operatorCostForIVA = newOperatorCost
+        if (operatorCostCurrency !== saleCurrency && newOperatorCost > 0) {
+          try {
+            const { getExchangeRate } = await import("@/lib/accounting/exchange-rates")
+            const exchangeRate = await getExchangeRate(supabase, op.departure_date || op.created_at)
+            if (exchangeRate) {
+              if (operatorCostCurrency === "USD" && saleCurrency === "ARS") {
+                operatorCostForIVA = newOperatorCost * exchangeRate
+              } else if (operatorCostCurrency === "ARS" && saleCurrency === "USD") {
+                operatorCostForIVA = newOperatorCost / exchangeRate
+              }
+            }
+          } catch (error) {
+            console.error("Error convirtiendo moneda para IVA en actualización:", error)
+          }
+        }
+        
+        await updateSaleIVA(supabase, operationId, newSaleAmount, saleCurrency, operatorCostForIVA)
+        const ganancia = newSaleAmount - operatorCostForIVA
+        console.log(`✅ IVA Ventas actualizado para operación ${operationId} (IVA sobre ganancia: ${ganancia} ${saleCurrency})`)
       } catch (error) {
         console.error("Error updating sale IVA:", error)
       }
     }
 
+    // IVA de compra se calcula sobre el costo del operador (sin cambios)
     if (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost) {
       try {
         await updatePurchaseIVA(supabase, operationId, newOperatorCost, currency)
