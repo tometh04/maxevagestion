@@ -22,12 +22,20 @@ interface CashPageClientProps {
 }
 
 const emptySummary: CashSummary = {
-  totalIncome: 0,
-  totalExpenses: 0,
-  netCash: 0,
-  pendingCustomers: 0,
-  pendingOperators: 0,
-  currency: "ARS",
+  ars: {
+    totalIncome: 0,
+    totalExpenses: 0,
+    netCash: 0,
+    pendingCustomers: 0,
+    pendingOperators: 0,
+  },
+  usd: {
+    totalIncome: 0,
+    totalExpenses: 0,
+    netCash: 0,
+    pendingCustomers: 0,
+    pendingOperators: 0,
+  },
 }
 
 export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps) {
@@ -90,38 +98,90 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
   }, [fetchPayments, fetchMovements])
 
   const summary = useMemo<CashSummary>(() => {
-    if (filters.currency === "ALL") {
-      return { ...emptySummary, currency: filters.currency }
-    }
+    // Filtrar movimientos y pagos por fecha y agencia
+    const dateFrom = new Date(filters.dateFrom)
+    const dateTo = new Date(filters.dateTo)
+    dateTo.setHours(23, 59, 59, 999) // Incluir todo el día final
 
-    const filteredMovements = movements.filter((movement) => movement.currency === filters.currency)
-    const filteredPayments = payments.filter((payment) => payment.currency === filters.currency)
+    let filteredMovements = movements.filter((movement) => {
+      const movementDate = new Date(movement.movement_date)
+      const matchesDate = movementDate >= dateFrom && movementDate <= dateTo
+      
+      // Filtrar por agencia si está especificada
+      const matchesAgency = filters.agencyId === "ALL" || 
+        (movement.operations?.agency_id === filters.agencyId)
+      
+      return matchesDate && matchesAgency
+    })
 
-    const totalIncome = filteredMovements
+    let filteredPayments = payments.filter((payment) => {
+      const paymentDate = new Date(payment.date_due || payment.date_paid || payment.created_at)
+      const matchesDate = paymentDate >= dateFrom && paymentDate <= dateTo
+      
+      // Filtrar por agencia si está especificada (a través de operation)
+      const matchesAgency = filters.agencyId === "ALL" || 
+        (payment.operations?.agency_id === filters.agencyId)
+      
+      return matchesDate && matchesAgency
+    })
+
+    // Calcular KPIs para ARS
+    const arsMovements = filteredMovements.filter((m) => m.currency === "ARS")
+    const arsPayments = filteredPayments.filter((p) => p.currency === "ARS")
+
+    const arsIncome = arsMovements
       .filter((movement) => movement.type === "INCOME")
-      .reduce((sum, movement) => sum + movement.amount, 0)
+      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
 
-    const totalExpenses = filteredMovements
+    const arsExpenses = arsMovements
       .filter((movement) => movement.type === "EXPENSE")
-      .reduce((sum, movement) => sum + movement.amount, 0)
+      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
 
-    const pendingCustomers = filteredPayments
+    const arsPendingCustomers = arsPayments
       .filter((payment) => payment.payer_type === "CUSTOMER" && payment.status !== "PAID")
-      .reduce((sum, payment) => sum + payment.amount, 0)
+      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
 
-    const pendingOperators = filteredPayments
+    const arsPendingOperators = arsPayments
       .filter((payment) => payment.payer_type === "OPERATOR" && payment.status !== "PAID")
-      .reduce((sum, payment) => sum + payment.amount, 0)
+      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
+
+    // Calcular KPIs para USD
+    const usdMovements = filteredMovements.filter((m) => m.currency === "USD")
+    const usdPayments = filteredPayments.filter((p) => p.currency === "USD")
+
+    const usdIncome = usdMovements
+      .filter((movement) => movement.type === "INCOME")
+      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
+
+    const usdExpenses = usdMovements
+      .filter((movement) => movement.type === "EXPENSE")
+      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
+
+    const usdPendingCustomers = usdPayments
+      .filter((payment) => payment.payer_type === "CUSTOMER" && payment.status !== "PAID")
+      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
+
+    const usdPendingOperators = usdPayments
+      .filter((payment) => payment.payer_type === "OPERATOR" && payment.status !== "PAID")
+      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
 
     return {
-      totalIncome,
-      totalExpenses,
-      netCash: totalIncome - totalExpenses,
-      pendingCustomers,
-      pendingOperators,
-      currency: filters.currency,
+      ars: {
+        totalIncome: arsIncome,
+        totalExpenses: arsExpenses,
+        netCash: arsIncome - arsExpenses,
+        pendingCustomers: arsPendingCustomers,
+        pendingOperators: arsPendingOperators,
+      },
+      usd: {
+        totalIncome: usdIncome,
+        totalExpenses: usdExpenses,
+        netCash: usdIncome - usdExpenses,
+        pendingCustomers: usdPendingCustomers,
+        pendingOperators: usdPendingOperators,
+      },
     }
-  }, [movements, payments, filters.currency])
+  }, [movements, payments, filters.dateFrom, filters.dateTo, filters.agencyId])
 
   const paymentsPreview = useMemo(() => payments.slice(0, 5), [payments])
   const movementsPreview = useMemo(() => movements.slice(0, 5), [movements])

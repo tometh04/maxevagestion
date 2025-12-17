@@ -272,6 +272,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     
     const operationId = searchParams.get("operationId")
+    const dateFrom = searchParams.get("dateFrom")
+    const dateTo = searchParams.get("dateTo")
+    const currency = searchParams.get("currency")
+    const agencyId = searchParams.get("agencyId")
     
     // Paginación: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
@@ -279,11 +283,37 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200
     const offset = (page - 1) * limit
 
-    // Query base
-    let query = supabase.from("payments").select("*", { count: "exact" })
+    // Query base con relación a operations para obtener agency_id
+    let query = supabase.from("payments").select(`
+      *,
+      operations:operation_id(
+        id,
+        agency_id,
+        agencies:agency_id(
+          id,
+          name
+        )
+      )
+    `, { count: "exact" })
     
     if (operationId) {
       query = query.eq("operation_id", operationId)
+    }
+
+    // Aplicar filtros de fecha
+    if (dateFrom) {
+      // Filtrar por date_due o date_paid según lo que esté disponible
+      query = query.or(`date_due.gte.${dateFrom},date_paid.gte.${dateFrom},created_at.gte.${dateFrom}`)
+    }
+
+    if (dateTo) {
+      const dateToEnd = `${dateTo}T23:59:59.999Z`
+      query = query.or(`date_due.lte.${dateToEnd},date_paid.lte.${dateToEnd},created_at.lte.${dateToEnd}`)
+    }
+
+    // Aplicar filtro de moneda
+    if (currency && currency !== "ALL") {
+      query = query.eq("currency", currency)
     }
 
     // Aplicar paginación y ordenamiento
@@ -297,10 +327,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
     }
 
+    // Filtrar por agencia si está especificada (porque no podemos filtrar fácilmente por operations.agency_id en Supabase)
+    let filteredPayments = payments || []
+    if (agencyId && agencyId !== "ALL") {
+      filteredPayments = filteredPayments.filter((p: any) => 
+        p.operations?.agency_id === agencyId
+      )
+    }
+
     const totalPages = count ? Math.ceil(count / limit) : 0
 
     return NextResponse.json({ 
-      payments: payments || [],
+      payments: filteredPayments,
       pagination: {
         total: count || 0,
         page,
