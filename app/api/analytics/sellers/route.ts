@@ -74,7 +74,7 @@ export async function GET(request: Request) {
     }
 
     // Get unique seller IDs
-    const sellerIds = [...new Set((operations || []).map((op: any) => op.seller_id).filter(Boolean))]
+    const sellerIds = Array.from(new Set((operations || []).map((op: any) => op.seller_id).filter(Boolean)))
 
     // Fetch seller data separately
     let sellersData: Record<string, any> = {}
