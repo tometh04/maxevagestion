@@ -15,62 +15,73 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
 
-    const supabase = await createServerClient()
+      const supabase = await createServerClient()
 
-    // Get user agencies
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+      // Get user agencies
+      const { data: userAgencies } = await supabase
+        .from("user_agencies")
+        .select("agency_id")
+        .eq("user_id", user.id)
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
+      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
 
-    // Apply role-based filtering
-    if (user.role === "SELLER") {
-      query = query.eq("seller_id", user.id)
-    } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      query = query.in("agency_id", agencyIds)
-    }
+      // Apply role-based filtering
+      if (user.role === "SELLER") {
+        query = query.eq("seller_id", user.id)
+      } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+        query = query.in("agency_id", agencyIds)
+      }
 
-    // Apply filters
-    if (dateFrom) {
-      query = query.gte("created_at", dateFrom)
-    }
+      // Validate date format if provided
+      if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+        console.error("Invalid dateFrom format:", dateFrom)
+        return NextResponse.json({ error: "Formato de fecha inválido (dateFrom)" }, { status: 400 })
+      }
 
-    if (dateTo) {
-      query = query.lte("created_at", dateTo)
-    }
+      if (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        console.error("Invalid dateTo format:", dateTo)
+        return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
+      }
 
-    if (agencyId && agencyId !== "ALL") {
-      query = query.eq("agency_id", agencyId)
-    }
+      // Apply filters
+      if (dateFrom) {
+        query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`)
+      }
 
-    if (sellerId && sellerId !== "ALL") {
-      query = query.eq("seller_id", sellerId)
-    }
+      if (dateTo) {
+        query = query.lte("created_at", `${dateTo}T23:59:59.999Z`)
+      }
 
-    const { data: operations, error } = await query
+      if (agencyId && agencyId !== "ALL") {
+        query = query.eq("agency_id", agencyId)
+      }
 
-    if (error) {
-      console.error("Error fetching sales data:", error)
-      throw new Error("Error al obtener datos de ventas")
-    }
+      if (sellerId && sellerId !== "ALL") {
+        query = query.eq("seller_id", sellerId)
+      }
 
-    const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
-    const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
-    const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
-    const operationsCount = (operations || []).length
-    const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
+      const { data: operations, error } = await query
+
+      if (error) {
+        console.error("Error fetching sales data:", error)
+        throw new Error("Error al obtener datos de ventas")
+      }
+
+      const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
+      const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
+      const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
+      const operationsCount = (operations || []).length
+      const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
 
     const result = {
-      totalSales,
-      totalMargin,
-      totalCost,
-      operationsCount,
-      avgMarginPercent,
-    }
+        totalSales,
+        totalMargin,
+        totalCost,
+        operationsCount,
+        avgMarginPercent,
+      }
 
     return NextResponse.json(result)
   } catch (error: any) {
