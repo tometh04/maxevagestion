@@ -17,6 +17,8 @@ export async function GET(request: Request) {
     const month = parseInt(searchParams.get("month") || (new Date().getMonth() + 1).toString())
     const agencyId = searchParams.get("agencyId") || "ALL"
 
+    console.log(`[MonthlyPosition API] Request received: year=${year}, month=${month}, agencyId=${agencyId}`)
+
     // Validar mes y año
     if (month < 1 || month > 12) {
       return NextResponse.json({ error: "Mes inválido" }, { status: 400 })

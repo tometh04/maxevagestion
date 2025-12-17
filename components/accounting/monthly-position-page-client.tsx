@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -84,7 +84,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
   const [loading, setLoading] = useState(true)
   const [datePickerOpen, setDatePickerOpen] = useState(false)
 
-  const fetchPosition = async () => {
+  const fetchPosition = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({
@@ -92,24 +92,26 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
         month: month.toString(),
         agencyId,
       })
+      console.log(`[MonthlyPosition] Fetching with params: year=${year}, month=${month}, agencyId=${agencyId}`)
       const response = await fetch(`/api/accounting/monthly-position?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
+        console.log(`[MonthlyPosition] Received data:`, data)
         setPosition(data)
       } else {
-        console.error("Error fetching monthly position")
+        const errorText = await response.text()
+        console.error("Error fetching monthly position:", response.status, errorText)
       }
     } catch (error) {
       console.error("Error:", error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [year, month, agencyId])
 
   useEffect(() => {
     fetchPosition()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [year, month, agencyId])
+  }, [fetchPosition])
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
