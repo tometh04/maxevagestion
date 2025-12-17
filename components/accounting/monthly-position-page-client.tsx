@@ -409,8 +409,8 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Ingresos</span>
                   <div className="font-bold text-green-600">
-                    {formatCurrency(position.resultado.ingresosARS || 0, "ARS")}
-                    {position.resultado.ingresosUSD !== undefined && position.resultado.ingresosUSD > 0 && (
+                    {formatCurrency((position.resultado.ingresosARS || 0), "ARS")}
+                    {(position.resultado.ingresosUSD !== undefined && position.resultado.ingresosUSD !== 0) && (
                       <span className="ml-2 text-muted-foreground">
                         ({formatCurrency(position.resultado.ingresosUSD, "USD")})
                       </span>
@@ -425,11 +425,24 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Costos</span>
                   <div className="font-bold text-red-600">
-                    -{formatCurrency(position.resultado.costosARS || 0, "ARS")}
-                    {position.resultado.costosUSD !== undefined && position.resultado.costosUSD > 0 && (
-                      <span className="ml-2 text-muted-foreground">
-                        (-{formatCurrency(position.resultado.costosUSD, "USD")})
-                      </span>
+                    {position.resultado.costosARS !== undefined && position.resultado.costosARS !== 0 ? (
+                      <>
+                        -{formatCurrency(position.resultado.costosARS, "ARS")}
+                        {position.resultado.costosUSD !== undefined && position.resultado.costosUSD !== 0 && (
+                          <span className="ml-2 text-muted-foreground">
+                            (-{formatCurrency(position.resultado.costosUSD, "USD")})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {formatCurrency(0, "ARS")}
+                        {position.resultado.costosUSD !== undefined && position.resultado.costosUSD !== 0 && (
+                          <span className="ml-2 text-muted-foreground">
+                            (-{formatCurrency(position.resultado.costosUSD, "USD")})
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -441,11 +454,24 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Gastos</span>
                   <div className="font-bold text-red-600">
-                    -{formatCurrency(position.resultado.gastosARS || 0, "ARS")}
-                    {position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD > 0 && (
-                      <span className="ml-2 text-muted-foreground">
-                        (-{formatCurrency(position.resultado.gastosUSD, "USD")})
-                      </span>
+                    {position.resultado.gastosARS !== undefined && position.resultado.gastosARS !== 0 ? (
+                      <>
+                        -{formatCurrency(position.resultado.gastosARS, "ARS")}
+                        {position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD !== 0 && (
+                          <span className="ml-2 text-muted-foreground">
+                            (-{formatCurrency(position.resultado.gastosUSD, "USD")})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        {formatCurrency(0, "ARS")}
+                        {position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD !== 0 && (
+                          <span className="ml-2 text-muted-foreground">
+                            (-{formatCurrency(position.resultado.gastosUSD, "USD")})
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
