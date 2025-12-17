@@ -408,8 +408,13 @@ export async function GET(request: Request) {
     console.log(`[MonthlyPosition] Resultados del mes (desglose): ingresos ARS=${ingresosARS}, USD=${ingresosUSD}, costos ARS=${costosARS}, USD=${costosUSD}`)
 
     // Estructurar respuesta
+    // Obtener balances de activos por moneda
+    const activoCorriente = balancesByCurrency["ACTIVO_CORRIENTE"] || { ars: 0, usd: 0 }
+    const activoNoCorriente = balancesByCurrency["ACTIVO_NO_CORRIENTE"] || { ars: 0, usd: 0 }
+    
     const activo_corriente = balances["ACTIVO_CORRIENTE"] || 0
     const activo_no_corriente = balances["ACTIVO_NO_CORRIENTE"] || 0
+    
     // Obtener balances de pasivos por moneda
     const pasivoCorriente = balancesByCurrency["PASIVO_CORRIENTE"] || { ars: 0, usd: 0 }
     const pasivoNoCorriente = balancesByCurrency["PASIVO_NO_CORRIENTE"] || { ars: 0, usd: 0 }
@@ -419,15 +424,17 @@ export async function GET(request: Request) {
     const patrimonio_neto = balances["PATRIMONIO_NETO_NONE"] || 0
 
     const resultado_mes = ingresos - costos - gastos
+    const resultado_mes_ars = ingresosARS - costosARS - gastosARS
+    const resultado_mes_usd = ingresosUSD - costosUSD - gastosUSD
 
     return NextResponse.json({
       year,
       month,
       dateTo,
       activo: {
-        corriente: Math.round(activo_corriente * 100) / 100,
-        no_corriente: Math.round(activo_no_corriente * 100) / 100,
-        total: Math.round((activo_corriente + activo_no_corriente) * 100) / 100,
+        corriente: { ars: Math.round(activoCorriente.ars * 100) / 100, usd: Math.round(activoCorriente.usd * 100) / 100 },
+        no_corriente: { ars: Math.round(activoNoCorriente.ars * 100) / 100, usd: Math.round(activoNoCorriente.usd * 100) / 100 },
+        total: { ars: Math.round((activoCorriente.ars + activoNoCorriente.ars) * 100) / 100, usd: Math.round((activoCorriente.usd + activoNoCorriente.usd) * 100) / 100 },
       },
       pasivo: {
         corriente: { ars: Math.round(pasivoCorriente.ars * 100) / 100, usd: Math.round(pasivoCorriente.usd * 100) / 100 },
@@ -449,6 +456,8 @@ export async function GET(request: Request) {
         costosUSD: Math.round(costosUSD * 100) / 100,
         gastosARS: Math.round(gastosARS * 100) / 100,
         gastosUSD: Math.round(gastosUSD * 100) / 100,
+        resultadoARS: Math.round(resultado_mes_ars * 100) / 100,
+        resultadoUSD: Math.round(resultado_mes_usd * 100) / 100,
       },
       accounts: chartAccounts || [],
     })
