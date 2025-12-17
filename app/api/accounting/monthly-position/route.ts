@@ -325,8 +325,26 @@ export async function GET(request: Request) {
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
     const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
-    // Buscar movimientos de ledger del mes
-    // También buscar movimientos vinculados a pagos del mes a través de payments.date_paid
+    // Buscar TODOS los movimientos de ledger vinculados a pagos que fueron pagados en este mes
+    // Esto incluye movimientos creados en cualquier momento pero pagados en diciembre
+    const { data: paymentsInMonth } = await supabase
+      .from("payments")
+      .select("ledger_movement_id, date_paid, status")
+      .not("ledger_movement_id", "is", null)
+      .eq("status", "PAID")
+      .gte("date_paid", monthStart)
+      .lte("date_paid", monthEnd)
+    
+    console.log(`[MonthlyPosition] Pagos pagados en el mes: ${(paymentsInMonth || []).length}`)
+    
+    // Obtener los IDs de los movimientos de ledger vinculados a estos pagos
+    const ledgerMovementIdsFromPayments = (paymentsInMonth || [])
+      .map((p: any) => p.ledger_movement_id)
+      .filter(Boolean)
+    
+    console.log(`[MonthlyPosition] IDs de movimientos de ledger vinculados a pagos: ${ledgerMovementIdsFromPayments.length}`)
+    
+    // También buscar movimientos creados directamente en el mes (sin pago asociado o con pago en el mes)
     const { data: monthMovements } = await supabase
       .from("ledger_movements")
       .select(`
@@ -339,29 +357,14 @@ export async function GET(request: Request) {
             subcategory,
             account_type
           )
-        ),
-        payments:ledger_movement_id(
-          date_paid
         )
       `)
       .gte("created_at", `${monthStart}T00:00:00`)
       .lte("created_at", `${monthEnd}T23:59:59`)
     
-    // También buscar movimientos vinculados a pagos que fueron pagados en este mes
-    // (aunque el movimiento se creó en otro mes)
-    const { data: paymentsInMonth } = await supabase
-      .from("payments")
-      .select("ledger_movement_id, date_paid")
-      .not("ledger_movement_id", "is", null)
-      .gte("date_paid", monthStart)
-      .lte("date_paid", monthEnd)
+    console.log(`[MonthlyPosition] Movimientos creados en el mes: ${(monthMovements || []).length}`)
     
-    // Obtener los IDs de los movimientos de ledger vinculados a estos pagos
-    const ledgerMovementIdsFromPayments = (paymentsInMonth || [])
-      .map((p: any) => p.ledger_movement_id)
-      .filter(Boolean)
-    
-    // Obtener los movimientos de ledger vinculados a estos pagos
+    // Obtener los movimientos de ledger vinculados a pagos del mes
     let additionalMovements: any[] = []
     if (ledgerMovementIdsFromPayments.length > 0) {
       const { data: movementsFromPayments } = await supabase
@@ -382,6 +385,7 @@ export async function GET(request: Request) {
       
       if (movementsFromPayments) {
         additionalMovements = movementsFromPayments
+        console.log(`[MonthlyPosition] Movimientos obtenidos desde pagos: ${additionalMovements.length}`)
       }
     }
     
@@ -409,6 +413,7 @@ export async function GET(request: Request) {
     }
     
     const monthMovementsArray = allMovements
+    console.log(`[MonthlyPosition] Total de movimientos únicos a procesar: ${monthMovementsArray.length}`)
 
     // Separar por moneda para mostrar correctamente
     let ingresosARS = 0
@@ -421,10 +426,20 @@ export async function GET(request: Request) {
     console.log(`[MonthlyPosition] Procesando ${monthMovementsArray.length} movimientos del mes`)
     
     // Debug: mostrar todos los movimientos para entender qué está pasando
+    let movimientosSinChartAccount = 0
+    let movimientosConChartAccount = 0
+    
     for (const movement of monthMovementsArray) {
       const financialAccount = movement.financial_accounts as any
       const chartAccount = financialAccount?.chart_of_accounts
       
+      if (!chartAccount) {
+        movimientosSinChartAccount++
+        console.warn(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} no tiene chart_account vinculado. financial_account_id=${movement.account_id}, financial_account_chart_id=${financialAccount?.chart_account_id || "null"}`)
+        continue
+      }
+      
+      movimientosConChartAccount++
       console.log(`[MonthlyPosition] Movimiento ${movement.id}: type=${movement.type}, currency=${movement.currency}, amount_original=${movement.amount_original}, chart_category=${chartAccount?.category}, chart_subcategory=${chartAccount?.subcategory}`)
       
       if (chartAccount?.category === "RESULTADO") {
@@ -457,10 +472,10 @@ export async function GET(request: Request) {
         }
       } else if (chartAccount) {
         console.log(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} no es RESULTADO: category=${chartAccount.category}`)
-      } else {
-        console.warn(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} no tiene chart_account vinculado. financial_account=${financialAccount?.id || "null"}`)
       }
     }
+    
+    console.log(`[MonthlyPosition] Resumen: ${movimientosConChartAccount} movimientos con chart_account, ${movimientosSinChartAccount} sin chart_account`)
     
     // Para compatibilidad, sumar todo en ARS (usando amount_ars_equivalent)
     // Pero también devolver desglose por moneda
