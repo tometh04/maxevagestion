@@ -121,6 +121,8 @@ export async function GET(request: Request) {
 
     // Calcular balances de cuentas financieras
     const financialAccountsArrayForBalance = (financialAccounts || []) as any[]
+    console.log(`[MonthlyPosition] Procesando ${financialAccountsArrayForBalance.length} cuentas financieras con chart_account_id`)
+    
     for (const account of financialAccountsArrayForBalance) {
       try {
         const balance = await getAccountBalance(account.id, supabase)
@@ -128,11 +130,16 @@ export async function GET(request: Request) {
         if (chartAccount) {
           const key = `${chartAccount.category}_${chartAccount.subcategory || "NONE"}`
           balances[key] = (balances[key] || 0) + balance
+          console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}): balance=${balance}, key=${key}`)
+        } else {
+          console.warn(`[MonthlyPosition] Cuenta ${account.id} no tiene chart_of_accounts vinculado`)
         }
       } catch (error) {
         console.error(`Error calculating balance for account ${account.id}:`, error)
       }
     }
+    
+    console.log(`[MonthlyPosition] Balances calculados:`, balances)
 
     // Calcular resultados del mes (solo movimientos del mes)
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
