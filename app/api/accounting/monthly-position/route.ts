@@ -222,47 +222,100 @@ export async function GET(request: Request) {
       }
     }
     
-    // Agregar pagos recurrentes pendientes como pasivos
+    // Agregar pagos pendientes como pasivos corrientes
     try {
+      // 1. Pagos recurrentes pendientes (que aún no se han generado)
       const { data: recurringPayments } = await supabase
         .from("recurring_payments")
         .select("amount, currency, next_due_date, is_active, agency_id")
         .eq("is_active", true)
         .lte("next_due_date", dateTo)
       
+      // 2. Operator payments pendientes (pueden venir de pagos recurrentes o operaciones)
+      let operatorPaymentsQuery = supabase
+        .from("operator_payments")
+        .select("amount, currency, operations:operation_id(agency_id)")
+        .eq("status", "PENDING")
+        .lte("due_date", dateTo)
+      
+      if (agencyId !== "ALL") {
+        // Filtrar por agencia a través de la operación
+        operatorPaymentsQuery = operatorPaymentsQuery.eq("operations.agency_id", agencyId)
+      }
+      
+      const { data: operatorPayments } = await operatorPaymentsQuery
+      
+      // 3. Payments pendientes de tipo EXPENSE (pagos a operadores)
+      let paymentsQuery = supabase
+        .from("payments")
+        .select("amount, currency, direction, operations:operation_id(agency_id)")
+        .eq("status", "PENDING")
+        .eq("direction", "EXPENSE")
+        .lte("date_due", dateTo)
+      
+      if (agencyId !== "ALL") {
+        paymentsQuery = paymentsQuery.eq("operations.agency_id", agencyId)
+      }
+      
+      const { data: pendingPayments } = await paymentsQuery
+      
+      let pendingARS = 0
+      let pendingUSD = 0
+      
+      // Sumar pagos recurrentes
       if (recurringPayments && recurringPayments.length > 0) {
-        const recurringArray = recurringPayments as any[]
-        let recurringARS = 0
-        let recurringUSD = 0
-        
-        for (const rp of recurringArray) {
-          // Filtrar por agencia si es necesario
+        for (const rp of recurringPayments as any[]) {
           if (agencyId !== "ALL" && rp.agency_id !== agencyId) {
             continue
           }
-          
           const amount = parseFloat(rp.amount || "0")
           if (rp.currency === "ARS") {
-            recurringARS += amount
+            pendingARS += amount
           } else if (rp.currency === "USD") {
-            recurringUSD += amount
+            pendingUSD += amount
           }
         }
-        
-        // Agregar a PASIVO_CORRIENTE (pagos recurrentes son pasivos corrientes)
+      }
+      
+      // Sumar operator payments pendientes
+      if (operatorPayments && operatorPayments.length > 0) {
+        for (const op of operatorPayments as any[]) {
+          const amount = parseFloat(op.amount || "0")
+          if (op.currency === "ARS") {
+            pendingARS += amount
+          } else if (op.currency === "USD") {
+            pendingUSD += amount
+          }
+        }
+      }
+      
+      // Sumar payments pendientes de tipo EXPENSE
+      if (pendingPayments && pendingPayments.length > 0) {
+        for (const p of pendingPayments as any[]) {
+          const amount = parseFloat(p.amount || "0")
+          if (p.currency === "ARS") {
+            pendingARS += amount
+          } else if (p.currency === "USD") {
+            pendingUSD += amount
+          }
+        }
+      }
+      
+      // Agregar a PASIVO_CORRIENTE (pagos pendientes son pasivos corrientes)
+      if (pendingARS > 0 || pendingUSD > 0) {
         if (!balancesByCurrency["PASIVO_CORRIENTE"]) {
           balancesByCurrency["PASIVO_CORRIENTE"] = { ars: 0, usd: 0 }
         }
-        balancesByCurrency["PASIVO_CORRIENTE"].ars += recurringARS
-        balancesByCurrency["PASIVO_CORRIENTE"].usd += recurringUSD
+        balancesByCurrency["PASIVO_CORRIENTE"].ars += pendingARS
+        balancesByCurrency["PASIVO_CORRIENTE"].usd += pendingUSD
         
-        // También agregar al balance total
-        balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + recurringARS + (recurringUSD * 1000) // Aproximado
+        // También agregar al balance total (aproximado)
+        balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + pendingARS + (pendingUSD * 1000)
         
-        console.log(`[MonthlyPosition] Pagos recurrentes pendientes: ARS=${recurringARS}, USD=${recurringUSD}`)
+        console.log(`[MonthlyPosition] Pagos pendientes (recurrentes + operator_payments + payments): ARS=${pendingARS}, USD=${pendingUSD}`)
       }
     } catch (error) {
-      console.error("Error obteniendo pagos recurrentes:", error)
+      console.error("Error obteniendo pagos pendientes:", error)
     }
     
     console.log(`[MonthlyPosition] Balances calculados:`, balances)
