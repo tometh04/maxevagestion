@@ -676,24 +676,34 @@ function cleanJsonString(jsonString: string): string {
 // Ejecutar consulta SQL de forma segura (solo SELECT)
 async function executeQuery(supabase: any, query: string): Promise<any> {
   try {
+    // Limpiar y validar query
+    const cleanedQuery = query.trim()
+    
     // Validar que sea solo SELECT (seguridad adicional)
-  const normalizedQuery = query.trim().toUpperCase()
+    const normalizedQuery = cleanedQuery.toUpperCase()
   if (!normalizedQuery.startsWith("SELECT")) {
     throw new Error("Solo se permiten consultas SELECT")
   }
   
+    // Log de la query que se va a ejecutar (para debugging)
+    console.log("[AI] Ejecutando query:", cleanedQuery.substring(0, 200))
+  
     // Ejecutar usando función RPC
-  const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: query })
+    const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: cleanedQuery })
   
   if (error) {
       console.error("[AI] Error ejecutando query:", error)
+      console.error("[AI] Query que falló:", cleanedQuery)
       throw new Error(`Error ejecutando query: ${error.message}`)
     }
     
     // Retornar datos parseados
-    return Array.isArray(data) ? data : (data ? [data] : [])
+    const result = Array.isArray(data) ? data : (data ? [data] : [])
+    console.log("[AI] Query ejecutada exitosamente, resultados:", result.length)
+    return result
   } catch (error: any) {
     console.error("[AI] Error en executeQuery:", error)
+    console.error("[AI] Query que causó el error:", query)
     throw error
   }
 }
@@ -1698,12 +1708,12 @@ Cuando respondas:
                   role: "user", 
                   content: "Ahora responde la pregunta original del usuario usando estos datos." 
                 },
-              ],
-              temperature: 0.4,
-              max_tokens: 2000,
-            })
-            
-            response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
+        ],
+        temperature: 0.4,
+        max_tokens: 2000,
+      })
+
+      response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
           } catch (queryError: any) {
             console.error("[AI] Error ejecutando query:", queryError)
             response = `No pude ejecutar la query solicitada: ${queryError.message}. Por favor, reformula tu pregunta o usa datos del contexto pre-cargado.`

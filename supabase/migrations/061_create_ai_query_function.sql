@@ -15,6 +15,8 @@ DECLARE
   result JSONB;
   query_start_time TIMESTAMP;
   query_duration INTERVAL;
+  trimmed_query TEXT;
+  semicolon_count INTEGER;
 BEGIN
   -- Validar que la query no esté vacía
   IF query_text IS NULL OR TRIM(query_text) = '' THEN
@@ -29,23 +31,25 @@ BEGIN
     RAISE EXCEPTION 'Solo se permiten queries SELECT. Query recibida: %', LEFT(query_text, 100);
   END IF;
 
-  -- Validar que no contenga comandos peligrosos
-  IF normalized_query LIKE '%DROP%' OR
-     normalized_query LIKE '%DELETE%' OR
-     normalized_query LIKE '%INSERT%' OR
-     normalized_query LIKE '%UPDATE%' OR
-     normalized_query LIKE '%TRUNCATE%' OR
-     normalized_query LIKE '%ALTER%' OR
-     normalized_query LIKE '%CREATE%' OR
-     normalized_query LIKE '%GRANT%' OR
-     normalized_query LIKE '%REVOKE%' OR
-     normalized_query LIKE '%EXECUTE%' OR
-     normalized_query LIKE '%CALL%' THEN
+  -- Validar que no contenga comandos peligrosos (solo al inicio de palabras, no dentro de strings)
+  -- Usamos regex para buscar comandos SQL reales, no palabras dentro de strings o nombres
+  IF normalized_query ~ '\m(DROP|DELETE|INSERT|UPDATE|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|EXECUTE|CALL)\M' THEN
     RAISE EXCEPTION 'Comandos peligrosos no permitidos en queries readonly';
+  END IF;
+  
+  -- Validación adicional: asegurar que no hay múltiples SELECT seguidos de comandos peligrosos
+  -- Esto previene queries como "SELECT ...; DROP TABLE ..."
+  IF normalized_query ~ ';\s*(DROP|DELETE|INSERT|UPDATE|TRUNCATE|ALTER|CREATE|GRANT|REVOKE|EXECUTE|CALL)' THEN
+    RAISE EXCEPTION 'Múltiples comandos no permitidos';
   END IF;
 
   -- Validar que no tenga múltiples statements (prevenir SQL injection)
-  IF (SELECT COUNT(*) FROM regexp_split_to_table(query_text, ';')) > 2 THEN
+  -- Contar solo los `;` que no están al final (después de espacios)
+  trimmed_query := TRIM(TRAILING ';' FROM TRIM(query_text));
+  semicolon_count := (SELECT COUNT(*) FROM regexp_split_to_table(trimmed_query, ';'));
+  
+  -- Permitir máximo 1 statement (el SELECT principal)
+  IF semicolon_count > 1 THEN
     RAISE EXCEPTION 'Múltiples statements no permitidos';
   END IF;
 
