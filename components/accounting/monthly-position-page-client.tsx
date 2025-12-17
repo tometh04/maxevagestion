@@ -39,6 +39,12 @@ interface MonthlyPosition {
     costos: number
     gastos: number
     total: number
+    ingresosARS?: number
+    ingresosUSD?: number
+    costosARS?: number
+    costosUSD?: number
+    gastosARS?: number
+    gastosUSD?: number
   }
 }
 
