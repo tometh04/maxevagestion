@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { ReportsFiltersState } from "./reports-filters"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency } from "@/lib/currency"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -116,7 +116,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalCost)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalCost, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -125,7 +125,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Total Pagado</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid)}</div>
+            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -134,7 +134,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Saldo Pendiente</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalBalance)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalBalance, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -143,7 +143,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Vencidos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalOverdue)}</div>
+            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalOverdue, "ARS")}</div>
           </CardContent>
         </Card>
       </div>
@@ -173,18 +173,18 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
                   <TableRow key={operator.id}>
                     <TableCell className="font-medium">{operator.name}</TableCell>
                     <TableCell className="text-right">{operator.operationsCount}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(operator.totalCost)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(operator.totalCost, "ARS")}</TableCell>
                     <TableCell className="text-right text-amber-600">
-                      {formatCurrency(operator.totalPaid)}
+                      {formatCurrency(operator.totalPaid, "ARS")}
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge variant={operator.balance > 0 ? "destructive" : "default"}>
-                        {formatCurrency(operator.balance)}
+                        {formatCurrency(operator.balance, "ARS")}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {operator.overduePayments > 0 ? (
-                        <Badge className="text-red-600">{formatCurrency(operator.overduePayments)}</Badge>
+                        <Badge className="text-red-600">{formatCurrency(operator.overduePayments, "ARS")}</Badge>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}

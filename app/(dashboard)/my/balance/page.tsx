@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency } from "@/lib/currency"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -45,6 +45,7 @@ export default async function MyBalancePage() {
         destination,
         departure_date,
         sale_amount_total,
+        sale_currency,
         margin_amount
       )
     `
@@ -52,14 +53,31 @@ export default async function MyBalancePage() {
     .eq("seller_id", user.id)
     .order("created_at", { ascending: false })
 
-  // Calcular totales
-  const totalCommissions = (commissions || []).reduce(
-    (sum, c: any) => sum + (c.amount || 0),
-    0
-  )
-  const paidCommissions = (commissions || [])
-    .filter((c: any) => c.status === "PAID")
+  // Calcular totales (separados por moneda)
+  const commissionsARS: number[] = []
+  const commissionsUSD: number[] = []
+  
+  for (const c of (commissions || []) as any[]) {
+    const currency = c.operations?.sale_currency || "ARS"
+    if (currency === "USD") {
+      commissionsUSD.push(c.amount || 0)
+    } else {
+      commissionsARS.push(c.amount || 0)
+    }
+  }
+  
+  const totalCommissionsARS = commissionsARS.reduce((sum, amt) => sum + amt, 0)
+  const totalCommissionsUSD = commissionsUSD.reduce((sum, amt) => sum + amt, 0)
+  const totalCommissions = totalCommissionsARS + totalCommissionsUSD // Para display, asumimos ARS por defecto
+  
+  const paidCommissionsARS = ((commissions || []) as any[])
+    .filter((c: any) => c.status === "PAID" && (c.operations?.sale_currency || "ARS") === "ARS")
     .reduce((sum, c: any) => sum + (c.amount || 0), 0)
+  const paidCommissionsUSD = ((commissions || []) as any[])
+    .filter((c: any) => c.status === "PAID" && c.operations?.sale_currency === "USD")
+    .reduce((sum, c: any) => sum + (c.amount || 0), 0)
+  const paidCommissions = paidCommissionsARS + paidCommissionsUSD
+  
   const pendingCommissions = totalCommissions - paidCommissions
 
   // Obtener leads asignados
@@ -73,7 +91,7 @@ export default async function MyBalancePage() {
   // Obtener operaciones del vendedor
   const { data: operations } = await supabase
     .from("operations")
-    .select("id, file_code, destination, departure_date, sale_amount_total, status")
+    .select("id, file_code, destination, departure_date, sale_amount_total, sale_currency, status")
     .eq("seller_id", user.id)
     .order("created_at", { ascending: false })
     .limit(10)
@@ -118,7 +136,12 @@ export default async function MyBalancePage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalCommissions)}</div>
+            <div className="text-2xl font-bold">
+              {totalCommissionsUSD > 0 
+                ? `${formatCurrency(totalCommissionsARS, "ARS")} + ${formatCurrency(totalCommissionsUSD, "USD")}`
+                : formatCurrency(totalCommissions, "ARS")
+              }
+            </div>
             <p className="text-xs text-muted-foreground">
               {commissions?.length || 0} registros
             </p>
@@ -132,7 +155,10 @@ export default async function MyBalancePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {formatCurrency(paidCommissions)}
+              {paidCommissionsUSD > 0
+                ? `${formatCurrency(paidCommissionsARS, "ARS")} + ${formatCurrency(paidCommissionsUSD, "USD")}`
+                : formatCurrency(paidCommissions, "ARS")
+              }
             </div>
             <p className="text-xs text-muted-foreground">
               {commissions?.filter((c: any) => c.status === "PAID").length || 0} pagadas
@@ -147,7 +173,7 @@ export default async function MyBalancePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-600">
-              {formatCurrency(pendingCommissions)}
+              {formatCurrency(pendingCommissions, "ARS")}
             </div>
             <p className="text-xs text-muted-foreground">
               {commissions?.filter((c: any) => c.status === "PENDING").length || 0} pendientes
@@ -194,7 +220,7 @@ export default async function MyBalancePage() {
                           </TableCell>
                           <TableCell>{commission.operations?.destination || "-"}</TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(commission.amount)}
+                            {formatCurrency(commission.amount, commission.operations?.sale_currency || "ARS")}
                           </TableCell>
                           <TableCell className="text-right">
                             {commission.percentage ? `${commission.percentage}%` : "-"}
@@ -264,7 +290,7 @@ export default async function MyBalancePage() {
                               : "-"}
                           </TableCell>
                           <TableCell className="text-right">
-                            {formatCurrency(op.sale_amount_total)}
+                            {formatCurrency(op.sale_amount_total, op.sale_currency || "ARS")}
                           </TableCell>
                           <TableCell>
                             <Badge variant="secondary">{op.status}</Badge>

@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ReportsFiltersState } from "./reports-filters"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency } from "@/lib/currency"
 
 interface FinancialReportProps {
   filters: ReportsFiltersState
@@ -129,7 +129,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-amber-600">
-              {formatCurrency(data.totalIncome)}
+              {formatCurrency(data.totalIncome, "ARS")}
             </div>
           </CardContent>
         </Card>
@@ -140,7 +140,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {formatCurrency(data.totalExpenses)}
+              {formatCurrency(data.totalExpenses, "ARS")}
             </div>
           </CardContent>
         </Card>
@@ -155,7 +155,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
                 data.netCashflow >= 0 ? "text-amber-600" : "text-red-600"
               }`}
             >
-              {formatCurrency(data.netCashflow)}
+              {formatCurrency(data.netCashflow, "ARS")}
             </div>
           </CardContent>
         </Card>
@@ -165,7 +165,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
             <CardTitle className="text-sm font-medium">IVA a Pagar</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(data.ivaToPay)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(data.ivaToPay, "ARS")}</div>
           </CardContent>
         </Card>
       </div>
@@ -195,17 +195,17 @@ export function FinancialReport({ filters }: FinancialReportProps) {
                         {new Date(item.date).toLocaleDateString("es-AR")}
                       </TableCell>
                       <TableCell className="text-right text-amber-600">
-                        {formatCurrency(item.income)}
+                        {formatCurrency(item.income, "ARS")}
                       </TableCell>
                       <TableCell className="text-right text-red-600">
-                        {formatCurrency(item.expense)}
+                        {formatCurrency(item.expense, "ARS")}
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
                           item.net >= 0 ? "text-amber-600" : "text-red-600"
                         }`}
                       >
-                        {formatCurrency(item.net)}
+                        {formatCurrency(item.net, "ARS")}
                       </TableCell>
                     </TableRow>
                   ))}

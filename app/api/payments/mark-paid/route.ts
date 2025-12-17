@@ -131,7 +131,7 @@ export async function POST(request: Request) {
         // No fallar, continuar con el flujo
       }
     } else {
-      console.log(`⚠️ Pago ${paymentId} ya tiene cash_movement ${existingCashMovement.id}, omitiendo creación`)
+      console.log(`⚠️ Pago ${paymentId} ya tiene cash_movement ${(existingCashMovement as any).id}, omitiendo creación`)
     }
 
     // ============================================

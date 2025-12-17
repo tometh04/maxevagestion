@@ -266,7 +266,7 @@ NOTA: Retiros personales de socios. Genera movimientos contables automáticament
 
 ### TABLA: recurring_payments (Pagos Recurrentes) ⭐ NUEVO
 - id: UUID (PK)
-- operator_id: UUID (FK → operators)
+- provider_name: TEXT (Nombre del proveedor, no FK a operators)
 - amount: NUMERIC
 - currency: TEXT ('ARS', 'USD')
 - frequency: TEXT ('WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')
@@ -277,9 +277,261 @@ NOTA: Retiros personales de socios. Genera movimientos contables automáticament
 - is_active: BOOLEAN
 - description: TEXT
 - invoice_number, reference: TEXT
+- agency_id: UUID (FK → agencies)
 - created_at, updated_at: TIMESTAMP
 - created_by: UUID (FK → users)
-NOTA: Pagos que se generan automáticamente según frecuencia. Un cron job genera los pagos.
+NOTA: Pagos que se generan automáticamente según frecuencia. Un cron job genera los pagos. NO están vinculados a operators, son proveedores genéricos.
+
+### TABLA: recurring_payment_providers (Proveedores de Pagos Recurrentes)
+- id: UUID (PK)
+- name: TEXT (Nombre único del proveedor)
+- created_at: TIMESTAMP
+NOTA: Lista de proveedores usados en pagos recurrentes para autocompletado.
+
+### TABLA: quotations (Cotizaciones Formales) ⭐ NUEVO
+- id: UUID (PK)
+- lead_id: UUID (FK → leads)
+- agency_id: UUID (FK → agencies)
+- seller_id: UUID (FK → users)
+- operator_id: UUID (FK → operators, opcional)
+- quotation_number: TEXT (Número único: "COT-2025-001")
+- destination: TEXT
+- origin: TEXT
+- region: TEXT ('ARGENTINA', 'CARIBE', 'BRASIL', 'EUROPA', 'EEUU', 'OTROS', 'CRUCEROS')
+- departure_date, return_date: DATE
+- valid_until: DATE (Fecha de vencimiento de la cotización)
+- adults, children, infants: INTEGER
+- subtotal, discounts, taxes, total_amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- status: TEXT ('DRAFT', 'SENT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'EXPIRED', 'CONVERTED')
+- approved_by: UUID (FK → users)
+- approved_at: TIMESTAMP
+- rejection_reason: TEXT
+- operation_id: UUID (FK → operations, cuando se convierte)
+- converted_at: TIMESTAMP
+- notes, terms_and_conditions: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Cotizaciones formales del sistema. Flujo: Lead → Cotización → Aprobación → Operación.
+
+### TABLA: quotation_items (Items de Cotizaciones)
+- id: UUID (PK)
+- quotation_id: UUID (FK → quotations)
+- item_type: TEXT ('ACCOMMODATION', 'FLIGHT', 'TRANSFER', 'ACTIVITY', 'INSURANCE', 'VISA', 'OTHER')
+- description: TEXT
+- quantity: INTEGER
+- tariff_id: UUID (FK → tariffs, opcional)
+- unit_price, discount_percentage, discount_amount, subtotal: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- notes: TEXT
+- order_index: INTEGER
+- created_at, updated_at: TIMESTAMP
+NOTA: Items individuales de una cotización (alojamiento, vuelo, etc.).
+
+### TABLA: tariffs (Tarifarios de Operadores)
+- id: UUID (PK)
+- operator_id: UUID (FK → operators)
+- agency_id: UUID (FK → agencies, NULL = global)
+- name: TEXT (Nombre del tarifario)
+- description: TEXT
+- destination: TEXT
+- region: TEXT ('ARGENTINA', 'CARIBE', 'BRASIL', 'EUROPA', 'EEUU', 'OTROS', 'CRUCEROS')
+- valid_from, valid_to: DATE (Fechas de vigencia)
+- tariff_type: TEXT ('ACCOMMODATION', 'FLIGHT', 'PACKAGE', 'TRANSFER', 'ACTIVITY', 'CRUISE', 'OTHER')
+- currency: TEXT ('ARS', 'USD')
+- is_active: BOOLEAN
+- notes, terms_and_conditions: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Tarifarios de operadores con precios y condiciones.
+
+### TABLA: tariff_items (Items de Tarifarios)
+- id: UUID (PK)
+- tariff_id: UUID (FK → tariffs)
+- category: TEXT (Ej: "Habitación Standard", "Adulto", "Menor")
+- room_type: TEXT ('SINGLE', 'DOUBLE', 'TRIPLE', 'QUAD', 'SHARED', NULL)
+- occupancy_type: TEXT ('SINGLE', 'DOUBLE', 'TRIPLE', 'QUAD', 'SHARED', NULL)
+- base_price: NUMERIC
+- price_per_night: BOOLEAN
+- price_per_person: BOOLEAN
+- discount_percentage, commission_percentage: NUMERIC
+- min_nights, max_nights: INTEGER
+- min_pax, max_pax: INTEGER
+- is_available: BOOLEAN
+- notes: TEXT
+- order_index: INTEGER
+- created_at, updated_at: TIMESTAMP
+NOTA: Items individuales de un tarifario (categorías, tipos de habitación, etc.).
+
+### TABLA: quotas (Cupos Disponibles)
+- id: UUID (PK)
+- tariff_id: UUID (FK → tariffs, opcional)
+- operator_id: UUID (FK → operators)
+- destination: TEXT
+- accommodation_name: TEXT (Nombre del hotel/alojamiento)
+- room_type: TEXT
+- date_from, date_to: DATE
+- total_quota: INTEGER (Cupo total disponible)
+- reserved_quota: INTEGER (Cupo reservado)
+- available_quota: INTEGER (Calculado: total - reservado)
+- is_active: BOOLEAN
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Cupos disponibles de operadores por fecha y destino.
+
+### TABLA: quota_reservations (Reservas de Cupos)
+- id: UUID (PK)
+- quota_id: UUID (FK → quotas)
+- quotation_id: UUID (FK → quotations, opcional)
+- operation_id: UUID (FK → operations, opcional)
+- quantity: INTEGER
+- status: TEXT ('RESERVED', 'CONFIRMED', 'RELEASED', 'EXPIRED')
+- reserved_until: TIMESTAMP (Para reservas temporales)
+- released_at: TIMESTAMP
+- created_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Reservas temporales de cupos para cotizaciones u operaciones.
+
+### TABLA: cash_transfers (Transferencias entre Cajas)
+- id: UUID (PK)
+- from_box_id: UUID (FK → cash_boxes, caja origen)
+- to_box_id: UUID (FK → cash_boxes, caja destino)
+- agency_id: UUID (FK → agencies)
+- amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- exchange_rate: NUMERIC (Si la transferencia es entre monedas diferentes)
+- transfer_date: DATE
+- status: TEXT ('PENDING', 'COMPLETED', 'CANCELLED')
+- reference: TEXT
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Transferencias de dinero entre cajas. Actualiza balances automáticamente.
+
+### TABLA: payment_coupons (Cupones de Pago)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations, opcional)
+- payment_id: UUID (FK → payments, opcional)
+- customer_id: UUID (FK → customers, opcional)
+- agency_id: UUID (FK → agencies)
+- coupon_number: TEXT (Número único: "CUP-2025-001")
+- coupon_type: TEXT ('PAYMENT', 'DEPOSIT', 'BALANCE')
+- amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- issue_date, due_date, paid_date: DATE
+- status: TEXT ('PENDING', 'PAID', 'OVERDUE', 'CANCELLED')
+- customer_name, customer_phone, customer_email: TEXT
+- description, notes: TEXT
+- payment_reference: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Cupones de cobro generados para clientes.
+
+### TABLA: card_transactions (Transacciones con Tarjetas)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations, opcional)
+- payment_id: UUID (FK → payments, opcional)
+- cash_box_id: UUID (FK → cash_boxes, opcional)
+- agency_id: UUID (FK → agencies)
+- transaction_number: TEXT (Número único de transacción)
+- card_type: TEXT ('VISA', 'MASTERCARD', 'AMEX', 'DINERS', 'CABAL', 'OTHER')
+- card_last_four: TEXT (Últimos 4 dígitos)
+- amount: NUMERIC
+- currency: TEXT ('ARS', 'USD')
+- commission_percentage, commission_amount: NUMERIC
+- net_amount: NUMERIC (Monto neto después de comisión)
+- transaction_date, settlement_date: DATE
+- status: TEXT ('PENDING', 'APPROVED', 'SETTLED', 'REJECTED', 'CANCELLED', 'REFUNDED')
+- processor: TEXT (Procesador de pagos)
+- authorization_code: TEXT
+- description, notes: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Transacciones con tarjetas de crédito/débito. Registro y conciliación.
+
+### TABLA: billing_info (Información de Facturación)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations, opcional)
+- quotation_id: UUID (FK → quotations, opcional)
+- billing_type: TEXT ('CUSTOMER', 'THIRD_PARTY', 'COMPANY')
+- company_name: TEXT
+- tax_id: TEXT (CUIT/CUIL)
+- first_name, last_name: TEXT
+- address, city, postal_code: TEXT
+- phone, email: TEXT
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+NOTA: Información de facturación para operaciones y cotizaciones. Permite facturar a terceros.
+
+### TABLA: operation_passengers (Pasajeros de Operación)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- passenger_number: INTEGER (1, 2, 3...)
+- first_name, last_name: TEXT
+- date_of_birth: DATE
+- nationality: TEXT
+- document_type: TEXT ('DNI', 'PASSPORT', 'LC', 'LE')
+- document_number: TEXT
+- is_main_passenger: BOOLEAN (Solo uno por operación)
+- billing_info_id: UUID (FK → billing_info, opcional)
+- created_at, updated_at: TIMESTAMP
+NOTA: Pasajeros de una operación con datos completos. Diferente a operation_customers (que es relación con tabla customers).
+
+### TABLA: operation_operators (Múltiples Operadores por Operación)
+- id: UUID (PK)
+- operation_id: UUID (FK → operations)
+- operator_id: UUID (FK → operators)
+- cost: NUMERIC
+- cost_currency: TEXT ('ARS', 'USD')
+- notes: TEXT
+- created_at, updated_at: TIMESTAMP
+NOTA: Relación many-to-many entre operaciones y operadores. Permite múltiples operadores por operación con costos individuales.
+
+### TABLA: chart_of_accounts (Plan de Cuentas Contable)
+- id: UUID (PK)
+- account_code: TEXT (Código único: "1.1.01", "2.1.01")
+- account_name: TEXT
+- category: TEXT ('ACTIVO', 'PASIVO', 'PATRIMONIO_NETO', 'RESULTADO')
+- subcategory: TEXT ('CORRIENTE', 'NO_CORRIENTE', 'CAPITAL', 'RESERVAS', 'RESULTADOS', 'INGRESOS', 'EGRESOS', 'COSTOS', 'GASTOS')
+- account_type: TEXT ('CAJA', 'BANCO', 'CUENTAS_POR_COBRAR', 'CUENTAS_POR_PAGAR', 'VENTAS', 'COSTOS', etc.)
+- level: INTEGER (1 = principal, 2 = subcuenta)
+- parent_id: UUID (FK → chart_of_accounts, para jerarquías)
+- is_movement_account: BOOLEAN (true = cuenta de movimiento, false = cuenta de saldo)
+- is_active: BOOLEAN
+- display_order: INTEGER
+- description: TEXT
+- created_at, updated_at: TIMESTAMP
+- created_by: UUID (FK → users)
+NOTA: Plan de cuentas contable estándar. Define la estructura contable con categorización por rubros. financial_accounts tiene chart_account_id para relacionar.
+
+### TABLA: lead_comments (Comentarios en Leads)
+- id: UUID (PK)
+- lead_id: UUID (FK → leads)
+- user_id: UUID (FK → users)
+- comment: TEXT
+- created_at, updated_at: TIMESTAMP
+NOTA: Comentarios de vendedores en leads. Permite comunicación interna sobre el lead.
+
+### TABLA: manychat_list_order (Orden de Listas Manychat)
+- id: UUID (PK)
+- agency_id: UUID (FK → agencies)
+- list_name: TEXT (Nombre de la lista)
+- position: INTEGER (Orden: 0, 1, 2...)
+- created_at, updated_at: TIMESTAMP
+NOTA: Orden personalizado de listas en CRM Manychat. Independiente de Trello.
+
+### TABLA: commission_rules (Reglas de Comisiones)
+- id: UUID (PK)
+- type: TEXT ('SELLER', 'AGENCY')
+- basis: TEXT ('FIXED_PERCENTAGE', 'FIXED_AMOUNT')
+- value: NUMERIC
+- destination_region: TEXT
+- agency_id: UUID (FK → agencies, opcional)
+- valid_from: DATE
+- valid_to: DATE (opcional)
+- created_at, updated_at: TIMESTAMP
+NOTA: Reglas configurables para cálculo de comisiones de vendedores y agencias.
 
 ### TABLA: message_templates (Templates de WhatsApp) ⭐ NUEVO
 - id: UUID (PK)
@@ -374,25 +626,40 @@ NOTA: Una operación puede tener múltiples clientes/pasajeros.
 NOTA: scanned_data contiene información extraída por OCR de pasaportes, DNI, etc.
 
 ### RELACIONES CLAVE:
-- Una OPERACIÓN tiene un VENDEDOR (seller_id), un OPERADOR (operator_id), y un CLIENTE PRINCIPAL (customer_id)
-- Una OPERACIÓN puede tener MÚLTIPLES CLIENTES/PASAJEROS (tabla operation_customers)
+- Una OPERACIÓN tiene un VENDEDOR (seller_id), un OPERADOR PRINCIPAL (operator_id), y un CLIENTE PRINCIPAL (customer_id)
+- Una OPERACIÓN puede tener MÚLTIPLES OPERADORES (tabla operation_operators) con costos individuales
+- Una OPERACIÓN puede tener MÚLTIPLES CLIENTES/PASAJEROS (tabla operation_customers y operation_passengers)
 - Una OPERACIÓN puede tener muchos PAGOS (INCOME de clientes, EXPENSE a operadores)
-- Un LEAD puede convertirse en una OPERACIÓN cuando se concreta la venta
+- Un LEAD puede generar una COTIZACIÓN (quotations) que luego se convierte en OPERACIÓN
+- Un LEAD puede tener COMENTARIOS (lead_comments) de vendedores
+- Una COTIZACIÓN puede tener MÚLTIPLES ITEMS (quotation_items) y puede usar TARIFARIOS (tariffs)
+- Los TARIFARIOS tienen ITEMS (tariff_items) y pueden tener CUPOS (quotas) asociados
+- Los CUPOS pueden tener RESERVAS (quota_reservations) para cotizaciones u operaciones
 - Los PAGOS generan movimientos en ledger_movements y cash_movements automáticamente
+- Los PAGOS pueden tener CUPONES (payment_coupons) asociados
+- Los PAGOS pueden tener TRANSACCIONES CON TARJETA (card_transactions) asociadas
+- Las CAJAS pueden tener TRANSFERENCIAS (cash_transfers) entre ellas
 - Los PAGOS tienen estado PENDING/PAID/OVERDUE
 - Las ALERTAS se generan automáticamente: pagos vencidos, viajes próximos, documentos faltantes, pasaportes vencidos, requisitos de destino
 - Los DOCUMENTOS pueden estar asociados a operations, customers o leads (conectados bidireccionalmente)
 - Los RETIROS DE SOCIOS generan movimientos en ledger_movements y cash_movements
-- Los PAGOS RECURRENTES generan pagos automáticamente según su frecuencia
+- Los PAGOS RECURRENTES generan pagos automáticamente según su frecuencia (NO están vinculados a operators, usan provider_name)
 - Los MENSAJES WHATSAPP se generan automáticamente según triggers configurados
+- Las OPERACIONES y COTIZACIONES pueden tener INFORMACIÓN DE FACTURACIÓN (billing_info) para facturar a terceros
+- Las CUENTAS FINANCIERAS (financial_accounts) pueden estar relacionadas con PLAN DE CUENTAS (chart_of_accounts) mediante chart_account_id
 
 ### MÉTRICAS DE NEGOCIO:
 - VENTA TOTAL = sale_amount_total (lo que paga el cliente)
-- COSTO = operator_cost (lo que pagamos al operador)
+- COSTO = operator_cost (operador principal) + SUM(cost) de operation_operators (múltiples operadores)
 - MARGEN = margin_amount = sale_amount_total - operator_cost (nuestra ganancia)
 - COMISIÓN = commission_amount (lo que gana el vendedor, registrado en commission_records)
 - CONVERSIÓN = leads WON / leads totales
+- CONVERSIÓN COTIZACIONES = quotations CONVERTED / quotations SENT
 - IVA A PAGAR = ivaVentas - ivaCompras (débito fiscal - crédito fiscal)
+- TASA DE APROBACIÓN COTIZACIONES = quotations APPROVED / quotations SENT
+- CUPOS DISPONIBLES = total_quota - reserved_quota (de tabla quotas)
+- BALANCE DE CAJA = initial_balance + SUM(ingresos) - SUM(egresos) - SUM(transferencias salientes) + SUM(transferencias entrantes)
+- NETO TRANSACCIONES TARJETA = amount - commission_amount (de tabla card_transactions)
 `
 
 // Helper para limpiar JSON
@@ -408,22 +675,62 @@ function cleanJsonString(jsonString: string): string {
 
 // Ejecutar consulta SQL de forma segura (solo SELECT)
 async function executeQuery(supabase: any, query: string): Promise<any> {
-  // Validar que sea solo SELECT (seguridad)
+  try {
+    // Validar que sea solo SELECT (seguridad adicional)
   const normalizedQuery = query.trim().toUpperCase()
   if (!normalizedQuery.startsWith("SELECT")) {
     throw new Error("Solo se permiten consultas SELECT")
   }
   
-  // Ejecutar usando rpc si existe, o directamente
+    // Ejecutar usando función RPC
   const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: query })
   
   if (error) {
-    // Si no existe la función RPC, intentar consulta directa limitada
-    console.log("[AI] RPC no disponible, usando consulta directa")
-    return { error: error.message, note: "Función RPC no configurada" }
+      console.error("[AI] Error ejecutando query:", error)
+      throw new Error(`Error ejecutando query: ${error.message}`)
+    }
+    
+    // Retornar datos parseados
+    return Array.isArray(data) ? data : (data ? [data] : [])
+  } catch (error: any) {
+    console.error("[AI] Error en executeQuery:", error)
+    throw error
+  }
+}
+
+// Generar query SQL basada en la pregunta del usuario (helper para el AI)
+function generateQuerySuggestion(question: string, context: any): string {
+  // Esta función puede ser mejorada con un modelo de AI más pequeño
+  // Por ahora, retorna ejemplos de queries comunes basadas en palabras clave
+  const lowerQuestion = question.toLowerCase()
+  
+  if (lowerQuestion.includes("cotización") || lowerQuestion.includes("cotizaciones")) {
+    if (lowerQuestion.includes("enviadas")) {
+      return "SELECT COUNT(*) as total, SUM(total_amount) as monto_total FROM quotations WHERE status = 'SENT' AND created_at >= date_trunc('month', CURRENT_DATE)"
+    }
+    if (lowerQuestion.includes("convertidas")) {
+      return "SELECT COUNT(*) as total, SUM(total_amount) as monto_total FROM quotations WHERE status = 'CONVERTED' AND converted_at >= date_trunc('month', CURRENT_DATE)"
+    }
+    return "SELECT status, COUNT(*) as cantidad, SUM(total_amount) as monto_total FROM quotations WHERE created_at >= date_trunc('month', CURRENT_DATE) GROUP BY status"
   }
   
-  return data
+  if (lowerQuestion.includes("cupón") || lowerQuestion.includes("cupones")) {
+    if (lowerQuestion.includes("vencido")) {
+      return "SELECT COUNT(*) as total, SUM(amount) as monto_total FROM payment_coupons WHERE status = 'OVERDUE'"
+    }
+    return "SELECT status, COUNT(*) as cantidad, SUM(amount) as monto_total FROM payment_coupons GROUP BY status"
+  }
+  
+  if (lowerQuestion.includes("transferencia") || lowerQuestion.includes("transferencias")) {
+    return "SELECT * FROM cash_transfers WHERE transfer_date >= CURRENT_DATE - INTERVAL '7 days' ORDER BY transfer_date DESC LIMIT 20"
+  }
+  
+  if (lowerQuestion.includes("tarjeta") || lowerQuestion.includes("transacción")) {
+    return "SELECT COUNT(*) as total, SUM(net_amount) as monto_neto FROM card_transactions WHERE transaction_date >= date_trunc('month', CURRENT_DATE) AND status IN ('APPROVED', 'SETTLED')"
+  }
+  
+  // Query genérica si no se encuentra patrón
+  return ""
 }
 
 export async function POST(request: Request) {
@@ -698,8 +1005,23 @@ export async function POST(request: Request) {
       cantidadRegistros: ivaSales.length + ivaPurchases.length,
     }
 
-    // Paralelizar queries finales (12-17)
-    const [pendingCommissionsResult, pendingOperatorPaymentsResult, destinationRequirementsResult, partnerAccountsResult, recurringPaymentsResult, whatsappMessagesResult] = await Promise.all([
+    // Paralelizar queries de nuevas tablas (12-25)
+    const [
+      pendingCommissionsResult, 
+      pendingOperatorPaymentsResult, 
+      destinationRequirementsResult, 
+      partnerAccountsResult, 
+      recurringPaymentsResult, 
+      whatsappMessagesResult,
+      quotationsResult,
+      cashTransfersResult,
+      paymentCouponsResult,
+      cardTransactionsResult,
+      tariffsResult,
+      quotasResult,
+      chartOfAccountsResult,
+      leadCommentsResult
+    ] = await Promise.all([
       (supabase.from("commission_records") as any)
         .select(`
           amount, status,
@@ -730,6 +1052,48 @@ export async function POST(request: Request) {
         .select("id, customer_name, message, status, scheduled_for, sent_at")
         .eq("status", "PENDING")
         .limit(10),
+      // Cotizaciones del mes
+      (supabase.from("quotations") as any)
+        .select("id, quotation_number, status, total_amount, currency, created_at, converted_at, operation_id")
+        .gte("created_at", startOfMonth),
+      // Transferencias entre cajas del mes
+      (supabase.from("cash_transfers") as any)
+        .select("id, from_box_id, to_box_id, amount, currency, transfer_date, status")
+        .gte("transfer_date", startOfMonth)
+        .order("transfer_date", { ascending: false })
+        .limit(20),
+      // Cupones de pago
+      (supabase.from("payment_coupons") as any)
+        .select("id, coupon_number, status, amount, currency, due_date, paid_date")
+        .in("status", ["PENDING", "OVERDUE"]),
+      // Transacciones con tarjeta del mes
+      (supabase.from("card_transactions") as any)
+        .select("id, amount, net_amount, currency, transaction_date, status, card_type")
+        .gte("transaction_date", startOfMonth)
+        .limit(50),
+      // Tarifarios activos (resumen)
+      (supabase.from("tariffs") as any)
+        .select("id, name, destination, region, tariff_type, is_active, valid_from, valid_to")
+        .eq("is_active", true)
+        .gte("valid_to", currentDate)
+        .limit(20),
+      // Cupos disponibles (resumen)
+      (supabase.from("quotas") as any)
+        .select("id, destination, total_quota, reserved_quota, available_quota, date_from, date_to")
+        .eq("is_active", true)
+        .gte("date_to", currentDate)
+        .limit(30),
+      // Plan de cuentas (estructura básica)
+      (supabase.from("chart_of_accounts") as any)
+        .select("account_code, account_name, category, subcategory, account_type, is_active")
+        .eq("is_active", true)
+        .order("account_code", { ascending: true })
+        .limit(50),
+      // Comentarios recientes en leads
+      (supabase.from("lead_comments") as any)
+        .select("id, lead_id, user_id, comment, created_at")
+        .order("created_at", { ascending: false })
+        .limit(20),
     ])
 
     const pendingCommissions = pendingCommissionsResult.data || []
@@ -738,6 +1102,14 @@ export async function POST(request: Request) {
     const partnerAccounts = partnerAccountsResult.data || []
     const recurringPayments = recurringPaymentsResult.data || []
     const whatsappMessages = whatsappMessagesResult.data || []
+    const quotations = quotationsResult.data || []
+    const cashTransfers = cashTransfersResult.data || []
+    const paymentCoupons = paymentCouponsResult.data || []
+    const cardTransactions = cardTransactionsResult.data || []
+    const tariffs = tariffsResult.data || []
+    const quotas = quotasResult.data || []
+    const chartOfAccounts = chartOfAccountsResult.data || []
+    const leadComments = leadCommentsResult.data || []
 
     contextData.comisionesPendientes = {
       cantidad: pendingCommissions.length,
@@ -802,6 +1174,161 @@ export async function POST(request: Request) {
       })),
     }
 
+    // 18. Cotizaciones del mes
+    const quotationsByStatus: Record<string, any> = {}
+    let quotationsConverted = 0
+    let quotationsTotal = 0
+    for (const q of quotations as any[]) {
+      quotationsByStatus[q.status] = (quotationsByStatus[q.status] || 0) + 1
+      quotationsTotal += Number(q.total_amount || 0)
+      if (q.status === 'CONVERTED') quotationsConverted++
+    }
+    contextData.cotizacionesMes = {
+      total: quotations.length,
+      porEstado: quotationsByStatus,
+      montoTotal: quotationsTotal,
+      convertidas: quotationsConverted,
+      tasaConversion: quotations.length > 0 ? (quotationsConverted / quotations.length * 100).toFixed(2) : 0,
+    }
+
+    // 19. Transferencias entre cajas
+    contextData.transferenciasCaja = {
+      cantidad: cashTransfers.length,
+      totalTransferido: cashTransfers.reduce((sum: number, t: any) => sum + Number(t.amount || 0), 0),
+      porEstado: cashTransfers.reduce((acc: any, t: any) => {
+        acc[t.status] = (acc[t.status] || 0) + 1
+        return acc
+      }, {}),
+      detalles: cashTransfers.slice(0, 10).map((t: any) => ({
+        monto: t.amount,
+        moneda: t.currency,
+        fecha: t.transfer_date,
+        estado: t.status,
+      })),
+    }
+
+    // 20. Cupones de pago
+    const couponsByStatus: Record<string, any> = {}
+    let couponsOverdue = 0
+    let couponsPending = 0
+    let couponsTotalAmount = 0
+    for (const c of paymentCoupons as any[]) {
+      couponsByStatus[c.status] = (couponsByStatus[c.status] || 0) + 1
+      if (c.status === 'OVERDUE') couponsOverdue++
+      if (c.status === 'PENDING') couponsPending++
+      couponsTotalAmount += Number(c.amount || 0)
+    }
+    contextData.cuponesPago = {
+      total: paymentCoupons.length,
+      vencidos: couponsOverdue,
+      pendientes: couponsPending,
+      montoTotal: couponsTotalAmount,
+      porEstado: couponsByStatus,
+    }
+
+    // 21. Transacciones con tarjeta
+    const transactionsByStatus: Record<string, any> = {}
+    let transactionsNetTotal = 0
+    let transactionsCount = 0
+    for (const t of cardTransactions as any[]) {
+      transactionsByStatus[t.status] = (transactionsByStatus[t.status] || 0) + 1
+      if (t.status === 'SETTLED' || t.status === 'APPROVED') {
+        transactionsNetTotal += Number(t.net_amount || 0)
+        transactionsCount++
+      }
+    }
+    contextData.transaccionesTarjeta = {
+      total: cardTransactions.length,
+      liquidadas: transactionsByStatus['SETTLED'] || 0,
+      montoNetoTotal: transactionsNetTotal,
+      cantidadLiquidadas: transactionsCount,
+      porEstado: transactionsByStatus,
+    }
+
+    // 22. Tarifarios activos
+    const tariffsByRegion: Record<string, number> = {}
+    const tariffsByType: Record<string, number> = {}
+    for (const t of tariffs as any[]) {
+      tariffsByRegion[t.region] = (tariffsByRegion[t.region] || 0) + 1
+      tariffsByType[t.tariff_type] = (tariffsByType[t.tariff_type] || 0) + 1
+    }
+    contextData.tarifariosActivos = {
+      total: tariffs.length,
+      porRegion: tariffsByRegion,
+      porTipo: tariffsByType,
+      detalles: tariffs.slice(0, 10).map((t: any) => ({
+        nombre: t.name,
+        destino: t.destination,
+        region: t.region,
+        tipo: t.tariff_type,
+        vigenteHasta: t.valid_to,
+      })),
+    }
+
+    // 23. Cupos disponibles
+    let totalQuotaAvailable = 0
+    let totalQuotaReserved = 0
+    const quotasByDestination: Record<string, number> = {}
+    for (const q of quotas as any[]) {
+      totalQuotaAvailable += Number(q.available_quota || 0)
+      totalQuotaReserved += Number(q.reserved_quota || 0)
+      quotasByDestination[q.destination] = (quotasByDestination[q.destination] || 0) + Number(q.available_quota || 0)
+    }
+    contextData.cuposDisponibles = {
+      totalCupos: quotas.length,
+      cuposDisponibles: totalQuotaAvailable,
+      cuposReservados: totalQuotaReserved,
+      porDestino: quotasByDestination,
+      detalles: quotas
+        .filter((q: any) => Number(q.available_quota || 0) > 0)
+        .slice(0, 10)
+        .map((q: any) => ({
+          destino: q.destination,
+          disponibles: q.available_quota,
+          reservados: q.reserved_quota,
+          total: q.total_quota,
+        })),
+    }
+
+    // 24. Plan de cuentas
+    const accountsByCategory: Record<string, number> = {}
+    for (const acc of chartOfAccounts as any[]) {
+      accountsByCategory[acc.category] = (accountsByCategory[acc.category] || 0) + 1
+    }
+    contextData.planCuentas = {
+      totalCuentas: chartOfAccounts.length,
+      porCategoria: accountsByCategory,
+      estructura: chartOfAccounts.slice(0, 20).map((acc: any) => ({
+        codigo: acc.account_code,
+        nombre: acc.account_name,
+        categoria: acc.category,
+        subcategoria: acc.subcategory,
+        tipo: acc.account_type,
+      })),
+    }
+
+    // 25. Comentarios recientes en leads
+    // Obtener nombres de usuarios que hicieron comentarios
+    const commentUserIds = Array.from(new Set(leadComments.map((c: any) => c.user_id).filter(Boolean)))
+    let commentUsers: any[] = []
+    if (commentUserIds.length > 0) {
+      const { data: usersData } = await supabase
+        .from("users")
+        .select("id, name")
+        .in("id", commentUserIds)
+      commentUsers = usersData || []
+    }
+    const usersMap = new Map(commentUsers.map((u: any) => [u.id, u.name]))
+    
+    contextData.comentariosLeads = {
+      total: leadComments.length,
+      recientes: leadComments.slice(0, 10).map((c: any) => ({
+        comentario: c.comment?.substring(0, 100),
+        autor: usersMap.get(c.user_id) || "Usuario desconocido",
+        fecha: c.created_at,
+      })),
+    }
+
     // Convertir contexto a texto
     const contextText = JSON.stringify(contextData, null, 2)
 
@@ -852,6 +1379,7 @@ ${contextText}
 
 ## EJEMPLOS DE PREGUNTAS Y CÓMO RESPONDER
 
+### Preguntas Básicas (usar contexto pre-cargado):
 **"¿Cuánto vendimos esta semana?"**
 → Usar datos de ventasEstaSemana
 
@@ -865,7 +1393,7 @@ ${contextText}
 → Usar datos de topVendedores
 
 **"¿Cómo estamos vs el mes pasado?"**
-→ Comparar ventasMesActual con mes pasado
+→ Comparar ventasMesActual con mes pasado (necesitarás hacer query para mes pasado)
 
 **"¿Cuánto IVA tenemos que pagar este mes?"**
 → Usar datos de ivaMes (ivaVentas - ivaCompras = ivaPagar)
@@ -894,11 +1422,92 @@ ${contextText}
 **"¿Cuántos mensajes WhatsApp están pendientes?"**
 → Usar datos de mensajesWhatsApp
 
-**"¿Qué requisitos faltan para la operación X?"**
-→ Consultar destination_requirements para el destino de la operación y comparar con documentos cargados
+### Preguntas sobre Cotizaciones (requieren queries dinámicas):
+**"¿Cuántas cotizaciones se enviaron este mes?"**
+→ Query: SELECT COUNT(*) FROM quotations WHERE status = 'SENT' AND created_at >= start_of_month
+
+**"¿Cuántas cotizaciones se convirtieron en operaciones?"**
+→ Query: SELECT COUNT(*) FROM quotations WHERE status = 'CONVERTED' AND converted_at >= start_of_month
+
+**"¿Cuál es la tasa de conversión de cotizaciones este mes?"**
+→ (cotizaciones convertidas / cotizaciones enviadas) * 100
+
+**"¿Qué cotizaciones están próximas a vencer?"**
+→ Query: SELECT * FROM quotations WHERE status IN ('SENT', 'PENDING_APPROVAL') AND valid_until BETWEEN CURRENT_DATE AND CURRENT_DATE + 3
+
+**"¿Cuánto monto total hay en cotizaciones pendientes de aprobación?"**
+→ Query: SELECT SUM(total_amount) FROM quotations WHERE status = 'PENDING_APPROVAL'
+
+### Preguntas sobre Tarifarios y Cupos:
+**"¿Qué tarifarios están activos para el Caribe?"**
+→ Query: SELECT * FROM tariffs WHERE region = 'CARIBE' AND is_active = true AND valid_from <= CURRENT_DATE AND valid_to >= CURRENT_DATE
+
+**"¿Cuántos cupos disponibles hay para Brasil en febrero?"**
+→ Query: SELECT SUM(available_quota) FROM quotas WHERE destination LIKE '%Brasil%' AND date_from <= '2025-02-28' AND date_to >= '2025-02-01' AND is_active = true
+
+**"¿Qué operador tiene más cupos reservados?"**
+→ Query: SELECT o.name, SUM(qr.quantity) FROM quota_reservations qr JOIN quotas q ON qr.quota_id = q.id JOIN operators o ON q.operator_id = o.id WHERE qr.status = 'RESERVED' GROUP BY o.name ORDER BY SUM(qr.quantity) DESC
+
+### Preguntas sobre Transferencias y Cajas:
+**"¿Qué transferencias entre cajas hubo la semana pasada?"**
+→ Query: SELECT * FROM cash_transfers WHERE transfer_date BETWEEN start_of_last_week AND end_of_last_week
+
+**"¿Cuál es el balance actual de todas las cajas?"**
+→ Query: SELECT name, currency, current_balance FROM cash_boxes WHERE is_active = true
+
+**"¿Cuánto se transfirió de ARS a USD este mes?"**
+→ Query: SELECT SUM(amount) FROM cash_transfers WHERE currency = 'USD' AND transfer_date >= start_of_month
+
+### Preguntas sobre Cupones y Transacciones:
+**"¿Cuántos cupones de pago están vencidos?"**
+→ Query: SELECT COUNT(*) FROM payment_coupons WHERE status = 'OVERDUE'
+
+**"¿Cuánto monto total hay en cupones pendientes?"**
+→ Query: SELECT SUM(amount) FROM payment_coupons WHERE status = 'PENDING'
+
+**"¿Cuántas transacciones con tarjeta se liquidaron este mes?"**
+→ Query: SELECT COUNT(*) FROM card_transactions WHERE status = 'SETTLED' AND settlement_date >= start_of_month
+
+**"¿Cuál es el monto neto total de transacciones con tarjeta este mes?"**
+→ Query: SELECT SUM(net_amount) FROM card_transactions WHERE transaction_date >= start_of_month AND status IN ('APPROVED', 'SETTLED')
+
+### Preguntas sobre Pasajeros y Documentos:
+**"¿Qué pasajeros tienen documentos vencidos para viajes próximos?"**
+→ Query compleja: JOIN operation_passengers con documents y operations filtrando por expiration_date < departure_date
+
+**"¿Cuántos pasajeros tiene la operación OP-2025-001?"**
+→ Query: SELECT COUNT(*) FROM operation_passengers WHERE operation_id = (SELECT id FROM operations WHERE file_code = 'OP-2025-001')
+
+### Preguntas sobre Múltiples Operadores:
+**"¿Qué operación tiene más operadores asociados?"**
+→ Query: SELECT o.file_code, COUNT(oo.id) FROM operations o JOIN operation_operators oo ON o.id = oo.operation_id GROUP BY o.file_code ORDER BY COUNT(oo.id) DESC
+
+**"¿Cuál es el costo total de una operación incluyendo todos sus operadores?"**
+→ Sumar operator_cost de operations + SUM(cost) de operation_operators
+
+### Preguntas sobre Plan de Cuentas:
+**"¿Cómo se relaciona la cuenta financiera 'Caja Principal' con el plan de cuentas?"**
+→ Query: SELECT fa.name, coa.account_code, coa.account_name FROM financial_accounts fa JOIN chart_of_accounts coa ON fa.chart_account_id = coa.id WHERE fa.name = 'Caja Principal'
+
+**"¿Qué cuentas del plan de cuentas son de tipo ACTIVO CORRIENTE?"**
+→ Query: SELECT * FROM chart_of_accounts WHERE category = 'ACTIVO' AND subcategory = 'CORRIENTE'
+
+### Preguntas sobre Comentarios:
+**"¿Qué comentarios hay en el lead de Juan Pérez?"**
+→ Query: SELECT lc.comment, u.name, lc.created_at FROM lead_comments lc JOIN leads l ON lc.lead_id = l.id JOIN users u ON lc.user_id = u.id WHERE l.contact_name LIKE '%Juan Pérez%'
+
+### Preguntas Complejas (múltiples tablas):
+**"¿Cuál es el margen promedio por destino este trimestre?"**
+→ Query compleja: GROUP BY destination, calcular AVG(margin_amount) de operations
+
+**"¿Qué operador tiene más operaciones pendientes de pago?"**
+→ Query: JOIN operators con operator_payments filtrando por status = 'PENDING', GROUP BY operator
+
+**"¿Cuántas cotizaciones se convirtieron en operaciones y cuál fue el monto total?"**
+→ Query: SELECT COUNT(*), SUM(q.total_amount) FROM quotations q WHERE q.status = 'CONVERTED' AND q.operation_id IS NOT NULL
 
 **"en que fecha cae el próximo?"** (pregunta ambigua)
-→ Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, o próximo pago recurrente?"
+→ Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, próximo pago recurrente, o próxima cotización?"
 
 ## FLUJOS CONTABLES (para explicar si preguntan)
 1. Al crear OPERACIÓN → se genera IVA Ventas, IVA Compras, Cuenta a Pagar a Operador, y commission_records
@@ -908,6 +1517,13 @@ ${contextText}
 5. Las COMISIONES se calculan automáticamente al confirmar operación (se registran en commission_records)
 6. Al registrar RETIRO DE SOCIO → se crean movimientos en ledger_movements y cash_movements
 7. Los PAGOS RECURRENTES generan pagos automáticamente (cron job diario)
+8. Al crear COTIZACIÓN → se puede asociar a un LEAD y usar TARIFARIOS para precios
+9. Al convertir COTIZACIÓN en OPERACIÓN → se actualiza quotation.operation_id y quotation.status = 'CONVERTED'
+10. Al hacer TRANSFERENCIA entre cajas → se actualizan los balances de ambas cajas automáticamente
+11. Al registrar TRANSACCIÓN CON TARJETA → se calcula net_amount = amount - commission_amount automáticamente
+12. Al crear CUPÓN DE PAGO → se puede asociar a operation, payment o customer
+13. Al reservar CUPO → se crea quota_reservation y se actualiza reserved_quota en quotas
+14. Las CUENTAS FINANCIERAS pueden estar relacionadas con PLAN DE CUENTAS mediante chart_account_id
 
 ## FLUJOS DE DOCUMENTOS Y ALERTAS
 1. Al subir DOCUMENTO con OCR → se extrae información (scanned_data) y se puede crear/actualizar customer
@@ -920,27 +1536,141 @@ ${contextText}
 2. Los TEMPLATES de mensajes son configurables por agencia
 3. Las COMUNICACIONES se registran manualmente (llamadas, emails, reuniones, notas)
 
+## CÓMO OBTENER DATOS ESPECÍFICOS
+
+Si la pregunta requiere datos que NO están en el contexto pre-cargado, tenés acceso a una función especial:
+
+### Función: execute_query
+Podés usar la función execute_query para ejecutar queries SQL SELECT de forma segura. Esta función:
+- Solo permite queries SELECT (seguridad)
+- Valida el SQL antes de ejecutar
+- Retorna los resultados en formato JSON
+
+**Cuándo usar execute_query:**
+- Cuando necesitás datos específicos que no están en el contexto pre-cargado
+- Cuando la pregunta requiere filtros o cálculos específicos
+- Cuando necesitás datos históricos o comparaciones temporales
+
+**Ejemplos de queries útiles:**
+- SELECT COUNT(*) FROM quotations WHERE status = 'SENT' AND created_at >= date_trunc('month', CURRENT_DATE)
+- SELECT * FROM payment_coupons WHERE status = 'OVERDUE' ORDER BY due_date LIMIT 10
+- SELECT destination, AVG(margin_amount) FROM operations WHERE created_at >= date_trunc('quarter', CURRENT_DATE) GROUP BY destination
+
+**IMPORTANTE:**
+1. Siempre intentá usar el contexto pre-cargado primero (es más rápido)
+2. Solo usá execute_query cuando realmente necesites datos específicos
+3. Asegurate de que la query sea SELECT válida
+4. Incluí LIMIT cuando sea apropiado para evitar queries muy pesadas
+
+## FORMATO DE RESPUESTAS
+
+Cuando respondas:
+- **Sé específico** con números, fechas y montos
+- **Incluí contexto** relevante (comparaciones, tendencias)
+- **Mencioná limitaciones** si no tenés todos los datos
+- **Sugerí acciones** si hay problemas (pagos vencidos, cupos bajos, etc.)
+- **Usá formato claro**: listas, tablas, o párrafos según corresponda
+
 ## IMPORTANTE
 - Si la pregunta es ambigua, pedí aclaración
-- Si no tenés datos suficientes, decilo honestamente
+- Si no tenés datos suficientes, usá execute_query para obtenerlos
 - Siempre intentá dar contexto adicional útil
-- Si hay riesgos (pagos vencidos, viajes sin confirmar), mencionalo`
+- Si hay riesgos (pagos vencidos, viajes sin confirmar, cupos bajos), mencionalo
+- Si la pregunta requiere datos específicos, usá execute_query en lugar de decir que no tenés los datos
+- Cuando ejecutes una query, explicá brevemente qué datos obtuviste antes de responder`
 
-    // Generar respuesta
+    // Definir tools/functions para que el AI pueda ejecutar queries
+    const tools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "execute_query",
+          description: "Ejecuta una query SQL SELECT de forma segura para obtener datos específicos de la base de datos. Usa esta función cuando necesites datos que no están en el contexto pre-cargado.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Query SQL SELECT válida. Solo se permiten queries SELECT. Ejemplos: 'SELECT COUNT(*) FROM quotations WHERE status = \\'SENT\\'', 'SELECT * FROM payment_coupons WHERE status = \\'OVERDUE\\' LIMIT 10'",
+              },
+              description: {
+                type: "string",
+                description: "Descripción breve de qué datos se están buscando con esta query",
+              },
+            },
+            required: ["query", "description"],
+          },
+        },
+      },
+    ]
+
+    // Generar respuesta con function calling
     let response = "No pude procesar tu consulta."
+    let queryExecuted = false
+    let queryResults: any = null
 
     try {
-      const completion = await openai.chat.completions.create({
+      // Primera llamada: AI decide si necesita ejecutar una query
+      let completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: message },
         ],
+        tools: tools,
+        tool_choice: "auto", // El AI decide si usar la función
         temperature: 0.4,
         max_tokens: 2000,
       })
 
-      response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
+      const messageResponse = completion.choices[0]?.message
+
+      // Si el AI quiere ejecutar una query
+      if (messageResponse?.tool_calls && messageResponse.tool_calls.length > 0) {
+        const toolCall = messageResponse.tool_calls[0]
+        
+        if (toolCall.function.name === "execute_query") {
+          try {
+            const { query, description } = JSON.parse(toolCall.function.arguments)
+            
+            console.log(`[AI] Ejecutando query solicitada: ${description}`)
+            console.log(`[AI] Query: ${query.substring(0, 200)}...`)
+            
+            // Ejecutar query
+            queryResults = await executeQuery(supabase, query)
+            queryExecuted = true
+            
+            // Segunda llamada: AI genera respuesta con los datos obtenidos
+            completion = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: message },
+                { 
+                  role: "assistant", 
+                  content: `Ejecuté la query: ${description}. Resultados: ${JSON.stringify(queryResults)}` 
+                },
+                { 
+                  role: "user", 
+                  content: "Ahora responde la pregunta original del usuario usando estos datos." 
+                },
+              ],
+              temperature: 0.4,
+              max_tokens: 2000,
+            })
+            
+            response = completion.choices[0]?.message?.content || "No pude procesar tu consulta."
+          } catch (queryError: any) {
+            console.error("[AI] Error ejecutando query:", queryError)
+            response = `No pude ejecutar la query solicitada: ${queryError.message}. Por favor, reformula tu pregunta o usa datos del contexto pre-cargado.`
+          }
+        } else {
+          response = messageResponse.content || "No pude procesar tu consulta."
+        }
+      } else {
+        // El AI no necesita ejecutar query, usa contexto pre-cargado
+        response = messageResponse?.content || "No pude procesar tu consulta."
+      }
     } catch (openaiError: any) {
       console.error("[AI] Error OpenAI:", openaiError)
       return NextResponse.json({ 
@@ -948,7 +1678,11 @@ ${contextText}
       }, { status: 500 })
     }
 
-    return NextResponse.json({ response })
+    return NextResponse.json({ 
+      response,
+      queryExecuted,
+      queryResults: queryExecuted ? queryResults : undefined,
+    })
   } catch (error: any) {
     console.error("[AI] Error general:", error)
     return NextResponse.json({ error: error?.message || "Error al procesar la consulta" }, { status: 500 })

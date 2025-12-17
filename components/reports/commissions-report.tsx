@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { ReportsFiltersState } from "./reports-filters"
-import { formatCurrency } from "@/lib/utils"
+import { formatCurrency } from "@/lib/currency"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -161,7 +161,7 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
             <CardTitle className="text-sm font-medium">Total Comisiones</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalCommissions)}</div>
+            <div className="text-2xl font-bold">{formatCurrency(totalCommissions, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -170,7 +170,7 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
             <CardTitle className="text-sm font-medium">Pagadas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid)}</div>
+            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -179,7 +179,7 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
             <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-yellow-600">{formatCurrency(totalPending)}</div>
+            <div className="text-2xl font-bold text-yellow-600">{formatCurrency(totalPending, "ARS")}</div>
           </CardContent>
         </Card>
       </div>
@@ -206,12 +206,12 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
                 {data.map((seller) => (
                   <TableRow key={seller.sellerId}>
                     <TableCell className="font-medium">{seller.sellerName}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(seller.totalCommissions)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(seller.totalCommissions, "ARS")}</TableCell>
                     <TableCell className="text-right text-amber-600">
-                      {formatCurrency(seller.paidCommissions)}
+                      {formatCurrency(seller.paidCommissions, "ARS")}
                     </TableCell>
                     <TableCell className="text-right text-yellow-600">
-                      {formatCurrency(seller.pendingCommissions)}
+                      {formatCurrency(seller.pendingCommissions, "ARS")}
                     </TableCell>
                     <TableCell className="text-right">{seller.operationsCount}</TableCell>
                   </TableRow>
