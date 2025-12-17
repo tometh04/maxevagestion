@@ -103,15 +103,134 @@ export async function POST(request: Request) {
     // ============================================
     // FASE 1: CREAR LEDGER MOVEMENT
     // ============================================
-    // Determinar tipo de cuenta financiera según método
-    // Por ahora usamos CASH como default, luego se puede mejorar
-    const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
-    const accountId = await getOrCreateDefaultAccount(
-      accountType,
-      paymentData.currency as "ARS" | "USD",
-      user.id,
-      supabase
-    )
+    // Determinar cuenta financiera según el tipo de movimiento y el plan de cuentas
+    let accountId: string
+    
+    if (paymentData.direction === "INCOME") {
+      // INGRESOS: usar cuenta de RESULTADO > INGRESOS > "4.1.01" - Ventas de Viajes
+      const { data: ingresosChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "4.1.01")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (ingresosChart) {
+        // Buscar o crear financial_account vinculada a esta cuenta del plan
+        let ingresosFinancialAccount = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", ingresosChart.id)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        if (!ingresosFinancialAccount) {
+          const { data: newFA } = await (supabase.from("financial_accounts") as any)
+            .insert({
+              name: "Ventas de Viajes",
+              type: "CASH_ARS", // Tipo genérico, no importa para RESULTADO
+              currency: paymentData.currency as "ARS" | "USD",
+              chart_account_id: ingresosChart.id,
+              initial_balance: 0,
+              is_active: true,
+              created_by: user.id,
+            })
+            .select("id")
+            .single()
+          ingresosFinancialAccount = newFA
+        }
+        accountId = ingresosFinancialAccount.id
+      } else {
+        // Fallback si no existe el plan de cuentas
+        const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
+        accountId = await getOrCreateDefaultAccount(
+          accountType,
+          paymentData.currency as "ARS" | "USD",
+          user.id,
+          supabase
+        )
+      }
+    } else if (paymentData.payer_type === "OPERATOR") {
+      // COSTOS: usar cuenta de RESULTADO > COSTOS > "4.2.01" - Costo de Operadores
+      const { data: costosChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "4.2.01")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (costosChart) {
+        let costosFinancialAccount = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", costosChart.id)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        if (!costosFinancialAccount) {
+          const { data: newFA } = await (supabase.from("financial_accounts") as any)
+            .insert({
+              name: "Costo de Operadores",
+              type: "CASH_ARS",
+              currency: paymentData.currency as "ARS" | "USD",
+              chart_account_id: costosChart.id,
+              initial_balance: 0,
+              is_active: true,
+              created_by: user.id,
+            })
+            .select("id")
+            .single()
+          costosFinancialAccount = newFA
+        }
+        accountId = costosFinancialAccount.id
+      } else {
+        // Fallback
+        const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
+        accountId = await getOrCreateDefaultAccount(
+          accountType,
+          paymentData.currency as "ARS" | "USD",
+          user.id,
+          supabase
+        )
+      }
+    } else {
+      // GASTOS: usar cuenta de RESULTADO > GASTOS > "4.3.03" - Comisiones de Vendedores (o genérico)
+      const { data: gastosChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "4.3.01") // Gastos Administrativos como default
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (gastosChart) {
+        let gastosFinancialAccount = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", gastosChart.id)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        if (!gastosFinancialAccount) {
+          const { data: newFA } = await (supabase.from("financial_accounts") as any)
+            .insert({
+              name: "Gastos Administrativos",
+              type: "CASH_ARS",
+              currency: paymentData.currency as "ARS" | "USD",
+              chart_account_id: gastosChart.id,
+              initial_balance: 0,
+              is_active: true,
+              created_by: user.id,
+            })
+            .select("id")
+            .single()
+          gastosFinancialAccount = newFA
+        }
+        accountId = gastosFinancialAccount.id
+      } else {
+        // Fallback
+        const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
+        accountId = await getOrCreateDefaultAccount(
+          accountType,
+          paymentData.currency as "ARS" | "USD",
+          user.id,
+          supabase
+        )
+      }
+    }
 
     // Calcular ARS equivalent
     // Si currency = ARS, amount_ars_equivalent = amount_original
