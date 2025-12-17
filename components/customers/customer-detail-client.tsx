@@ -227,6 +227,7 @@ export function CustomerDetailClient({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Código</TableHead>
                       <TableHead>Destino</TableHead>
                       <TableHead>Fechas</TableHead>
                       <TableHead>Vendedor</TableHead>
@@ -238,10 +239,17 @@ export function CustomerDetailClient({
                   <TableBody>
                     {operations.map((op: any) => (
                       <TableRow key={op.id}>
-                        <TableCell>{op.destination}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          {op.file_code || op.id.slice(0, 8)}
+                        </TableCell>
+                        <TableCell>{op.destination || "-"}</TableCell>
                         <TableCell>
                           <div className="text-sm">
-                            <div>{format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })}</div>
+                            {op.departure_date ? (
+                              <div>{format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })}</div>
+                            ) : (
+                              <div className="text-muted-foreground">-</div>
+                            )}
                             {op.return_date && (
                               <div className="text-muted-foreground">
                                 {format(new Date(op.return_date), "dd/MM/yyyy", { locale: es })}
@@ -251,7 +259,7 @@ export function CustomerDetailClient({
                         </TableCell>
                         <TableCell>{op.sellers?.name || "-"}</TableCell>
                         <TableCell>
-                          {op.currency} {op.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          {op.currency || "USD"} {op.sale_amount_total ? op.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 }) : "0,00"}
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">{statusLabels[op.status] || op.status}</Badge>

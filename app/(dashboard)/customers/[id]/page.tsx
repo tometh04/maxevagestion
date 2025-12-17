@@ -36,7 +36,7 @@ export default async function CustomerDetailPage({
     `)
     .eq("customer_id", id)
     .order("created_at", { ascending: false })
-  
+
   if (operationCustomersError) {
     console.error("[CustomerDetailPage] Error fetching operation_customers:", operationCustomersError)
   }
@@ -111,7 +111,17 @@ export default async function CustomerDetailPage({
   // Ordenar todos los documentos por fecha
   documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
 
-  const operations = (operationCustomers || []).map((oc: any) => oc.operations).filter(Boolean)
+  // Extraer operaciones de operation_customers
+  // En Supabase, cuando haces una relación con foreign key, devuelve un objeto único (no array)
+  const operations = (operationCustomers || [])
+    .map((oc: any) => {
+      // oc.operations puede ser un objeto único o null
+      if (oc.operations && typeof oc.operations === 'object' && !Array.isArray(oc.operations)) {
+        return oc.operations
+      }
+      return null
+    })
+    .filter((op: any) => op !== null && op !== undefined)
 
   return (
     <CustomerDetailClient
