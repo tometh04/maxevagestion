@@ -49,7 +49,7 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 2. **Inconsistencia en Validación de Roles**
    - **Ubicación:** `lib/auth.ts:95-126` vs `lib/permissions.ts`
    - **Problema:** Función `canAccess()` en `auth.ts` tiene lógica diferente a `permissions.ts`
-   - **Recomendación:** Consolidar toda la lógica de permisos en `lib/permissions.ts`
+   - **Estado:** ✅ **CORREGIDO** - Función `canAccess()` removida de `lib/auth.ts`, solo queda comentario explicativo
 
 ---
 
@@ -172,7 +172,7 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
    - **Ubicación:** `lib/permissions-api.ts:121-172`
    - **Problema Potencial:** Si un SELLER no tiene operaciones, la query retorna un ID que no existe (`00000000-0000-0000-0000-000000000000`)
    - **Impacto:** Funciona pero es un workaround
-   - **Recomendación:** Considerar usar `.limit(0)` o método más elegante
+   - **Estado:** ✅ **CORREGIDO** - Cambiado a usar `.limit(0)` para una solución más elegante
 
 ---
 
@@ -281,10 +281,8 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 
 1. **Error de Sintaxis en `whatsapp-service.ts`**
    - **Ubicación:** `lib/whatsapp/whatsapp-service.ts:83`
-   - **Problema:** Falta paréntesis de cierre en `.insert()`
-   - **Línea:** `const { error } = await (supabase.from("whatsapp_messages") as any).insert({`
-   - **Impacto:** ❌ **BUG CRÍTICO** - El código no compilará
-   - **Recomendación:** Corregir inmediatamente
+   - **Estado:** ✅ **VERIFICADO - NO HAY ERROR** - El código está correcto, el reporte estaba desactualizado
+   - **Nota:** Revisado con linter, no hay errores de sintaxis. El código compila correctamente.
 
 ---
 
@@ -306,36 +304,35 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 
 ### ⚠️ Problemas Identificados
 
-1. **Rutas API de Trello No Verificadas**
-   - `/api/trello/test-connection/route.ts` - Verificar uso
-   - `/api/trello/webhooks/route.ts` - Verificar uso
-   - `/api/trello/webhooks/register/route.ts` - Verificar uso
-   - **Recomendación:** Buscar referencias y documentar o eliminar
+1. **Rutas API de Trello**
+   - ✅ `/api/trello/webhooks/route.ts` - **EN USO** - Usado en `components/settings/trello-settings.tsx` (líneas 349, 393)
+   - ✅ `/api/trello/webhooks/register/route.ts` - **EN USO** - Usado en `components/settings/trello-settings.tsx` (línea 366)
+   - ⚠️ `/api/trello/test-connection/route.ts` - **NO USADO EN UI** - Ruta funcional pero no referenciada en componentes. Considerar eliminar o documentar como endpoint de testing.
 
 ---
 
 ## 9. BUGS CRÍTICOS ENCONTRADOS
 
-### 🔴 BUG #1: Tipo de Cuenta "Cuentas por Pagar" Incorrecto
+### ✅ BUG #1: Tipo de Cuenta "Cuentas por Pagar" Incorrecto - **CORREGIDO**
 - **Archivo:** `app/api/operations/route.ts:384`
 - **Problema:** "Cuentas por Pagar" marcada como `type: "ASSETS"` en lugar de `"LIABILITIES"`
 - **Impacto:** Clasificación contable incorrecta (los pasivos aparecen como activos)
 - **Prioridad:** CRÍTICA
-- **Fix:** Cambiar `type: "ASSETS"` a `type: "LIABILITIES"`
+- **Estado:** ✅ **CORREGIDO** - Cambiado a `type: "LIABILITIES"`
 
-### 🟡 BUG #2: Tasa de Cambio Fallback
-- **Archivo:** `app/api/operations/route.ts:336, 403`
-- **Problema:** Usa `1000` como fallback si no hay tasa de cambio
+### ✅ BUG #2: Tasa de Cambio Fallback - **CORREGIDO**
+- **Archivo:** `app/api/operations/route.ts:336, 403`, `lib/accounting/fx.ts`
+- **Problema:** Usa `1000` como fallback silencioso si no hay tasa de cambio
 - **Impacto:** Cálculos incorrectos en ARS equivalent
 - **Prioridad:** ALTA
-- **Fix:** Alertar usuario o requerir tasa manual
+- **Estado:** ✅ **CORREGIDO** - Removido fallback silencioso, agregado console.warn si no hay tasa
 
-### 🟡 BUG #3: Validación de Fechas Incompleta
+### ✅ BUG #3: Validación de Fechas Incompleta - **CORREGIDO**
 - **Archivo:** `app/api/operations/route.ts:108-126`
 - **Problema:** No valida que `return_date > departure_date` si ambos están presentes
 - **Impacto:** Puede crear operaciones con fechas inválidas
 - **Prioridad:** MEDIA
-- **Fix:** Agregar validación
+- **Estado:** ✅ **CORREGIDO** - Agregada validación explícita
 
 ---
 
@@ -347,7 +344,7 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 ### ❌ Código Obsoleto
 1. **Función Deprecada:**
    - `lib/alerts/generate.ts:15-18` - `generatePaymentAlerts()` marcada como @deprecated
-   - **Acción:** Buscar referencias y reemplazar por `generatePaymentReminders()`
+   - **Estado:** ✅ **CORREGIDO** - Función removida, todas las referencias actualizadas para usar `generatePaymentReminders()`
 
 ---
 
@@ -381,26 +378,26 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 
 ## 12. MEJORAS RECOMENDADAS
 
-### 🔴 Alta Prioridad
-1. **Corregir error de sintaxis en `whatsapp-service.ts`**
-2. **Corregir tipo de cuenta "Cuentas por Pagar"**
-3. **Mejorar manejo de tasa de cambio (no usar fallback silencioso)**
-4. **Eliminar función deprecada `generatePaymentAlerts()`**
+### ✅ Alta Prioridad - **COMPLETADO**
+1. ✅ **Corregir error de sintaxis en `whatsapp-service.ts`** - Verificado, no hay error
+2. ✅ **Corregir tipo de cuenta "Cuentas por Pagar"** - Corregido a `LIABILITIES`
+3. ✅ **Mejorar manejo de tasa de cambio (no usar fallback silencioso)** - Removido fallback, agregado warning
+4. ✅ **Eliminar función deprecada `generatePaymentAlerts()`** - Removida
 
 ### 🟡 Media Prioridad
 1. **Mejorar manejo de errores en creación de operaciones**
    - Considerar rollback si fallan operaciones críticas
    - Notificar al usuario si algo falla
-2. **Validar que return_date > departure_date**
-3. **Documentar o eliminar rutas API no usadas de Trello**
-4. **Consolidar lógica de permisos (eliminar `canAccess()` de `auth.ts`)**
+2. ✅ **Validar que return_date > departure_date** - **CORREGIDO**
+3. ✅ **Documentar o eliminar rutas API no usadas de Trello** - **VERIFICADO**: `/api/trello/webhooks` y `/api/trello/webhooks/register` están en uso. `/api/trello/test-connection` no se usa en UI.
+4. ✅ **Consolidar lógica de permisos (eliminar `canAccess()` de `auth.ts`)** - **CORREGIDO**
 
 ### 🟢 Baja Prioridad
 1. **Completar TODOs en Emilia:**
    - Generación de PDF
    - Retry con escalas
-2. **Mejorar filtro de clientes para SELLER (evitar workaround de UUID falso)**
-3. **Agregar validaciones adicionales de fechas**
+2. ✅ **Mejorar filtro de clientes para SELLER (evitar workaround de UUID falso)** - **CORREGIDO** - Usa `.limit(0)`
+3. ✅ **Agregar validaciones adicionales de fechas** - **CORREGIDO** - Validación de return_date > departure_date
 
 ---
 
@@ -454,15 +451,15 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 
 ## 15. PRÓXIMOS PASOS
 
-1. **Inmediato:**
-   - Corregir tipo de cuenta "Cuentas por Pagar" (ASSETS → LIABILITIES)
-   - Decidir sobre Quotations/Tariffs/Quotas (implementar o eliminar)
-   - Mejorar manejo de tasa de cambio (no usar fallback silencioso)
+1. ✅ **Inmediato - COMPLETADO:**
+   - ✅ Corregir tipo de cuenta "Cuentas por Pagar" (ASSETS → LIABILITIES)
+   - ⚠️ Decidir sobre Quotations/Tariffs/Quotas (implementar o eliminar) - **PENDIENTE DECISIÓN**
+   - ✅ Mejorar manejo de tasa de cambio (no usar fallback silencioso)
 
-2. **Corto Plazo:**
-   - Eliminar función deprecada `generatePaymentAlerts()`
-   - Mejorar manejo de tasa de cambio
-   - Documentar rutas API no usadas
+2. ✅ **Corto Plazo - COMPLETADO:**
+   - ✅ Eliminar función deprecada `generatePaymentAlerts()`
+   - ✅ Mejorar manejo de tasa de cambio
+   - ✅ Documentar rutas API no usadas (verificado: 2 en uso, 1 no usada)
 
 3. **Mediano Plazo:**
    - Implementar mejoras de manejo de errores
@@ -473,13 +470,16 @@ Se realizó un análisis exhaustivo del código fuente del sistema MAXEVA GESTIO
 
 ## CONCLUSIÓN
 
-El sistema está **bien estructurado** y la mayoría de las funcionalidades están **correctamente implementadas**. Se encontraron:
+El sistema está **bien estructurado** y la mayoría de las funcionalidades están **correctamente implementadas**. 
 
-- **1 bug crítico** que impide compilación
-- **2 bugs importantes** que afectan la contabilidad
-- **Varios puntos de mejora** en manejo de errores y validaciones
+**Estado de Correcciones:**
+- ✅ **Todos los bugs críticos e importantes han sido corregidos**
+- ✅ **Código obsoleto removido**
+- ✅ **Inconsistencias resueltas**
+- ⚠️ **Pendiente:** Decisión sobre funcionalidades faltantes (Quotations/Tariffs/Quotas)
+- ⚠️ **Pendiente:** Mejoras en manejo de errores (rollback en operaciones críticas)
 
-**Recomendación general:** Corregir los bugs críticos primero, luego decidir sobre las funcionalidades faltantes (Quotations/Tariffs/Quotas), y finalmente implementar mejoras de UX y manejo de errores.
+**Recomendación general:** El sistema está en buen estado. Las mejoras pendientes son principalmente de UX y robustez, no críticas para el funcionamiento actual.
 
 ---
 
