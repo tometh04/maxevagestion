@@ -351,8 +351,13 @@ export async function GET(request: Request) {
     const monthMovementsArray = (monthMovements || []) as any[]
     console.log(`[MonthlyPosition] Procesando ${monthMovementsArray.length} movimientos del mes`)
     
+    // Debug: mostrar todos los movimientos para entender qué está pasando
     for (const movement of monthMovementsArray) {
-      const chartAccount = (movement.financial_accounts as any)?.chart_of_accounts
+      const financialAccount = movement.financial_accounts as any
+      const chartAccount = financialAccount?.chart_of_accounts
+      
+      console.log(`[MonthlyPosition] Movimiento ${movement.id}: type=${movement.type}, currency=${movement.currency}, amount_original=${movement.amount_original}, chart_category=${chartAccount?.category}, chart_subcategory=${chartAccount?.subcategory}`)
+      
       if (chartAccount?.category === "RESULTADO") {
         const amountOriginal = parseFloat(movement.amount_original || "0")
         const currency = movement.currency || "ARS"
@@ -363,24 +368,28 @@ export async function GET(request: Request) {
           } else {
             ingresosARS += amountOriginal
           }
-          console.log(`[MonthlyPosition] INGRESO: ${amountOriginal} ${currency} (movement ${movement.id})`)
+          console.log(`[MonthlyPosition] ✅ INGRESO: ${amountOriginal} ${currency} (movement ${movement.id})`)
         } else if (chartAccount.subcategory === "COSTOS" && (movement.type === "EXPENSE" || movement.type === "OPERATOR_PAYMENT")) {
           if (currency === "USD") {
             costosUSD += amountOriginal
           } else {
             costosARS += amountOriginal
           }
-          console.log(`[MonthlyPosition] COSTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
+          console.log(`[MonthlyPosition] ✅ COSTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
         } else if (chartAccount.subcategory === "GASTOS" && movement.type === "EXPENSE") {
           if (currency === "USD") {
             gastosUSD += amountOriginal
           } else {
             gastosARS += amountOriginal
           }
-          console.log(`[MonthlyPosition] GASTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
+          console.log(`[MonthlyPosition] ✅ GASTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
+        } else {
+          console.warn(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} es RESULTADO pero no coincide con INGRESOS/COSTOS/GASTOS: subcategory=${chartAccount.subcategory}, type=${movement.type}`)
         }
-      } else if (!chartAccount) {
-        console.warn(`[MonthlyPosition] Movimiento ${movement.id} no tiene chart_account vinculado`)
+      } else if (chartAccount) {
+        console.log(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} no es RESULTADO: category=${chartAccount.category}`)
+      } else {
+        console.warn(`[MonthlyPosition] ⚠️ Movimiento ${movement.id} no tiene chart_account vinculado. financial_account=${financialAccount?.id || "null"}`)
       }
     }
     
