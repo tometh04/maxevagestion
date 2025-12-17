@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,11 +27,7 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
   const [sellers, setSellers] = useState<Seller[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchTopSellers()
-  }, [agencyId, sellerId, dateFrom, dateTo])
-
-  const fetchTopSellers = async () => {
+  const fetchTopSellers = useCallback(async () => {
     try {
       setLoading(true)
       const now = new Date()
@@ -70,7 +66,11 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
     } finally {
       setLoading(false)
     }
-  }
+  }, [agencyId, sellerId, dateFrom, dateTo])
+
+  useEffect(() => {
+    fetchTopSellers()
+  }, [fetchTopSellers])
 
   const getInitials = (name: string | null | undefined) => {
     if (!name) return "?"

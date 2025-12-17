@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,11 +33,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
   const [operations, setOperations] = useState<Operation[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchUpcomingTrips()
-  }, [agencyId, sellerId])
-
-  const fetchUpcomingTrips = async () => {
+  const fetchUpcomingTrips = useCallback(async () => {
     try {
       setLoading(true)
       const today = new Date().toISOString().split("T")[0]
@@ -65,7 +61,11 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
     } finally {
       setLoading(false)
     }
-  }
+  }, [agencyId, sellerId])
+
+  useEffect(() => {
+    fetchUpcomingTrips()
+  }, [fetchUpcomingTrips])
 
   const getDaysUntilTrip = (dateStr: string) => {
     return differenceInDays(new Date(dateStr), new Date())

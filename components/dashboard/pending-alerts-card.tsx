@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -42,11 +42,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchAlerts()
-  }, [agencyId, sellerId])
-
-  const fetchAlerts = async () => {
+  const fetchAlerts = useCallback(async () => {
     try {
       setLoading(true)
       const params = new URLSearchParams()
@@ -71,7 +67,11 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
     } finally {
       setLoading(false)
     }
-  }
+  }, [agencyId, sellerId])
+
+  useEffect(() => {
+    fetchAlerts()
+  }, [fetchAlerts])
 
   const getAlertConfig = (type: string) => {
     return alertTypeConfig[type] || { icon: Bell, color: "bg-gray-500", label: type }
