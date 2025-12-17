@@ -27,9 +27,9 @@ interface MonthlyPosition {
     total: number
   }
   pasivo: {
-    corriente: number
-    no_corriente: number
-    total: number
+    corriente: { ars: number; usd: number }
+    no_corriente: { ars: number; usd: number }
+    total: { ars: number; usd: number }
   }
   patrimonio_neto: {
     total: number
@@ -218,7 +218,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">
-                  {formatCurrency(position.pasivo.total)}
+                  {formatCurrency(position.pasivo.total.ars, "ARS")}
+                  {position.pasivo.total.usd > 0 && (
+                    <span className="ml-2 text-muted-foreground">
+                      ({formatCurrency(position.pasivo.total.usd, "USD")})
+                    </span>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -292,7 +297,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Pasivo Corriente</span>
-                    <span className="font-bold">{formatCurrency(position.pasivo.corriente)}</span>
+                    <div className="font-bold text-red-600">
+                      {formatCurrency(position.pasivo.corriente.ars, "ARS")}
+                      {position.pasivo.corriente.usd > 0 && (
+                        <span className="ml-2 text-muted-foreground">
+                          ({formatCurrency(position.pasivo.corriente.usd, "USD")})
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Cuentas por Pagar, IVA a Pagar, Sueldos a Pagar
@@ -301,7 +313,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Pasivo No Corriente</span>
-                    <span className="font-bold">{formatCurrency(position.pasivo.no_corriente)}</span>
+                    <div className="font-bold text-red-600">
+                      {formatCurrency(position.pasivo.no_corriente.ars, "ARS")}
+                      {position.pasivo.no_corriente.usd > 0 && (
+                        <span className="ml-2 text-muted-foreground">
+                          ({formatCurrency(position.pasivo.no_corriente.usd, "USD")})
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Préstamos a largo plazo
@@ -310,7 +329,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div className="pt-2 border-t">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-sm font-medium">Total Pasivo</span>
-                    <span className="font-bold text-red-600">{formatCurrency(position.pasivo.total)}</span>
+                    <div className="font-bold text-red-600">
+                      {formatCurrency(position.pasivo.total.ars, "ARS")}
+                      {position.pasivo.total.usd > 0 && (
+                        <span className="ml-2 text-muted-foreground">
+                          ({formatCurrency(position.pasivo.total.usd, "USD")})
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div>
@@ -325,7 +351,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <div className="pt-2 border-t">
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold">Total Pasivo + Patrimonio</span>
-                    <span className="text-lg font-bold">{formatCurrency(position.pasivo.total + position.patrimonio_neto.total)}</span>
+                    <div className="text-lg font-bold">
+                      {formatCurrency(position.pasivo.total.ars + position.patrimonio_neto.total, "ARS")}
+                      {position.pasivo.total.usd > 0 && (
+                        <span className="ml-2 text-muted-foreground">
+                          ({formatCurrency(position.pasivo.total.usd, "USD")})
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </CardContent>

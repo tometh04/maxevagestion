@@ -101,8 +101,136 @@ export async function POST(request: Request) {
     })
 
     // ============================================
-    // FASE 1: CREAR LEDGER MOVEMENT
+    // FASE 1: REDUCIR ACTIVO/PASIVO Y CREAR MOVIMIENTO EN RESULTADO
     // ============================================
+    
+    // 1. Reducir "Cuentas por Cobrar" (ACTIVO) si es INCOME
+    //    o "Cuentas por Pagar" (PASIVO) si es EXPENSE
+    if (paymentData.direction === "INCOME") {
+      // Reducir "Cuentas por Cobrar" (ACTIVO) - el cliente pagó
+      const { data: accountsReceivableChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "1.1.03")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (accountsReceivableChart) {
+        const { data: accountsReceivableAccount } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", accountsReceivableChart.id)
+          .eq("currency", paymentData.currency)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        if (accountsReceivableAccount) {
+          // Calcular exchange rate si es USD
+          let exchangeRate: number | null = null
+          if (paymentData.currency === "USD") {
+            exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
+            if (!exchangeRate) {
+              const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
+              exchangeRate = await getLatestExchangeRate(supabase)
+            }
+            if (!exchangeRate) {
+              console.warn(`No exchange rate found for USD payment ${paymentId}`)
+              exchangeRate = 1000 // Fallback temporal
+            }
+          }
+          
+          const amountARS = calculateARSEquivalent(
+            parseFloat(paymentData.amount),
+            paymentData.currency as "ARS" | "USD",
+            exchangeRate
+          )
+          
+          // Crear movimiento INCOME en "Cuentas por Cobrar" para REDUCIR el activo
+          await createLedgerMovement(
+            {
+              operation_id: paymentData.operation_id || null,
+              lead_id: null,
+              type: "INCOME", // INCOME reduce el activo "Cuentas por Cobrar"
+              concept: `Cobro de cliente - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+              currency: paymentData.currency as "ARS" | "USD",
+              amount_original: parseFloat(paymentData.amount),
+              exchange_rate: exchangeRate,
+              amount_ars_equivalent: amountARS,
+              method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
+              account_id: accountsReceivableAccount.id,
+              seller_id: operation?.seller_id || null,
+              operator_id: null,
+              receipt_number: reference || null,
+              notes: `Pago recibido: ${reference || ""}`,
+              created_by: user.id,
+            },
+            supabase
+          )
+          console.log(`✅ Reducido "Cuentas por Cobrar" por pago de cliente ${paymentId}`)
+        }
+      }
+    } else if (paymentData.payer_type === "OPERATOR") {
+      // Reducir "Cuentas por Pagar" (PASIVO) - pagaste al operador
+      const { data: accountsPayableChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "2.1.01")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (accountsPayableChart) {
+        const { data: accountsPayableAccount } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", accountsPayableChart.id)
+          .eq("currency", paymentData.currency)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        if (accountsPayableAccount) {
+          // Calcular exchange rate si es USD
+          let exchangeRate: number | null = null
+          if (paymentData.currency === "USD") {
+            exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
+            if (!exchangeRate) {
+              const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
+              exchangeRate = await getLatestExchangeRate(supabase)
+            }
+            if (!exchangeRate) {
+              console.warn(`No exchange rate found for USD payment ${paymentId}`)
+              exchangeRate = 1000 // Fallback temporal
+            }
+          }
+          
+          const amountARS = calculateARSEquivalent(
+            parseFloat(paymentData.amount),
+            paymentData.currency as "ARS" | "USD",
+            exchangeRate
+          )
+          
+          // Crear movimiento INCOME en "Cuentas por Pagar" para REDUCIR el pasivo
+          await createLedgerMovement(
+            {
+              operation_id: paymentData.operation_id || null,
+              lead_id: null,
+              type: "INCOME", // INCOME reduce el pasivo "Cuentas por Pagar"
+              concept: `Pago a operador - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+              currency: paymentData.currency as "ARS" | "USD",
+              amount_original: parseFloat(paymentData.amount),
+              exchange_rate: exchangeRate,
+              amount_ars_equivalent: amountARS,
+              method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
+              account_id: accountsPayableAccount.id,
+              seller_id: operation?.seller_id || null,
+              operator_id: operation?.operator_id || null,
+              receipt_number: reference || null,
+              notes: `Pago realizado: ${reference || ""}`,
+              created_by: user.id,
+            },
+            supabase
+          )
+          console.log(`✅ Reducido "Cuentas por Pagar" por pago a operador ${paymentId}`)
+        }
+      }
+    }
+    
+    // 2. Crear movimiento en RESULTADO (INGRESOS/COSTOS/GASTOS)
     // Determinar cuenta financiera según el tipo de movimiento y el plan de cuentas
     let accountId: string
     
@@ -181,13 +309,13 @@ export async function POST(request: Request) {
         accountId = costosFinancialAccount.id
       } else {
         // Fallback
-        const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
+    const accountType = paymentData.currency === "USD" ? "USD" : "CASH"
         accountId = await getOrCreateDefaultAccount(
-          accountType,
-          paymentData.currency as "ARS" | "USD",
-          user.id,
-          supabase
-        )
+      accountType,
+      paymentData.currency as "ARS" | "USD",
+      user.id,
+      supabase
+    )
       }
     } else {
       // GASTOS: usar cuenta de RESULTADO > GASTOS > "4.3.03" - Comisiones de Vendedores (o genérico)

@@ -116,8 +116,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener movimientos contables" }, { status: 500 })
     }
 
-    // Calcular balances por categoría
+    // Calcular balances por categoría y moneda
     const balances: Record<string, number> = {}
+    const balancesByCurrency: Record<string, { ars: number; usd: number }> = {}
 
     // Calcular balances de cuentas financieras
     const financialAccountsArrayForBalance = (financialAccounts || []) as any[]
@@ -130,7 +131,52 @@ export async function GET(request: Request) {
         if (chartAccount) {
           const key = `${chartAccount.category}_${chartAccount.subcategory || "NONE"}`
           balances[key] = (balances[key] || 0) + balance
-          console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}): balance=${balance}, key=${key}`)
+          
+          // Separar por moneda
+          if (!balancesByCurrency[key]) {
+            balancesByCurrency[key] = { ars: 0, usd: 0 }
+          }
+          
+          // Obtener movimientos para separar por moneda
+          const { data: movements } = await supabase
+            .from("ledger_movements")
+            .select("amount_original, currency, type")
+            .eq("account_id", account.id)
+          
+          if (movements && movements.length > 0) {
+            const movementsArray = movements as any[]
+            for (const m of movementsArray) {
+              const amount = parseFloat(m.amount_original || "0")
+              let shouldAdd = false
+              
+              // Para PASIVOS: EXPENSE aumenta, INCOME disminuye
+              if (chartAccount.category === "PASIVO") {
+                if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT") {
+                  shouldAdd = true
+                } else if (m.type === "INCOME") {
+                  shouldAdd = false // Restar
+                }
+              } else {
+                // Para ACTIVOS y otros: INCOME aumenta, EXPENSE disminuye
+                if (m.type === "INCOME") {
+                  shouldAdd = true
+                } else if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT") {
+                  shouldAdd = false // Restar
+                }
+              }
+              
+              if (m.currency === "ARS") {
+                balancesByCurrency[key].ars += shouldAdd ? amount : -amount
+              } else if (m.currency === "USD") {
+                balancesByCurrency[key].usd += shouldAdd ? amount : -amount
+              }
+            }
+          } else {
+            // Si no hay movimientos, usar el balance total (ya en ARS)
+            balancesByCurrency[key].ars += balance
+          }
+          
+          console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}): balance=${balance}, key=${key}, ARS=${balancesByCurrency[key].ars}, USD=${balancesByCurrency[key].usd}`)
         } else {
           console.warn(`[MonthlyPosition] Cuenta ${account.id} no tiene chart_of_accounts vinculado`)
         }
@@ -140,6 +186,7 @@ export async function GET(request: Request) {
     }
     
     console.log(`[MonthlyPosition] Balances calculados:`, balances)
+    console.log(`[MonthlyPosition] Balances por moneda:`, balancesByCurrency)
 
     // Calcular resultados del mes (solo movimientos del mes)
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
@@ -230,6 +277,10 @@ export async function GET(request: Request) {
     // Estructurar respuesta
     const activo_corriente = balances["ACTIVO_CORRIENTE"] || 0
     const activo_no_corriente = balances["ACTIVO_NO_CORRIENTE"] || 0
+    // Obtener balances de pasivos por moneda
+    const pasivoCorriente = balancesByCurrency["PASIVO_CORRIENTE"] || { ars: 0, usd: 0 }
+    const pasivoNoCorriente = balancesByCurrency["PASIVO_NO_CORRIENTE"] || { ars: 0, usd: 0 }
+    
     const pasivo_corriente = balances["PASIVO_CORRIENTE"] || 0
     const pasivo_no_corriente = balances["PASIVO_NO_CORRIENTE"] || 0
     const patrimonio_neto = balances["PATRIMONIO_NETO_NONE"] || 0
@@ -246,9 +297,9 @@ export async function GET(request: Request) {
         total: Math.round((activo_corriente + activo_no_corriente) * 100) / 100,
       },
       pasivo: {
-        corriente: Math.round(pasivo_corriente * 100) / 100,
-        no_corriente: Math.round(pasivo_no_corriente * 100) / 100,
-        total: Math.round((pasivo_corriente + pasivo_no_corriente) * 100) / 100,
+        corriente: { ars: Math.round(pasivoCorriente.ars * 100) / 100, usd: Math.round(pasivoCorriente.usd * 100) / 100 },
+        no_corriente: { ars: Math.round(pasivoNoCorriente.ars * 100) / 100, usd: Math.round(pasivoNoCorriente.usd * 100) / 100 },
+        total: { ars: Math.round((pasivoCorriente.ars + pasivoNoCorriente.ars) * 100) / 100, usd: Math.round((pasivoCorriente.usd + pasivoNoCorriente.usd) * 100) / 100 },
       },
       patrimonio_neto: {
         total: Math.round(patrimonio_neto * 100) / 100,
