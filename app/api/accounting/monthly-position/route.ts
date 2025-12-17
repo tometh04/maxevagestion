@@ -351,10 +351,22 @@ export async function GET(request: Request) {
     // (aunque el movimiento se creó en otro mes)
     const { data: paymentsInMonth } = await supabase
       .from("payments")
-      .select(`
-        ledger_movement_id,
-        date_paid,
-        ledger_movements:ledger_movement_id(
+      .select("ledger_movement_id, date_paid")
+      .not("ledger_movement_id", "is", null)
+      .gte("date_paid", monthStart)
+      .lte("date_paid", monthEnd)
+    
+    // Obtener los IDs de los movimientos de ledger vinculados a estos pagos
+    const ledgerMovementIdsFromPayments = (paymentsInMonth || [])
+      .map((p: any) => p.ledger_movement_id)
+      .filter(Boolean)
+    
+    // Obtener los movimientos de ledger vinculados a estos pagos
+    let additionalMovements: any[] = []
+    if (ledgerMovementIdsFromPayments.length > 0) {
+      const { data: movementsFromPayments } = await supabase
+        .from("ledger_movements")
+        .select(`
           *,
           financial_accounts:account_id(
             id,
@@ -365,27 +377,33 @@ export async function GET(request: Request) {
               account_type
             )
           )
-        )
-      `)
-      .not("ledger_movement_id", "is", null)
-      .gte("date_paid", monthStart)
-      .lte("date_paid", monthEnd)
+        `)
+        .in("id", ledgerMovementIdsFromPayments)
+      
+      if (movementsFromPayments) {
+        additionalMovements = movementsFromPayments
+      }
+    }
     
-    // Combinar ambos conjuntos de movimientos
+    // Combinar ambos conjuntos de movimientos (evitar duplicados)
     const allMovements: any[] = []
+    const existingIds = new Set<string>()
     
     // Agregar movimientos creados en el mes
     if (monthMovements) {
-      allMovements.push(...monthMovements)
+      for (const m of monthMovements) {
+        if (!existingIds.has(m.id)) {
+          allMovements.push(m)
+          existingIds.add(m.id)
+        }
+      }
     }
     
     // Agregar movimientos vinculados a pagos del mes (evitar duplicados)
-    if (paymentsInMonth) {
-      const existingIds = new Set(allMovements.map((m: any) => m.id))
-      for (const payment of paymentsInMonth as any[]) {
-        if (payment.ledger_movements && !existingIds.has(payment.ledger_movements.id)) {
-          allMovements.push(payment.ledger_movements)
-        }
+    for (const m of additionalMovements) {
+      if (!existingIds.has(m.id)) {
+        allMovements.push(m)
+        existingIds.add(m.id)
       }
     }
     
