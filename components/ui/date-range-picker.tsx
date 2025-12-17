@@ -26,14 +26,12 @@ interface DateRangePickerProps {
 // Helper function to parse date string safely (YYYY-MM-DD format)
 function parseDateString(dateStr: string | undefined): Date | undefined {
   if (!dateStr || dateStr.trim() === "") return undefined
-  // Parse YYYY-MM-DD format without timezone issues
   const parts = dateStr.split("-")
   if (parts.length !== 3) return undefined
   const year = parseInt(parts[0], 10)
   const month = parseInt(parts[1], 10)
   const day = parseInt(parts[2], 10)
   if (isNaN(year) || isNaN(month) || isNaN(day)) return undefined
-  // Validate date
   const date = new Date(year, month - 1, day)
   if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
     return undefined
@@ -153,58 +151,40 @@ export function DateRangePicker({
     return { from, to }
   }, [dateFrom, dateTo])
 
-  // Internal range for selection (only used when popover is open)
-  const [internalRange, setInternalRange] = React.useState<DateRange | undefined>(() => currentRange)
+  // Internal range for selection - starts with current range when opening
+  const [internalRange, setInternalRange] = React.useState<DateRange | undefined>(currentRange)
 
-  // Sync internal range with props when popover opens or when props change (if closed)
+  // Reset internal range when opening popover
   React.useEffect(() => {
     if (isOpen) {
-      // When opening, sync with current props
-      setInternalRange(currentRange)
-    } else {
-      // When closed, keep internal range in sync with props
       setInternalRange(currentRange)
     }
   }, [isOpen, currentRange])
 
-  // When popover closes, handle the selection
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open)
-    if (!open) {
-      // Popover is closing - commit selection if complete, otherwise revert
-      if (internalRange?.from && internalRange?.to) {
-        // Complete range selected - ensure it's committed
-        onChange(formatDateString(internalRange.from), formatDateString(internalRange.to))
-      } else {
-        // Incomplete selection - revert to current props
-        setInternalRange(currentRange)
-      }
-    }
-  }
-
   const handleSelect = (range: DateRange | undefined) => {
     setInternalRange(range)
     
-    // Only update parent when both dates are selected
+    // When both dates are selected, update parent and close
     if (range?.from && range?.to) {
       onChange(formatDateString(range.from), formatDateString(range.to))
-      // Close popover after selection
-      setIsOpen(false)
+      // Close after a brief delay to show the selection
+      setTimeout(() => {
+        setIsOpen(false)
+      }, 150)
     }
   }
 
   const handlePresetClick = (preset: typeof presets[0]) => {
     const range = preset.getValue()
-    setInternalRange(range)
     onChange(formatDateString(range.from), formatDateString(range.to))
     setIsOpen(false)
   }
 
-  // For display: use currentRange (from props) when closed, internalRange when open
-  const displayRange = isOpen ? internalRange : currentRange
+  // Display current range from props (not internal state when closed)
+  const displayRange = currentRange
 
   return (
-    <Popover open={isOpen} onOpenChange={handleOpenChange}>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           id="date"
@@ -220,10 +200,6 @@ export function DateRangePicker({
             <>
               {format(displayRange.from, "LLL dd, y", { locale: es })} -{" "}
               {format(displayRange.to, "LLL dd, y", { locale: es })}
-            </>
-          ) : displayRange?.from && isOpen ? (
-            <>
-              {format(displayRange.from, "LLL dd, y", { locale: es })} - ...
             </>
           ) : (
             <span>{placeholder}</span>
@@ -254,6 +230,7 @@ export function DateRangePicker({
               selected={internalRange}
               onSelect={handleSelect}
               numberOfMonths={1}
+              locale={es}
             />
           </div>
         </div>
@@ -261,4 +238,3 @@ export function DateRangePicker({
     </Popover>
   )
 }
-
