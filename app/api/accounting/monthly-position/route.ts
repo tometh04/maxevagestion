@@ -53,9 +53,13 @@ export async function GET(request: Request) {
         )
       `)
       .eq("is_active", true)
+      .not("chart_account_id", "is", null) // Solo cuentas vinculadas al plan de cuentas
 
     if (agencyId !== "ALL") {
       financialAccountsQuery = financialAccountsQuery.eq("agency_id", agencyId)
+    } else {
+      // Si es "ALL", incluir cuentas sin agency_id también (cuentas globales)
+      // No agregamos filtro adicional, ya que .not("chart_account_id", "is", null) ya filtra
     }
 
     const { data: financialAccounts, error: faError } = await financialAccountsQuery
@@ -154,19 +158,28 @@ export async function GET(request: Request) {
     let gastos = 0
 
     const monthMovementsArray = (monthMovements || []) as any[]
+    console.log(`[MonthlyPosition] Procesando ${monthMovementsArray.length} movimientos del mes`)
+    
     for (const movement of monthMovementsArray) {
       const chartAccount = (movement.financial_accounts as any)?.chart_of_accounts
       if (chartAccount?.category === "RESULTADO") {
         const amount = parseFloat(movement.amount_ars_equivalent || "0")
         if (chartAccount.subcategory === "INGRESOS" && movement.type === "INCOME") {
           ingresos += amount
-        } else if (chartAccount.subcategory === "COSTOS" && movement.type === "EXPENSE") {
+          console.log(`[MonthlyPosition] INGRESO: ${amount} ARS (movement ${movement.id})`)
+        } else if (chartAccount.subcategory === "COSTOS" && (movement.type === "EXPENSE" || movement.type === "OPERATOR_PAYMENT")) {
           costos += amount
+          console.log(`[MonthlyPosition] COSTO: ${amount} ARS (movement ${movement.id})`)
         } else if (chartAccount.subcategory === "GASTOS" && movement.type === "EXPENSE") {
           gastos += amount
+          console.log(`[MonthlyPosition] GASTO: ${amount} ARS (movement ${movement.id})`)
         }
+      } else if (!chartAccount) {
+        console.warn(`[MonthlyPosition] Movimiento ${movement.id} no tiene chart_account vinculado`)
       }
     }
+    
+    console.log(`[MonthlyPosition] Resultados del mes: ingresos=${ingresos}, costos=${costos}, gastos=${gastos}`)
 
     // Estructurar respuesta
     const activo_corriente = balances["ACTIVO_CORRIENTE"] || 0
