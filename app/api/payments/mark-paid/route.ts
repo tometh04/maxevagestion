@@ -88,6 +88,7 @@ export async function POST(request: Request) {
     const movementsTable = supabase.from("cash_movements") as any
     await movementsTable.insert({
       operation_id: paymentData.operation_id,
+      payment_id: paymentId, // Vincular con el pago
       cash_box_id: (defaultCashBox as any)?.id || null,
       user_id: user.id,
       type: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
