@@ -1498,13 +1498,57 @@ ${contextText}
 
 ### Preguntas Complejas (múltiples tablas):
 **"¿Cuál es el margen promedio por destino este trimestre?"**
-→ Query compleja: GROUP BY destination, calcular AVG(margin_amount) de operations
+→ Query: SELECT destination, AVG(margin_amount) as margen_promedio, COUNT(*) as cantidad_operaciones FROM operations WHERE created_at >= date_trunc('quarter', CURRENT_DATE) GROUP BY destination ORDER BY margen_promedio DESC
 
 **"¿Qué operador tiene más operaciones pendientes de pago?"**
-→ Query: JOIN operators con operator_payments filtrando por status = 'PENDING', GROUP BY operator
+→ Query: SELECT o.name, COUNT(op.id) as operaciones_pendientes, SUM(op.amount) as monto_total FROM operators o JOIN operator_payments op ON o.id = op.operator_id WHERE op.status = 'PENDING' GROUP BY o.name ORDER BY operaciones_pendientes DESC
 
 **"¿Cuántas cotizaciones se convirtieron en operaciones y cuál fue el monto total?"**
-→ Query: SELECT COUNT(*), SUM(q.total_amount) FROM quotations q WHERE q.status = 'CONVERTED' AND q.operation_id IS NOT NULL
+→ Query: SELECT COUNT(*) as cantidad, SUM(q.total_amount) as monto_total FROM quotations q WHERE q.status = 'CONVERTED' AND q.operation_id IS NOT NULL
+
+### Preguntas de CÁLCULOS COMPLEJOS (Rentabilidad, Análisis, Comparaciones):
+
+**"¿Cuál es el destino más rentable para la agencia Rosario?"**
+→ Query: SELECT o.destination, SUM(o.margin_amount) as margen_total, COUNT(*) as cantidad_operaciones, AVG(o.margin_percentage) as margen_promedio_pct, SUM(o.sale_amount_total) as ventas_totales FROM operations o JOIN agencies a ON o.agency_id = a.id WHERE a.name LIKE '%Rosario%' AND o.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY o.destination ORDER BY margen_total DESC LIMIT 1
+
+**"¿Cuál es el paquete más rentable?"**
+→ Query: SELECT o.file_code, o.destination, o.margin_amount, o.margin_percentage, o.sale_amount_total, o.operator_cost FROM operations o WHERE o.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') ORDER BY o.margin_amount DESC LIMIT 1
+
+**"¿Cuál es el operador más económico?"**
+→ Query: SELECT o.name, AVG(op.operator_cost) as costo_promedio, COUNT(op.id) as cantidad_operaciones FROM operators o JOIN operations op ON o.id = op.operator_id WHERE op.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY o.name ORDER BY costo_promedio ASC LIMIT 1
+
+**"¿Cuál es el operador más rentable?"**
+→ Query: SELECT o.name, SUM(op.margin_amount) as margen_total, AVG(op.margin_percentage) as margen_promedio_pct, COUNT(op.id) as cantidad_operaciones FROM operators o JOIN operations op ON o.id = op.operator_id WHERE op.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY o.name ORDER BY margen_total DESC LIMIT 1
+
+**"¿Cuál es el mejor vendedor este mes?"**
+→ Query: SELECT u.name, COUNT(o.id) as cantidad_operaciones, SUM(o.sale_amount_total) as ventas_totales, SUM(o.margin_amount) as margen_total, AVG(o.margin_percentage) as margen_promedio FROM users u JOIN operations o ON u.id = o.seller_id WHERE o.created_at >= date_trunc('month', CURRENT_DATE) AND o.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY u.name ORDER BY ventas_totales DESC LIMIT 1
+
+**"¿Cuál es el mejor mes de facturación este año?"**
+→ Query: SELECT date_trunc('month', created_at) as mes, SUM(sale_amount_total) as facturacion_total, COUNT(*) as cantidad_operaciones FROM operations WHERE created_at >= date_trunc('year', CURRENT_DATE) AND status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY mes ORDER BY facturacion_total DESC LIMIT 1
+
+**"¿Cuánto vendimos esta semana?"**
+→ Query: SELECT SUM(sale_amount_total) as ventas_totales, COUNT(*) as cantidad_operaciones, SUM(margin_amount) as margen_total FROM operations WHERE created_at >= date_trunc('week', CURRENT_DATE) AND status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED')
+
+**"¿Cuánto voy a pagar de IVA el próximo mes?"**
+→ Query: SELECT SUM(iva_amount) as iva_a_pagar FROM iva_sales WHERE period_month = EXTRACT(MONTH FROM CURRENT_DATE + INTERVAL '1 month') AND period_year = EXTRACT(YEAR FROM CURRENT_DATE + INTERVAL '1 month') - (SELECT COALESCE(SUM(iva_amount), 0) FROM iva_purchases WHERE period_month = EXTRACT(MONTH FROM CURRENT_DATE + INTERVAL '1 month') AND period_year = EXTRACT(YEAR FROM CURRENT_DATE + INTERVAL '1 month'))
+
+**"¿Cuál es el destino con más operaciones este año?"**
+→ Query: SELECT destination, COUNT(*) as cantidad_operaciones, SUM(sale_amount_total) as ventas_totales FROM operations WHERE created_at >= date_trunc('year', CURRENT_DATE) AND status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY destination ORDER BY cantidad_operaciones DESC LIMIT 1
+
+**"¿Cuál es el margen promedio por agencia?"**
+→ Query: SELECT a.name, AVG(o.margin_percentage) as margen_promedio_pct, SUM(o.margin_amount) as margen_total, COUNT(o.id) as cantidad_operaciones FROM agencies a JOIN operations o ON a.id = o.agency_id WHERE o.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY a.name ORDER BY margen_promedio_pct DESC
+
+**"¿Cuál es la tasa de conversión de leads a operaciones este mes?"**
+→ Query: SELECT (SELECT COUNT(*) FROM operations WHERE created_at >= date_trunc('month', CURRENT_DATE))::float / NULLIF((SELECT COUNT(*) FROM leads WHERE created_at >= date_trunc('month', CURRENT_DATE)), 0) * 100 as tasa_conversion
+
+**"¿Cuánto facturamos por destino este trimestre?"**
+→ Query: SELECT destination, SUM(sale_amount_total) as facturacion, COUNT(*) as cantidad_operaciones FROM operations WHERE created_at >= date_trunc('quarter', CURRENT_DATE) AND status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY destination ORDER BY facturacion DESC
+
+**"¿Cuál es el cliente que más compró este año?"**
+→ Query: SELECT c.first_name || ' ' || c.last_name as cliente, COUNT(DISTINCT o.id) as cantidad_operaciones, SUM(o.sale_amount_total) as total_gastado FROM customers c JOIN operation_customers oc ON c.id = oc.customer_id JOIN operations o ON oc.operation_id = o.id WHERE o.created_at >= date_trunc('year', CURRENT_DATE) AND o.status IN ('CONFIRMED', 'TRAVELLED', 'CLOSED') GROUP BY c.id, c.first_name, c.last_name ORDER BY total_gastado DESC LIMIT 1
+
+**"¿Cuál es el promedio de días entre cotización y operación?"**
+→ Query: SELECT AVG(EXTRACT(DAY FROM (o.created_at - q.created_at))) as promedio_dias FROM quotations q JOIN operations o ON q.operation_id = o.id WHERE q.status = 'CONVERTED' AND q.operation_id IS NOT NULL
 
 **"en que fecha cae el próximo?"** (pregunta ambigua)
 → Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, próximo pago recurrente, o próxima cotización?"
