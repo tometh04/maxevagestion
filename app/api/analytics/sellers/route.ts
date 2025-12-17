@@ -40,20 +40,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
     }
 
+    // First, get operations without the relation to avoid potential issues
     let query = supabase
       .from("operations")
-      .select(
-        `
-        sale_amount_total,
-        margin_amount,
-        seller_id,
-        sellers:seller_id(
-          id,
-          name,
-          phone
-        )
-      `,
-      )
+      .select("sale_amount_total, margin_amount, seller_id")
 
     // Apply role-based filtering
     if (user.role === "SELLER") {
@@ -83,29 +73,53 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener datos de vendedores", details: error.message }, { status: 500 })
     }
 
-      // Group by seller
-      const sellerStats = (operations || []).reduce((acc: any, op: any) => {
-        const sellerId = op.seller_id
-        // Usar nombre, si no hay usar teléfono, si no hay usar "Vendedor"
-        const sellerName = op.sellers?.name || op.sellers?.phone || "Vendedor"
+    // Get unique seller IDs
+    const sellerIds = [...new Set((operations || []).map((op: any) => op.seller_id).filter(Boolean))]
 
-        if (!acc[sellerId]) {
-          acc[sellerId] = {
-            sellerId,
-            sellerName,
-            phone: op.sellers?.phone || null,
-            totalSales: 0,
-            totalMargin: 0,
-            operationsCount: 0,
-          }
+    // Fetch seller data separately
+    let sellersData: Record<string, any> = {}
+    if (sellerIds.length > 0) {
+      const { data: sellers, error: sellersError } = await supabase
+        .from("users")
+        .select("id, name, phone")
+        .in("id", sellerIds)
+
+      if (sellersError) {
+        console.error("Error fetching sellers:", sellersError)
+        // Continue without seller data rather than failing completely
+      } else {
+        sellersData = (sellers || []).reduce((acc: any, seller: any) => {
+          acc[seller.id] = seller
+          return acc
+        }, {})
+      }
+    }
+
+    // Group by seller
+    const sellerStats = (operations || []).reduce((acc: any, op: any) => {
+      const sellerId = op.seller_id
+      if (!sellerId) return acc
+
+      const seller = sellersData[sellerId]
+      const sellerName = seller?.name || seller?.phone || "Vendedor"
+
+      if (!acc[sellerId]) {
+        acc[sellerId] = {
+          sellerId,
+          sellerName,
+          phone: seller?.phone || null,
+          totalSales: 0,
+          totalMargin: 0,
+          operationsCount: 0,
         }
+      }
 
-        acc[sellerId].totalSales += op.sale_amount_total || 0
-        acc[sellerId].totalMargin += op.margin_amount || 0
-        acc[sellerId].operationsCount += 1
+      acc[sellerId].totalSales += op.sale_amount_total || 0
+      acc[sellerId].totalMargin += op.margin_amount || 0
+      acc[sellerId].operationsCount += 1
 
-        return acc
-      }, {})
+      return acc
+    }, {})
 
       const sellers = Object.values(sellerStats).map((seller: any) => ({
         id: seller.sellerId,
