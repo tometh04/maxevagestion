@@ -456,9 +456,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               <div className="pt-2 border-t">
                 <div className="flex justify-between items-center">
                   <span className="text-lg font-bold">Resultado del Mes</span>
-                  <span className={`text-lg font-bold ${position.resultado.total >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {formatCurrency(position.resultado.total)}
-                  </span>
+                  <div className={`text-lg font-bold ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    {formatCurrency(position.resultado.resultadoARS || position.resultado.total, "ARS")}
+                    {position.resultado.resultadoUSD !== undefined && position.resultado.resultadoUSD !== 0 && (
+                      <span className="ml-2 text-muted-foreground">
+                        ({formatCurrency(position.resultado.resultadoUSD, "USD")})
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardContent>
