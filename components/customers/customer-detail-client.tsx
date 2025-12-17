@@ -257,7 +257,7 @@ export function CustomerDetailClient({
                         <TableCell>
                           <div className="text-sm">
                             {op.departure_date ? (
-                              <div>{format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })}</div>
+                            <div>{format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })}</div>
                             ) : (
                               <div className="text-muted-foreground">-</div>
                             )}

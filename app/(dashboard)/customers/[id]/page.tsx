@@ -60,7 +60,7 @@ export default async function CustomerDetailPage({
 
   // Get operation IDs for payments and documents
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
-  
+
   // Get payments related to customer's operations
   // También incluir pagos directamente vinculados al cliente si existe esa relación en el futuro
   let payments: any[] = []
@@ -101,7 +101,7 @@ export default async function CustomerDetailPage({
     .select("*")
     .eq("customer_id", id)
     .order("uploaded_at", { ascending: false })
-  
+
   if (customerDocsError) {
     console.error("[CustomerDetailPage] Error fetching customer documents:", customerDocsError)
   }

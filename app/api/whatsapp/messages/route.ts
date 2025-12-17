@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       if (operationIds.length > 0) {
         query = query.or(`customer_id.eq.${customerId},operation_id.in.(${operationIds.join(",")})`)
       } else {
-        query = query.eq("customer_id", customerId)
+      query = query.eq("customer_id", customerId)
       }
     }
 

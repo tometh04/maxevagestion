@@ -148,8 +148,8 @@ export async function applyCustomersFilters(
     const operationIds = (operations || []).map((op: any) => op.id)
 
     if (operationIds.length === 0) {
-      // No tiene operaciones, retornar query vacío
-      return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
+      // No tiene operaciones, retornar query que no devuelva resultados usando limit(0)
+      return query.limit(0)
     }
 
     // Obtener customer_ids de operation_customers
@@ -161,14 +161,15 @@ export async function applyCustomersFilters(
     const customerIds = (operationCustomers || []).map((oc: any) => oc.customer_id)
 
     if (customerIds.length === 0) {
-      return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
+      // No hay clientes asociados, retornar query que no devuelva resultados
+      return query.limit(0)
     }
 
     return query.in("id", customerIds)
   }
 
   // Para otros roles no contemplados, retornar query vacío por seguridad
-  return query.eq("id", "00000000-0000-0000-0000-000000000000") // ID que no existe
+  return query.limit(0)
 }
 
 /**

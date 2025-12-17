@@ -14,20 +14,20 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
 
-    const supabase = await createServerClient()
+      const supabase = await createServerClient()
 
-    // Get user agencies
+      // Get user agencies
     const { data: userAgencies, error: userAgenciesError } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
+        .from("user_agencies")
+        .select("agency_id")
+        .eq("user_id", user.id)
 
     if (userAgenciesError) {
       console.error("Error fetching user agencies:", userAgenciesError)
       return NextResponse.json({ error: "Error al obtener agencias del usuario" }, { status: 500 })
     }
 
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
     // Validate date format if provided
     if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
@@ -41,34 +41,34 @@ export async function GET(request: Request) {
     }
 
     // First, get operations without the relation to avoid potential issues
-    let query = supabase
-      .from("operations")
+      let query = supabase
+        .from("operations")
       .select("sale_amount_total, margin_amount, seller_id")
 
-    // Apply role-based filtering
-    if (user.role === "SELLER") {
-      query = query.eq("seller_id", user.id)
-    } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-      query = query.in("agency_id", agencyIds)
-    }
+      // Apply role-based filtering
+      if (user.role === "SELLER") {
+        query = query.eq("seller_id", user.id)
+      } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+        query = query.in("agency_id", agencyIds)
+      }
 
-    // Apply filters
-    if (dateFrom) {
+      // Apply filters
+      if (dateFrom) {
       query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`)
-    }
+      }
 
-    if (dateTo) {
+      if (dateTo) {
       query = query.lte("created_at", `${dateTo}T23:59:59.999Z`)
-    }
+      }
 
-    if (agencyId && agencyId !== "ALL") {
-      query = query.eq("agency_id", agencyId)
-    }
+      if (agencyId && agencyId !== "ALL") {
+        query = query.eq("agency_id", agencyId)
+      }
 
-    const { data: operations, error } = await query
+      const { data: operations, error } = await query
 
-    if (error) {
-      console.error("Error fetching sellers data:", error)
+      if (error) {
+        console.error("Error fetching sellers data:", error)
       console.error("Error details:", JSON.stringify(error, null, 2))
       return NextResponse.json({ error: "Error al obtener datos de vendedores", details: error.message }, { status: 500 })
     }
@@ -93,33 +93,33 @@ export async function GET(request: Request) {
           return acc
         }, {})
       }
-    }
+      }
 
-    // Group by seller
-    const sellerStats = (operations || []).reduce((acc: any, op: any) => {
-      const sellerId = op.seller_id
+      // Group by seller
+      const sellerStats = (operations || []).reduce((acc: any, op: any) => {
+        const sellerId = op.seller_id
       if (!sellerId) return acc
 
       const seller = sellersData[sellerId]
       const sellerName = seller?.name || seller?.phone || "Vendedor"
 
-      if (!acc[sellerId]) {
-        acc[sellerId] = {
-          sellerId,
-          sellerName,
+        if (!acc[sellerId]) {
+          acc[sellerId] = {
+            sellerId,
+            sellerName,
           phone: seller?.phone || null,
-          totalSales: 0,
-          totalMargin: 0,
-          operationsCount: 0,
+            totalSales: 0,
+            totalMargin: 0,
+            operationsCount: 0,
+          }
         }
-      }
 
-      acc[sellerId].totalSales += op.sale_amount_total || 0
-      acc[sellerId].totalMargin += op.margin_amount || 0
-      acc[sellerId].operationsCount += 1
+        acc[sellerId].totalSales += op.sale_amount_total || 0
+        acc[sellerId].totalMargin += op.margin_amount || 0
+        acc[sellerId].operationsCount += 1
 
-      return acc
-    }, {})
+        return acc
+      }, {})
 
       const sellers = Object.values(sellerStats).map((seller: any) => ({
         id: seller.sellerId,

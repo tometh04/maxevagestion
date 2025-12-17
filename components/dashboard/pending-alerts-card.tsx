@@ -179,7 +179,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
                 const shortDescription = parseAlertDescription(alert.description, alert.operations || undefined)
                 const alertTypeInfo = getAlertTypeInfo(alert.description, alert.type)
                 const dueDate = formatDueDate(alert.date_due)
-                
+
                 return (
                   <Link key={alert.id} href={getAlertLink()}>
                     <div
@@ -216,7 +216,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
                   </Link>
                 )
               })}
-          </div>
+            </div>
         )}
       </CardContent>
     </Card>

@@ -131,17 +131,42 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       </div>
 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Rango de fechas</label>
-          <DateRangePicker
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onChange={(from, to) => {
-              setDateFrom(from)
-              setDateTo(to)
-            }}
-            placeholder="Seleccionar rango"
-          />
+        <div className="flex items-center justify-between">
+          <div className="space-y-2 flex-1">
+            <label className="text-sm font-medium">Rango de fechas</label>
+            <DateRangePicker
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onChange={(from, to) => {
+                setDateFrom(from)
+                setDateTo(to)
+              }}
+              placeholder="Seleccionar rango"
+            />
+          </div>
+          <div className="ml-4">
+            <button
+              onClick={async () => {
+                if (confirm("¿Sincronizar pagos pagados con movimientos de caja? Esto creará movimientos para todos los pagos que no tienen movimiento asociado.")) {
+                  try {
+                    const response = await fetch("/api/cash/sync-movements", { method: "POST" })
+                    const data = await response.json()
+                    if (response.ok) {
+                      alert(`✅ ${data.message}\nCreados: ${data.created}\nErrores: ${data.errors}`)
+                      fetchSummary() // Recargar datos
+                    } else {
+                      alert(`❌ Error: ${data.error}`)
+                    }
+                  } catch (error) {
+                    alert("❌ Error al sincronizar")
+                  }
+                }
+              }}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+            >
+              Sincronizar Movimientos
+            </button>
+          </div>
         </div>
       </div>
 

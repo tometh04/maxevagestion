@@ -91,7 +91,7 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
           return (
             <div className="font-medium">
               {extractedName || fullName || "-"}
-            </div>
+          </div>
           )
         },
       },
@@ -110,7 +110,7 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
           }
           
           return (
-            <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
               <span>{normalizedPhone}</span>
               <QuickWhatsAppButton
                 phone={normalizedPhone}
@@ -120,7 +120,7 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
                 variant="icon"
                 size="icon"
               />
-            </div>
+          </div>
           )
         },
       },

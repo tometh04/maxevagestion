@@ -103,24 +103,4 @@ export function hasRole(userRole: string, requiredRole: string): boolean {
   return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0)
 }
 
-export function canAccess(userRole: string, resource: string): boolean {
-  // SUPER_ADMIN tiene acceso a todo
-  if (userRole === 'SUPER_ADMIN') return true
-
-  // ADMIN tiene acceso a todo excepto settings de usuarios
-  if (userRole === 'ADMIN') {
-    return resource !== 'settings:users'
-  }
-
-  // SELLER solo puede ver sus propios datos
-  if (userRole === 'SELLER') {
-    return ['dashboard', 'sales', 'operations', 'customers', 'my-commissions'].includes(resource)
-  }
-
-  // VIEWER solo lectura
-  if (userRole === 'VIEWER') {
-    return ['dashboard', 'reports'].includes(resource)
-  }
-
-  return false
-}
+// NOTA: La función canAccess() fue eliminada - usar canAccessModule() de lib/permissions.ts en su lugar

@@ -40,25 +40,25 @@ export async function GET(request: Request) {
     // Apply search filter and select with relations
     const search = searchParams.get("search")
     let selectQuery = query.select(`
-      *,
-      operation_customers(
-        operation_id,
-        operations:operation_id(
-          id,
-          sale_amount_total,
-          currency,
-          status
+        *,
+        operation_customers(
+          operation_id,
+          operations:operation_id(
+            id,
+            sale_amount_total,
+            currency,
+            status
+          )
         )
-      )
-    `)
-    
+      `)
+
     // Apply search filter AFTER select (or() is only available after select)
     if (search) {
       selectQuery = selectQuery.or(
         `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
       )
     }
-    
+
     // Now add order and range
     const { data: customers, error } = await selectQuery
       .order("created_at", { ascending: false })

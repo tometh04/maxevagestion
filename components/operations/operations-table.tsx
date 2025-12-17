@@ -229,7 +229,7 @@ export function OperationsTable({
           return (
             <div className="max-w-[120px] truncate text-xs font-medium" title={destination}>
               {destination}
-            </div>
+          </div>
           )
         },
       },

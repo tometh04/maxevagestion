@@ -6,18 +6,6 @@ import {
 import { generatePaymentReminders } from "./payment-reminders"
 
 /**
- * Genera alertas de pagos vencidos y próximos a vencer
- * NOTA: Esta función ha sido mejorada y ahora usa generatePaymentReminders()
- * que genera alertas en múltiples momentos (7 días, 3 días, hoy, vencidos)
- * 
- * @deprecated Usar generatePaymentReminders() directamente
- */
-export async function generatePaymentAlerts(): Promise<void> {
-  // Usar la nueva función mejorada
-  await generatePaymentReminders()
-}
-
-/**
  * Genera alertas de viajes próximos (48-72h antes)
  */
 export async function generateUpcomingTripAlerts(): Promise<void> {

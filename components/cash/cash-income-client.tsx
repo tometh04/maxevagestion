@@ -62,9 +62,32 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Ingresos</h1>
-        <p className="text-muted-foreground">Todos los ingresos de las operaciones</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">Ingresos</h1>
+          <p className="text-muted-foreground">Todos los ingresos de las operaciones</p>
+        </div>
+        <button
+          onClick={async () => {
+            if (confirm("¿Sincronizar pagos pagados con movimientos de caja? Esto creará movimientos para todos los pagos que no tienen movimiento asociado.")) {
+              try {
+                const response = await fetch("/api/cash/sync-movements", { method: "POST" })
+                const data = await response.json()
+                if (response.ok) {
+                  alert(`✅ ${data.message}\nCreados: ${data.created}\nErrores: ${data.errors}`)
+                  fetchTotalIncome() // Recargar totales
+                } else {
+                  alert(`❌ Error: ${data.error}`)
+                }
+              } catch (error) {
+                alert("❌ Error al sincronizar")
+              }
+            }
+          }}
+          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
+        >
+          Sincronizar Movimientos
+        </button>
       </div>
 
       <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
