@@ -33,13 +33,13 @@ export interface FormattedAmount {
  */
 export function formatAmount(amount: number, currency: Currency): string {
   if (isNaN(amount) || amount === null || amount === undefined) {
-    return "0,00"
+    return "0"
   }
 
   const formatted = new Intl.NumberFormat("es-AR", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount)
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(amount))
 
   return formatted
 }
@@ -49,7 +49,7 @@ export function formatAmount(amount: number, currency: Currency): string {
  */
 export function formatCurrency(amount: number, currency: Currency): string {
   if (isNaN(amount) || amount === null || amount === undefined) {
-    return currency === "USD" ? "USD 0,00" : "ARS 0,00"
+    return currency === "USD" ? "USD 0" : "ARS 0"
   }
 
   const formatted = formatAmount(amount, currency)

@@ -109,9 +109,19 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const chartData = useMemo(() => {
     return dailyBalances.map((item) => ({
       date: format(new Date(item.date), "dd/MM", { locale: es }),
-      Balance: item.balance,
+      Balance: Math.round(item.balance),
     }))
   }, [dailyBalances])
+
+  // Función para formatear números grandes en el eje Y
+  const formatYAxisValue = (value: number) => {
+    if (value >= 1000000) {
+      return `$${(value / 1000000).toFixed(0)}M`
+    } else if (value >= 1000) {
+      return `$${(value / 1000).toFixed(0)}K`
+    }
+    return `$${Math.round(value)}`
+  }
 
   return (
     <div className="space-y-6">
@@ -186,32 +196,52 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               <p className="text-muted-foreground">No hay datos disponibles</p>
             </div>
           ) : (
-            <ChartContainer config={chartConfig} className="h-[300px] w-full">
-              <LineChart data={chartData}>
-                <CartesianGrid vertical={false} />
+            <ChartContainer config={chartConfig} className="h-[350px] w-full">
+              <LineChart 
+                data={chartData}
+                margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
                 <XAxis
                   dataKey="date"
                   tickLine={false}
-                  tickMargin={10}
+                  tickMargin={8}
                   axisLine={false}
+                  className="text-xs"
                 />
                 <YAxis
                   tickLine={false}
-                  tickMargin={10}
+                  tickMargin={8}
                   axisLine={false}
-                  tickFormatter={(value) => formatCurrency(value, "ARS")}
+                  className="text-xs"
+                  tickFormatter={formatYAxisValue}
                 />
                 <ChartTooltip
-                  cursor={false}
-                  content={<ChartTooltipContent />}
+                  cursor={{ stroke: "hsl(142, 76%, 36%)", strokeWidth: 1 }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const value = payload[0].value as number
+                      return (
+                        <div className="rounded-lg border bg-background p-2 shadow-sm">
+                          <div className="grid gap-2">
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-xs text-muted-foreground">Balance</span>
+                              <span className="font-semibold">{formatCurrency(value, "ARS")}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
                 />
                 <Line
                   type="monotone"
                   dataKey="Balance"
                   stroke="hsl(142, 76%, 36%)"
-                  strokeWidth={2}
+                  strokeWidth={3}
                   dot={false}
-                  activeDot={{ r: 4 }}
+                  activeDot={{ r: 6, fill: "hsl(142, 76%, 36%)" }}
                 />
               </LineChart>
             </ChartContainer>
