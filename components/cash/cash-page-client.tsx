@@ -208,7 +208,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
 
       <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
 
-      <CashKPIs summary={summary} currency={filters.currency} />
+      <CashKPIs summary={summary} currency={filters.currency as "ARS" | "USD" | "ALL"} />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
