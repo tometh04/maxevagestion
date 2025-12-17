@@ -28,7 +28,6 @@ export default async function CustomerDetailPage({
     .from("operation_customers")
     .select("*")
     .eq("customer_id", id)
-    .order("created_at", { ascending: false })
 
   console.log(`[CustomerDetailPage] Raw operation_customers for customer ${id}:`, {
     count: operationCustomersRaw?.length || 0,
@@ -49,7 +48,6 @@ export default async function CustomerDetailPage({
       )
     `)
     .eq("customer_id", id)
-    .order("created_at", { ascending: false })
 
   if (operationCustomersError) {
     console.error("[CustomerDetailPage] Error fetching operation_customers with relations:", operationCustomersError)
