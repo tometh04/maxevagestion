@@ -54,7 +54,7 @@ export default async function CashPage() {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
     agencyId: "ALL",
-    currency: "ARS",
+    currency: "ALL",
   }
 
   return <CashPageClient agencies={agencies} defaultFilters={defaultFilters} />

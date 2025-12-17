@@ -93,6 +93,8 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
       const data = await response.json()
       let allMovements = data.movements || []
 
+      console.log(`[CashPage] Fetched ${allMovements.length} movements from API`)
+
       // Aplicar filtros de fecha y moneda en el cliente
       const dateFrom = new Date(filters.dateFrom)
       const dateTo = new Date(filters.dateTo)
@@ -108,6 +110,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
         return matchesDate && matchesCurrency
       })
 
+      console.log(`[CashPage] After filtering: ${allMovements.length} movements`)
       setMovements(allMovements)
     } catch (error) {
       console.error("Error fetching movements:", error)
