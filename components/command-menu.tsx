@@ -173,7 +173,7 @@ export function CommandMenu() {
             <Building2 className="mr-2 h-4 w-4" />
             Operadores
           </CommandItem>
-          <CommandItem onSelect={() => navigateTo("/cash")}>
+          <CommandItem onSelect={() => navigateTo("/cash/summary")}>
             <DollarSign className="mr-2 h-4 w-4" />
             Caja
           </CommandItem>

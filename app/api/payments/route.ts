@@ -75,6 +75,8 @@ export async function POST(request: Request) {
     }
 
     // 1. Crear el pago en tabla payments
+    // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
+    // Los movimientos contables se crearán cuando se marque como PAID
     const paymentData = {
         operation_id,
         payer_type,
@@ -84,7 +86,7 @@ export async function POST(request: Request) {
         currency,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
-      status: status || "PAID",
+      status: status || "PENDING", // Cambiar default a PENDING para evitar duplicados
       reference: notes || null,
     }
 
@@ -98,8 +100,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
     }
 
-    // Solo crear movimientos contables si el pago está PAID
-    if (status === "PAID" || !status) {
+    // Solo crear movimientos contables si el pago está PAID explícitamente
+    // Si status no se especifica, el default es PENDING, así que no crear movimientos
+    if (status === "PAID") {
       try {
         // 2. Obtener datos de la operación para seller_id y operator_id
         const { data: operation } = await (supabase.from("operations") as any)

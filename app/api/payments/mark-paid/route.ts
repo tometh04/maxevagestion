@@ -32,6 +32,8 @@ export async function POST(request: Request) {
         direction, 
         payer_type, 
         method,
+        status,
+        ledger_movement_id,
         operations:operation_id(
           id,
           agency_id,
@@ -52,6 +54,11 @@ export async function POST(request: Request) {
     const paymentData = payment as any
     const operation = paymentData.operations || null
 
+    // Verificar si el pago ya está marcado como PAID y tiene ledger_movement_id
+    // Si ya tiene ledger_movement_id, significa que los movimientos contables ya fueron creados
+    // Solo actualizamos la fecha y referencia, pero no creamos movimientos duplicados
+    const alreadyHasLedgerMovement = paymentData.status === "PAID" && paymentData.ledger_movement_id
+
     // Update payment
     const paymentsTable = supabase.from("payments") as any
     await paymentsTable
@@ -62,6 +69,16 @@ export async function POST(request: Request) {
         updated_at: new Date().toISOString(),
       })
       .eq("id", paymentId)
+
+    // Si el pago ya tiene ledger_movement_id, no crear movimientos duplicados
+    if (alreadyHasLedgerMovement) {
+      console.log(`⚠️ Pago ${paymentId} ya tiene ledger_movement_id ${paymentData.ledger_movement_id}, omitiendo creación de movimientos contables`)
+      return NextResponse.json({ 
+        success: true, 
+        payment: { ...paymentData, date_paid: datePaid, status: "PAID", reference },
+        message: "Pago actualizado (movimientos contables ya existían)"
+      })
+    }
 
     // Get agency_id from operation or user agencies
     let agencyId = operation?.agency_id
@@ -74,31 +91,48 @@ export async function POST(request: Request) {
       agencyId = (userAgencies as any)?.[0]?.agency_id
     }
 
-    // Get default cash box for agency
-    const { data: defaultCashBox } = await supabase
-      .from("cash_boxes")
+    // Verificar si ya existe un cash_movement para este pago
+    const { data: existingCashMovement } = await supabase
+      .from("cash_movements")
       .select("id")
-      .eq("agency_id", agencyId || "")
-      .eq("currency", paymentData.currency)
-      .eq("is_default", true)
-      .eq("is_active", true)
+      .eq("payment_id", paymentId)
       .maybeSingle()
 
-    // Create cash movement (mantener compatibilidad)
-    const movementsTable = supabase.from("cash_movements") as any
-    await movementsTable.insert({
-      operation_id: paymentData.operation_id,
-      payment_id: paymentId, // Vincular con el pago
-      cash_box_id: (defaultCashBox as any)?.id || null,
-      user_id: user.id,
-      type: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
-      category: paymentData.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      movement_date: datePaid,
-      notes: reference || null,
-      is_touristic: true, // Payments are always touristic
-    })
+    // Solo crear cash_movement si no existe uno ya vinculado a este pago
+    if (!existingCashMovement) {
+      // Get default cash box for agency
+      const { data: defaultCashBox } = await supabase
+        .from("cash_boxes")
+        .select("id")
+        .eq("agency_id", agencyId || "")
+        .eq("currency", paymentData.currency)
+        .eq("is_default", true)
+        .eq("is_active", true)
+        .maybeSingle()
+
+      // Create cash movement (mantener compatibilidad)
+      const movementsTable = supabase.from("cash_movements") as any
+      const { error: cashMovementError } = await movementsTable.insert({
+        operation_id: paymentData.operation_id,
+        payment_id: paymentId, // Vincular con el pago
+        cash_box_id: (defaultCashBox as any)?.id || null,
+        user_id: user.id,
+        type: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
+        category: paymentData.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+        amount: paymentData.amount,
+        currency: paymentData.currency,
+        movement_date: datePaid,
+        notes: reference || null,
+        is_touristic: true, // Payments are always touristic
+      })
+
+      if (cashMovementError) {
+        console.warn(`⚠️ Error creando cash_movement para pago ${paymentId}:`, cashMovementError)
+        // No fallar, continuar con el flujo
+      }
+    } else {
+      console.log(`⚠️ Pago ${paymentId} ya tiene cash_movement ${existingCashMovement.id}, omitiendo creación`)
+    }
 
     // ============================================
     // FASE 1: REDUCIR ACTIVO/PASIVO Y CREAR MOVIMIENTO EN RESULTADO
