@@ -153,8 +153,7 @@ export async function POST(request: Request) {
           is_touristic: true,
         }
 
-        const { error: insertError } = await supabase
-          .from("cash_movements")
+        const { error: insertError } = await (supabase.from("cash_movements") as any)
           .insert(movementData)
 
         if (insertError) {
