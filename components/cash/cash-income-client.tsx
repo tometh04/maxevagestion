@@ -1,11 +1,10 @@
 "use client"
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { CashFilters, CashFiltersState } from "./cash-filters"
 import { MovementsTable } from "./movements-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/currency"
-import { useCallback, useEffect } from "react"
 
 interface CashIncomeClientProps {
   agencies: Array<{ id: string; name: string }>
