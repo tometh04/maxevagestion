@@ -325,20 +325,71 @@ export async function GET(request: Request) {
     const monthStart = `${year}-${String(month).padStart(2, "0")}-01`
     const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
+    // Buscar movimientos de ledger del mes
+    // También buscar movimientos vinculados a pagos del mes a través de payments.date_paid
     const { data: monthMovements } = await supabase
       .from("ledger_movements")
       .select(`
         *,
         financial_accounts:account_id(
+          id,
+          chart_account_id,
           chart_of_accounts:chart_account_id(
             category,
             subcategory,
             account_type
           )
+        ),
+        payments:ledger_movement_id(
+          date_paid
         )
       `)
       .gte("created_at", `${monthStart}T00:00:00`)
       .lte("created_at", `${monthEnd}T23:59:59`)
+    
+    // También buscar movimientos vinculados a pagos que fueron pagados en este mes
+    // (aunque el movimiento se creó en otro mes)
+    const { data: paymentsInMonth } = await supabase
+      .from("payments")
+      .select(`
+        ledger_movement_id,
+        date_paid,
+        ledger_movements:ledger_movement_id(
+          *,
+          financial_accounts:account_id(
+            id,
+            chart_account_id,
+            chart_of_accounts:chart_account_id(
+              category,
+              subcategory,
+              account_type
+            )
+          )
+        )
+      `)
+      .not("ledger_movement_id", "is", null)
+      .gte("date_paid", monthStart)
+      .lte("date_paid", monthEnd)
+    
+    // Combinar ambos conjuntos de movimientos
+    const allMovements: any[] = []
+    
+    // Agregar movimientos creados en el mes
+    if (monthMovements) {
+      allMovements.push(...monthMovements)
+    }
+    
+    // Agregar movimientos vinculados a pagos del mes (evitar duplicados)
+    if (paymentsInMonth) {
+      const existingIds = new Set(allMovements.map((m: any) => m.id))
+      for (const payment of paymentsInMonth as any[]) {
+        if (payment.ledger_movements && !existingIds.has(payment.ledger_movements.id)) {
+          allMovements.push(payment.ledger_movements)
+        }
+      }
+    }
+    
+    const monthMovementsArray = allMovements
 
     // Separar por moneda para mostrar correctamente
     let ingresosARS = 0
