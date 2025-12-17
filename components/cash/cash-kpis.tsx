@@ -2,30 +2,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/currency"
 
 export interface CashSummary {
-  ars: {
-    totalIncome: number
-    totalExpenses: number
-    netCash: number
-    pendingCustomers: number
-    pendingOperators: number
-  }
-  usd: {
-    totalIncome: number
-    totalExpenses: number
-    netCash: number
-    pendingCustomers: number
-    pendingOperators: number
-  }
+  totalIncome: number
+  totalExpenses: number
+  netCash: number
+  pendingCustomers: number
+  pendingOperators: number
 }
 
-function KPIRow({ 
-  title, 
+export function CashKPIs({ 
   summary, 
   currency 
 }: { 
-  title: string
-  summary: CashSummary["ars"] | CashSummary["usd"]
-  currency: "ARS" | "USD"
+  summary: CashSummary
+  currency: "ARS" | "USD" | "ALL"
 }) {
   const items = [
     { label: "Ingresos Totales", value: summary.totalIncome },
@@ -35,9 +24,15 @@ function KPIRow({
     { label: "Pendientes Operadores", value: summary.pendingOperators },
   ]
 
+  const currencyLabel = currency === "ARS" ? "ARS - Pesos Argentinos" : 
+                       currency === "USD" ? "USD - Dólares Estadounidenses" : 
+                       "Todas las Monedas"
+
+  const displayCurrency = currency === "ALL" ? "ARS" : currency
+
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{title}</h3>
+      <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{currencyLabel}</h3>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {items.map((item) => (
           <Card key={item.label}>
@@ -46,21 +41,12 @@ function KPIRow({
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {formatCurrency(item.value, currency)}
+                {formatCurrency(item.value, displayCurrency)}
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
-    </div>
-  )
-}
-
-export function CashKPIs({ summary }: { summary: CashSummary }) {
-  return (
-    <div className="space-y-6">
-      <KPIRow title="ARS - Pesos Argentinos" summary={summary.ars} currency="ARS" />
-      <KPIRow title="USD - Dólares Estadounidenses" summary={summary.usd} currency="USD" />
     </div>
   )
 }

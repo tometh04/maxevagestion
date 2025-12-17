@@ -22,20 +22,11 @@ interface CashPageClientProps {
 }
 
 const emptySummary: CashSummary = {
-  ars: {
-    totalIncome: 0,
-    totalExpenses: 0,
-    netCash: 0,
-    pendingCustomers: 0,
-    pendingOperators: 0,
-  },
-  usd: {
-    totalIncome: 0,
-    totalExpenses: 0,
-    netCash: 0,
-    pendingCustomers: 0,
-    pendingOperators: 0,
-  },
+  totalIncome: 0,
+  totalExpenses: 0,
+  netCash: 0,
+  pendingCustomers: 0,
+  pendingOperators: 0,
 }
 
 export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps) {
@@ -131,7 +122,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
   }, [fetchPayments, fetchMovements])
 
   const summary = useMemo<CashSummary>(() => {
-    // Filtrar movimientos y pagos por fecha y agencia
+    // Filtrar movimientos y pagos por fecha, agencia y moneda
     const dateFrom = new Date(filters.dateFrom)
     const dateTo = new Date(filters.dateTo)
     dateTo.setHours(23, 59, 59, 999) // Incluir todo el día final
@@ -145,7 +136,10 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
       const matchesAgency = filters.agencyId === "ALL" || 
         (movementAgencyId === filters.agencyId)
       
-      return matchesDate && matchesAgency
+      // Filtrar por moneda
+      const matchesCurrency = filters.currency === "ALL" || movement.currency === filters.currency
+      
+      return matchesDate && matchesAgency && matchesCurrency
     })
 
     let filteredPayments = payments.filter((payment) => {
@@ -156,66 +150,37 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
       const matchesAgency = filters.agencyId === "ALL" || 
         (payment.operations?.agency_id === filters.agencyId)
       
-      return matchesDate && matchesAgency
+      // Filtrar por moneda
+      const matchesCurrency = filters.currency === "ALL" || payment.currency === filters.currency
+      
+      return matchesDate && matchesAgency && matchesCurrency
     })
 
-    // Calcular KPIs para ARS
-    const arsMovements = filteredMovements.filter((m) => m.currency === "ARS")
-    const arsPayments = filteredPayments.filter((p) => p.currency === "ARS")
-
-    const arsIncome = arsMovements
+    // Calcular KPIs basados en la moneda seleccionada
+    const income = filteredMovements
       .filter((movement) => movement.type === "INCOME")
       .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
 
-    const arsExpenses = arsMovements
+    const expenses = filteredMovements
       .filter((movement) => movement.type === "EXPENSE")
       .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
 
-    const arsPendingCustomers = arsPayments
+    const pendingCustomers = filteredPayments
       .filter((payment) => payment.payer_type === "CUSTOMER" && payment.status !== "PAID")
       .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
 
-    const arsPendingOperators = arsPayments
-      .filter((payment) => payment.payer_type === "OPERATOR" && payment.status !== "PAID")
-      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
-
-    // Calcular KPIs para USD
-    const usdMovements = filteredMovements.filter((m) => m.currency === "USD")
-    const usdPayments = filteredPayments.filter((p) => p.currency === "USD")
-
-    const usdIncome = usdMovements
-      .filter((movement) => movement.type === "INCOME")
-      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
-
-    const usdExpenses = usdMovements
-      .filter((movement) => movement.type === "EXPENSE")
-      .reduce((sum, movement) => sum + parseFloat(movement.amount.toString()), 0)
-
-    const usdPendingCustomers = usdPayments
-      .filter((payment) => payment.payer_type === "CUSTOMER" && payment.status !== "PAID")
-      .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
-
-    const usdPendingOperators = usdPayments
+    const pendingOperators = filteredPayments
       .filter((payment) => payment.payer_type === "OPERATOR" && payment.status !== "PAID")
       .reduce((sum, payment) => sum + parseFloat(payment.amount.toString()), 0)
 
     return {
-      ars: {
-        totalIncome: arsIncome,
-        totalExpenses: arsExpenses,
-        netCash: arsIncome - arsExpenses,
-        pendingCustomers: arsPendingCustomers,
-        pendingOperators: arsPendingOperators,
-      },
-      usd: {
-        totalIncome: usdIncome,
-        totalExpenses: usdExpenses,
-        netCash: usdIncome - usdExpenses,
-        pendingCustomers: usdPendingCustomers,
-        pendingOperators: usdPendingOperators,
-      },
+      totalIncome: income,
+      totalExpenses: expenses,
+      netCash: income - expenses,
+      pendingCustomers: pendingCustomers,
+      pendingOperators: pendingOperators,
     }
-  }, [movements, payments, filters.dateFrom, filters.dateTo, filters.agencyId])
+  }, [movements, payments, filters.dateFrom, filters.dateTo, filters.agencyId, filters.currency])
 
   const paymentsPreview = useMemo(() => payments.slice(0, 5), [payments])
   const movementsPreview = useMemo(() => movements.slice(0, 5), [movements])
@@ -243,22 +208,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
 
       <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
 
-      <CashKPIs summary={summary} />
-
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Pagos próximos</h2>
-          <Button variant="link" asChild>
-            <Link href="/cash/payments">Ver todos</Link>
-          </Button>
-        </div>
-        <PaymentsTable
-          payments={paymentsPreview}
-          isLoading={loadingPayments}
-          onRefresh={fetchPayments}
-          emptyMessage="No hay pagos en el rango seleccionado"
-        />
-      </div>
+      <CashKPIs summary={summary} currency={filters.currency} />
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
