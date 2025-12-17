@@ -20,6 +20,7 @@ import {
   Receipt,
   Wallet,
   TrendingUp,
+  TrendingDown,
   MessageSquare,
 } from "lucide-react"
 import { useState } from "react"
@@ -51,13 +52,13 @@ const allNavigation: NavItem[] = [
   { name: "Operadores", href: "/operators", icon: Building2, module: "operators" },
   {
     name: "Caja",
-    href: "/cash",
+    href: "/cash/summary",
     icon: DollarSign,
     module: "cash",
     children: [
-      { name: "Dashboard de Caja", href: "/cash", icon: DollarSign },
-      { name: "Movimientos", href: "/cash/movements", icon: TrendingUp },
-      { name: "Pagos", href: "/cash/payments", icon: Wallet },
+      { name: "Resumen", href: "/cash/summary", icon: DollarSign },
+      { name: "Ingresos", href: "/cash/income", icon: TrendingUp },
+      { name: "Egresos", href: "/cash/expenses", icon: TrendingDown },
     ],
   },
   {

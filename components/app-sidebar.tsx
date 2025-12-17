@@ -54,13 +54,13 @@ const allNavigation: NavItem[] = [
   { title: "Operadores", url: "/operators", icon: Building2, module: "operators" },
   {
     title: "Caja",
-    url: "/cash",
+    url: "/cash/summary",
     icon: DollarSign,
     module: "cash",
       items: [
-      { title: "Dashboard de Caja", url: "/cash" },
-      { title: "Movimientos", url: "/cash/movements" },
-      { title: "Pagos", url: "/cash/payments" },
+      { title: "Resumen", url: "/cash/summary" },
+      { title: "Ingresos", url: "/cash/income" },
+      { title: "Egresos", url: "/cash/expenses" },
       ],
     },
     {
