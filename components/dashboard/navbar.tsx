@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { supabase } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,10 +33,15 @@ interface NavbarProps {
 
 export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMessage, setAiMessage] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
   const [aiHistory, setAiHistory] = useState<Array<{ role: string; content: string }>>([])
+  
+  // Detectar si estamos en una página de operación
+  const operationIdMatch = pathname?.match(/\/operations\/([a-f0-9-]{36})/i)
+  const currentOperationId = operationIdMatch ? operationIdMatch[1] : undefined
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -56,7 +61,11 @@ export function Navbar({ user, agencies = [], currentAgencyId }: NavbarProps) {
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMessage, agencyId: currentAgencyId }),
+        body: JSON.stringify({ 
+          message: userMessage, 
+          agencyId: currentAgencyId,
+          operationId: currentOperationId, // Pasar operationId si estamos en esa página
+        }),
       })
 
       if (!response.ok) {
