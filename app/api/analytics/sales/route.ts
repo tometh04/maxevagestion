@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getCachedDashboardKPIs } from "@/lib/cache"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -16,67 +15,62 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
 
-    // Crear clave de caché basada en parámetros
-    const cacheKey = `sales-${user.id}-${dateFrom || 'all'}-${dateTo || 'all'}-${agencyId || 'all'}-${sellerId || 'all'}`
+    const supabase = await createServerClient()
 
-    const result = await getCachedDashboardKPIs(async () => {
-      const supabase = await createServerClient()
+    // Get user agencies
+    const { data: userAgencies } = await supabase
+      .from("user_agencies")
+      .select("agency_id")
+      .eq("user_id", user.id)
 
-      // Get user agencies
-      const { data: userAgencies } = await supabase
-        .from("user_agencies")
-        .select("agency_id")
-        .eq("user_id", user.id)
+    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
 
-      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
+    // Apply role-based filtering
+    if (user.role === "SELLER") {
+      query = query.eq("seller_id", user.id)
+    } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
+      query = query.in("agency_id", agencyIds)
+    }
 
-      // Apply role-based filtering
-      if (user.role === "SELLER") {
-        query = query.eq("seller_id", user.id)
-      } else if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-        query = query.in("agency_id", agencyIds)
-      }
+    // Apply filters
+    if (dateFrom) {
+      query = query.gte("created_at", dateFrom)
+    }
 
-      // Apply filters
-      if (dateFrom) {
-        query = query.gte("created_at", dateFrom)
-      }
+    if (dateTo) {
+      query = query.lte("created_at", dateTo)
+    }
 
-      if (dateTo) {
-        query = query.lte("created_at", dateTo)
-      }
+    if (agencyId && agencyId !== "ALL") {
+      query = query.eq("agency_id", agencyId)
+    }
 
-      if (agencyId && agencyId !== "ALL") {
-        query = query.eq("agency_id", agencyId)
-      }
+    if (sellerId && sellerId !== "ALL") {
+      query = query.eq("seller_id", sellerId)
+    }
 
-      if (sellerId && sellerId !== "ALL") {
-        query = query.eq("seller_id", sellerId)
-      }
+    const { data: operations, error } = await query
 
-      const { data: operations, error } = await query
+    if (error) {
+      console.error("Error fetching sales data:", error)
+      throw new Error("Error al obtener datos de ventas")
+    }
 
-      if (error) {
-        console.error("Error fetching sales data:", error)
-        throw new Error("Error al obtener datos de ventas")
-      }
+    const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
+    const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
+    const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
+    const operationsCount = (operations || []).length
+    const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
 
-      const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
-      const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
-      const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
-      const operationsCount = (operations || []).length
-      const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
-
-      return {
-        totalSales,
-        totalMargin,
-        totalCost,
-        operationsCount,
-        avgMarginPercent,
-      }
-    }, cacheKey)
+    const result = {
+      totalSales,
+      totalMargin,
+      totalCost,
+      operationsCount,
+      avgMarginPercent,
+    }
 
     return NextResponse.json(result)
   } catch (error: any) {

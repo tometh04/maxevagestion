@@ -141,100 +141,96 @@ export function DateRangePicker({
   placeholder = "Seleccionar rango de fechas",
   disabled = false,
 }: DateRangePickerProps) {
-  const [isOpen, setIsOpen] = React.useState(false)
-  
-  // Parse props to get the current range
-  const currentRange = React.useMemo(() => {
+  const [date, setDate] = React.useState<DateRange | undefined>(() => {
     const from = parseDateString(dateFrom)
     const to = parseDateString(dateTo)
     if (!from && !to) return undefined
     return { from, to }
+  })
+
+  // Sync with props when they change externally
+  React.useEffect(() => {
+    const from = parseDateString(dateFrom)
+    const to = parseDateString(dateTo)
+    if (!from && !to) {
+      setDate(undefined)
+    } else {
+      setDate({ from, to })
+    }
   }, [dateFrom, dateTo])
 
-  // Internal range for selection - starts with current range when opening
-  const [internalRange, setInternalRange] = React.useState<DateRange | undefined>(currentRange)
-
-  // Reset internal range when opening popover
-  React.useEffect(() => {
-    if (isOpen) {
-      setInternalRange(currentRange)
-    }
-  }, [isOpen, currentRange])
-
+  // Handle date selection - update parent only when both dates are selected
   const handleSelect = (range: DateRange | undefined) => {
-    setInternalRange(range)
-    
-    // When both dates are selected, update parent and close
+    setDate(range)
     if (range?.from && range?.to) {
       onChange(formatDateString(range.from), formatDateString(range.to))
-      // Close after a brief delay to show the selection
-      setTimeout(() => {
-        setIsOpen(false)
-      }, 150)
     }
   }
 
   const handlePresetClick = (preset: typeof presets[0]) => {
     const range = preset.getValue()
+    setDate(range)
     onChange(formatDateString(range.from), formatDateString(range.to))
-    setIsOpen(false)
   }
 
-  // Display current range from props (not internal state when closed)
-  const displayRange = currentRange
-
   return (
-    <Popover open={isOpen} onOpenChange={setIsOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id="date"
-          variant={"outline"}
-          className={cn(
-            "w-full justify-start text-left font-normal",
-            !displayRange?.from && "text-muted-foreground"
-          )}
-          disabled={disabled}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {displayRange?.from && displayRange?.to ? (
-            <>
-              {format(displayRange.from, "LLL dd, y", { locale: es })} -{" "}
-              {format(displayRange.to, "LLL dd, y", { locale: es })}
-            </>
-          ) : (
-            <span>{placeholder}</span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <div className="flex">
-          <div className="p-3 border-r">
-            <div className="space-y-1">
-              {presets.map((preset) => (
-                <Button
-                  key={preset.label}
-                  variant="ghost"
-                  className="w-full justify-start text-left font-normal"
-                  onClick={() => handlePresetClick(preset)}
-                >
-                  {preset.label}
-                </Button>
-              ))}
+    <div className="grid gap-2">
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            id="date"
+            variant={"outline"}
+            className={cn(
+              "w-full justify-start text-left font-normal",
+              !date && "text-muted-foreground"
+            )}
+            disabled={disabled}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {date?.from ? (
+              date.to ? (
+                <>
+                  {format(date.from, "LLL dd, y", { locale: es })} -{" "}
+                  {format(date.to, "LLL dd, y", { locale: es })}
+                </>
+              ) : (
+                format(date.from, "LLL dd, y", { locale: es })
+              )
+            ) : (
+              <span>{placeholder}</span>
+            )}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <div className="flex">
+            <div className="p-3 border-r">
+              <div className="space-y-1">
+                {presets.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    variant="ghost"
+                    className="w-full justify-start text-left font-normal"
+                    onClick={() => handlePresetClick(preset)}
+                  >
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="p-3">
+              <Calendar
+                initialFocus
+                mode="range"
+                defaultMonth={date?.from}
+                selected={date}
+                onSelect={handleSelect}
+                numberOfMonths={1}
+                locale={es}
+              />
             </div>
           </div>
-          <div className="p-3">
-            <Calendar
-              initialFocus
-              mode="range"
-              defaultMonth={internalRange?.from || currentRange?.from || new Date()}
-              selected={internalRange}
-              onSelect={handleSelect}
-              numberOfMonths={1}
-              locale={es}
-            />
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }
