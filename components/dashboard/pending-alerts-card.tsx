@@ -63,6 +63,26 @@ export function PendingAlertsCard() {
     return new Date(dateStr) < new Date()
   }
 
+  // Extraer información esencial de la descripción
+  const parseAlertDescription = (description: string, operation?: { destination?: string; file_code?: string }) => {
+    // Si hay operación con destino, usarlo
+    if (operation?.destination) {
+      return operation.destination
+    }
+    
+    // Intentar extraer destino de la descripción
+    const destinationMatch = description.match(/:\s*([^-]+?)\s*-/)
+    if (destinationMatch) {
+      return destinationMatch[1].trim()
+    }
+    
+    // Si no, devolver una versión corta de la descripción
+    if (description.length > 30) {
+      return description.substring(0, 30) + "..."
+    }
+    return description
+  }
+
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -93,8 +113,7 @@ export function PendingAlertsCard() {
             <p className="text-xs">Sin alertas pendientes</p>
           </div>
         ) : (
-          <ScrollArea className="h-[220px]">
-            <div className="space-y-2 pr-2">
+          <div className="space-y-2">
               {alerts.map((alert) => {
                 const config = getAlertConfig(alert.type)
                 const Icon = config.icon
@@ -110,33 +129,40 @@ export function PendingAlertsCard() {
                   return "/alerts"
                 }
 
+                const shortDescription = parseAlertDescription(alert.description, alert.operations || undefined)
+                
                 return (
                   <Link key={alert.id} href={getAlertLink()}>
                     <div
-                      className={`p-2 rounded-md border text-xs hover:bg-muted/50 transition-colors cursor-pointer ${
+                      className={`p-3 rounded-lg border transition-all cursor-pointer group ${
                         overdue 
-                          ? "border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10" 
-                          : "border-border"
+                          ? "border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20" 
+                          : "border-border hover:bg-muted/50"
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded-full ${config.color} text-white shrink-0`}>
-                          <Icon className="h-2.5 w-2.5" />
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${config.color} text-white shrink-0`}>
+                          <Icon className="h-3.5 w-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-xs font-medium text-foreground">
                               {config.label}
-                            </Badge>
+                            </span>
                             {overdue && (
                               <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-500 hover:bg-amber-600">
                                 Vencida
                               </Badge>
                             )}
                           </div>
-                          <p className="text-muted-foreground truncate leading-tight">
-                            {alert.description}
+                          <p className="text-sm font-medium text-foreground mb-1 line-clamp-2">
+                            {shortDescription}
                           </p>
+                          {alert.operations?.file_code && (
+                            <p className="text-[10px] text-muted-foreground/60 mb-1">
+                              {alert.operations.file_code}
+                            </p>
+                          )}
                           <span className="text-[10px] text-muted-foreground/70">
                             {formatDistanceToNow(new Date(alert.date_due), { 
                               addSuffix: true,
@@ -144,14 +170,13 @@ export function PendingAlertsCard() {
                             })}
                           </span>
                         </div>
-                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   </Link>
                 )
               })}
-            </div>
-          </ScrollArea>
+          </div>
         )}
       </CardContent>
     </Card>
