@@ -1,8 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { CashFilters, CashFiltersState } from "./cash-filters"
-import { MovementsTable } from "./movements-table"
+import { PaymentsTable, Payment } from "./payments-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/currency"
 
@@ -20,7 +20,8 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
-      params.set("type", "EXPENSE")
+      params.set("direction", "EXPENSE")
+      params.set("limit", "1000")
       if (filters.agencyId !== "ALL") {
         params.set("agencyId", filters.agencyId)
       }
@@ -28,18 +29,18 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
         params.set("currency", filters.currency)
       }
 
-      const response = await fetch(`/api/cash/movements?${params.toString()}&limit=1000`)
+      const response = await fetch(`/api/payments?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
-        const movements = data.movements || []
+        const payments = data.payments || []
         
-        const ars = movements
-          .filter((m: any) => m.currency === "ARS")
-          .reduce((sum: number, m: any) => sum + parseFloat(m.amount || 0), 0)
+        const ars = payments
+          .filter((p: Payment) => p.currency === "ARS")
+          .reduce((sum: number, p: Payment) => sum + parseFloat(p.amount.toString()), 0)
         
-        const usd = movements
-          .filter((m: any) => m.currency === "USD")
-          .reduce((sum: number, m: any) => sum + parseFloat(m.amount || 0), 0)
+        const usd = payments
+          .filter((p: Payment) => p.currency === "USD")
+          .reduce((sum: number, p: Payment) => sum + parseFloat(p.amount.toString()), 0)
 
         setTotalExpenses({ ars, usd })
       }
@@ -52,42 +53,11 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
     fetchTotalExpenses()
   }, [fetchTotalExpenses])
 
-  const filtersWithType = useMemo(
-    () => ({
-      ...filters,
-      type: "EXPENSE" as const,
-    }),
-    [filters]
-  )
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Egresos</h1>
-          <p className="text-muted-foreground">Todas las salidas del negocio (pagos a operadores, sueldos, etc.)</p>
-        </div>
-        <button
-          onClick={async () => {
-            if (confirm("¿Sincronizar pagos pagados con movimientos de caja? Esto creará movimientos para todos los pagos que no tienen movimiento asociado.")) {
-              try {
-                const response = await fetch("/api/cash/sync-movements", { method: "POST" })
-                const data = await response.json()
-                if (response.ok) {
-                  alert(`✅ ${data.message}\nCreados: ${data.created}\nErrores: ${data.errors}`)
-                  fetchTotalExpenses() // Recargar totales
-                } else {
-                  alert(`❌ Error: ${data.error}`)
-                }
-              } catch (error) {
-                alert("❌ Error al sincronizar")
-              }
-            }
-          }}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 text-sm font-medium"
-        >
-          Sincronizar Movimientos
-        </button>
+      <div>
+        <h1 className="text-3xl font-bold">Egresos</h1>
+        <p className="text-muted-foreground">Todas las salidas del negocio (pagos a operadores, sueldos, etc.)</p>
       </div>
 
       <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
@@ -112,12 +82,12 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
         </Card>
       </div>
 
-      <MovementsTable
+      <PaymentsTable
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
         currency={filters.currency}
         agencyId={filters.agencyId}
-        type="EXPENSE"
+        direction="EXPENSE"
         emptyMessage="No hay egresos en el rango seleccionado"
       />
     </div>

@@ -276,6 +276,7 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
+    const direction = searchParams.get("direction")
     
     // Paginación: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
@@ -300,9 +301,18 @@ export async function GET(request: Request) {
       query = query.eq("operation_id", operationId)
     }
 
-    // Nota: Los filtros de fecha se aplicarán en el cliente porque necesitamos
-    // considerar date_due, date_paid o created_at según disponibilidad
-    // Por ahora, traemos todos los pagos y filtramos en el cliente
+    // Aplicar filtro de direction (INCOME o EXPENSE)
+    if (direction && direction !== "ALL") {
+      query = query.eq("direction", direction)
+    }
+
+    // Aplicar filtros de fecha (usar date_due como referencia principal)
+    if (dateFrom) {
+      query = query.gte("date_due", dateFrom)
+    }
+    if (dateTo) {
+      query = query.lte("date_due", dateTo)
+    }
 
     // Aplicar filtro de moneda
     if (currency && currency !== "ALL") {
