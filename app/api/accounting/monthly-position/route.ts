@@ -132,7 +132,7 @@ export async function GET(request: Request) {
           const key = `${chartAccount.category}_${chartAccount.subcategory || "NONE"}`
           balances[key] = (balances[key] || 0) + balance
           
-          // Separar por moneda
+          // Separar por moneda - obtener movimientos y calcular balance por moneda
           if (!balancesByCurrency[key]) {
             balancesByCurrency[key] = { ars: 0, usd: 0 }
           }
@@ -140,40 +140,77 @@ export async function GET(request: Request) {
           // Obtener movimientos para separar por moneda
           const { data: movements } = await supabase
             .from("ledger_movements")
-            .select("amount_original, currency, type")
+            .select("amount_original, currency, type, amount_ars_equivalent")
             .eq("account_id", account.id)
           
           if (movements && movements.length > 0) {
             const movementsArray = movements as any[]
+            let balanceARS = 0
+            let balanceUSD = 0
+            
+            // Calcular balance por moneda usando la misma lógica que getAccountBalance
+            const initialBalance = parseFloat(account.initial_balance || "0")
+            const accountCurrency = account.currency
+            
+            // Si la cuenta tiene moneda específica, el initial_balance está en esa moneda
+            if (accountCurrency === "ARS") {
+              balanceARS = initialBalance
+            } else if (accountCurrency === "USD") {
+              balanceUSD = initialBalance
+            } else {
+              balanceARS = initialBalance // Fallback
+            }
+            
             for (const m of movementsArray) {
-              const amount = parseFloat(m.amount_original || "0")
-              let shouldAdd = false
+              const amountOriginal = parseFloat(m.amount_original || "0")
+              const amountARS = parseFloat(m.amount_ars_equivalent || "0")
               
               // Para PASIVOS: EXPENSE aumenta, INCOME disminuye
               if (chartAccount.category === "PASIVO") {
-                if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT") {
-                  shouldAdd = true
-                } else if (m.type === "INCOME") {
-                  shouldAdd = false // Restar
+                if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
+                  // Aumenta el pasivo
+                  if (m.currency === "ARS") {
+                    balanceARS += amountOriginal
+                  } else if (m.currency === "USD") {
+                    balanceUSD += amountOriginal
+                  }
+                } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
+                  // Disminuye el pasivo
+                  if (m.currency === "ARS") {
+                    balanceARS -= amountOriginal
+                  } else if (m.currency === "USD") {
+                    balanceUSD -= amountOriginal
+                  }
                 }
               } else {
                 // Para ACTIVOS y otros: INCOME aumenta, EXPENSE disminuye
-                if (m.type === "INCOME") {
-                  shouldAdd = true
-                } else if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT") {
-                  shouldAdd = false // Restar
+                if (m.type === "INCOME" || m.type === "FX_GAIN") {
+                  if (m.currency === "ARS") {
+                    balanceARS += amountOriginal
+                  } else if (m.currency === "USD") {
+                    balanceUSD += amountOriginal
+                  }
+                } else if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
+                  if (m.currency === "ARS") {
+                    balanceARS -= amountOriginal
+                  } else if (m.currency === "USD") {
+                    balanceUSD -= amountOriginal
+                  }
                 }
               }
-              
-              if (m.currency === "ARS") {
-                balancesByCurrency[key].ars += shouldAdd ? amount : -amount
-              } else if (m.currency === "USD") {
-                balancesByCurrency[key].usd += shouldAdd ? amount : -amount
-              }
             }
+            
+            balancesByCurrency[key].ars += balanceARS
+            balancesByCurrency[key].usd += balanceUSD
           } else {
-            // Si no hay movimientos, usar el balance total (ya en ARS)
-            balancesByCurrency[key].ars += balance
+            // Si no hay movimientos, usar el balance total según la moneda de la cuenta
+            if (account.currency === "ARS") {
+              balancesByCurrency[key].ars += balance
+            } else if (account.currency === "USD") {
+              balancesByCurrency[key].usd += balance
+            } else {
+              balancesByCurrency[key].ars += balance // Fallback
+            }
           }
           
           console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}): balance=${balance}, key=${key}, ARS=${balancesByCurrency[key].ars}, USD=${balancesByCurrency[key].usd}`)
@@ -183,6 +220,49 @@ export async function GET(request: Request) {
       } catch (error) {
         console.error(`Error calculating balance for account ${account.id}:`, error)
       }
+    }
+    
+    // Agregar pagos recurrentes pendientes como pasivos
+    try {
+      const { data: recurringPayments } = await supabase
+        .from("recurring_payments")
+        .select("amount, currency, next_due_date, is_active, agency_id")
+        .eq("is_active", true)
+        .lte("next_due_date", dateTo)
+      
+      if (recurringPayments && recurringPayments.length > 0) {
+        const recurringArray = recurringPayments as any[]
+        let recurringARS = 0
+        let recurringUSD = 0
+        
+        for (const rp of recurringArray) {
+          // Filtrar por agencia si es necesario
+          if (agencyId !== "ALL" && rp.agency_id !== agencyId) {
+            continue
+          }
+          
+          const amount = parseFloat(rp.amount || "0")
+          if (rp.currency === "ARS") {
+            recurringARS += amount
+          } else if (rp.currency === "USD") {
+            recurringUSD += amount
+          }
+        }
+        
+        // Agregar a PASIVO_CORRIENTE (pagos recurrentes son pasivos corrientes)
+        if (!balancesByCurrency["PASIVO_CORRIENTE"]) {
+          balancesByCurrency["PASIVO_CORRIENTE"] = { ars: 0, usd: 0 }
+        }
+        balancesByCurrency["PASIVO_CORRIENTE"].ars += recurringARS
+        balancesByCurrency["PASIVO_CORRIENTE"].usd += recurringUSD
+        
+        // También agregar al balance total
+        balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + recurringARS + (recurringUSD * 1000) // Aproximado
+        
+        console.log(`[MonthlyPosition] Pagos recurrentes pendientes: ARS=${recurringARS}, USD=${recurringUSD}`)
+      }
+    } catch (error) {
+      console.error("Error obteniendo pagos recurrentes:", error)
     }
     
     console.log(`[MonthlyPosition] Balances calculados:`, balances)
