@@ -5,7 +5,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bell, Calendar, DollarSign, FileText, AlertTriangle, ChevronRight } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -147,8 +146,7 @@ export function PendingAlertsCard() {
             <p className="text-[10px]">Sin alertas vencidas</p>
           </div>
         ) : (
-          <ScrollArea className="h-[120px]">
-            <div className="space-y-1.5 pr-2">
+          <div className="space-y-1.5">
               {alerts.map((alert) => {
                 const config = getAlertConfig(alert.type)
                 const Icon = config.icon
@@ -203,8 +201,7 @@ export function PendingAlertsCard() {
                   </Link>
                 )
               })}
-            </div>
-          </ScrollArea>
+          </div>
         )}
       </CardContent>
     </Card>
