@@ -18,7 +18,11 @@ import { ServerPagination } from "@/components/ui/server-pagination"
 interface MovementOperation {
   id: string
   destination: string
-  agencies?: { name: string | null } | null
+  agency_id?: string | null
+  agencies?: { 
+    id: string
+    name: string | null 
+  } | null
 }
 
 interface MovementUser {

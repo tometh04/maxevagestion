@@ -141,8 +141,9 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
       const matchesDate = movementDate >= dateFrom && movementDate <= dateTo
       
       // Filtrar por agencia si está especificada
+      const movementAgencyId = movement.operations?.agency_id || movement.operations?.agencies?.id
       const matchesAgency = filters.agencyId === "ALL" || 
-        (movement.operations?.agency_id === filters.agencyId)
+        (movementAgencyId === filters.agencyId)
       
       return matchesDate && matchesAgency
     })
