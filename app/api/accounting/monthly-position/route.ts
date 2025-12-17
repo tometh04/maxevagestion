@@ -417,7 +417,6 @@ export async function GET(request: Request) {
     let gastosARS = 0
     let gastosUSD = 0
 
-    const monthMovementsArray = (monthMovements || []) as any[]
     console.log(`[MonthlyPosition] Procesando ${monthMovementsArray.length} movimientos del mes`)
     
     // Debug: mostrar todos los movimientos para entender qué está pasando
