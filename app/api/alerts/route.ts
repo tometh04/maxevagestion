@@ -13,6 +13,7 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
+    const sellerId = searchParams.get("sellerId")
 
     // Build query
     let query = supabase
@@ -88,15 +89,35 @@ export async function GET(request: Request) {
 
     if (agencyId && agencyId !== "ALL") {
       // Filter by agency through operations
-      const { data: agencyOperations } = await supabase
+      let operationsQuery = supabase
         .from("operations")
         .select("id")
         .eq("agency_id", agencyId)
+
+      if (sellerId && sellerId !== "ALL") {
+        operationsQuery = operationsQuery.eq("seller_id", sellerId)
+      }
+
+      const { data: agencyOperations } = await operationsQuery
 
       const agencyOperationIds = (agencyOperations || []).map((op: any) => op.id)
 
       if (agencyOperationIds.length > 0) {
         query = query.in("operation_id", agencyOperationIds)
+      } else {
+        return NextResponse.json({ alerts: [] })
+      }
+    } else if (sellerId && sellerId !== "ALL") {
+      // Filter by seller through operations
+      const { data: sellerOperations } = await supabase
+        .from("operations")
+        .select("id")
+        .eq("seller_id", sellerId)
+
+      const sellerOperationIds = (sellerOperations || []).map((op: any) => op.id)
+
+      if (sellerOperationIds.length > 0) {
+        query = query.in("operation_id", sellerOperationIds)
       } else {
         return NextResponse.json({ alerts: [] })
       }

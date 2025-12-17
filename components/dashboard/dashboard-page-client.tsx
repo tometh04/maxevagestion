@@ -361,9 +361,9 @@ export function DashboardPageClient({
 
       {/* Alertas, Próximos Viajes y Top Vendedores */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
-        <PendingAlertsCard />
-        <UpcomingTripsCard />
-        <TopSellersCard />
+        <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
+        <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
+        <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
       </div>
 
       {/* Charts */}

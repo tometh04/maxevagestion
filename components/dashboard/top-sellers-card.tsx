@@ -16,13 +16,20 @@ interface Seller {
   margin: number
 }
 
-export function TopSellersCard() {
+interface TopSellersCardProps {
+  agencyId?: string
+  sellerId?: string
+  dateFrom?: string
+  dateTo?: string
+}
+
+export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSellersCardProps = {}) {
   const [sellers, setSellers] = useState<Seller[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchTopSellers()
-  }, [])
+  }, [agencyId, sellerId, dateFrom, dateTo])
 
   const fetchTopSellers = async () => {
     try {
@@ -32,8 +39,15 @@ export function TopSellersCard() {
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       
       const params = new URLSearchParams()
-      params.set("dateFrom", firstDayOfMonth.toISOString().split("T")[0])
-      params.set("dateTo", lastDayOfMonth.toISOString().split("T")[0])
+      // Usar fechas del filtro si están disponibles, sino usar el mes actual
+      params.set("dateFrom", dateFrom || firstDayOfMonth.toISOString().split("T")[0])
+      params.set("dateTo", dateTo || lastDayOfMonth.toISOString().split("T")[0])
+      if (agencyId && agencyId !== "ALL") {
+        params.set("agencyId", agencyId)
+      }
+      if (sellerId && sellerId !== "ALL") {
+        params.set("sellerId", sellerId)
+      }
       
       const response = await fetch(`/api/analytics/sellers?${params.toString()}`)
       const data = await response.json()

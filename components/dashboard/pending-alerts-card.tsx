@@ -33,18 +33,33 @@ const alertTypeConfig: Record<string, { icon: any; color: string; label: string 
   RECURRING_PAYMENT: { icon: DollarSign, color: "bg-emerald-500", label: "Recurrente" },
 }
 
-export function PendingAlertsCard() {
+interface PendingAlertsCardProps {
+  agencyId?: string
+  sellerId?: string
+}
+
+export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps = {}) {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchAlerts()
-  }, [])
+  }, [agencyId, sellerId])
 
   const fetchAlerts = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/alerts?status=PENDING&limit=10")
+      const params = new URLSearchParams()
+      params.set("status", "PENDING")
+      params.set("limit", "10")
+      if (agencyId && agencyId !== "ALL") {
+        params.set("agencyId", agencyId)
+      }
+      if (sellerId && sellerId !== "ALL") {
+        params.set("sellerId", sellerId)
+      }
+      
+      const response = await fetch(`/api/alerts?${params.toString()}`)
       const data = await response.json()
       const allAlerts = data.alerts || []
       // Filtrar solo alertas vencidas

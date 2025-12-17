@@ -24,13 +24,18 @@ interface Operation {
   sellers?: { name: string } | null
 }
 
-export function UpcomingTripsCard() {
+interface UpcomingTripsCardProps {
+  agencyId?: string
+  sellerId?: string
+}
+
+export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps = {}) {
   const [operations, setOperations] = useState<Operation[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetchUpcomingTrips()
-  }, [])
+  }, [agencyId, sellerId])
 
   const fetchUpcomingTrips = async () => {
     try {
@@ -40,7 +45,19 @@ export function UpcomingTripsCard() {
       nextMonth.setDate(nextMonth.getDate() + 30)
       const nextMonthStr = nextMonth.toISOString().split("T")[0]
       
-      const response = await fetch(`/api/operations?dateFrom=${today}&dateTo=${nextMonthStr}&status=CONFIRMED&limit=5`)
+      const params = new URLSearchParams()
+      params.set("dateFrom", today)
+      params.set("dateTo", nextMonthStr)
+      params.set("status", "CONFIRMED")
+      params.set("limit", "5")
+      if (agencyId && agencyId !== "ALL") {
+        params.set("agencyId", agencyId)
+      }
+      if (sellerId && sellerId !== "ALL") {
+        params.set("sellerId", sellerId)
+      }
+      
+      const response = await fetch(`/api/operations?${params.toString()}`)
       const data = await response.json()
       setOperations(data.operations || [])
     } catch (error) {
