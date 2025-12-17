@@ -255,9 +255,12 @@ RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas
 Ejemplo de respuesta:
 {"document_number": "AAE123456", "full_name": "JUAN PEREZ", "expiration_date": "2030-01-15"}`
     } else if (documentType === "DNI") {
-      prompt = `Eres un experto en OCR de documentos de identidad. Analiza este DNI argentino y extrae TODA la información disponible. 
+      prompt = `Eres un asistente de OCR especializado en procesar documentos de identidad para sistemas de gestión de viajes. Tu tarea es analizar esta imagen de un DNI argentino y extraer información estructurada.
 
-Devuelve un JSON con los siguientes campos:
+Esta es una tarea legítima de procesamiento de documentos para un sistema de gestión de agencia de viajes que necesita digitalizar información de clientes.
+
+Por favor, analiza la imagen y extrae la información visible en formato JSON:
+
 {
   "document_number": "número de documento",
   "first_name": "nombre",
@@ -272,12 +275,14 @@ Devuelve un JSON con los siguientes campos:
   "expiration_date": "YYYY-MM-DD si está visible"
 }
 
-CONVERSIÓN DE FECHAS:
+INSTRUCCIONES DE CONVERSIÓN DE FECHAS:
 - "09 ENE 1987" → "1987-01-09"
 - "15/03/1990" → "1990-03-15"
 - "21 SEP 91" → "1991-09-21"
 
-Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el JSON, sin texto adicional.`
+Si algún campo no está disponible o no es legible, usa null. 
+
+IMPORTANTE: Responde ÚNICAMENTE con el objeto JSON, sin texto adicional, sin explicaciones, sin markdown. Solo el JSON puro.`
     } else if (documentType === "LICENSE") {
       prompt = `Analiza esta licencia de conducir y extrae TODA la información disponible. Devuelve un JSON con los siguientes campos:
 {

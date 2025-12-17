@@ -309,10 +309,20 @@ export async function getOrCreateDefaultAccount(
   userId: string,
   supabase: SupabaseClient<Database>
 ): Promise<string> {
-  // Buscar cuenta existente del tipo y moneda
+  // Mapear tipos antiguos a tipos válidos según el constraint
+  const typeMapping: Record<string, string> = {
+    CASH: currency === "ARS" ? "CASH_ARS" : "CASH_USD",
+    BANK: currency === "ARS" ? "CHECKING_ARS" : "CHECKING_USD",
+    MP: "CREDIT_CARD", // Mercado Pago se mapea a tarjeta de crédito
+    USD: currency === "ARS" ? "SAVINGS_ARS" : "SAVINGS_USD", // Si se pide USD con currency USD, usar SAVINGS_USD
+  }
+
+  const validType = typeMapping[type] || (currency === "ARS" ? "CASH_ARS" : "CASH_USD")
+
+  // Buscar cuenta existente del tipo y moneda válidos
   const { data: existing, error: existingError } = await (supabase.from("financial_accounts") as any)
     .select("id")
-    .eq("type", type)
+    .eq("type", validType)
     .eq("currency", currency)
     .limit(1)
     .maybeSingle()
@@ -323,16 +333,19 @@ export async function getOrCreateDefaultAccount(
 
   // Si no existe, crear una nueva
   const accountNames: Record<string, string> = {
-    CASH: "Caja Principal",
-    BANK: "Banco Principal",
-    MP: "Mercado Pago",
-    USD: "Cuenta USD",
+    CASH_ARS: "Caja Principal ARS",
+    CASH_USD: "Caja Principal USD",
+    CHECKING_ARS: "Banco Principal ARS",
+    CHECKING_USD: "Banco Principal USD",
+    CREDIT_CARD: "Mercado Pago",
+    SAVINGS_ARS: "Caja de Ahorro ARS",
+    SAVINGS_USD: "Caja de Ahorro USD",
   }
 
   const { data: newAccount, error } = await (supabase.from("financial_accounts") as any)
     .insert({
-      name: accountNames[type] || `Cuenta ${type}`,
-      type,
+      name: accountNames[validType] || `Cuenta ${validType}`,
+      type: validType,
       currency,
       initial_balance: 0,
       created_by: userId,

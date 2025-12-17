@@ -33,7 +33,8 @@ export async function getExchangeRate(
 ): Promise<number | null> {
   const dateStr = typeof date === "string" ? date : date.toISOString().split("T")[0]
 
-  // Primero intentar obtener usando la función SQL
+  // Primero intentar obtener usando la función SQL (si existe)
+  // Si la función no existe (PGRST202), usar directamente el fallback sin loguear error
   const { data, error } = await (supabase.rpc as any)("get_exchange_rate", {
     p_date: dateStr,
     p_from_currency: fromCurrency,
@@ -41,7 +42,11 @@ export async function getExchangeRate(
   })
 
   if (error) {
-    console.error("Error calling get_exchange_rate function:", error)
+    // Si el error es porque la función no existe (PGRST202), no loguear como error
+    // Solo loguear como warning si es otro tipo de error
+    if (error.code !== "PGRST202") {
+      console.warn("Error calling get_exchange_rate function (using fallback):", error.message)
+    }
     // Fallback: buscar directamente
     const { data: directData, error: directError } = await (supabase
       .from("exchange_rates") as any)
@@ -54,7 +59,6 @@ export async function getExchangeRate(
       .maybeSingle()
 
     if (directError || !directData) {
-      console.warn(`No exchange rate found for ${dateStr}, using fallback`)
       return null
     }
 
