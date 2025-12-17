@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { format } from "date-fns"
+import { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths } from "date-fns"
 import { es } from "date-fns/locale"
 import { Calendar as CalendarIcon } from "lucide-react"
 import { type DateRange } from "react-day-picker"
@@ -49,6 +49,92 @@ function formatDateString(date: Date | undefined): string {
   const day = String(date.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
 }
+
+// Preset options
+const presets = [
+  {
+    label: "Hoy",
+    getValue: () => {
+      const today = startOfDay(new Date())
+      return {
+        from: today,
+        to: endOfDay(today),
+      }
+    },
+  },
+  {
+    label: "Ayer",
+    getValue: () => {
+      const yesterday = subDays(new Date(), 1)
+      return {
+        from: startOfDay(yesterday),
+        to: endOfDay(yesterday),
+      }
+    },
+  },
+  {
+    label: "Esta semana",
+    getValue: () => {
+      const today = new Date()
+      return {
+        from: startOfWeek(today, { locale: es }),
+        to: endOfWeek(today, { locale: es }),
+      }
+    },
+  },
+  {
+    label: "Semana pasada",
+    getValue: () => {
+      const today = new Date()
+      const lastWeek = subDays(today, 7)
+      return {
+        from: startOfWeek(lastWeek, { locale: es }),
+        to: endOfWeek(lastWeek, { locale: es }),
+      }
+    },
+  },
+  {
+    label: "Este mes",
+    getValue: () => {
+      const today = new Date()
+      return {
+        from: startOfMonth(today),
+        to: endOfMonth(today),
+      }
+    },
+  },
+  {
+    label: "Mes pasado",
+    getValue: () => {
+      const today = new Date()
+      const lastMonth = subMonths(today, 1)
+      return {
+        from: startOfMonth(lastMonth),
+        to: endOfMonth(lastMonth),
+      }
+    },
+  },
+  {
+    label: "Últimos 7 días",
+    getValue: () => {
+      const today = new Date()
+      return {
+        from: startOfDay(subDays(today, 6)),
+        to: endOfDay(today),
+      }
+    },
+  },
+  {
+    label: "Últimos 30 días",
+    getValue: () => {
+      const today = new Date()
+      return {
+        from: startOfDay(subDays(today, 29)),
+        to: endOfDay(today),
+      }
+    },
+  },
+]
 
 export function DateRangePicker({
   dateFrom,
@@ -102,7 +188,16 @@ export function DateRangePicker({
     // Only update parent when both dates are selected
     if (range?.from && range?.to) {
       onChange(formatDateString(range.from), formatDateString(range.to))
+      // Close popover after selection
+      setIsOpen(false)
     }
+  }
+
+  const handlePresetClick = (preset: typeof presets[0]) => {
+    const range = preset.getValue()
+    setInternalRange(range)
+    onChange(formatDateString(range.from), formatDateString(range.to))
+    setIsOpen(false)
   }
 
   // For display: use currentRange (from props) when closed, internalRange when open
@@ -136,14 +231,32 @@ export function DateRangePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          initialFocus
-          mode="range"
-          defaultMonth={internalRange?.from || currentRange?.from || new Date()}
-          selected={internalRange}
-          onSelect={handleSelect}
-          numberOfMonths={2}
-        />
+        <div className="flex">
+          <div className="p-3 border-r">
+            <div className="space-y-1">
+              {presets.map((preset) => (
+                <Button
+                  key={preset.label}
+                  variant="ghost"
+                  className="w-full justify-start text-left font-normal"
+                  onClick={() => handlePresetClick(preset)}
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className="p-3">
+            <Calendar
+              initialFocus
+              mode="range"
+              defaultMonth={internalRange?.from || currentRange?.from || new Date()}
+              selected={internalRange}
+              onSelect={handleSelect}
+              numberOfMonths={1}
+            />
+          </div>
+        </div>
       </PopoverContent>
     </Popover>
   )
