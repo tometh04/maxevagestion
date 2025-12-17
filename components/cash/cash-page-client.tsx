@@ -67,9 +67,9 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
       dateTo.setHours(23, 59, 59, 999)
 
       allPayments = allPayments.filter((payment: Payment) => {
-        // Usar date_due, date_paid o created_at según disponibilidad
+        // Usar date_due o date_paid según disponibilidad
         const paymentDate = new Date(
-          payment.date_due || payment.date_paid || payment.created_at
+          payment.date_due || payment.date_paid || new Date().toISOString()
         )
         const matchesDate = paymentDate >= dateFrom && paymentDate <= dateTo
         
@@ -148,7 +148,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
     })
 
     let filteredPayments = payments.filter((payment) => {
-      const paymentDate = new Date(payment.date_due || payment.date_paid || payment.created_at)
+      const paymentDate = new Date(payment.date_due || payment.date_paid || new Date().toISOString())
       const matchesDate = paymentDate >= dateFrom && paymentDate <= dateTo
       
       // Filtrar por agencia si está especificada (a través de operation)
