@@ -125,6 +125,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "La fecha de salida debe ser posterior a la fecha de operación" }, { status: 400 })
     }
 
+    // Validar que return_date sea después de departure_date (si ambos están presentes)
+    if (return_date) {
+      const returnDate = new Date(return_date)
+      returnDate.setHours(0, 0, 0, 0)
+      if (returnDate < departureDate) {
+        return NextResponse.json({ error: "La fecha de regreso debe ser posterior a la fecha de salida" }, { status: 400 })
+      }
+    }
+
     // Validar que los montos no sean negativos
     if (sale_amount_total < 0) {
       return NextResponse.json({ error: "El monto de venta no puede ser negativo" }, { status: 400 })
@@ -381,7 +390,7 @@ export async function POST(request: Request) {
             const { data: newFA } = await (supabase.from("financial_accounts") as any)
               .insert({
                 name: "Cuentas por Pagar",
-                type: "ASSETS", // Temporal, se puede ajustar después
+                type: "LIABILITIES", // Corregido: Cuentas por Pagar son pasivos, no activos
                 currency: finalOperatorCostCurrency,
                 chart_account_id: accountsPayableChart.id,
                 initial_balance: 0,
@@ -400,7 +409,11 @@ export async function POST(request: Request) {
             if (!costExchangeRate) {
               costExchangeRate = await getLatestExchangeRate(supabase)
             }
-            if (!costExchangeRate) costExchangeRate = 1000
+            if (!costExchangeRate) {
+              // No usar fallback silencioso - lanzar error para que el usuario sepa
+              console.error(`❌ ERROR: No se encontró tasa de cambio para USD en fecha ${departure_date}. Se requiere tasa de cambio para operaciones en USD.`)
+              throw new Error("No se encontró tasa de cambio para USD. Por favor, configure una tasa de cambio antes de crear la operación.")
+            }
           }
           const costAmountARS = calculateARSEquivalent(totalOperatorCost, finalOperatorCostCurrency as "ARS" | "USD", costExchangeRate)
 
@@ -496,13 +509,21 @@ export async function POST(request: Request) {
         
         // Asociar cliente a la operación
         if (customerId) {
-          await (supabase.from("operation_customers") as any)
+          const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
             .insert({
               operation_id: operation.id,
               customer_id: customerId,
               role: "MAIN"
             })
-          console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`)
+            .select()
+            .single()
+          
+          if (operationCustomerError) {
+            console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
+            // No lanzar error, pero loguear para debug
+          } else {
+            console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
+          }
           
           // Transferir documentos del lead al cliente
           try {

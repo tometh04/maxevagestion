@@ -23,6 +23,20 @@ export default async function CustomerDetailPage({
   }
 
   // Get operations for this customer
+  // Primero, obtener los operation_customers sin relaciones para debug
+  const { data: operationCustomersRaw, error: operationCustomersRawError } = await supabase
+    .from("operation_customers")
+    .select("*")
+    .eq("customer_id", id)
+    .order("created_at", { ascending: false })
+
+  console.log(`[CustomerDetailPage] Raw operation_customers for customer ${id}:`, {
+    count: operationCustomersRaw?.length || 0,
+    data: operationCustomersRaw,
+    error: operationCustomersRawError
+  })
+
+  // Ahora obtener con relaciones
   const { data: operationCustomers, error: operationCustomersError } = await supabase
     .from("operation_customers")
     .select(`
@@ -38,8 +52,13 @@ export default async function CustomerDetailPage({
     .order("created_at", { ascending: false })
 
   if (operationCustomersError) {
-    console.error("[CustomerDetailPage] Error fetching operation_customers:", operationCustomersError)
+    console.error("[CustomerDetailPage] Error fetching operation_customers with relations:", operationCustomersError)
   }
+
+  console.log(`[CustomerDetailPage] operation_customers with relations for customer ${id}:`, {
+    count: operationCustomers?.length || 0,
+    sample: operationCustomers?.[0]
+  })
 
   // Get operation IDs for payments and documents
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
@@ -113,15 +132,58 @@ export default async function CustomerDetailPage({
 
   // Extraer operaciones de operation_customers
   // En Supabase, cuando haces una relación con foreign key, devuelve un objeto único (no array)
-  const operations = (operationCustomers || [])
-    .map((oc: any) => {
-      // oc.operations puede ser un objeto único o null
-      if (oc.operations && typeof oc.operations === 'object' && !Array.isArray(oc.operations)) {
-        return oc.operations
-      }
-      return null
-    })
-    .filter((op: any) => op !== null && op !== undefined)
+  let operations: any[] = []
+  
+  if (operationCustomers && operationCustomers.length > 0) {
+    operations = operationCustomers
+      .map((oc: any) => {
+        console.log(`[CustomerDetailPage] Processing operation_customer:`, {
+          oc_id: oc.id,
+          operation_id: oc.operation_id,
+          operations_field: oc.operations,
+          operations_type: typeof oc.operations,
+          is_array: Array.isArray(oc.operations)
+        })
+        
+        // oc.operations puede ser un objeto único o null
+        if (oc.operations && typeof oc.operations === 'object' && !Array.isArray(oc.operations)) {
+          return oc.operations
+        }
+        // Si operations es null pero tenemos operation_id, intentar obtener la operación directamente
+        if (!oc.operations && oc.operation_id) {
+          console.warn(`[CustomerDetailPage] operation_customer ${oc.id} has operation_id ${oc.operation_id} but operations field is null`)
+        }
+        return null
+      })
+      .filter((op: any) => op !== null && op !== undefined)
+  }
+
+  console.log(`[CustomerDetailPage] Final operations array for customer ${id}:`, {
+    count: operations.length,
+    operation_ids: operations.map((op: any) => op?.id)
+  })
+
+  // Si no hay operaciones pero sí hay operation_customers, intentar obtener las operaciones directamente
+  if (operations.length === 0 && operationIds.length > 0) {
+    console.log(`[CustomerDetailPage] No operations from relation, fetching directly for IDs:`, operationIds)
+    const { data: directOperations, error: directOpsError } = await supabase
+      .from("operations")
+      .select(`
+        *,
+        sellers:seller_id(id, name),
+        operators:operator_id(id, name),
+        agencies:agency_id(id, name)
+      `)
+      .in("id", operationIds)
+      .order("created_at", { ascending: false })
+    
+    if (directOpsError) {
+      console.error("[CustomerDetailPage] Error fetching operations directly:", directOpsError)
+    } else if (directOperations && directOperations.length > 0) {
+      console.log(`[CustomerDetailPage] Found ${directOperations.length} operations via direct query`)
+      operations = directOperations
+    }
+  }
 
   return (
     <CustomerDetailClient
