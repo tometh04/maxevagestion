@@ -336,7 +336,18 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Ingresos</span>
-                  <span className="font-bold text-green-600">{formatCurrency(position.resultado.ingresos)}</span>
+                  <div className="text-right">
+                    {position.resultado.ingresosARS !== undefined && position.resultado.ingresosARS > 0 && (
+                      <div className="font-bold text-green-600">{formatCurrency(position.resultado.ingresosARS, "ARS")}</div>
+                    )}
+                    {position.resultado.ingresosUSD !== undefined && position.resultado.ingresosUSD > 0 && (
+                      <div className="font-bold text-green-600">{formatCurrency(position.resultado.ingresosUSD, "USD")}</div>
+                    )}
+                    {(!position.resultado.ingresosARS || position.resultado.ingresosARS === 0) && 
+                     (!position.resultado.ingresosUSD || position.resultado.ingresosUSD === 0) && (
+                      <span className="font-bold text-green-600">{formatCurrency(0, "ARS")}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Ventas de Viajes, Otros Ingresos
@@ -345,7 +356,18 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Costos</span>
-                  <span className="font-bold text-red-600">-{formatCurrency(position.resultado.costos)}</span>
+                  <div className="text-right">
+                    {position.resultado.costosARS !== undefined && position.resultado.costosARS > 0 && (
+                      <div className="font-bold text-red-600">-{formatCurrency(position.resultado.costosARS, "ARS")}</div>
+                    )}
+                    {position.resultado.costosUSD !== undefined && position.resultado.costosUSD > 0 && (
+                      <div className="font-bold text-red-600">-{formatCurrency(position.resultado.costosUSD, "USD")}</div>
+                    )}
+                    {(!position.resultado.costosARS || position.resultado.costosARS === 0) && 
+                     (!position.resultado.costosUSD || position.resultado.costosUSD === 0) && (
+                      <span className="font-bold text-red-600">-{formatCurrency(0, "ARS")}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Costo de Operadores, Otros Costos
@@ -354,7 +376,18 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               <div>
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-medium">Gastos</span>
-                  <span className="font-bold text-red-600">-{formatCurrency(position.resultado.gastos)}</span>
+                  <div className="text-right">
+                    {position.resultado.gastosARS !== undefined && position.resultado.gastosARS > 0 && (
+                      <div className="font-bold text-red-600">-{formatCurrency(position.resultado.gastosARS, "ARS")}</div>
+                    )}
+                    {position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD > 0 && (
+                      <div className="font-bold text-red-600">-{formatCurrency(position.resultado.gastosUSD, "USD")}</div>
+                    )}
+                    {(!position.resultado.gastosARS || position.resultado.gastosARS === 0) && 
+                     (!position.resultado.gastosUSD || position.resultado.gastosUSD === 0) && (
+                      <span className="font-bold text-red-600">-{formatCurrency(0, "ARS")}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-xs text-muted-foreground">
                   Gastos Administrativos, Comercialización, Comisiones, Gastos Financieros
