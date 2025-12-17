@@ -391,7 +391,8 @@ export async function GET(request: Request) {
     
     // Agregar movimientos creados en el mes
     if (monthMovements) {
-      for (const m of monthMovements) {
+      const movementsArray = monthMovements as any[]
+      for (const m of movementsArray) {
         if (!existingIds.has(m.id)) {
           allMovements.push(m)
           existingIds.add(m.id)
