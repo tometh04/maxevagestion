@@ -98,15 +98,26 @@ export async function createLedgerMovement(
 /**
  * Calcular el balance de una cuenta financiera
  * Balance = initial_balance + SUM(ledger_movements.amount_ars_equivalent)
+ * 
+ * IMPORTANTE: El cálculo depende del tipo de cuenta:
+ * - ACTIVOS: INCOME aumenta, EXPENSE disminuye
+ * - PASIVOS: EXPENSE aumenta, INCOME disminuye (cuando pagas, reduces el pasivo)
+ * - RESULTADO: INCOME aumenta, EXPENSE disminuye
  */
 export async function getAccountBalance(
   accountId: string,
   supabase: SupabaseClient<Database>
 ): Promise<number> {
-  // Obtener initial_balance
+  // Obtener cuenta con su chart_account_id para determinar el tipo
   const { data: account, error: accountError } = await (supabase
     .from("financial_accounts") as any)
-    .select("initial_balance")
+    .select(`
+      initial_balance,
+      chart_account_id,
+      chart_of_accounts:chart_account_id(
+        category
+      )
+    `)
     .eq("id", accountId)
     .single()
 
@@ -115,11 +126,12 @@ export async function getAccountBalance(
   }
 
   const initialBalance = parseFloat(account.initial_balance || "0")
+  const category = account.chart_of_accounts?.category
 
   // Sumar todos los movimientos del ledger para esta cuenta
   const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
-    .select("amount_ars_equivalent")
+    .select("type, amount_ars_equivalent")
     .eq("account_id", accountId)
 
   if (movementsError) {
@@ -128,11 +140,27 @@ export async function getAccountBalance(
 
   const movementsSum =
     movements?.reduce((sum: number, m: any) => {
-      // Sumar ingresos y restar gastos
+      const amount = parseFloat(m.amount_ars_equivalent || "0")
+      
+      // Para PASIVOS, la lógica es inversa:
+      // - EXPENSE aumenta el pasivo (debes más)
+      // - INCOME disminuye el pasivo (pagas, reduces la deuda)
+      if (category === "PASIVO") {
+        if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
+          return sum + amount // Aumenta el pasivo
+        } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
+          return sum - amount // Disminuye el pasivo (pagaste)
+        }
+        return sum
+      }
+      
+      // Para ACTIVOS y RESULTADO (y otros), lógica normal:
+      // - INCOME aumenta
+      // - EXPENSE disminuye
       if (m.type === "INCOME" || m.type === "FX_GAIN") {
-        return sum + parseFloat(m.amount_ars_equivalent || "0")
+        return sum + amount
       } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
-        return sum - parseFloat(m.amount_ars_equivalent || "0")
+        return sum - amount
       }
       return sum
     }, 0) || 0
