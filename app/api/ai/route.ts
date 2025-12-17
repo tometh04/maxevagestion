@@ -451,7 +451,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 })
     }
 
-    const { message, agencyId, operationId: operationIdFromRequest } = validatedBody
+    const { message, agencyId } = validatedBody
 
     // Log de auditoría
     const supabase = await createServerClient()
@@ -802,96 +802,6 @@ export async function POST(request: Request) {
       })),
     }
 
-    // Detectar si la pregunta menciona una operación específica (por ID o código)
-    // O si viene operationId en el request (usuario está en la página de la operación)
-    let operationDocuments: any[] = []
-    let targetOperationId: string | null = null
-    
-    // Prioridad 1: operationId del request (si el usuario está en la página de la operación)
-    if (operationIdFromRequest) {
-      targetOperationId = operationIdFromRequest
-    } else {
-      // Prioridad 2: Buscar en el mensaje
-      // Buscar UUID completo
-      const fullUuidMatch = message.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i)
-      
-      // Buscar ID parcial (primeros 8 caracteres del UUID)
-      const partialIdMatch = message.match(/([a-f0-9]{8})[^a-f0-9]/i)
-      
-      // Buscar código de operación
-      const operationCodeMatch = message.match(/OP-[\w-]+/i) || 
-                                 message.match(/#([\w-]+)/i) ||
-                                 message.match(/c[oó]digo[:\s]+([\w-]+)/i)
-
-      if (fullUuidMatch || partialIdMatch || operationCodeMatch) {
-        try {
-          let operationQuery = supabase.from("operations").select("id, file_code")
-          
-          if (fullUuidMatch) {
-            // UUID completo
-            operationQuery = operationQuery.eq("id", fullUuidMatch[1])
-          } else if (partialIdMatch) {
-            // ID parcial - buscar operaciones que empiecen con ese ID
-            const partialId = partialIdMatch[1]
-            operationQuery = operationQuery.ilike("id", `${partialId}%`)
-          } else if (operationCodeMatch) {
-            // Código de operación
-            const code = operationCodeMatch[1] || operationCodeMatch[0].replace(/OP-|#/, "")
-            operationQuery = operationQuery.ilike("file_code", `%${code}%`)
-          }
-          
-          const { data: operations } = await operationQuery.limit(1)
-          
-          if (operations && operations.length > 0) {
-            targetOperationId = operations[0].id
-          }
-        } catch (error) {
-          console.error("[AI] Error buscando operación:", error)
-        }
-      }
-    }
-
-    // Si tenemos un operationId, cargar sus documentos con scanned_data
-    if (targetOperationId) {
-      try {
-        const { data: operation } = await supabase
-          .from("operations")
-          .select("id, file_code")
-          .eq("id", targetOperationId)
-          .single()
-        
-        if (operation) {
-          // Cargar documentos de la operación con scanned_data
-          const { data: docs } = await supabase
-            .from("documents")
-            .select("id, type, file_url, scanned_data, uploaded_at")
-            .eq("operation_id", targetOperationId)
-            .order("uploaded_at", { ascending: false })
-          
-          if (docs && docs.length > 0) {
-            operationDocuments = docs.map((doc: any) => ({
-              tipo: doc.type,
-              url: doc.file_url,
-              datos_escaneados: doc.scanned_data,
-              subido: doc.uploaded_at,
-            }))
-            
-            contextData.operacionConsultada = {
-              id: operation.id,
-              codigo: operation.file_code,
-              documentos: operationDocuments,
-            }
-            
-            console.log(`[AI] ✅ Cargados ${operationDocuments.length} documentos con scanned_data para operación ${operation.file_code}`)
-          } else {
-            console.log(`[AI] ⚠️ No se encontraron documentos para operación ${operation.file_code}`)
-          }
-        }
-      } catch (error) {
-        console.error("[AI] Error cargando documentos de operación:", error)
-      }
-    }
-
     // Convertir contexto a texto
     const contextText = JSON.stringify(contextData, null, 2)
 
@@ -987,9 +897,6 @@ ${contextText}
 **"¿Qué requisitos faltan para la operación X?"**
 → Consultar destination_requirements para el destino de la operación y comparar con documentos cargados
 
-**"¿Qué datos tiene el DNI que subí?"** o **"¿Qué información tiene el documento de esta operación?"**
-→ Si se menciona una operación específica (por ID o código), usar datos de operacionConsultada.documentos donde cada documento tiene datos_escaneados con información extraída por OCR (nombre, documento, fecha_nacimiento, etc.)
-
 **"en que fecha cae el próximo?"** (pregunta ambigua)
 → Si no está claro, preguntar: "¿Te referís al próximo pago, próximo viaje, próximo vencimiento, o próximo pago recurrente?"
 
@@ -1007,10 +914,6 @@ ${contextText}
 2. Al crear OPERACIÓN → se generan alertas automáticas: check-in (3 días antes), check-out (1 día antes), requisitos de destino, documentos vencidos
 3. Los DOCUMENTOS están conectados bidireccionalmente: si se sube en lead, aparece en operación y viceversa
 4. Las ALERTAS de pasaportes se generan comparando expiration_date (en scanned_data) con departure_date
-5. **IMPORTANTE**: Si el usuario pregunta sobre una operación específica (mencionando ID, código como "OP-20251211-XXX", o "#ee888732"), se cargan automáticamente los documentos de esa operación con sus datos escaneados (scanned_data) en el campo operacionConsultada.documentos. Cada documento tiene:
-   - tipo: tipo de documento (DNI, PASSPORT, etc.)
-   - datos_escaneados: objeto JSON con información extraída por OCR (document_number, first_name, last_name, date_of_birth, expiration_date, etc.)
-   - subido: fecha de subida
 
 ## FLUJOS DE COMUNICACIÓN
 1. Los MENSAJES WHATSAPP se generan automáticamente según triggers (pagos vencidos, viajes próximos, etc.)

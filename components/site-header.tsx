@@ -55,10 +55,6 @@ export function SiteHeader() {
   const [aiMessage, setAiMessage] = useState("")
   const [aiLoading, setAiLoading] = useState(false)
   const [aiHistory, setAiHistory] = useState<Array<{ role: string; content: string }>>([])
-  
-  // Detectar si estamos en una página de operación
-  const operationIdMatch = pathname?.match(/\/operations\/([a-f0-9-]{36})/i)
-  const currentOperationId = operationIdMatch ? operationIdMatch[1] : undefined
 
   const handleAISend = async () => {
     if (!aiMessage.trim()) return
@@ -72,10 +68,7 @@ export function SiteHeader() {
       const response = await fetch("/api/ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          message: userMessage,
-          operationId: currentOperationId, // Pasar operationId si estamos en esa página
-        }),
+        body: JSON.stringify({ message: userMessage }),
       })
 
       if (!response.ok) {

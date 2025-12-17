@@ -111,7 +111,6 @@ export const createOperationSchema = z.object({
 export const aiCopilotSchema = z.object({
   message: z.string().min(1, "El mensaje es requerido").max(1000, "El mensaje es demasiado largo"),
   agencyId: schemas.uuid.optional(),
-  operationId: schemas.uuid.optional(), // ID de operación si el usuario está en esa página
 })
 
 /**
