@@ -32,6 +32,7 @@ import {
 interface PaymentOperation {
   id: string
   destination: string
+  agency_id?: string | null
   agencies?: { name: string | null } | null
   sellers?: { name: string | null } | null
 }
