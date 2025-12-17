@@ -160,9 +160,13 @@ export async function GET(request: Request) {
       .gte("created_at", `${monthStart}T00:00:00`)
       .lte("created_at", `${monthEnd}T23:59:59`)
 
-    let ingresos = 0
-    let costos = 0
-    let gastos = 0
+    // Separar por moneda para mostrar correctamente
+    let ingresosARS = 0
+    let ingresosUSD = 0
+    let costosARS = 0
+    let costosUSD = 0
+    let gastosARS = 0
+    let gastosUSD = 0
 
     const monthMovementsArray = (monthMovements || []) as any[]
     console.log(`[MonthlyPosition] Procesando ${monthMovementsArray.length} movimientos del mes`)
@@ -170,23 +174,58 @@ export async function GET(request: Request) {
     for (const movement of monthMovementsArray) {
       const chartAccount = (movement.financial_accounts as any)?.chart_of_accounts
       if (chartAccount?.category === "RESULTADO") {
-        const amount = parseFloat(movement.amount_ars_equivalent || "0")
+        const amountOriginal = parseFloat(movement.amount_original || "0")
+        const currency = movement.currency || "ARS"
+        
         if (chartAccount.subcategory === "INGRESOS" && movement.type === "INCOME") {
-          ingresos += amount
-          console.log(`[MonthlyPosition] INGRESO: ${amount} ARS (movement ${movement.id})`)
+          if (currency === "USD") {
+            ingresosUSD += amountOriginal
+          } else {
+            ingresosARS += amountOriginal
+          }
+          console.log(`[MonthlyPosition] INGRESO: ${amountOriginal} ${currency} (movement ${movement.id})`)
         } else if (chartAccount.subcategory === "COSTOS" && (movement.type === "EXPENSE" || movement.type === "OPERATOR_PAYMENT")) {
-          costos += amount
-          console.log(`[MonthlyPosition] COSTO: ${amount} ARS (movement ${movement.id})`)
+          if (currency === "USD") {
+            costosUSD += amountOriginal
+          } else {
+            costosARS += amountOriginal
+          }
+          console.log(`[MonthlyPosition] COSTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
         } else if (chartAccount.subcategory === "GASTOS" && movement.type === "EXPENSE") {
-          gastos += amount
-          console.log(`[MonthlyPosition] GASTO: ${amount} ARS (movement ${movement.id})`)
+          if (currency === "USD") {
+            gastosUSD += amountOriginal
+          } else {
+            gastosARS += amountOriginal
+          }
+          console.log(`[MonthlyPosition] GASTO: ${amountOriginal} ${currency} (movement ${movement.id})`)
         }
       } else if (!chartAccount) {
         console.warn(`[MonthlyPosition] Movimiento ${movement.id} no tiene chart_account vinculado`)
       }
     }
     
-    console.log(`[MonthlyPosition] Resultados del mes: ingresos=${ingresos}, costos=${costos}, gastos=${gastos}`)
+    // Para compatibilidad, sumar todo en ARS (usando amount_ars_equivalent)
+    // Pero también devolver desglose por moneda
+    let ingresos = 0
+    let costos = 0
+    let gastos = 0
+    
+    for (const movement of monthMovementsArray) {
+      const chartAccount = (movement.financial_accounts as any)?.chart_of_accounts
+      if (chartAccount?.category === "RESULTADO") {
+        const amountARS = parseFloat(movement.amount_ars_equivalent || "0")
+        if (chartAccount.subcategory === "INGRESOS" && movement.type === "INCOME") {
+          ingresos += amountARS
+        } else if (chartAccount.subcategory === "COSTOS" && (movement.type === "EXPENSE" || movement.type === "OPERATOR_PAYMENT")) {
+          costos += amountARS
+        } else if (chartAccount.subcategory === "GASTOS" && movement.type === "EXPENSE") {
+          gastos += amountARS
+        }
+      }
+    }
+    
+    console.log(`[MonthlyPosition] Resultados del mes (ARS): ingresos=${ingresos}, costos=${costos}, gastos=${gastos}`)
+    console.log(`[MonthlyPosition] Resultados del mes (desglose): ingresos ARS=${ingresosARS}, USD=${ingresosUSD}, costos ARS=${costosARS}, USD=${costosUSD}`)
 
     // Estructurar respuesta
     const activo_corriente = balances["ACTIVO_CORRIENTE"] || 0
@@ -219,6 +258,13 @@ export async function GET(request: Request) {
         costos: Math.round(costos * 100) / 100,
         gastos: Math.round(gastos * 100) / 100,
         total: Math.round(resultado_mes * 100) / 100,
+        // Desglose por moneda para mostrar correctamente
+        ingresosARS: Math.round(ingresosARS * 100) / 100,
+        ingresosUSD: Math.round(ingresosUSD * 100) / 100,
+        costosARS: Math.round(costosARS * 100) / 100,
+        costosUSD: Math.round(costosUSD * 100) / 100,
+        gastosARS: Math.round(gastosARS * 100) / 100,
+        gastosUSD: Math.round(gastosUSD * 100) / 100,
       },
       accounts: chartAccounts || [],
     })

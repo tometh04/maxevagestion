@@ -42,12 +42,24 @@ interface MonthlyPosition {
   }
 }
 
-function formatCurrency(amount: number): string {
+function formatCurrency(amount: number, currency: "ARS" | "USD" = "ARS"): string {
+  // Para USD, usar formato con punto como separador decimal
+  if (currency === "USD") {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+  }
+  
+  // Para ARS, usar formato argentino sin decimales
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
-    minimumFractionDigits: 2,
-  }).format(amount)
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Math.round(amount))
 }
 
 const monthNames = [
