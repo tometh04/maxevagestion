@@ -48,11 +48,9 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
   const fetchPayments = useCallback(async () => {
     setLoadingPayments(true)
 
+    // Traer más pagos para poder filtrar correctamente por fecha
     const params = new URLSearchParams()
-    params.set("dateFrom", filters.dateFrom)
-    params.set("dateTo", filters.dateTo)
-    params.set("currency", filters.currency)
-    params.set("limit", "100")
+    params.set("limit", "500") // Traer más para filtrar por fecha en cliente
 
     if (filters.agencyId !== "ALL") {
       params.set("agencyId", filters.agencyId)
@@ -61,7 +59,27 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
     try {
       const response = await fetch(`/api/payments?${params.toString()}`)
       const data = await response.json()
-      setPayments(data.payments || [])
+      let allPayments = data.payments || []
+
+      // Aplicar filtros de fecha y moneda en el cliente
+      const dateFrom = new Date(filters.dateFrom)
+      const dateTo = new Date(filters.dateTo)
+      dateTo.setHours(23, 59, 59, 999)
+
+      allPayments = allPayments.filter((payment: Payment) => {
+        // Usar date_due, date_paid o created_at según disponibilidad
+        const paymentDate = new Date(
+          payment.date_due || payment.date_paid || payment.created_at
+        )
+        const matchesDate = paymentDate >= dateFrom && paymentDate <= dateTo
+        
+        // Filtrar por moneda
+        const matchesCurrency = filters.currency === "ALL" || payment.currency === filters.currency
+        
+        return matchesDate && matchesCurrency
+      })
+
+      setPayments(allPayments)
     } catch (error) {
       console.error("Error fetching payments:", error)
     } finally {
@@ -73,9 +91,7 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
     setLoadingMovements(true)
 
     const params = new URLSearchParams()
-    params.set("dateFrom", filters.dateFrom)
-    params.set("dateTo", filters.dateTo)
-    params.set("currency", filters.currency)
+    params.set("limit", "500") // Traer más para filtrar por fecha en cliente
 
     if (filters.agencyId !== "ALL") {
       params.set("agencyId", filters.agencyId)
@@ -84,7 +100,24 @@ export function CashPageClient({ agencies, defaultFilters }: CashPageClientProps
     try {
       const response = await fetch(`/api/cash/movements?${params.toString()}`)
       const data = await response.json()
-      setMovements(data.movements || [])
+      let allMovements = data.movements || []
+
+      // Aplicar filtros de fecha y moneda en el cliente
+      const dateFrom = new Date(filters.dateFrom)
+      const dateTo = new Date(filters.dateTo)
+      dateTo.setHours(23, 59, 59, 999)
+
+      allMovements = allMovements.filter((movement: CashMovement) => {
+        const movementDate = new Date(movement.movement_date)
+        const matchesDate = movementDate >= dateFrom && movementDate <= dateTo
+        
+        // Filtrar por moneda
+        const matchesCurrency = filters.currency === "ALL" || movement.currency === filters.currency
+        
+        return matchesDate && matchesCurrency
+      })
+
+      setMovements(allMovements)
     } catch (error) {
       console.error("Error fetching movements:", error)
     } finally {

@@ -300,16 +300,9 @@ export async function GET(request: Request) {
       query = query.eq("operation_id", operationId)
     }
 
-    // Aplicar filtros de fecha
-    if (dateFrom) {
-      // Filtrar por date_due o date_paid según lo que esté disponible
-      query = query.or(`date_due.gte.${dateFrom},date_paid.gte.${dateFrom},created_at.gte.${dateFrom}`)
-    }
-
-    if (dateTo) {
-      const dateToEnd = `${dateTo}T23:59:59.999Z`
-      query = query.or(`date_due.lte.${dateToEnd},date_paid.lte.${dateToEnd},created_at.lte.${dateToEnd}`)
-    }
+    // Nota: Los filtros de fecha se aplicarán en el cliente porque necesitamos
+    // considerar date_due, date_paid o created_at según disponibilidad
+    // Por ahora, traemos todos los pagos y filtramos en el cliente
 
     // Aplicar filtro de moneda
     if (currency && currency !== "ALL") {
