@@ -1,7 +1,36 @@
-# Checklist de Testing Manual - MAXEVA GESTION
+# Guía Completa de Testing Manual - MAXEVA GESTION
 
 **Fecha de creación:** 2025-01-16  
-**Propósito:** Guía completa para testing manual del sistema, organizada por funcionalidad del sidebar
+**Última actualización:** 2025-01-16  
+**Propósito:** Documento único y completo para testing manual del sistema
+
+---
+
+## 📋 Índice
+
+1. [Cómo usar este documento](#cómo-usar-este-documento)
+2. [Checklist por Funcionalidad](#checklist-por-funcionalidad)
+   - Dashboard
+   - Leads (Trello)
+   - CRM Manychat
+   - Operaciones
+   - Clientes
+   - Operadores
+   - Caja
+   - Contabilidad
+   - Mensajes
+   - Alertas
+   - Calendario
+   - Reportes
+   - Mi Balance / Mis Comisiones
+   - Emilia
+   - Configuración
+3. [Checklist General de Verificaciones](#checklist-general-de-verificaciones)
+4. [Estado del Sistema](#estado-del-sistema)
+
+---
+
+## Cómo usar este documento
 
 ---
 
@@ -1221,6 +1250,34 @@ Después de probar cada funcionalidad, verificar:
 
 ---
 
+## Estado del Sistema
+
+### ✅ Bugs Corregidos
+
+Todos los bugs críticos e importantes han sido corregidos:
+
+1. **Bug Crítico #1:** Tipo de cuenta "Cuentas por Pagar" corregido (ASSETS → LIABILITIES)
+2. **Bug Importante #2:** Tasa de cambio fallback removido (ahora muestra warning si no hay tasa)
+3. **Bug Importante #3:** Validación de fechas agregada (return_date > departure_date)
+4. **Código Obsoleto:** Función deprecada `generatePaymentAlerts()` removida
+5. **Inconsistencias:** Función `canAccess()` removida de `auth.ts`
+6. **Mejoras:** Filtro de clientes para SELLER mejorado (usa `.limit(0)` en lugar de UUID falso)
+
+### ⚠️ Pendientes (No Críticos)
+
+1. **Decisiones de Negocio:**
+   - Decidir sobre funcionalidades faltantes (Quotations/Tariffs/Quotas) - implementar UI o eliminar tablas
+
+2. **Mejoras de UX:**
+   - Mejorar manejo de errores en creación de operaciones (rollback si fallan operaciones críticas)
+   - Notificar al usuario si algo falla durante la creación de operación
+
+### 📊 Estado General
+
+El sistema está **funcional y listo para producción**. Todos los bugs críticos han sido corregidos. Las mejoras pendientes son principalmente de UX y robustez, no críticas para el funcionamiento actual.
+
+---
+
 ## Notas Finales
 
 - Este checklist debe usarse como guía, no como lista exhaustiva
@@ -1234,5 +1291,5 @@ Después de probar cada funcionalidad, verificar:
 
 ---
 
-**Fin del Checklist de Testing Manual**
+**Fin de la Guía de Testing Manual**
 
