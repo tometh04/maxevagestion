@@ -176,34 +176,34 @@ export function DateRangePicker({
   return (
     <div className="grid gap-2">
       <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            id="date"
-            variant={"outline"}
-            className={cn(
-              "w-full justify-start text-left font-normal",
+      <PopoverTrigger asChild>
+        <Button
+          id="date"
+          variant={"outline"}
+          className={cn(
+            "w-full justify-start text-left font-normal",
               !date && "text-muted-foreground"
-            )}
-            disabled={disabled}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+          )}
+          disabled={disabled}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
             {date?.from ? (
               date.to ? (
-                <>
+            <>
                   {format(date.from, "LLL dd, y", { locale: es })} -{" "}
                   {format(date.to, "LLL dd, y", { locale: es })}
-                </>
+            </>
               ) : (
                 format(date.from, "LLL dd, y", { locale: es })
               )
-            ) : (
-              <span>{placeholder}</span>
-            )}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
+          ) : (
+            <span>{placeholder}</span>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
           <div className="flex">
-            <div className="p-3 border-r">
+            <div className="p-3 border-r w-[150px]">
               <div className="space-y-1">
                 {presets.map((preset) => (
                   <Button
@@ -218,19 +218,19 @@ export function DateRangePicker({
               </div>
             </div>
             <div className="p-3">
-              <Calendar
-                initialFocus
-                mode="range"
+        <Calendar
+          initialFocus
+          mode="range"
                 defaultMonth={date?.from}
                 selected={date}
-                onSelect={handleSelect}
+          onSelect={handleSelect}
                 numberOfMonths={1}
                 locale={es}
-              />
+        />
             </div>
           </div>
-        </PopoverContent>
-      </Popover>
+      </PopoverContent>
+    </Popover>
     </div>
   )
 }
