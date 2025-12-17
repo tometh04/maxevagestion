@@ -201,13 +201,24 @@ export function CustomerDetailClient({
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Gastado</p>
                   <p className="text-2xl font-bold text-green-600">
-                    ARS{" "}
-                    {operations
-                      .filter((op: any) =>
-                        ["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op?.status)
-                      )
-                      .reduce((sum: number, op: any) => sum + parseFloat(op?.sale_amount_total || 0), 0)
-                      .toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    {(() => {
+                      // Sumar todos los pagos pagados del cliente (INCOME = pagos recibidos del cliente)
+                      const totalPaid = payments
+                        .filter((p: any) => p.status === "PAID" && p.direction === "INCOME")
+                        .reduce((sum: number, p: any) => {
+                          // Convertir a ARS si es necesario
+                          const amount = parseFloat(p.amount || 0)
+                          if (p.currency === "USD") {
+                            // Buscar el exchange_rate en el payment o usar tasa aproximada
+                            // Los pagos pueden tener exchange_rate si se guardó al crear el pago
+                            const exchangeRate = p.exchange_rate || 1000 // Fallback si no hay tasa guardada
+                            return sum + (amount * exchangeRate)
+                          }
+                          return sum + amount
+                        }, 0)
+                      
+                      return `ARS ${totalPaid.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                    })()}
                   </p>
                 </div>
               </CardContent>

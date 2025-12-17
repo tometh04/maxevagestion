@@ -62,12 +62,20 @@ export default async function CustomerDetailPage({
   const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
   
   // Get payments related to customer's operations
+  // También incluir pagos directamente vinculados al cliente si existe esa relación en el futuro
   let payments: any[] = []
   if (operationIds.length > 0) {
     console.log(`[CustomerDetailPage] Fetching payments for operation_ids:`, operationIds)
     const { data: paymentsData, error: paymentsError } = await supabase
       .from("payments")
-      .select("*")
+      .select(`
+        *,
+        operations:operation_id(
+          id,
+          sale_currency,
+          currency
+        )
+      `)
       .in("operation_id", operationIds)
       .eq("payer_type", "CUSTOMER")
       .order("date_due", { ascending: true })
@@ -75,6 +83,8 @@ export default async function CustomerDetailPage({
       console.error("[CustomerDetailPage] Error fetching payments:", paymentsError)
     } else {
       console.log(`[CustomerDetailPage] Found ${paymentsData?.length || 0} payments for customer ${id}`)
+      // Si los pagos no tienen exchange_rate pero la operación tiene sale_currency USD,
+      // podríamos calcularlo, pero por ahora usamos el fallback en el componente
     }
     payments = paymentsData || []
   } else {

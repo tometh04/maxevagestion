@@ -86,6 +86,8 @@ export async function POST(request: Request) {
 
     // Si se sube desde una operación, buscar el cliente principal de esa operación
     let finalCustomerId = customerId
+    let finalOperationId = operationId || null
+    
     if (operationId && !finalCustomerId) {
       const { data: operationCustomer } = await supabase
         .from("operation_customers")
@@ -100,11 +102,32 @@ export async function POST(request: Request) {
         console.log(`✅ Documento asociado automáticamente al cliente ${finalCustomerId} de la operación ${operationId}`)
       }
     }
+    
+    // Si se sube desde un cliente (sin operationId), buscar las operaciones asociadas y vincular el documento
+    if (customerId && !operationId) {
+      finalCustomerId = customerId
+      
+      // Buscar todas las operaciones del cliente
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id, role")
+        .eq("customer_id", customerId)
+      
+      if (operationCustomers && operationCustomers.length > 0) {
+        // Si el cliente tiene solo una operación, asociar el documento a esa operación
+        // Si tiene múltiples, asociar a la principal (MAIN) o la primera
+        const mainOperation = operationCustomers.find((oc: any) => oc.role === "MAIN") || operationCustomers[0]
+        if (mainOperation) {
+          finalOperationId = mainOperation.operation_id
+          console.log(`✅ Documento asociado automáticamente a la operación ${mainOperation.operation_id} del cliente ${customerId}`)
+        }
+      }
+    }
 
     // Create document record
     const { data: document, error: docError } = await (supabase.from("documents") as any)
       .insert({
-        operation_id: operationId || null,
+        operation_id: finalOperationId,
         customer_id: finalCustomerId || null,
         type: type as any,
         file_url: fileUrl,

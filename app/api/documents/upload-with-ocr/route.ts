@@ -136,7 +136,38 @@ export async function POST(request: Request) {
       }
     }
     
-    if (finalCustomerId) {
+    // Si se sube desde un cliente (sin operationId), buscar las operaciones asociadas y vincular el documento
+    if (customerId && !operationId) {
+      finalCustomerId = customerId
+      documentData.customer_id = customerId
+      
+      // Buscar todas las operaciones del cliente
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id")
+        .eq("customer_id", customerId)
+      
+      if (operationCustomers && operationCustomers.length > 0) {
+        // Si el cliente tiene solo una operación, asociar el documento a esa operación
+        // Si tiene múltiples, asociar a todas (o solo a la principal)
+        const mainOperation = operationCustomers.find((oc: any) => oc.role === "MAIN") || operationCustomers[0]
+        if (mainOperation) {
+          documentData.operation_id = mainOperation.operation_id
+          console.log(`✅ Documento asociado automáticamente a la operación ${mainOperation.operation_id} del cliente ${customerId}`)
+          
+          // También vincular al lead si la operación tiene uno
+          const { data: op } = await supabase
+            .from("operations")
+            .select("lead_id")
+            .eq("id", mainOperation.operation_id)
+            .single()
+          
+          if (op && (op as any).lead_id) {
+            documentData.lead_id = (op as any).lead_id
+          }
+        }
+      }
+    } else if (finalCustomerId) {
       documentData.customer_id = finalCustomerId
     }
 
