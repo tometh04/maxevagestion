@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bell, Calendar, DollarSign, FileText, AlertTriangle, ChevronRight } from "lucide-react"
-import { formatDistanceToNow } from "date-fns"
+import { formatDistanceToNow, format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
 
@@ -87,6 +87,36 @@ export function PendingAlertsCard() {
     return description
   }
 
+  // Extraer tipo de alerta más descriptivo de la descripción
+  const getAlertTypeInfo = (description: string, type: string) => {
+    if (description.includes("Check-out")) {
+      return "Check-out próximo"
+    }
+    if (description.includes("Check-in")) {
+      return "Check-in próximo"
+    }
+    if (description.includes("Pago")) {
+      return "Pago pendiente"
+    }
+    if (description.includes("Documento")) {
+      return "Documento faltante"
+    }
+    if (description.includes("Pasaporte")) {
+      return "Pasaporte"
+    }
+    return alertTypeConfig[type]?.label || type
+  }
+
+  // Formatear fecha de vencimiento
+  const formatDueDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr)
+      return format(date, "dd/MM/yyyy", { locale: es })
+    } catch {
+      return ""
+    }
+  }
+
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
@@ -134,35 +164,40 @@ export function PendingAlertsCard() {
                 }
 
                 const shortDescription = parseAlertDescription(alert.description, alert.operations || undefined)
+                const alertTypeInfo = getAlertTypeInfo(alert.description, alert.type)
+                const dueDate = formatDueDate(alert.date_due)
                 
                 return (
                   <Link key={alert.id} href={getAlertLink()}>
                     <div
-                      className="p-1.5 rounded border border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors cursor-pointer group"
+                      className="p-2 rounded border border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors cursor-pointer group"
                     >
-                      <div className="flex items-center gap-2">
-                        <div className={`p-1 rounded ${config.color} text-white shrink-0`}>
+                      <div className="flex items-start gap-2">
+                        <div className={`p-1 rounded ${config.color} text-white shrink-0 mt-0.5`}>
                           <Icon className="h-2.5 w-2.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 mb-0.5">
+                          <div className="flex items-center gap-1.5 mb-1">
                             <span className="text-[10px] font-medium text-foreground">
-                              {config.label}
+                              {alertTypeInfo}
                             </span>
                             <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-600">
                               Vencida
                             </Badge>
                           </div>
-                          <p className="text-[11px] font-medium text-foreground truncate">
+                          <p className="text-[11px] font-semibold text-foreground mb-0.5">
                             {shortDescription}
                           </p>
-                          {alert.operations?.file_code && (
-                            <p className="text-[9px] text-muted-foreground/60 truncate">
-                              {alert.operations.file_code}
-                            </p>
-                          )}
+                          <div className="flex items-center gap-2 text-[9px] text-muted-foreground/70">
+                            {alert.operations?.file_code && (
+                              <span className="truncate">{alert.operations.file_code}</span>
+                            )}
+                            {dueDate && (
+                              <span className="shrink-0">Vence: {dueDate}</span>
+                            )}
+                          </div>
                         </div>
-                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   </Link>
