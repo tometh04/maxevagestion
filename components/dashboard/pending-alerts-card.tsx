@@ -45,9 +45,13 @@ export function PendingAlertsCard() {
   const fetchAlerts = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/alerts?status=PENDING&limit=5")
+      const response = await fetch("/api/alerts?status=PENDING&limit=10")
       const data = await response.json()
-      setAlerts(data.alerts || [])
+      const allAlerts = data.alerts || []
+      // Filtrar solo alertas vencidas
+      const overdueAlerts = allAlerts.filter((alert: Alert) => isOverdue(alert.date_due))
+      // Limitar a 3
+      setAlerts(overdueAlerts.slice(0, 3))
     } catch (error) {
       console.error("Error fetching alerts:", error)
     } finally {
@@ -87,37 +91,37 @@ export function PendingAlertsCard() {
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
         <div>
-          <CardTitle className="text-sm font-medium flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Alertas Pendientes
+          <CardTitle className="text-xs font-medium flex items-center gap-1.5">
+            <Bell className="h-3.5 w-3.5" />
+            Alertas Vencidas
           </CardTitle>
-          <CardDescription className="text-xs">Requieren atención</CardDescription>
+          <CardDescription className="text-[10px]">Requieren atención urgente</CardDescription>
         </div>
         <Link href="/alerts">
-          <Button variant="ghost" size="sm" className="h-7 text-xs">
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2">
             Ver todas
-            <ChevronRight className="h-3 w-3 ml-1" />
+            <ChevronRight className="h-2.5 w-2.5 ml-1" />
           </Button>
         </Link>
       </CardHeader>
       <CardContent className="pt-0">
         {loading ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} className="h-10 w-full" />
             ))}
           </div>
         ) : alerts.length === 0 ? (
-          <div className="text-center py-4 text-muted-foreground">
-            <Bell className="h-6 w-6 mx-auto mb-1 opacity-50" />
-            <p className="text-xs">Sin alertas pendientes</p>
+          <div className="text-center py-3 text-muted-foreground">
+            <Bell className="h-4 w-4 mx-auto mb-1 opacity-50" />
+            <p className="text-[10px]">Sin alertas vencidas</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <ScrollArea className="h-[120px]">
+            <div className="space-y-1.5 pr-2">
               {alerts.map((alert) => {
                 const config = getAlertConfig(alert.type)
                 const Icon = config.icon
-                const overdue = isOverdue(alert.date_due)
 
                 // Determinar el link correcto según el tipo de alerta y si tiene operation válida
                 const getAlertLink = () => {
@@ -134,49 +138,38 @@ export function PendingAlertsCard() {
                 return (
                   <Link key={alert.id} href={getAlertLink()}>
                     <div
-                      className={`p-3 rounded-lg border transition-all cursor-pointer group ${
-                        overdue 
-                          ? "border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20" 
-                          : "border-border hover:bg-muted/50"
-                      }`}
+                      className="p-1.5 rounded border border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors cursor-pointer group"
                     >
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${config.color} text-white shrink-0`}>
-                          <Icon className="h-3.5 w-3.5" />
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1 rounded ${config.color} text-white shrink-0`}>
+                          <Icon className="h-2.5 w-2.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-xs font-medium text-foreground">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[10px] font-medium text-foreground">
                               {config.label}
                             </span>
-                            {overdue && (
-                              <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-500 hover:bg-amber-600">
-                                Vencida
-                              </Badge>
-                            )}
+                            <Badge className="text-[9px] px-1 py-0 h-3.5 bg-amber-500 hover:bg-amber-600">
+                              Vencida
+                            </Badge>
                           </div>
-                          <p className="text-sm font-medium text-foreground mb-1 line-clamp-2">
+                          <p className="text-[11px] font-medium text-foreground truncate">
                             {shortDescription}
                           </p>
                           {alert.operations?.file_code && (
-                            <p className="text-[10px] text-muted-foreground/60 mb-1">
+                            <p className="text-[9px] text-muted-foreground/60 truncate">
                               {alert.operations.file_code}
                             </p>
                           )}
-                          <span className="text-[10px] text-muted-foreground/70">
-                            {formatDistanceToNow(new Date(alert.date_due), { 
-                              addSuffix: true,
-                              locale: es 
-                            })}
-                          </span>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ChevronRight className="h-3 w-3 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   </Link>
                 )
               })}
-          </div>
+            </div>
+          </ScrollArea>
         )}
       </CardContent>
     </Card>
