@@ -66,6 +66,7 @@ export default async function CustomerDetailPage({
   // Get payments related to customer's operations
   let payments: any[] = []
   if (operationIds.length > 0) {
+    console.log(`[CustomerDetailPage] Fetching payments for operation_ids:`, operationIds)
     const { data: paymentsData, error: paymentsError } = await supabase
       .from("payments")
       .select("*")
@@ -74,8 +75,12 @@ export default async function CustomerDetailPage({
       .order("date_due", { ascending: true })
     if (paymentsError) {
       console.error("[CustomerDetailPage] Error fetching payments:", paymentsError)
+    } else {
+      console.log(`[CustomerDetailPage] Found ${paymentsData?.length || 0} payments for customer ${id}`)
     }
     payments = paymentsData || []
+  } else {
+    console.log(`[CustomerDetailPage] No operation_ids to fetch payments for customer ${id}`)
   }
 
   // Get documents - incluir documentos del cliente Y de sus operaciones
