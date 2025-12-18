@@ -965,6 +965,23 @@ export async function POST(request: Request) {
 
     contextData.cuentasFinancieras = accounts
 
+    // Obtener balances de cajas activas
+    const { data: cashBoxes } = await supabase
+      .from("cash_boxes")
+      .select("id, name, currency, current_balance, is_active")
+      .eq("is_active", true)
+    
+    contextData.balancesCajas = {
+      totalCajas: cashBoxes?.length || 0,
+      cajas: (cashBoxes || []).map((cb: any) => ({
+        nombre: cb.name,
+        moneda: cb.currency,
+        balance: cb.current_balance,
+      })),
+      totalARS: (cashBoxes || []).filter((cb: any) => cb.currency === 'ARS').reduce((sum: number, cb: any) => sum + Number(cb.current_balance || 0), 0),
+      totalUSD: (cashBoxes || []).filter((cb: any) => cb.currency === 'USD').reduce((sum: number, cb: any) => sum + Number(cb.current_balance || 0), 0),
+    }
+
     // Paralelizar queries contables (9-11)
     const [cashMovementsResult, ledgerMovementsResult, ivaSalesResult, ivaPurchasesResult] = await Promise.all([
       (supabase.from("cash_movements") as any)
@@ -1412,7 +1429,10 @@ ${contextText}
 → Usar datos de pagosPendientesOperadores
 
 **"¿Cuánto hay en caja?"** o **"¿Cómo está la caja este mes?"**
-→ Usar datos de movimientosCajaMes
+→ Usar datos de movimientosCajaMes y balancesCajas
+
+**"¿Cuál es el balance actual de todas las cajas?"**
+→ Usar datos de balancesCajas (ya está en contexto pre-cargado)
 
 **"¿Cuántas comisiones hay pendientes?"**
 → Usar datos de comisionesPendientes
@@ -1601,20 +1621,29 @@ Podés usar la función execute_query para ejecutar queries SQL SELECT de forma 
 - Retorna los resultados en formato JSON
 
 **Cuándo usar execute_query:**
-- Cuando necesitás datos específicos que no están en el contexto pre-cargado
-- Cuando la pregunta requiere filtros o cálculos específicos
-- Cuando necesitás datos históricos o comparaciones temporales
+- Cuando necesitás datos específicos que NO están en el contexto pre-cargado
+- Cuando la pregunta requiere filtros o cálculos específicos que no están pre-calculados
+- Cuando necesitás datos históricos o comparaciones temporales específicas
+- Cuando la pregunta requiere JOINs complejos o agregaciones que no están en el contexto
+
+**IMPORTANTE - REGLA CRÍTICA:**
+1. **SIEMPRE ejecutá execute_query automáticamente** cuando la pregunta requiere datos que no están en el contexto pre-cargado
+2. **NO PREGUNTES al usuario** si querés ejecutar la query - simplemente ejecutala
+3. El usuario espera una respuesta directa, no una pregunta sobre si querés buscar datos
+4. Si no tenés los datos en el contexto, ejecutá la query inmediatamente sin preguntar
 
 **Ejemplos de queries útiles:**
 - SELECT COUNT(*) FROM quotations WHERE status = 'SENT' AND created_at >= date_trunc('month', CURRENT_DATE)
 - SELECT * FROM payment_coupons WHERE status = 'OVERDUE' ORDER BY due_date LIMIT 10
 - SELECT destination, AVG(margin_amount) FROM operations WHERE created_at >= date_trunc('quarter', CURRENT_DATE) GROUP BY destination
+- SELECT name, currency, current_balance FROM cash_boxes WHERE is_active = true
 
 **IMPORTANTE:**
 1. Siempre intentá usar el contexto pre-cargado primero (es más rápido)
-2. Solo usá execute_query cuando realmente necesites datos específicos
+2. Si no está en el contexto, ejecutá execute_query AUTOMÁTICAMENTE sin preguntar
 3. Asegurate de que la query sea SELECT válida
 4. Incluí LIMIT cuando sea apropiado para evitar queries muy pesadas
+5. NUNCA preguntes "¿Te gustaría que ejecute una query?" - simplemente ejecutala
 
 ## FORMATO DE RESPUESTAS
 
@@ -1625,13 +1654,16 @@ Cuando respondas:
 - **Sugerí acciones** si hay problemas (pagos vencidos, cupos bajos, etc.)
 - **Usá formato claro**: listas, tablas, o párrafos según corresponda
 
-## IMPORTANTE
+## IMPORTANTE - REGLAS CRÍTICAS
 - Si la pregunta es ambigua, pedí aclaración
-- Si no tenés datos suficientes, usá execute_query para obtenerlos
+- **SIEMPRE ejecutá execute_query automáticamente** si no tenés los datos en el contexto pre-cargado
+- **NUNCA preguntes al usuario** si querés ejecutar una query - simplemente ejecutala
 - Siempre intentá dar contexto adicional útil
 - Si hay riesgos (pagos vencidos, viajes sin confirmar, cupos bajos), mencionalo
-- Si la pregunta requiere datos específicos, usá execute_query en lugar de decir que no tenés los datos
-- Cuando ejecutes una query, explicá brevemente qué datos obtuviste antes de responder`
+- Si la pregunta requiere datos específicos, ejecutá execute_query inmediatamente sin preguntar
+- Cuando ejecutes una query, explicá brevemente qué datos obtuviste y luego responde la pregunta
+- El usuario espera respuestas directas, no preguntas sobre si querés buscar datos
+- Si no tenés datos, ejecutá la query. Si la query falla, entonces explicá el error`
 
     // Definir tools/functions para que el AI pueda ejecutar queries
     const tools = [
