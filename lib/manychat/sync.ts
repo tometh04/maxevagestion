@@ -28,6 +28,9 @@ export interface ManychatLeadData {
 export function buildStructuredDescription(data: ManychatLeadData): string {
   let desc = ""
   
+  // 🏷 Bucket (igual que Zapier)
+  if (data.bucket) desc += `🏷 Bucket: ${data.bucket}\n`
+  
   if (data.destino) desc += `📍 Destino: ${data.destino}\n`
   if (data.fechas) desc += `📅 Fechas: ${data.fechas}\n`
   if (data.personas) desc += `👥 Personas: ${data.personas}\n`
@@ -36,6 +39,9 @@ export function buildStructuredDescription(data: ManychatLeadData): string {
   if (data.servicio) desc += `✈️ Servicio: ${data.servicio}\n`
   if (data.evento) desc += `🎟 Evento: ${data.evento}\n`
   if (data.whatsapp) desc += `📱 WhatsApp: ${data.whatsapp}\n`
+  
+  // 🧭 Región (igual que Zapier)
+  if (data.region) desc += `🧭 Región: ${data.region}\n`
   
   // Instagram siempre se agrega (normalizado, sin @)
   const instagram = (data.ig || "").replace(/^@/, "").trim().toLowerCase()
@@ -142,34 +148,67 @@ export function mapPhaseToStatus(phase: string | undefined): "NEW" | "IN_PROGRES
 }
 
 /**
+ * Detectar lista por región (igual que Zapier detectRegionList)
+ * Normaliza el texto y detecta la región
+ */
+function detectRegionList(region: string | undefined): string {
+  if (!region) return "Leads - Otros"
+  
+  // Normalizar igual que Zapier: lowercase, NFD, remover acentos, limpiar caracteres especiales
+  const normalized = region
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+  
+  if (normalized.includes("caribe")) return "Leads - Caribe"
+  if (normalized.includes("brasil")) return "Leads - Brasil"
+  if (normalized.includes("argentina")) return "Leads - Argentina"
+  if (normalized.includes("europa")) return "Leads - Europa"
+  if (normalized.includes("eeuu") || normalized.includes("usa")) return "Leads - EEUU"
+  
+  return "Leads - Otros"
+}
+
+/**
  * Determinar nombre de lista según lógica de Zapier
  * Lógica IDÉNTICA a la función chooseList() de Zapier:
- * - Si PHASE === "initial" o no hay whatsapp → "Leads - Instagram"
- * - Si hay BUCKET → "Campaña - {BUCKET}"
- * - Si hay REGION → usar REGION como nombre de lista
- * - Por defecto → "Otros"
+ * 1. Si BUCKET incluye "cupo" → "Cupos - ${BUCKET}"
+ * 2. Si BUCKET && WHATSAPP → "Campaña - ${BUCKET}"
+ * 3. Si BUCKET && !WHATSAPP → "Leads - Instagram"
+ * 4. Si !BUCKET && WHATSAPP → detectRegionList() → "Leads - ${REGION}"
+ * 5. Default → "Leads - Instagram"
  */
 export function determineListName(manychatData: ManychatLeadData): string {
-  const { phase, bucket, region, whatsapp } = manychatData
+  const { bucket, region, whatsapp } = manychatData
   
-  // Si PHASE === "initial" o no hay whatsapp → "Leads - Instagram"
-  const normalizedPhase = (phase || "").toLowerCase().trim()
-  if (normalizedPhase === "initial" || !whatsapp) {
-    return "Leads - Instagram"
+  const normalizedBucket = (bucket || "").trim().toLowerCase()
+  const normalizedWhatsapp = (whatsapp || "").trim()
+  
+  // 1. CUPOS - Si BUCKET incluye "cupo"
+  if (normalizedBucket.includes("cupo")) {
+    return `Cupos - ${bucket.trim()}`
   }
   
-  // Si hay BUCKET → "Campaña - {BUCKET}"
-  if (bucket && bucket.trim()) {
+  // 2. BUCKET + WHATSAPP → "Campaña - ${BUCKET}"
+  if (normalizedBucket && normalizedWhatsapp) {
     return `Campaña - ${bucket.trim()}`
   }
   
-  // Si hay REGION → usar REGION como nombre de lista
-  if (region && region.trim()) {
-    return region.trim()
+  // 3. BUCKET SIN WHATSAPP → "Leads - Instagram"
+  if (normalizedBucket && !normalizedWhatsapp) {
+    return "Leads - Instagram"
   }
   
-  // Por defecto → "Otros"
-  return "Otros"
+  // 4. SIN BUCKET + WHATSAPP → detectar región
+  if (!normalizedBucket && normalizedWhatsapp) {
+    return detectRegionList(region)
+  }
+  
+  // 5. DEFAULT → "Leads - Instagram"
+  return "Leads - Instagram"
 }
 
 
