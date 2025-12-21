@@ -184,17 +184,18 @@ function detectRegionList(region: string | undefined): string {
 export function determineListName(manychatData: ManychatLeadData): string {
   const { bucket, region, whatsapp } = manychatData
   
-  const normalizedBucket = (bucket || "").trim().toLowerCase()
+  const bucketValue = bucket?.trim() || ""
+  const normalizedBucket = bucketValue.toLowerCase()
   const normalizedWhatsapp = (whatsapp || "").trim()
   
   // 1. CUPOS - Si BUCKET incluye "cupo"
   if (normalizedBucket.includes("cupo")) {
-    return `Cupos - ${bucket.trim()}`
+    return `Cupos - ${bucketValue}`
   }
   
   // 2. BUCKET + WHATSAPP → "Campaña - ${BUCKET}"
   if (normalizedBucket && normalizedWhatsapp) {
-    return `Campaña - ${bucket.trim()}`
+    return `Campaña - ${bucketValue}`
   }
   
   // 3. BUCKET SIN WHATSAPP → "Leads - Instagram"
