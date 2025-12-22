@@ -58,11 +58,10 @@ export async function GET(request: Request) {
       .not("chart_account_id", "is", null) // Solo cuentas vinculadas al plan de cuentas
 
     if (agencyId !== "ALL") {
-      financialAccountsQuery = financialAccountsQuery.eq("agency_id", agencyId)
-    } else {
-      // Si es "ALL", incluir cuentas sin agency_id también (cuentas globales)
-      // No agregamos filtro adicional, ya que .not("chart_account_id", "is", null) ya filtra
+      // Filtrar por agencia, pero también incluir cuentas sin agency_id (cuentas globales como "Cuentas por Pagar")
+      financialAccountsQuery = financialAccountsQuery.or(`agency_id.eq.${agencyId},agency_id.is.null`)
     }
+    // Si es "ALL", incluir todas las cuentas (con y sin agency_id)
 
     const { data: financialAccounts, error: faError } = await financialAccountsQuery
 
@@ -144,6 +143,7 @@ export async function GET(request: Request) {
             .from("ledger_movements")
             .select("amount_original, currency, type, amount_ars_equivalent")
             .eq("account_id", account.id)
+            .lte("created_at", `${dateTo}T23:59:59`) // IMPORTANTE: Filtrar hasta la fecha de corte
           
           if (movements && movements.length > 0) {
             const movementsArray = movements as any[]
@@ -165,7 +165,6 @@ export async function GET(request: Request) {
             
             for (const m of movementsArray) {
               const amountOriginal = parseFloat(m.amount_original || "0")
-              const amountARS = parseFloat(m.amount_ars_equivalent || "0")
               
               // Para PASIVOS: EXPENSE aumenta, INCOME disminuye
               if (chartAccount.category === "PASIVO") {
@@ -215,14 +214,17 @@ export async function GET(request: Request) {
             }
           }
           
-          console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}): balance=${balance}, key=${key}, ARS=${balancesByCurrency[key].ars}, USD=${balancesByCurrency[key].usd}`)
+          console.log(`[MonthlyPosition] Cuenta ${account.name} (${chartAccount.account_code}, ${chartAccount.category}): balance=${balance}, key=${key}, ARS=${balancesByCurrency[key].ars}, USD=${balancesByCurrency[key].usd}, agency=${account.agency_id || "null"}`)
         } else {
-          console.warn(`[MonthlyPosition] Cuenta ${account.id} no tiene chart_of_accounts vinculado`)
+          console.warn(`[MonthlyPosition] Cuenta ${account.id} (${account.name}) no tiene chart_of_accounts vinculado`)
         }
       } catch (error) {
         console.error(`Error calculating balance for account ${account.id}:`, error)
       }
     }
+    
+    console.log(`[MonthlyPosition] Balances calculados después de cuentas financieras:`, balances)
+    console.log(`[MonthlyPosition] Balances por moneda después de cuentas financieras:`, balancesByCurrency)
     
     // Agregar pagos pendientes como pasivos corrientes
     try {

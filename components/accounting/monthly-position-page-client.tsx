@@ -138,7 +138,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             <div className="space-y-2">
               <Label>Mes y Año</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
@@ -204,16 +204,16 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
       ) : position ? (
         <>
           {/* Resumen Ejecutivo */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Activo</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-green-600">
+                <div className="text-xl sm:text-2xl font-bold text-green-600 break-words">
                   {formatCurrency(position.activo.total.ars, "ARS")}
                   {position.activo.total.usd > 0 && (
-                    <span className="ml-2 text-muted-foreground">
+                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
                       ({formatCurrency(position.activo.total.usd, "USD")})
                     </span>
                   )}
@@ -226,10 +226,10 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <CardTitle className="text-sm font-medium text-muted-foreground">Total Pasivo</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-red-600">
+                <div className="text-xl sm:text-2xl font-bold text-red-600 break-words">
                   {formatCurrency(position.pasivo.total.ars, "ARS")}
                   {position.pasivo.total.usd > 0 && (
-                    <span className="ml-2 text-muted-foreground">
+                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
                       ({formatCurrency(position.pasivo.total.usd, "USD")})
                     </span>
                   )}
@@ -242,7 +242,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <CardTitle className="text-sm font-medium text-muted-foreground">Patrimonio Neto</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-blue-600">
+                <div className="text-xl sm:text-2xl font-bold text-blue-600 break-words">
                   {formatCurrency(position.patrimonio_neto.total)}
                 </div>
               </CardContent>
@@ -253,10 +253,10 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 <CardTitle className="text-sm font-medium text-muted-foreground">Resultado del Mes</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={`text-2xl font-bold ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                <div className={`text-xl sm:text-2xl font-bold break-words ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
                   {formatCurrency(position.resultado.resultadoARS || position.resultado.total, "ARS")}
                   {position.resultado.resultadoUSD !== undefined && position.resultado.resultadoUSD !== 0 && (
-                    <span className="ml-2 text-muted-foreground">
+                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
                       ({formatCurrency(position.resultado.resultadoUSD, "USD")})
                     </span>
                   )}
@@ -266,7 +266,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
           </div>
 
           {/* Detalle por Rubros */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
             {/* ACTIVO */}
             <Card>
               <CardHeader>
@@ -275,12 +275,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Activo Corriente</span>
-                    <div className="font-bold text-green-600">
+                    <div className="font-bold text-green-600 text-sm sm:text-base break-words">
                       {formatCurrency(position.activo.corriente.ars, "ARS")}
                       {position.activo.corriente.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.activo.corriente.usd, "USD")})
                         </span>
                       )}
@@ -291,12 +291,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Activo No Corriente</span>
-                    <div className="font-bold text-green-600">
+                    <div className="font-bold text-green-600 text-sm sm:text-base break-words">
                       {formatCurrency(position.activo.no_corriente.ars, "ARS")}
                       {position.activo.no_corriente.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.activo.no_corriente.usd, "USD")})
                         </span>
                       )}
@@ -307,12 +307,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                   </div>
                 </div>
                 <div className="pt-2 border-t">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-bold">Total Activo</span>
-                    <div className="text-lg font-bold text-green-600">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <span className="text-base sm:text-lg font-bold">Total Activo</span>
+                    <div className="text-base sm:text-lg font-bold text-green-600 break-words">
                       {formatCurrency(position.activo.total.ars, "ARS")}
                       {position.activo.total.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.activo.total.usd, "USD")})
                         </span>
                       )}
@@ -330,12 +330,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Pasivo Corriente</span>
-                    <div className="font-bold text-red-600">
+                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
                       {formatCurrency(position.pasivo.corriente.ars, "ARS")}
                       {position.pasivo.corriente.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.pasivo.corriente.usd, "USD")})
                         </span>
                       )}
@@ -346,12 +346,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Pasivo No Corriente</span>
-                    <div className="font-bold text-red-600">
+                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
                       {formatCurrency(position.pasivo.no_corriente.ars, "ARS")}
                       {position.pasivo.no_corriente.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.pasivo.no_corriente.usd, "USD")})
                         </span>
                       )}
@@ -362,12 +362,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                   </div>
                 </div>
                 <div className="pt-2 border-t">
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Total Pasivo</span>
-                    <div className="font-bold text-red-600">
+                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
                       {formatCurrency(position.pasivo.total.ars, "ARS")}
                       {position.pasivo.total.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.pasivo.total.usd, "USD")})
                         </span>
                       )}
@@ -375,21 +375,21 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                   </div>
                 </div>
                 <div>
-                  <div className="flex justify-between items-center mb-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                     <span className="text-sm font-medium">Patrimonio Neto</span>
-                    <span className="font-bold text-blue-600">{formatCurrency(position.patrimonio_neto.total)}</span>
+                    <span className="font-bold text-blue-600 text-sm sm:text-base break-words">{formatCurrency(position.patrimonio_neto.total)}</span>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     Capital, Reservas, Resultados Acumulados
                   </div>
                 </div>
                 <div className="pt-2 border-t">
-                  <div className="flex justify-between items-center">
-                    <span className="text-lg font-bold">Total Pasivo + Patrimonio</span>
-                    <div className="text-lg font-bold">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                    <span className="text-base sm:text-lg font-bold">Total Pasivo + Patrimonio</span>
+                    <div className="text-base sm:text-lg font-bold break-words">
                       {formatCurrency(position.pasivo.total.ars + position.patrimonio_neto.total, "ARS")}
                       {position.pasivo.total.usd > 0 && (
-                        <span className="ml-2 text-muted-foreground">
+                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                           ({formatCurrency(position.pasivo.total.usd, "USD")})
                         </span>
                       )}
@@ -408,12 +408,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                   <span className="text-sm font-medium">Ingresos</span>
-                  <div className="font-bold text-green-600">
+                  <div className="font-bold text-green-600 text-sm sm:text-base break-words">
                     {formatCurrency((position.resultado.ingresosARS || 0), "ARS")}
                     {(position.resultado.ingresosUSD !== undefined && position.resultado.ingresosUSD !== 0) && (
-                      <span className="ml-2 text-muted-foreground">
+                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                         ({formatCurrency(position.resultado.ingresosUSD, "USD")})
                       </span>
                     )}
@@ -424,16 +424,16 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 </div>
               </div>
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                   <span className="text-sm font-medium">Costos</span>
-                  <div className="font-bold text-red-600">
+                  <div className="font-bold text-red-600 text-sm sm:text-base break-words">
                     {(position.resultado.costosARS || 0) > 0 ? (
                       <>-{formatCurrency(position.resultado.costosARS || 0, "ARS")}</>
                     ) : (
                       <>{formatCurrency(0, "ARS")}</>
                     )}
                     {(position.resultado.costosUSD !== undefined && position.resultado.costosUSD !== 0) && (
-                      <span className="ml-2 text-muted-foreground">
+                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                         (-{formatCurrency(position.resultado.costosUSD, "USD")})
                       </span>
                     )}
@@ -444,16 +444,16 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 </div>
               </div>
               <div>
-                <div className="flex justify-between items-center mb-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
                   <span className="text-sm font-medium">Gastos</span>
-                  <div className="font-bold text-red-600">
+                  <div className="font-bold text-red-600 text-sm sm:text-base break-words">
                     {(position.resultado.gastosARS || 0) > 0 ? (
                       <>-{formatCurrency(position.resultado.gastosARS || 0, "ARS")}</>
                     ) : (
                       <>{formatCurrency(0, "ARS")}</>
                     )}
                     {(position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD !== 0) && (
-                      <span className="ml-2 text-muted-foreground">
+                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                         (-{formatCurrency(position.resultado.gastosUSD, "USD")})
                       </span>
                     )}
@@ -464,12 +464,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 </div>
               </div>
               <div className="pt-2 border-t">
-                <div className="flex justify-between items-center">
-                  <span className="text-lg font-bold">Resultado del Mes</span>
-                  <div className={`text-lg font-bold ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                  <span className="text-base sm:text-lg font-bold">Resultado del Mes</span>
+                  <div className={`text-base sm:text-lg font-bold break-words ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
                     {formatCurrency(position.resultado.resultadoARS || position.resultado.total, "ARS")}
                     {position.resultado.resultadoUSD !== undefined && position.resultado.resultadoUSD !== 0 && (
-                      <span className="ml-2 text-muted-foreground">
+                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
                         ({formatCurrency(position.resultado.resultadoUSD, "USD")})
                       </span>
                     )}
