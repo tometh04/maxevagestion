@@ -53,7 +53,10 @@ import {
   Loader2,
   MoreHorizontal,
   RefreshCw,
-  Send
+  Send,
+  KeyRound,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import {
   DropdownMenu,
@@ -108,8 +111,12 @@ export function UsersSettings() {
   const [loading, setLoading] = useState(true)
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
 
   // Form state
   const [newUser, setNewUser] = useState({
@@ -260,6 +267,57 @@ export function UsersSettings() {
     } catch (error) {
       console.error("Error resending invite:", error)
       toast.error("Error al reenviar invitación")
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!selectedUser) return
+
+    // Validaciones
+    if (newPassword.length < 8) {
+      toast.error("La contraseña debe tener al menos 8 caracteres")
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("Las contraseñas no coinciden")
+      return
+    }
+
+    // Validar fortaleza
+    const hasUpperCase = /[A-Z]/.test(newPassword)
+    const hasLowerCase = /[a-z]/.test(newPassword)
+    const hasNumbers = /\d/.test(newPassword)
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+      toast.error("La contraseña debe contener mayúsculas, minúsculas y números")
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: newPassword }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        toast.success(`Contraseña actualizada para ${selectedUser.name}`)
+        setChangePasswordDialogOpen(false)
+        setSelectedUser(null)
+        setNewPassword("")
+        setConfirmPassword("")
+      } else {
+        toast.error(data.error || "Error al cambiar la contraseña")
+      }
+    } catch (error) {
+      console.error("Error changing password:", error)
+      toast.error("Error al cambiar la contraseña")
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -514,6 +572,17 @@ export function UsersSettings() {
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setSelectedUser(user)
+                            setChangePasswordDialogOpen(true)
+                            setNewPassword("")
+                            setConfirmPassword("")
+                          }}
+                        >
+                          <KeyRound className="mr-2 h-4 w-4" />
+                          Cambiar contraseña
+                        </DropdownMenuItem>
                         {user.role !== "SUPER_ADMIN" && (
                           <DropdownMenuItem
                             className="text-red-600"
@@ -612,6 +681,102 @@ export function UsersSettings() {
       </Card>
 
       {/* Dialog de confirmación de eliminación */}
+      {/* Diálogo para cambiar contraseña */}
+      <Dialog open={changePasswordDialogOpen} onOpenChange={setChangePasswordDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cambiar Contraseña</DialogTitle>
+            <DialogDescription>
+              Establecer una nueva contraseña para{" "}
+              <strong>{selectedUser?.name}</strong> ({selectedUser?.email})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">Nueva Contraseña</Label>
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Mínimo 8 caracteres"
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p className={newPassword.length >= 8 ? "text-green-500" : ""}>
+                  • Mínimo 8 caracteres
+                </p>
+                <p className={/[A-Z]/.test(newPassword) ? "text-green-500" : ""}>
+                  • Al menos una mayúscula
+                </p>
+                <p className={/[a-z]/.test(newPassword) ? "text-green-500" : ""}>
+                  • Al menos una minúscula
+                </p>
+                <p className={/\d/.test(newPassword) ? "text-green-500" : ""}>
+                  • Al menos un número
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirmar Contraseña</Label>
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repite la contraseña"
+              />
+              {confirmPassword && newPassword !== confirmPassword && (
+                <p className="text-xs text-red-500">Las contraseñas no coinciden</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setChangePasswordDialogOpen(false)
+                setNewPassword("")
+                setConfirmPassword("")
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleChangePassword} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Cambiando...
+                </>
+              ) : (
+                <>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Cambiar Contraseña
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
