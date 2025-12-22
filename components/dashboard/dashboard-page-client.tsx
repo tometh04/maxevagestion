@@ -214,7 +214,7 @@ export function DashboardPageClient({
               <>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-lg font-bold lg:text-xl truncate">
-                    ${(kpis.totalSales / 1000000).toFixed(2)}M
+                    ${Math.round(kpis.totalSales / 1000)}K
                   </span>
                   <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
                 </div>
@@ -266,7 +266,7 @@ export function DashboardPageClient({
               <>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-lg font-bold lg:text-xl truncate">
-                    ${(kpis.totalMargin / 1000000).toFixed(2)}M
+                    ${Math.round(kpis.totalMargin / 1000)}K
                   </span>
                   <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
                 </div>
@@ -316,7 +316,7 @@ export function DashboardPageClient({
             ) : (
               <>
                 <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${(kpis.pendingCustomerPayments / 1000000).toFixed(2)}M
+                  ${Math.round(kpis.pendingCustomerPayments / 1000)}K
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Por cobrar de clientes
@@ -339,7 +339,7 @@ export function DashboardPageClient({
             ) : (
               <>
                 <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${(kpis.pendingOperatorPayments / 1000000).toFixed(2)}M
+                  ${Math.round(kpis.pendingOperatorPayments / 1000)}K
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Por pagar a operadores
