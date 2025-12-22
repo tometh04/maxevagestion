@@ -54,8 +54,9 @@ export async function generateBirthdayMessages(supabase: SupabaseClient): Promis
   if (!template) return 0
 
   // Buscar clientes con cumpleaños hoy
+  // Nota: customers NO tiene agency_id, se relaciona con agencias a través de operations
   const { data: customers } = await (supabase.from("customers") as any)
-    .select("id, first_name, last_name, phone, agency_id, date_of_birth")
+    .select("id, first_name, last_name, phone, date_of_birth")
     .not("phone", "is", null)
     .not("date_of_birth", "is", null)
 
@@ -77,13 +78,25 @@ export async function generateBirthdayMessages(supabase: SupabaseClient): Promis
         nombre: customer.first_name,
       })
 
+      // Obtener agency_id del cliente a través de sus operaciones (si tiene)
+      let customerAgencyId: string | null = null
+      const { data: customerOperations } = await (supabase.from("operation_customers") as any)
+        .select("operations:operation_id(agency_id)")
+        .eq("customer_id", customer.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (customerOperations?.operations?.agency_id) {
+        customerAgencyId = customerOperations.operations.agency_id
+      }
+
       await (supabase.from("whatsapp_messages") as any).insert({
         template_id: template.id,
         customer_id: customer.id,
         phone: customer.phone,
         customer_name: `${customer.first_name} ${customer.last_name}`,
         message,
-        agency_id: customer.agency_id,
+        agency_id: customerAgencyId,
         scheduled_for: new Date().toISOString(),
         status: "PENDING",
         whatsapp_link: `https://wa.me/${customer.phone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`,

@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     if (sellerIds.length > 0) {
       const { data: sellers, error: sellersError } = await supabase
         .from("users")
-        .select("id, name, phone")
+        .select("id, name")
         .in("id", sellerIds)
 
       if (sellersError) {
@@ -101,13 +101,12 @@ export async function GET(request: Request) {
       if (!sellerId) return acc
 
       const seller = sellersData[sellerId]
-      const sellerName = seller?.name || seller?.phone || "Vendedor"
+      const sellerName = seller?.name || "Vendedor"
 
         if (!acc[sellerId]) {
           acc[sellerId] = {
             sellerId,
             sellerName,
-          phone: seller?.phone || null,
             totalSales: 0,
             totalMargin: 0,
             operationsCount: 0,
@@ -124,7 +123,6 @@ export async function GET(request: Request) {
       const sellers = Object.values(sellerStats).map((seller: any) => ({
         id: seller.sellerId,
         name: seller.sellerName,
-        phone: seller.phone,
         totalSales: seller.totalSales,
         margin: seller.totalMargin,
         operationsCount: seller.operationsCount,

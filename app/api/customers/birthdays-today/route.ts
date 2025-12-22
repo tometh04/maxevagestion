@@ -7,30 +7,17 @@ export async function GET() {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Obtener agencias del usuario
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
-
-    const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
     // Obtener día y mes actual
     const today = new Date()
     const month = today.getMonth() + 1
     const day = today.getDate()
 
     // Buscar clientes con cumpleaños hoy
-    // Nota: En Supabase, date_of_birth es tipo date, podemos extraer mes y día
+    // Nota: La tabla customers NO tiene agency_id, los clientes se relacionan con agencias a través de operations
     let query = (supabase.from("customers") as any)
-      .select("id, first_name, last_name, phone, date_of_birth, agency_id")
+      .select("id, first_name, last_name, phone, date_of_birth")
       .not("date_of_birth", "is", null)
       .not("phone", "is", null)
-
-    // Filtrar por agencias si no es SUPER_ADMIN
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      query = query.in("agency_id", agencyIds)
-    }
 
     const { data: customers, error } = await query
 

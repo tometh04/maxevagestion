@@ -21,29 +21,33 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Query clientes
-    let customersQuery = (supabase.from("customers") as any).select("id, first_name, last_name, email, phone, created_at")
+    // Primero obtener operaciones filtradas por agencia (los clientes se relacionan con agencias a través de operaciones)
+    let operationsQuery = supabase
+      .from("operations")
+      .select("id, agency_id")
 
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
-      customersQuery = customersQuery.eq("agency_id", agencyId)
+      operationsQuery = operationsQuery.eq("agency_id", agencyId)
     } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-      customersQuery = customersQuery.in("agency_id", agencyIds)
+      operationsQuery = operationsQuery.in("agency_id", agencyIds)
     }
 
-    const { data: customers, error: customersError } = await customersQuery
+    const { data: operations, error: operationsError } = await operationsQuery
 
-    if (customersError) {
-      console.error("Error fetching customers:", customersError)
-      return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
+    if (operationsError) {
+      console.error("Error fetching operations:", operationsError)
+      return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
     }
 
-    // Obtener todas las operaciones de estos clientes
-    const customerIds = (customers || []).map((c: any) => c.id)
-    
+    const operationIds = (operations || []).map((op: any) => op.id)
+
+    // Obtener clientes a través de operation_customers
+    let customers: any[] = []
     let operationsData: any[] = []
-    if (customerIds.length > 0) {
-      const { data: opCustomers } = await (supabase.from("operation_customers") as any)
+    
+    if (operationIds.length > 0) {
+      const { data: opCustomers, error: opCustomersError } = await (supabase.from("operation_customers") as any)
         .select(`
           customer_id,
           operations:operation_id (
@@ -51,12 +55,34 @@ export async function GET(request: Request) {
             sale_amount_total,
             currency,
             departure_date,
-            status
+            status,
+            agency_id
           )
         `)
-        .in("customer_id", customerIds)
+        .in("operation_id", operationIds)
+
+      if (opCustomersError) {
+        console.error("Error fetching operation_customers:", opCustomersError)
+        return NextResponse.json({ error: "Error al obtener relación operaciones-clientes" }, { status: 500 })
+      }
 
       operationsData = opCustomers || []
+      
+      // Obtener IDs únicos de clientes
+      const customerIds = Array.from(new Set((opCustomers || []).map((oc: any) => oc.customer_id).filter(Boolean)))
+      
+      if (customerIds.length > 0) {
+        const { data: customersData, error: customersError } = await (supabase.from("customers") as any)
+          .select("id, first_name, last_name, email, phone, created_at")
+          .in("id", customerIds)
+
+        if (customersError) {
+          console.error("Error fetching customers:", customersError)
+          return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
+        }
+
+        customers = customersData || []
+      }
     }
 
     // Procesar datos por cliente
