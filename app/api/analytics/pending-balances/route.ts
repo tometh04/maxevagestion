@@ -37,7 +37,7 @@ export async function GET(request: Request) {
         .eq("chart_account_id", accountsReceivableChart.id)
         .eq("is_active", true)
 
-      const { data: accountsReceivableData, error: accountsReceivableError } = await accountsReceivableAccounts
+      let { data: accountsReceivableData, error: accountsReceivableError } = await accountsReceivableAccounts
 
       if (accountsReceivableError) {
         console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Cobrar:", accountsReceivableError)
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
         .eq("chart_account_id", accountsPayableChart.id)
         .eq("is_active", true)
 
-      const { data: accountsPayableData, error: accountsPayableError } = await accountsPayableAccounts
+      let { data: accountsPayableData, error: accountsPayableError } = await accountsPayableAccounts
 
       if (accountsPayableError) {
         console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Pagar:", accountsPayableError)
