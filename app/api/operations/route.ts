@@ -417,7 +417,7 @@ export async function POST(request: Request) {
             const { data: newFA } = await (supabase.from("financial_accounts") as any)
               .insert({
                 name: "Cuentas por Pagar",
-                type: "LIABILITIES", // Corregido: Cuentas por Pagar son pasivos, no activos
+                type: "ASSETS", // Usar ASSETS como tipo válido - el chart_account_id determina si es activo/pasivo
                 currency: finalOperatorCostCurrency,
                 chart_account_id: accountsPayableChart.id,
                 initial_balance: 0,
