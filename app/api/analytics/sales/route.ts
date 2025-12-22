@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at")
+      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at, departure_date")
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -69,16 +70,47 @@ export async function GET(request: Request) {
         throw new Error("Error al obtener datos de ventas")
       }
 
-      const totalSales = (operations || []).reduce((sum: number, op: any) => sum + (op.sale_amount_total || 0), 0)
-      const totalMargin = (operations || []).reduce((sum: number, op: any) => sum + (op.margin_amount || 0), 0)
-      const totalCost = (operations || []).reduce((sum: number, op: any) => sum + (op.operator_cost || 0), 0)
+      // Obtener tasa de cambio más reciente como fallback
+      const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+      // Calcular totales convirtiendo todo a ARS
+      let totalSalesARS = 0
+      let totalMarginARS = 0
+      let totalCostARS = 0
+
+      for (const op of operations || []) {
+        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const marginAmount = parseFloat(op.margin_amount || "0")
+        const costAmount = parseFloat(op.operator_cost || "0")
+        const currency = op.currency || "ARS"
+
+        // Obtener tasa de cambio para la fecha de la operación
+        const operationDate = op.departure_date || op.created_at
+        let exchangeRate = await getExchangeRate(supabase, operationDate)
+        if (!exchangeRate) {
+          exchangeRate = latestExchangeRate
+        }
+
+        if (currency === "USD") {
+          // Convertir USD a ARS
+          totalSalesARS += saleAmount * exchangeRate
+          totalMarginARS += marginAmount * exchangeRate
+          totalCostARS += costAmount * exchangeRate
+        } else {
+          // Ya está en ARS
+          totalSalesARS += saleAmount
+          totalMarginARS += marginAmount
+          totalCostARS += costAmount
+        }
+      }
+
       const operationsCount = (operations || []).length
-      const avgMarginPercent = operationsCount > 0 ? (totalMargin / totalSales) * 100 : 0
+      const avgMarginPercent = operationsCount > 0 && totalSalesARS > 0 ? (totalMarginARS / totalSalesARS) * 100 : 0
 
     const result = {
-        totalSales,
-        totalMargin,
-        totalCost,
+        totalSales: totalSalesARS,
+        totalMargin: totalMarginARS,
+        totalCost: totalCostARS,
         operationsCount,
         avgMarginPercent,
       }

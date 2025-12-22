@@ -124,13 +124,13 @@ export function DashboardPageClient({
         next: { revalidate: 30 } // Cache por 30 segundos
       }
       
-      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, paymentsRes, prevSalesRes] = await Promise.all([
+      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, pendingBalancesRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/payments?${params.toString()}&status=PENDING`, fetchOptions),
+        fetch(`/api/analytics/pending-balances`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
@@ -139,7 +139,7 @@ export function DashboardPageClient({
       const destinationsData = await destinationsRes.json()
       const destinationsAllData = await destinationsAllRes.json()
       const cashflowData = await cashflowRes.json()
-      const paymentsData = await paymentsRes.json()
+      const pendingBalancesData = await pendingBalancesRes.json()
       const prevSalesData = await prevSalesRes.json()
 
       // Guardar datos del período anterior para comparativa
@@ -154,14 +154,8 @@ export function DashboardPageClient({
         totalMargin: salesData.totalMargin || 0,
         operationsCount: salesData.operationsCount || 0,
         avgMarginPercent: salesData.avgMarginPercent || 0,
-        pendingCustomerPayments:
-          (paymentsData.payments || [])
-            .filter((p: any) => p.direction === "INCOME" && p.status === "PENDING")
-            .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0,
-        pendingOperatorPayments:
-          (paymentsData.payments || [])
-            .filter((p: any) => p.direction === "EXPENSE" && p.status === "PENDING")
-            .reduce((sum: number, p: any) => sum + (p.amount || 0), 0) || 0,
+        pendingCustomerPayments: pendingBalancesData.accountsReceivable || 0,
+        pendingOperatorPayments: pendingBalancesData.accountsPayable || 0,
       })
 
       setSellersData(sellersData.sellers || [])
