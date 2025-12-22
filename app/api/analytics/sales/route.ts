@@ -78,7 +78,8 @@ export async function GET(request: Request) {
       let totalMarginARS = 0
       let totalCostARS = 0
 
-      for (const op of operations || []) {
+      const operationsArray = (operations || []) as any[]
+      for (const op of operationsArray) {
         const saleAmount = parseFloat(op.sale_amount_total || "0")
         const marginAmount = parseFloat(op.margin_amount || "0")
         const costAmount = parseFloat(op.operator_cost || "0")
