@@ -32,18 +32,44 @@ export async function GET(request: Request) {
     if (accountsReceivableChart) {
       console.log(`[PendingBalances] Chart account encontrado: ${accountsReceivableChart.account_name} (${accountsReceivableChart.account_code})`)
       
-      const { data: accountsReceivableAccounts, error: accountsReceivableError } = await (supabase.from("financial_accounts") as any)
+      let accountsReceivableAccounts = await (supabase.from("financial_accounts") as any)
         .select("id, name, currency")
         .eq("chart_account_id", accountsReceivableChart.id)
         .eq("is_active", true)
+
+      const { data: accountsReceivableData, error: accountsReceivableError } = await accountsReceivableAccounts
 
       if (accountsReceivableError) {
         console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Cobrar:", accountsReceivableError)
       }
 
-      if (accountsReceivableAccounts && accountsReceivableAccounts.length > 0) {
-        console.log(`[PendingBalances] Encontradas ${accountsReceivableAccounts.length} cuentas financieras de Cuentas por Cobrar`)
-        for (const account of accountsReceivableAccounts) {
+      // Si no existen cuentas financieras, crear una por defecto
+      if (!accountsReceivableData || accountsReceivableData.length === 0) {
+        console.log("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Cobrar, creando una...")
+        const { data: newAccount, error: createError } = await (supabase.from("financial_accounts") as any)
+          .insert({
+            name: "Cuentas por Cobrar",
+            type: "ASSETS",
+            currency: "ARS",
+            chart_account_id: accountsReceivableChart.id,
+            initial_balance: 0,
+            is_active: true,
+            created_by: user.id,
+          })
+          .select("id, name, currency")
+          .single()
+
+        if (createError) {
+          console.error("[PendingBalances] Error creando cuenta financiera Cuentas por Cobrar:", createError)
+        } else {
+          console.log(`[PendingBalances] Cuenta financiera creada: ${newAccount.name} (${newAccount.id})`)
+          accountsReceivableData = [newAccount]
+        }
+      }
+
+      if (accountsReceivableData && accountsReceivableData.length > 0) {
+        console.log(`[PendingBalances] Procesando ${accountsReceivableData.length} cuentas financieras de Cuentas por Cobrar`)
+        for (const account of accountsReceivableData) {
           try {
             const balance = await getAccountBalance(account.id, supabase)
             console.log(`[PendingBalances] Cuenta ${account.name} (${account.currency}): balance=${balance}`)
@@ -52,8 +78,6 @@ export async function GET(request: Request) {
             console.error(`[PendingBalances] Error calculating balance for account ${account.id}:`, error)
           }
         }
-      } else {
-        console.warn("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Cobrar")
       }
     } else {
       console.warn("[PendingBalances] No se encontró chart account 1.1.03 (Cuentas por Cobrar)")
@@ -74,18 +98,44 @@ export async function GET(request: Request) {
     if (accountsPayableChart) {
       console.log(`[PendingBalances] Chart account encontrado: ${accountsPayableChart.account_name} (${accountsPayableChart.account_code})`)
       
-      const { data: accountsPayableAccounts, error: accountsPayableError } = await (supabase.from("financial_accounts") as any)
+      let accountsPayableAccounts = await (supabase.from("financial_accounts") as any)
         .select("id, name, currency")
         .eq("chart_account_id", accountsPayableChart.id)
         .eq("is_active", true)
+
+      const { data: accountsPayableData, error: accountsPayableError } = await accountsPayableAccounts
 
       if (accountsPayableError) {
         console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Pagar:", accountsPayableError)
       }
 
-      if (accountsPayableAccounts && accountsPayableAccounts.length > 0) {
-        console.log(`[PendingBalances] Encontradas ${accountsPayableAccounts.length} cuentas financieras de Cuentas por Pagar`)
-        for (const account of accountsPayableAccounts) {
+      // Si no existen cuentas financieras, crear una por defecto
+      if (!accountsPayableData || accountsPayableData.length === 0) {
+        console.log("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Pagar, creando una...")
+        const { data: newAccount, error: createError } = await (supabase.from("financial_accounts") as any)
+          .insert({
+            name: "Cuentas por Pagar",
+            type: "LIABILITIES",
+            currency: "ARS",
+            chart_account_id: accountsPayableChart.id,
+            initial_balance: 0,
+            is_active: true,
+            created_by: user.id,
+          })
+          .select("id, name, currency")
+          .single()
+
+        if (createError) {
+          console.error("[PendingBalances] Error creando cuenta financiera Cuentas por Pagar:", createError)
+        } else {
+          console.log(`[PendingBalances] Cuenta financiera creada: ${newAccount.name} (${newAccount.id})`)
+          accountsPayableData = [newAccount]
+        }
+      }
+
+      if (accountsPayableData && accountsPayableData.length > 0) {
+        console.log(`[PendingBalances] Procesando ${accountsPayableData.length} cuentas financieras de Cuentas por Pagar`)
+        for (const account of accountsPayableData) {
           try {
             const balance = await getAccountBalance(account.id, supabase)
             console.log(`[PendingBalances] Cuenta ${account.name} (${account.currency}): balance=${balance}`)
@@ -94,8 +144,6 @@ export async function GET(request: Request) {
             console.error(`[PendingBalances] Error calculating balance for account ${account.id}:`, error)
           }
         }
-      } else {
-        console.warn("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Pagar")
       }
     } else {
       console.warn("[PendingBalances] No se encontró chart account 2.1.01 (Cuentas por Pagar)")
