@@ -3,7 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
 // GET - Obtener todas las cuentas de socios
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     
@@ -13,9 +13,11 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
+    const { searchParams } = new URL(request.url)
+    const agencyId = searchParams.get("agencyId")
 
     // Obtener socios con sus retiros
-    const { data: partners, error } = await (supabase
+    let query = (supabase
       .from("partner_accounts") as any)
       .select(`
         *,
@@ -25,11 +27,15 @@ export async function GET() {
           amount,
           currency,
           withdrawal_date,
-          description
+          description,
+          account_id,
+          financial_accounts:account_id(agency_id)
         )
       `)
       .eq("is_active", true)
       .order("partner_name", { ascending: true })
+
+    const { data: partners, error } = await query
 
     if (error) {
       console.error("Error fetching partner accounts:", error)
@@ -37,8 +43,16 @@ export async function GET() {
     }
 
     // Calcular balances por socio
-    const partnersWithBalance = (partners || []).map((partner: any) => {
-      const withdrawals = partner.partner_withdrawals || []
+    let partnersWithBalance = (partners || []).map((partner: any) => {
+      let withdrawals = partner.partner_withdrawals || []
+      
+      // Filtrar retiros por agencia si se especifica
+      if (agencyId && agencyId !== "ALL") {
+        withdrawals = withdrawals.filter((w: any) => {
+          const account = w.financial_accounts
+          return account && account.agency_id === agencyId
+        })
+      }
       
       const totalARS = withdrawals
         .filter((w: any) => w.currency === "ARS")
@@ -55,6 +69,11 @@ export async function GET() {
         withdrawals_count: withdrawals.length,
       }
     })
+
+    // Si se filtra por agencia, solo mostrar socios que tengan retiros de esa agencia
+    if (agencyId && agencyId !== "ALL") {
+      partnersWithBalance = partnersWithBalance.filter((p: any) => p.withdrawals_count > 0)
+    }
 
     return NextResponse.json({ partners: partnersWithBalance })
   } catch (error) {

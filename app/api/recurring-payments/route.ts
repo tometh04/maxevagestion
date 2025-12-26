@@ -17,15 +17,21 @@ export async function GET(request: Request) {
     const isActive = searchParams.get("isActive")
       ? searchParams.get("isActive") === "true"
       : undefined
+    const agencyId = searchParams.get("agencyId")
 
     let query = (supabase.from("recurring_payments") as any)
       .select("*")
       .order("created_at", { ascending: false })
 
-    // Filtrar por agencia del usuario (si existe)
-    const userAny = user as any
-    if (userAny.agency_id) {
-      query = query.eq("agency_id", userAny.agency_id)
+    // Filtrar por agencia del query string (si se especifica)
+    if (agencyId && agencyId !== "ALL") {
+      query = query.eq("agency_id", agencyId)
+    } else {
+      // Si no se especifica, filtrar por agencia del usuario (si existe)
+      const userAny = user as any
+      if (userAny.agency_id) {
+        query = query.eq("agency_id", userAny.agency_id)
+      }
     }
 
     if (isActive !== undefined) {

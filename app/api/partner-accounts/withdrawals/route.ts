@@ -14,13 +14,14 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const partnerId = searchParams.get("partnerId")
+    const agencyId = searchParams.get("agencyId")
 
     let query = (supabase
       .from("partner_withdrawals") as any)
       .select(`
         *,
         partner:partner_id(id, partner_name),
-        account:account_id(id, name, currency),
+        account:account_id(id, name, currency, agency_id),
         created_by_user:created_by(id, name)
       `)
       .order("withdrawal_date", { ascending: false })
@@ -36,7 +37,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener retiros" }, { status: 500 })
     }
 
-    return NextResponse.json({ withdrawals: withdrawals || [] })
+    // Filtrar por agencia si se especifica
+    let filteredWithdrawals = withdrawals || []
+    if (agencyId && agencyId !== "ALL") {
+      filteredWithdrawals = filteredWithdrawals.filter((w: any) => {
+        const account = w.account
+        return account && account.agency_id === agencyId
+      })
+    }
+
+    return NextResponse.json({ withdrawals: filteredWithdrawals })
   } catch (error) {
     console.error("Error in GET /api/partner-accounts/withdrawals:", error)
     return NextResponse.json({ error: "Error interno" }, { status: 500 })

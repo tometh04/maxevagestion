@@ -11,6 +11,7 @@ export async function GET(request: Request) {
 
     const operatorId = searchParams.get("operatorId") || undefined
     const status = searchParams.get("status") || undefined
+    const agencyId = searchParams.get("agencyId")
 
     // Update overdue payments first
     await updateOverduePayments(supabase)
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
       .select(
         `
         *,
-        operations:operation_id (id, destination, file_code, sale_amount_total),
+        operations:operation_id (id, destination, file_code, sale_amount_total, agency_id),
         operators:operator_id (id, name, contact_email)
       `
       )
@@ -41,7 +42,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener pagos a operadores" }, { status: 500 })
     }
 
-    return NextResponse.json({ payments: payments || [] })
+    // Filtrar por agencia si se especifica
+    let filteredPayments = payments || []
+    if (agencyId && agencyId !== "ALL") {
+      filteredPayments = filteredPayments.filter((p: any) => {
+        const operation = p.operations
+        return operation && operation.agency_id === agencyId
+      })
+    }
+
+    return NextResponse.json({ payments: filteredPayments })
   } catch (error) {
     console.error("Error in GET /api/accounting/operator-payments:", error)
     return NextResponse.json({ error: "Error al obtener pagos a operadores" }, { status: 500 })
