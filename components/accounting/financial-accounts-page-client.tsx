@@ -73,11 +73,15 @@ const assetTypes = [
   { value: "OTHER", label: "Otros activos" },
 ]
 
-export function FinancialAccountsPageClient() {
+interface FinancialAccountsPageClientProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function FinancialAccountsPageClient({ agencies: initialAgencies }: FinancialAccountsPageClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<any[]>([])
-  const [agencies, setAgencies] = useState<any[]>([])
+  const [agencies, setAgencies] = useState<any[]>(initialAgencies)
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [formData, setFormData] = useState<any>({
@@ -106,19 +110,15 @@ export function FinancialAccountsPageClient() {
   async function fetchData() {
       setLoading(true)
       try {
-      const [accountsRes, agenciesRes] = await Promise.all([
-        fetch("/api/accounting/financial-accounts"),
-        fetch("/api/agencies"),
-      ])
+      const accountsRes = await fetch("/api/accounting/financial-accounts")
 
       if (!accountsRes.ok) throw new Error("Error al obtener cuentas")
-      if (!agenciesRes.ok) throw new Error("Error al obtener agencias")
 
       const accountsData = await accountsRes.json()
-      const agenciesData = await agenciesRes.json()
 
       setAccounts(accountsData.accounts || [])
-      setAgencies(agenciesData.agencies || [])
+      // Las agencias ya vienen como props, no necesitamos cargarlas de nuevo
+      setAgencies(initialAgencies)
     } catch (error: any) {
       toast.error(error.message || "Error al cargar datos")
       } finally {
