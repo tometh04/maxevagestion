@@ -29,14 +29,17 @@ export async function GET(request: Request) {
       (accounts || []).map(async (account: any) => {
         try {
           const balance = await getAccountBalance(account.id, supabase)
+          // Asegurar que agency_id se mantenga en el objeto retornado
           return {
             ...account,
+            agency_id: account.agency_id, // Asegurar que agency_id esté presente
             current_balance: balance,
           }
         } catch (error) {
           console.error(`Error calculating balance for account ${account.id}:`, error)
           return {
             ...account,
+            agency_id: account.agency_id, // Asegurar que agency_id esté presente
             current_balance: account.initial_balance || 0,
           }
         }

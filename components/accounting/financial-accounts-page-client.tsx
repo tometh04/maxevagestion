@@ -266,10 +266,11 @@ export function FinancialAccountsPageClient() {
 
   // Agrupar por agencia
   const accountsByAgency = accounts.reduce((acc, account) => {
-    const agencyId = account.agency_id || "sin-agencia"
+    // Asegurar que agency_id esté disponible (puede venir directamente o desde agencies)
+    const agencyId = account.agency_id || (account.agencies as any)?.id || "sin-agencia"
     if (!acc[agencyId]) {
       acc[agencyId] = {
-        agency: agencies.find((a) => a.id === agencyId),
+        agency: agencies.find((a) => a.id === agencyId) || (account.agencies as any),
         accounts: [],
       }
     }
