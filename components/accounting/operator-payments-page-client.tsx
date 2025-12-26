@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Label } from "@/components/ui/label"
 import {
   Table,
   TableBody,
@@ -43,10 +44,15 @@ const statusColors: Record<string, string> = {
   OVERDUE: "bg-red-500",
 }
 
-export function OperatorPaymentsPageClient() {
+interface OperatorPaymentsPageClientProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageClientProps) {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
+  const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
 
   useEffect(() => {
     async function fetchPayments() {
@@ -55,6 +61,9 @@ export function OperatorPaymentsPageClient() {
         const params = new URLSearchParams()
         if (statusFilter !== "ALL") {
           params.append("status", statusFilter)
+        }
+        if (agencyFilter !== "ALL") {
+          params.append("agencyId", agencyFilter)
         }
 
         const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
@@ -70,7 +79,7 @@ export function OperatorPaymentsPageClient() {
     }
 
     fetchPayments()
-  }, [statusFilter])
+  }, [statusFilter, agencyFilter])
 
   const overdueCount = payments.filter((p) => p.status === "OVERDUE").length
   const pendingCount = payments.filter((p) => p.status === "PENDING").length
@@ -128,6 +137,23 @@ export function OperatorPaymentsPageClient() {
         <CardContent>
           <div className="flex gap-4">
             <div className="w-48">
+              <Label>Agencia</Label>
+              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>
+                      {agency.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="w-48">
+              <Label>Estado</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger>
                   <SelectValue />

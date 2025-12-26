@@ -64,9 +64,11 @@ interface Withdrawal {
 
 interface PartnerAccountsClientProps {
   userRole: string
+  agencies: Array<{ id: string; name: string }>
 }
 
-export function PartnerAccountsClient({ userRole }: PartnerAccountsClientProps) {
+export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsClientProps) {
+  const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [partners, setPartners] = useState<Partner[]>([])
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([])
   const [loading, setLoading] = useState(true)
@@ -88,7 +90,11 @@ export function PartnerAccountsClient({ userRole }: PartnerAccountsClientProps) 
 
   const fetchPartners = useCallback(async () => {
     try {
-      const res = await fetch("/api/partner-accounts")
+      const params = new URLSearchParams()
+      if (agencyFilter !== "ALL") {
+        params.append("agencyId", agencyFilter)
+      }
+      const res = await fetch(`/api/partner-accounts?${params.toString()}`)
       const data = await res.json()
       if (data.partners) {
         setPartners(data.partners)
@@ -97,11 +103,15 @@ export function PartnerAccountsClient({ userRole }: PartnerAccountsClientProps) 
       console.error("Error fetching partners:", error)
       toast.error("Error al cargar socios")
     }
-  }, [])
+  }, [agencyFilter])
 
   const fetchWithdrawals = useCallback(async () => {
     try {
-      const res = await fetch("/api/partner-accounts/withdrawals")
+      const params = new URLSearchParams()
+      if (agencyFilter !== "ALL") {
+        params.append("agencyId", agencyFilter)
+      }
+      const res = await fetch(`/api/partner-accounts/withdrawals?${params.toString()}`)
       const data = await res.json()
       if (data.withdrawals) {
         setWithdrawals(data.withdrawals)
@@ -109,7 +119,7 @@ export function PartnerAccountsClient({ userRole }: PartnerAccountsClientProps) 
     } catch (error) {
       console.error("Error fetching withdrawals:", error)
     }
-  }, [])
+  }, [agencyFilter])
 
   useEffect(() => {
     const loadData = async () => {
@@ -417,6 +427,33 @@ export function PartnerAccountsClient({ userRole }: PartnerAccountsClientProps) 
           </CardContent>
         </Card>
       </div>
+
+      {/* Filters */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Filtros</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-4">
+            <div className="w-48">
+              <Label>Agencia</Label>
+              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>
+                      {agency.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>

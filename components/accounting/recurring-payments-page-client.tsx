@@ -44,11 +44,16 @@ const frequencyLabels: Record<string, string> = {
   YEARLY: "Anual",
 }
 
-export function RecurringPaymentsPageClient() {
+interface RecurringPaymentsPageClientProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageClientProps) {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
   const [isActiveFilter, setIsActiveFilter] = useState<string>("ALL")
   const [providerFilter, setProviderFilter] = useState<string>("ALL")
+  const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [tableError, setTableError] = useState<string | null>(null)
@@ -60,6 +65,9 @@ export function RecurringPaymentsPageClient() {
       const params = new URLSearchParams()
       if (isActiveFilter !== "ALL") {
         params.append("isActive", isActiveFilter === "ACTIVE" ? "true" : "false")
+      }
+      if (agencyFilter !== "ALL") {
+        params.append("agencyId", agencyFilter)
       }
 
       const response = await fetch(`/api/recurring-payments?${params.toString()}`)
@@ -78,7 +86,7 @@ export function RecurringPaymentsPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [isActiveFilter])
+  }, [isActiveFilter, agencyFilter])
 
   useEffect(() => {
     fetchData()
@@ -237,6 +245,21 @@ export function RecurringPaymentsPageClient() {
                   {uniqueProviders.map((provider) => (
                     <SelectItem key={provider} value={provider}>
                       {provider}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Filtro por Agencia */}
+              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Agencia" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  {agencies.map((agency) => (
+                    <SelectItem key={agency.id} value={agency.id}>
+                      {agency.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

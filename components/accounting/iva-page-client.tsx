@@ -18,6 +18,8 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -27,9 +29,14 @@ function formatCurrency(amount: number, currency: string = "ARS"): string {
   }).format(amount)
 }
 
-export function IVAPageClient() {
+interface IVAPageClientProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function IVAPageClient({ agencies }: IVAPageClientProps) {
   const [year, setYear] = useState(new Date().getFullYear())
   const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<{
     summary: {
@@ -45,7 +52,14 @@ export function IVAPageClient() {
     async function fetchData() {
       setLoading(true)
       try {
-        const response = await fetch(`/api/accounting/iva?year=${year}&month=${month}`)
+        const params = new URLSearchParams({
+          year: year.toString(),
+          month: month.toString(),
+        })
+        if (agencyFilter !== "ALL") {
+          params.append("agencyId", agencyFilter)
+        }
+        const response = await fetch(`/api/accounting/iva?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener datos de IVA")
 
         const result = await response.json()
@@ -58,7 +72,7 @@ export function IVAPageClient() {
     }
 
     fetchData()
-  }, [year, month])
+  }, [year, month, agencyFilter])
 
   const handlePreviousMonth = () => {
     if (month === 1) {
@@ -126,6 +140,22 @@ export function IVAPageClient() {
             <Button variant="outline" size="icon" onClick={handleNextMonth}>
               <ChevronRight className="h-4 w-4" />
             </Button>
+          </div>
+          <div className="mt-4">
+            <Label>Agencia</Label>
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>

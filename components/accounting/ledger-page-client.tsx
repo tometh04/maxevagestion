@@ -5,12 +5,17 @@ import { LedgerTable } from "@/components/accounting/ledger-table"
 import { LedgerFilters } from "@/components/accounting/ledger-filters"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-export function LedgerPageClient() {
+interface LedgerPageClientProps {
+  agencies: Array<{ id: string; name: string }>
+}
+
+export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
   const [filters, setFilters] = useState<{
     dateFrom?: string
     dateTo?: string
     type?: string
     currency?: string
+    agencyId?: string
   }>({})
 
   return (
@@ -28,7 +33,7 @@ export function LedgerPageClient() {
           <CardDescription>Filtrar movimientos por fecha, tipo y moneda</CardDescription>
         </CardHeader>
         <CardContent>
-          <LedgerFilters onFiltersChange={setFilters} />
+          <LedgerFilters agencies={agencies} onFiltersChange={setFilters} />
         </CardContent>
       </Card>
 
