@@ -65,15 +65,26 @@ function parseCSV(filePath: string): CSVRow[] {
   }
   headers.push(currentHeader.trim().toLowerCase().replace(/\s+/g, '_'))
   
-  // Mapeo de columnas
+  // Mapeo de columnas (normalizar headers)
   const columnMap: Record<string, string> = {
     'código': 'codigo',
+    'codigo': 'codigo',
     'fecha_operación': 'fecha_operacion',
+    'fecha_operacion': 'fecha_operacion',
     'nombre_del_cliente': 'nombre_cliente',
+    'nombre_cliente': 'nombre_cliente',
     'email_cliente': 'email_cliente',
+    'destino': 'destino',
     'fecha_salida': 'fecha_salida',
     'fecha_regreso': 'fecha_regreso',
+    'fecha_reg': 'fecha_regreso',
+    'adultos': 'adultos',
+    'niños': 'ninos',
+    'ninos': 'ninos',
+    'niñ': 'ninos',
+    'monto_venta': 'monto_venta',
     'monto_venta_/_pendiente_de_cobro': 'monto_venta',
+    'monto_v': 'monto_venta',
     'monto_a_pagar': 'monto_pagar',
     'operador_1': 'operador_1',
     'costo_operador_1': 'costo_operador_1',
@@ -81,6 +92,8 @@ function parseCSV(filePath: string): CSVRow[] {
     'costo_operador_2': 'costo_operador_2',
     'operador_3': 'operador_3',
     'costo_operador_3': 'costo_operador_3',
+    'moneda': 'moneda',
+    'estado': 'estado',
     'nombre_vendedor': 'nombre_vendedor',
   }
   
@@ -107,9 +120,11 @@ function parseCSV(filePath: string): CSVRow[] {
     
     const row: any = {}
     headers.forEach((header, index) => {
-      const mappedKey = columnMap[header] || header
-      const value = values[index]?.replace(/^"|"$/g, '') || ''
-      row[mappedKey] = value
+      // Normalizar header (lowercase, sin espacios extra)
+      const normalizedHeader = header.toLowerCase().trim()
+      const mappedKey = columnMap[normalizedHeader] || normalizedHeader
+      const value = values[index]?.replace(/^"|"$/g, '').trim() || ''
+      row[mappedKey] = value || undefined
     })
     
     // Solo agregar si tiene al menos destino o cliente
@@ -127,32 +142,66 @@ function cleanAmount(amount: string | undefined): number {
   return parseFloat(amount.replace(/[$,]/g, '')) || 0
 }
 
-// Parsear fechas en diferentes formatos
+// Parsear mes a fecha (ej: "Julio" → 2026-07-01)
+function parseMonthToDate(monthStr: string | undefined, contextYear: number = 2026): Date | null {
+  if (!monthStr || !monthStr.trim()) return null
+  
+  const months: Record<string, number> = {
+    'enero': 0, 'febrero': 1, 'marzo': 2, 'abril': 3,
+    'mayo': 4, 'junio': 5, 'julio': 6, 'agosto': 7,
+    'septiembre': 8, 'octubre': 9, 'noviembre': 10, 'diciembre': 11
+  }
+  
+  const monthName = monthStr.trim().toLowerCase()
+  const month = months[monthName]
+  
+  if (month !== undefined) {
+    return new Date(contextYear, month, 1)
+  }
+  
+  return null
+}
+
+// Parsear fechas: dd/mm/aaaa, pero si empieza con 4 dígitos → convertir de aaaa/mm/dd a dd/mm/aaaa
 function parseDate(dateStr: string | undefined, defaultYear: number = 2026): string | null {
   if (!dateStr || !dateStr.trim()) return null
   
-  const str = dateStr.trim()
+  let str = dateStr.trim().replace(/\/\/+/g, '/') // Limpiar dobles barras
+  str = str.replace(/\s+/g, '') // Remover espacios
   
-  // Si tiene año completo (2026, 2025)
-  if (str.includes('2026') || str.includes('2025')) {
+  // Si empieza con 4 dígitos, está en formato aaaa/mm/dd o aaaa-mm-dd → convertir a dd/mm/aaaa
+  if (/^\d{4}/.test(str)) {
     const parts = str.split(/[\/\-]/)
-    if (parts.length === 3) {
-      const day = parseInt(parts[0])
-      const month = parseInt(parts[1])
-      const year = parseInt(parts[2])
-      if (day && month && year) {
+    if (parts.length >= 3) {
+      const year = parseInt(parts[0], 10)
+      const month = parseInt(parts[1], 10)
+      const day = parseInt(parts[2], 10)
+      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+        // Convertir de aaaa/mm/dd a dd/mm/aaaa (y luego a ISO para BD)
+        // Ahora tenemos: year=2025, month=3, day=15 → formato ISO: 2025-03-15
         return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
       }
     }
   }
   
-  // Formato corto: 11/02, 01-03
+  // Formato dd/mm/aaaa (o dd/mm si no tiene año)
   const parts = str.split(/[\/\-]/)
-  if (parts.length === 2) {
-    const day = parseInt(parts[0])
-    const month = parseInt(parts[1])
-    if (day && month) {
-      return `${defaultYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  if (parts.length >= 2) {
+    const day = parseInt(parts[0], 10)
+    const month = parseInt(parts[1], 10)
+    let year = defaultYear
+    
+    // Si hay tercer parte, usar como año
+    if (parts.length >= 3) {
+      const yearPart = parseInt(parts[2], 10)
+      if (!isNaN(yearPart)) {
+        year = yearPart
+      }
+    }
+    
+    if (!isNaN(day) && !isNaN(month) && day > 0 && day <= 31 && month > 0 && month <= 12) {
+      // Formato ISO para BD: YYYY-MM-DD
+      return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     }
   }
   
@@ -421,9 +470,26 @@ async function importOperations(csvFilePath: string, agencyName: string = 'rosar
       const departureDate = parseDate(row.fecha_salida, 2026)
       const returnDate = parseDate(row.fecha_regreso, 2026)
       
+      let finalDepartureDate = departureDate
+      
       if (!departureDate) {
-        warnings++
-        details.push(`Fila ${rowNum}: Sin fecha de salida válida`)
+        // Si no hay fecha de salida pero hay fecha de operación, usar esa
+        if (row.fecha_operacion) {
+          const fechaOp = parseMonthToDate(row.fecha_operacion, 2026)
+          if (fechaOp) {
+            finalDepartureDate = fechaOp.toISOString().split('T')[0]
+            warnings++
+            details.push(`Fila ${rowNum}: Sin fecha de salida, usando fecha operación: ${finalDepartureDate}`)
+          } else {
+            warnings++
+            details.push(`Fila ${rowNum}: Sin fecha de salida válida (valor: "${row.fecha_salida}")`)
+            continue
+          }
+        } else {
+          warnings++
+          details.push(`Fila ${rowNum}: Sin fecha de salida válida (valor: "${row.fecha_salida}")`)
+          continue
+        }
       }
       
       // Limpiar montos
@@ -499,8 +565,8 @@ async function importOperations(csvFilePath: string, agencyName: string = 'rosar
         details.push(`Fila ${rowNum}: Vendedor no encontrado: ${row.nombre_vendedor}`)
       }
       
-      // Validar status
-      const status = validateStatus(row.estado) || 'CONFIRMED'
+      // Estado: todas CONFIRMED
+      const status = 'CONFIRMED'
       
       // Calcular márgenes
       const marginAmount = saleAmount - calculatedOperatorCost
@@ -515,8 +581,8 @@ async function importOperations(csvFilePath: string, agencyName: string = 'rosar
         type: 'PACKAGE' as const,
         product_type: 'PAQUETE',
         destination: row.destino || 'Sin destino',
-        operation_date: departureDate || new Date().toISOString().split('T')[0],
-        departure_date: departureDate || new Date().toISOString().split('T')[0],
+        operation_date: finalDepartureDate || new Date().toISOString().split('T')[0],
+        departure_date: finalDepartureDate || new Date().toISOString().split('T')[0],
         return_date: returnDate || null,
         adults: parseInt(row.adultos || '2') || 2,
         children: parseInt(row.ninos || '0') || 0,
