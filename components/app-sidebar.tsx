@@ -16,8 +16,11 @@ import {
   GalleryVerticalEnd,
   Calendar as CalendarIcon,
   MessageSquare,
-  Heart,
+  Bot,
   MessageCircle,
+  Wallet,
+  Coins,
+  BookOpen,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -34,58 +37,156 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar"
 
+interface NavSubSubItem {
+  title: string
+  url: string
+}
+
+interface NavSubItem {
+  title: string
+  url: string
+  items?: NavSubSubItem[]
+  module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions"
+}
+
 interface NavItem {
   title: string
   url: string
   icon?: React.ComponentType<{ className?: string }>
-  items?: {
-    title: string
-    url: string
-  }[]
+  items?: NavSubItem[]
   module?: "dashboard" | "leads" | "operations" | "customers" | "operators" | "cash" | "accounting" | "alerts" | "reports" | "settings" | "commissions"
+  collapsible?: boolean
 }
 
 const allNavigation: NavItem[] = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard, module: "dashboard" },
-  { title: "Leads", url: "/sales/leads", icon: ShoppingCart, module: "leads" },
-  { title: "CRM Manychat", url: "/sales/crm-manychat", icon: MessageCircle, module: "leads" },
-  { title: "Operaciones", url: "/operations", icon: Plane, module: "operations" },
-  { title: "Clientes", url: "/customers", icon: Users, module: "customers" },
-  { title: "Operadores", url: "/operators", icon: Building2, module: "operators" },
+  // Dashboard - NO colapsable
   {
-    title: "Caja",
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: LayoutDashboard,
+    module: "dashboard",
+    collapsible: false,
+  },
+  // Clientes - Colapsable
+  {
+    title: "Clientes",
+    url: "/customers",
+    icon: Users,
+    module: "customers",
+    items: [
+      { title: "Clientes", url: "/customers" },
+      { title: "Estadísticas", url: "/customers/statistics" },
+      { title: "Configuración", url: "/customers/settings" },
+    ],
+  },
+  // Operaciones - Colapsable
+  {
+    title: "Operaciones",
+    url: "/operations",
+    icon: Plane,
+    module: "operations",
+    items: [
+      { title: "Operaciones", url: "/operations" },
+      { title: "Estadísticas", url: "/operations/statistics" },
+      { title: "Facturación", url: "/operations/billing" },
+      { title: "Configuración", url: "/operations/settings" },
+    ],
+  },
+  // Ventas - Colapsable
+  {
+    title: "Ventas",
+    url: "/sales/leads",
+    icon: ShoppingCart,
+    module: "leads",
+    items: [
+      { title: "Leads", url: "/sales/leads" },
+      { title: "CRM Manychat", url: "/sales/crm-manychat" },
+      { title: "Estadísticas", url: "/sales/statistics" },
+    ],
+  },
+  // Finanzas - Colapsable (con submenús anidados)
+  {
+    title: "Finanzas",
     url: "/cash/summary",
     icon: DollarSign,
     module: "cash",
-      items: [
-      { title: "Resumen", url: "/cash/summary" },
-      { title: "Ingresos", url: "/cash/income" },
-      { title: "Egresos", url: "/cash/expenses" },
-      ],
-    },
-    {
-    title: "Contabilidad",
-    url: "/accounting/ledger",
-    icon: Calculator,
-    module: "accounting",
-      items: [
-      { title: "Libro Mayor", url: "/accounting/ledger" },
-      { title: "IVA", url: "/accounting/iva" },
-      { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
-      { title: "Posición Mensual", url: "/accounting/monthly-position" },
-      { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
-      { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
-      { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
+    items: [
+      // Caja - Submenú con nivel 3
+      {
+        title: "Caja",
+        url: "/cash/summary",
+        items: [
+          { title: "Resumen", url: "/cash/summary" },
+          { title: "Ingresos", url: "/cash/income" },
+          { title: "Egresos", url: "/cash/expenses" },
+        ],
+      },
+      // Contabilidad - Submenú con nivel 3
+      {
+        title: "Contabilidad",
+        url: "/accounting/ledger",
+        items: [
+          { title: "Libro Mayor", url: "/accounting/ledger" },
+          { title: "IVA", url: "/accounting/iva" },
+          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
+          { title: "Posición Mensual", url: "/accounting/monthly-position" },
+          { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
+          { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
+          { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
+        ],
+      },
+      // Items directos sin submenú
+      { title: "Mi Balance", url: "/my/balance" },
+      { title: "Mis Comisiones", url: "/my/commissions" },
+      { title: "Configuración", url: "/finances/settings" },
     ],
   },
-  { title: "Mensajes", url: "/messages", icon: MessageSquare },
-  { title: "Alertas", url: "/alerts", icon: AlertCircle, module: "alerts" },
-  { title: "Calendario", url: "/calendar", icon: CalendarIcon, module: "alerts" },
-  { title: "Reportes", url: "/reports", icon: FileText, module: "reports" },
-  { title: "Mi Balance", url: "/my/balance", icon: DollarSign },
-  { title: "Mis Comisiones", url: "/my/commissions", icon: DollarSign },
-  { title: "Emilia", url: "/emilia", icon: Heart },
-  { title: "Configuración", url: "/settings", icon: Settings, module: "settings" },
+  // Recursos - Colapsable
+  {
+    title: "Recursos",
+    url: "/resources/notes",
+    icon: BookOpen,
+    items: [
+      { title: "Notas", url: "/resources/notes" },
+      { title: "Calendario", url: "/calendar" },
+      { title: "Templates", url: "/resources/templates" },
+    ],
+  },
+  // Documentos - Colapsable
+  {
+    title: "Documentos",
+    url: "/reports",
+    icon: FileText,
+    items: [
+      { title: "Reportes", url: "/reports", module: "reports" as const },
+      { title: "Mensajes", url: "/messages" },
+      { title: "Alertas", url: "/alerts", module: "alerts" as const },
+    ],
+  },
+  // Agencia - Colapsable
+  {
+    title: "Agencia",
+    url: "/settings",
+    icon: Building2,
+    module: "settings",
+    items: [
+      { title: "Configuración", url: "/settings" },
+      { title: "Operadores", url: "/operators", module: "operators" as const },
+      { title: "Usuarios", url: "/settings/users" },
+      { title: "Equipos", url: "/settings/teams" },
+      { title: "Integraciones", url: "/settings/integrations" },
+    ],
+  },
+  // Herramientas - Colapsable
+  {
+    title: "Herramientas",
+    url: "/emilia",
+    icon: Bot,
+    items: [
+      { title: "Emilia", url: "/emilia", description: "AI Copilot" },
+      { title: "Configuración", url: "/tools/settings" },
+    ],
+  },
 ]
 
 interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
@@ -101,16 +202,54 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   const pathname = usePathname()
 
   // Filtrar navegación según permisos
-  const navigation = allNavigation.filter((item) => {
-    if (item.module) {
-      return shouldShowInSidebar(userRole, item.module)
-    }
-    // Items sin módulo (como "Mi Balance") solo para vendedores
-    if (item.url === "/my/balance" || item.url === "/my/commissions") {
-      return userRole === "SELLER"
-    }
-    return true
-  })
+  const navigation = allNavigation
+    .map((item) => {
+      // Filtrar items principales
+      if (item.module) {
+        if (!shouldShowInSidebar(userRole, item.module)) {
+          return null
+        }
+      }
+
+      // Filtrar subitems según permisos
+      if (item.items) {
+        const filteredItems = item.items
+          .map((subItem) => {
+            // Si el subitem tiene un módulo, verificar permisos
+            if (subItem.module) {
+              if (!shouldShowInSidebar(userRole, subItem.module)) {
+                return null
+              }
+            }
+
+            // Si el subitem tiene items (nivel 3), mantenerlos todos
+            if (subItem.items) {
+              return subItem
+            }
+
+            return subItem
+          })
+          .filter((subItem): subItem is NavSubItem => subItem !== null)
+
+        // Si no quedan items, no mostrar el item principal
+        if (filteredItems.length === 0) {
+          return null
+        }
+
+        return { ...item, items: filteredItems }
+      }
+
+      // Items sin módulo (como Dashboard) siempre visibles
+      return item
+    })
+    .filter((item): item is NavItem => {
+      if (!item) return false
+      // Items sin módulo (como "Mi Balance") solo para vendedores
+      if (item.url === "/my/balance" || item.url === "/my/commissions") {
+        return userRole === "SELLER"
+      }
+      return true
+    })
 
   return (
     <Sidebar collapsible="icon" {...props}>

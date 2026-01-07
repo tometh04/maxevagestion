@@ -1,3 +1,177 @@
+# 💻 Código del Sidebar Propuesto
+
+## 📋 Estructura de Datos
+
+### Interface Actualizada
+
+```typescript
+interface NavItem {
+  title: string
+  url: string
+  icon?: React.ComponentType<{ className?: string }>
+  items?: NavSubItem[]  // Submenús nivel 2
+  module?: string
+  collapsible?: boolean  // Por defecto true, excepto Dashboard
+}
+
+interface NavSubItem {
+  title: string
+  url: string
+  items?: NavSubSubItem[]  // Submenús nivel 3 (solo para Finanzas)
+}
+
+interface NavSubSubItem {
+  title: string
+  url: string
+}
+```
+
+## 🗂️ Estructura Completa de Navegación
+
+```typescript
+const allNavigation: NavItem[] = [
+  // Dashboard - NO colapsable
+  { 
+    title: "Dashboard", 
+    url: "/dashboard", 
+    icon: LayoutDashboard, 
+    module: "dashboard",
+    collapsible: false  // Único que NO es colapsable
+  },
+  
+  // Clientes - Colapsable
+  {
+    title: "Clientes",
+    url: "/customers",
+    icon: Users,
+    module: "customers",
+    items: [
+      { title: "Clientes", url: "/customers" },
+      { title: "Estadísticas", url: "/customers/statistics" },
+      { title: "Configuración", url: "/customers/settings" },
+    ],
+  },
+  
+  // Operaciones - Colapsable
+  {
+    title: "Operaciones",
+    url: "/operations",
+    icon: Plane,
+    module: "operations",
+    items: [
+      { title: "Operaciones", url: "/operations" },
+      { title: "Estadísticas", url: "/operations/statistics" },
+      { title: "Facturación", url: "/operations/billing" },
+      { title: "Configuración", url: "/operations/settings" },
+    ],
+  },
+  
+  // Ventas - Colapsable
+  {
+    title: "Ventas",
+    url: "/sales/leads",
+    icon: ShoppingCart,
+    module: "leads",
+    items: [
+      { title: "Leads", url: "/sales/leads" },
+      { title: "CRM Manychat", url: "/sales/crm-manychat" },
+      { title: "Estadísticas", url: "/sales/statistics" },
+    ],
+  },
+  
+  // Finanzas - Colapsable (con submenús anidados)
+  {
+    title: "Finanzas",
+    url: "/cash/summary",
+    icon: DollarSign,
+    module: "cash",
+    items: [
+      // Caja - Submenú con nivel 3
+      {
+        title: "Caja",
+        url: "/cash/summary",
+        items: [
+          { title: "Resumen", url: "/cash/summary" },
+          { title: "Ingresos", url: "/cash/income" },
+          { title: "Egresos", url: "/cash/expenses" },
+        ],
+      },
+      // Contabilidad - Submenú con nivel 3
+      {
+        title: "Contabilidad",
+        url: "/accounting/ledger",
+        items: [
+          { title: "Libro Mayor", url: "/accounting/ledger" },
+          { title: "IVA", url: "/accounting/iva" },
+          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
+          { title: "Posición Mensual", url: "/accounting/monthly-position" },
+          { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
+          { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
+          { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
+        ],
+      },
+      // Items directos sin submenú
+      { title: "Mi Balance", url: "/my/balance" },
+      { title: "Mis Comisiones", url: "/my/commissions" },
+      { title: "Configuración", url: "/finances/settings" },
+    ],
+  },
+  
+  // Recursos - Colapsable
+  {
+    title: "Recursos",
+    url: "/resources/notes",
+    icon: BookOpen,
+    items: [
+      { title: "Notas", url: "/resources/notes" },
+      { title: "Calendario", url: "/calendar" },
+      { title: "Templates", url: "/resources/templates" },
+    ],
+  },
+  
+  // Documentos - Colapsable
+  {
+    title: "Documentos",
+    url: "/reports",
+    icon: FileText,
+    items: [
+      { title: "Reportes", url: "/reports" },
+      { title: "Mensajes", url: "/messages" },
+      { title: "Alertas", url: "/alerts" },
+    ],
+  },
+  
+  // Agencia - Colapsable
+  {
+    title: "Agencia",
+    url: "/settings",
+    icon: Building2,
+    module: "settings",
+    items: [
+      { title: "Configuración", url: "/settings" },
+      { title: "Operadores", url: "/operators" },
+      { title: "Usuarios", url: "/settings/users" },
+      { title: "Equipos", url: "/settings/teams" },
+      { title: "Integraciones", url: "/settings/integrations" },
+    ],
+  },
+  
+  // Herramientas - Colapsable
+  {
+    title: "Herramientas",
+    url: "/emilia",
+    icon: Bot,
+    items: [
+      { title: "Emilia", url: "/emilia", description: "AI Copilot" },
+      { title: "Configuración", url: "/tools/settings" },
+    ],
+  },
+]
+```
+
+## 🔧 Componente NavMain Actualizado
+
+```typescript
 "use client"
 
 import * as React from "react"
@@ -19,6 +193,7 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar"
+import { cn } from "@/lib/utils"
 
 interface NavSubSubItem {
   title: string
@@ -28,7 +203,7 @@ interface NavSubSubItem {
 interface NavSubItem {
   title: string
   url: string
-  items?: NavSubSubItem[]
+  items?: NavSubSubItem[]  // Nivel 3
 }
 
 interface NavItem {
@@ -149,3 +324,55 @@ export function NavMain({ items, pathname }: NavMainProps) {
     </SidebarGroup>
   )
 }
+```
+
+## 🎨 Estilos CSS Adicionales
+
+```css
+/* Indentación para nivel 3 */
+[data-level="3"] {
+  padding-left: 2rem;
+}
+
+/* Espaciado entre grupos */
+.sidebar-group + .sidebar-group {
+  margin-top: 0.5rem;
+}
+
+/* Transición suave para chevron */
+.chevron-transition {
+  transition: transform 200ms ease-in-out;
+}
+
+/* Estado activo mejorado */
+[data-active="true"] {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+```
+
+## 📊 Resumen de Cambios
+
+### Estructura:
+- ✅ De 16 items a 8 items principales
+- ✅ Dashboard NO colapsable
+- ✅ Resto de items colapsables
+- ✅ Soporte para 3 niveles de anidación (solo en Finanzas)
+
+### Comportamiento:
+- ✅ Auto-expansión cuando la ruta está activa
+- ✅ Chevron indica estado (▶ colapsado, ▼ expandido)
+- ✅ Transiciones suaves
+- ✅ Indentación visual clara
+
+### Iconos:
+- ✅ Dashboard: `LayoutDashboard`
+- ✅ Clientes: `Users`
+- ✅ Operaciones: `Plane`
+- ✅ Ventas: `ShoppingCart`
+- ✅ Finanzas: `DollarSign`
+- ✅ Recursos: `BookOpen`
+- ✅ Documentos: `FileText`
+- ✅ Agencia: `Building2`
+- ✅ Herramientas: `Bot`
+
