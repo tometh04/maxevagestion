@@ -183,7 +183,7 @@ const allNavigation: NavItem[] = [
     url: "/emilia",
     icon: Bot,
     items: [
-      { title: "Emilia", url: "/emilia", description: "AI Copilot" },
+      { title: "Emilia", url: "/emilia" },
       { title: "Configuración", url: "/tools/settings" },
     ],
   },
