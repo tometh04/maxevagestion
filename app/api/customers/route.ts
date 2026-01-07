@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { applyCustomersFilters, getUserAgencyIds } from "@/lib/permissions-api"
+import { checkDuplicateCustomer, sendCustomerNotifications } from "@/lib/customers/customer-service"
 
 export const dynamic = 'force-dynamic'
 
@@ -152,9 +153,66 @@ export async function POST(request: Request) {
       nationality,
     } = body
 
-    // Validations
+    // Validations básicas
     if (!first_name || !last_name || !phone || !email) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    // Obtener configuración de clientes
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    if (agencyIds.length === 0) {
+      return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
+    }
+
+    const { data: settings } = await supabase
+      .from("customer_settings")
+      .select("*")
+      .eq("agency_id", agencyIds[0])
+      .maybeSingle()
+
+    // Aplicar validaciones de configuración
+    if (settings?.validations) {
+      const validations = settings.validations as any
+      
+      if (validations.email?.required && !email) {
+        return NextResponse.json({ error: "Email es requerido" }, { status: 400 })
+      }
+      
+      if (validations.email?.format === 'email' && email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(email)) {
+          return NextResponse.json({ error: "Email inválido" }, { status: 400 })
+        }
+      }
+      
+      if (validations.phone?.required && !phone) {
+        return NextResponse.json({ error: "Teléfono es requerido" }, { status: 400 })
+      }
+    }
+
+    // Verificar documento requerido
+    if (settings?.require_document && (!document_type || !document_number)) {
+      return NextResponse.json({ 
+        error: "Tipo y número de documento son requeridos" 
+      }, { status: 400 })
+    }
+
+    // Verificar duplicados si está habilitado
+    if (settings?.duplicate_check_enabled) {
+      const checkFields = settings.duplicate_check_fields || ['email', 'phone']
+      const duplicateCheck = await checkDuplicateCustomer(
+        supabase,
+        { email, phone, document_number },
+        checkFields,
+        agencyIds[0]
+      )
+
+      if (duplicateCheck.isDuplicate) {
+        return NextResponse.json({ 
+          error: "Ya existe un cliente con estos datos",
+          duplicate: duplicateCheck.duplicateCustomer 
+        }, { status: 409 })
+      }
     }
 
     // Create customer
@@ -176,6 +234,23 @@ export async function POST(request: Request) {
     if (createError || !customer) {
       console.error("Error creating customer:", createError)
       return NextResponse.json({ error: "Error al crear cliente" }, { status: 400 })
+    }
+
+    // Enviar notificaciones si están configuradas
+    if (settings?.notifications) {
+      await sendCustomerNotifications(
+        supabase,
+        'new_customer',
+        {
+          id: customer.id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        agencyIds[0],
+        settings.notifications
+      )
     }
 
     return NextResponse.json({ success: true, customer })

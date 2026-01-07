@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 
 export async function GET(
   request: Request,
@@ -75,9 +78,46 @@ export async function PATCH(
 ) {
   try {
     const { user } = await getCurrentUser()
+    
+    // Verificar permiso de escritura
+    if (!canAccessModule(user.role as any, "customers")) {
+      return NextResponse.json({ error: "No tiene permiso para editar clientes" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { id: customerId } = await params
     const body = await request.json()
+
+    // Obtener configuración de clientes
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    if (agencyIds.length === 0) {
+      return NextResponse.json({ error: "No tiene agencias asignadas" }, { status: 403 })
+    }
+
+    const { data: settings } = await supabase
+      .from("customer_settings")
+      .select("*")
+      .eq("agency_id", agencyIds[0])
+      .maybeSingle()
+
+    // Aplicar validaciones de configuración
+    if (settings?.validations) {
+      const validations = settings.validations as any
+      
+      if (validations.email?.format === 'email' && body.email) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+        if (!emailRegex.test(body.email)) {
+          return NextResponse.json({ error: "Email inválido" }, { status: 400 })
+        }
+      }
+    }
+
+    // Obtener cliente actual para notificaciones
+    const { data: currentCustomer } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("id", customerId)
+      .single()
 
     // Update customer
     const updateData: any = {
@@ -96,6 +136,23 @@ export async function PATCH(
       return NextResponse.json({ error: "Error al actualizar cliente" }, { status: 400 })
     }
 
+    // Enviar notificaciones si están configuradas
+    if (settings?.notifications && currentCustomer) {
+      await sendCustomerNotifications(
+        supabase,
+        'customer_updated',
+        {
+          id: customer.id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        agencyIds[0],
+        settings.notifications
+      )
+    }
+
     return NextResponse.json({ success: true, customer })
   } catch (error) {
     console.error("Error in PATCH /api/customers/[id]:", error)
@@ -109,8 +166,29 @@ export async function DELETE(
 ) {
   try {
     const { user } = await getCurrentUser()
+    
+    // Verificar permiso de escritura
+    if (!canAccessModule(user.role as any, "customers")) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar clientes" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { id: customerId } = await params
+
+    // Obtener cliente antes de eliminar para notificaciones
+    const { data: customer } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("id", customerId)
+      .single()
+
+    // Obtener configuración para notificaciones
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const { data: settings } = agencyIds.length > 0 ? await supabase
+      .from("customer_settings")
+      .select("*")
+      .eq("agency_id", agencyIds[0])
+      .maybeSingle() : { data: null }
 
     // Check if customer has operations - obtener más información para mensaje detallado
     const { data: operations, error: checkError } = await supabase
@@ -171,6 +249,23 @@ export async function DELETE(
     if (deleteError) {
       console.error("Error deleting customer:", deleteError)
       return NextResponse.json({ error: "Error al eliminar cliente" }, { status: 400 })
+    }
+
+    // Enviar notificaciones si están configuradas
+    if (settings?.notifications && customer && agencyIds.length > 0) {
+      await sendCustomerNotifications(
+        supabase,
+        'customer_deleted',
+        {
+          id: customer.id,
+          first_name: customer.first_name,
+          last_name: customer.last_name,
+          email: customer.email,
+          phone: customer.phone,
+        },
+        agencyIds[0],
+        settings.notifications
+      )
     }
 
     return NextResponse.json({ success: true })

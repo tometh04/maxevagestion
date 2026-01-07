@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -31,20 +31,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
-
-const customerSchema = z.object({
-  first_name: z.string().min(1, "Nombre es requerido"),
-  last_name: z.string().min(1, "Apellido es requerido"),
-  phone: z.string().min(1, "Teléfono es requerido"),
-  email: z.string().email("Email inválido"),
-  instagram_handle: z.string().optional(),
-  document_type: z.string().optional(),
-  document_number: z.string().optional(),
-  date_of_birth: z.string().optional(),
-  nationality: z.string().optional(),
-})
-
-type CustomerFormValues = z.infer<typeof customerSchema>
+import { useCustomerSettings } from "@/hooks/use-customer-settings"
+import { CustomFieldsForm } from "./custom-fields-form"
 
 interface Customer {
   id: string
@@ -93,10 +81,70 @@ export function EditCustomerDialog({
   onSuccess,
 }: EditCustomerDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { settings, loading: settingsLoading } = useCustomerSettings()
 
-  const form = useForm<CustomerFormValues>({
-    resolver: zodResolver(customerSchema),
-    defaultValues: {
+  // Generar schema dinámicamente según configuración
+  const customerSchema = useMemo(() => {
+    // Schema base
+    const baseFields: Record<string, z.ZodTypeAny> = {
+      first_name: z.string().min(1, "Nombre es requerido"),
+      last_name: z.string().min(1, "Apellido es requerido"),
+      phone: z.string().min(1, "Teléfono es requerido"),
+      email: z.string().email("Email inválido"),
+      instagram_handle: z.string().optional(),
+      document_type: z.string().optional(),
+      document_number: z.string().optional(),
+      date_of_birth: z.string().optional(),
+      nationality: z.string().optional(),
+    }
+
+    // Aplicar validaciones de configuración
+    if (settings?.validations) {
+      const validations = settings.validations
+      
+      if (validations.email?.required) {
+        baseFields.email = z.string().min(1, "Email es requerido").email("Email inválido")
+      }
+      
+      if (validations.phone?.required) {
+        baseFields.phone = z.string().min(1, "Teléfono es requerido")
+      }
+    }
+
+    // Agregar campos personalizados al schema
+    if (settings?.custom_fields) {
+      settings.custom_fields.forEach((field) => {
+        let fieldSchema: z.ZodTypeAny
+        
+        switch (field.type) {
+          case 'number':
+            fieldSchema = field.required 
+              ? z.number({ required_error: `${field.label} es requerido` })
+              : z.number().optional()
+            break
+          case 'email':
+            fieldSchema = field.required
+              ? z.string().min(1, `${field.label} es requerido`).email(`${field.label} inválido`)
+              : z.string().email(`${field.label} inválido`).optional()
+            break
+          default:
+            fieldSchema = field.required
+              ? z.string().min(1, `${field.label} es requerido`)
+              : z.string().optional()
+        }
+        
+        baseFields[field.name] = fieldSchema
+      })
+    }
+
+    return z.object(baseFields)
+  }, [settings])
+
+  type CustomerFormValues = z.infer<typeof customerSchema>
+
+  // Generar valores por defecto incluyendo campos personalizados
+  const defaultValues = useMemo(() => {
+    const baseDefaults: any = {
       first_name: customer.first_name || "",
       last_name: customer.last_name || "",
       phone: customer.phone || "",
@@ -106,25 +154,29 @@ export function EditCustomerDialog({
       document_number: customer.document_number || "",
       date_of_birth: customer.date_of_birth ? customer.date_of_birth.split("T")[0] : "",
       nationality: customer.nationality || "",
-    },
-  })
+    }
 
-  // Reset form when customer changes
-  useEffect(() => {
-    if (customer) {
-      form.reset({
-        first_name: customer.first_name || "",
-        last_name: customer.last_name || "",
-        phone: customer.phone || "",
-        email: customer.email || "",
-        instagram_handle: customer.instagram_handle || "",
-        document_type: customer.document_type || "",
-        document_number: customer.document_number || "",
-        date_of_birth: customer.date_of_birth ? customer.date_of_birth.split("T")[0] : "",
-        nationality: customer.nationality || "",
+    // Agregar valores de campos personalizados desde el customer (si existen)
+    if (settings?.custom_fields) {
+      settings.custom_fields.forEach((field) => {
+        baseDefaults[field.name] = (customer as any)[field.name] || field.default_value || (field.type === 'number' ? undefined : '')
       })
     }
-  }, [customer, form])
+
+    return baseDefaults
+  }, [customer, settings])
+
+  const form = useForm<CustomerFormValues>({
+    resolver: zodResolver(customerSchema),
+    defaultValues,
+  })
+
+  // Reset form when customer or settings change
+  useEffect(() => {
+    if (customer && settings && !settingsLoading) {
+      form.reset(defaultValues)
+    }
+  }, [customer, settings, settingsLoading, defaultValues, form])
 
   const onSubmit = async (values: CustomerFormValues) => {
     setIsLoading(true)
@@ -319,6 +371,19 @@ export function EditCustomerDialog({
                 )}
               />
             </div>
+
+            {/* Campos personalizados */}
+            {settings?.custom_fields && settings.custom_fields.length > 0 && (
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="text-sm font-medium">Información Adicional</h3>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <CustomFieldsForm 
+                    control={form.control} 
+                    customFields={settings.custom_fields} 
+                  />
+                </div>
+              </div>
+            )}
 
             <DialogFooter>
               <Button

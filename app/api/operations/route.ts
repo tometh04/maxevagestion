@@ -9,6 +9,7 @@ import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 
 export async function POST(request: Request) {
   try {
@@ -550,6 +551,42 @@ export async function POST(request: Request) {
             // No lanzar error, pero loguear para debug
           } else {
             console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
+            
+            // Enviar notificación al cliente si está configurada
+            try {
+              const { data: customer } = await supabase
+                .from("customers")
+                .select("*")
+                .eq("id", customerId)
+                .single()
+              
+              if (customer) {
+                const { data: settings } = await supabase
+                  .from("customer_settings")
+                  .select("*")
+                  .eq("agency_id", agency_id)
+                  .maybeSingle()
+                
+                if (settings?.notifications) {
+                  await sendCustomerNotifications(
+                    supabase,
+                    'customer_operation_created',
+                    {
+                      id: customer.id,
+                      first_name: customer.first_name,
+                      last_name: customer.last_name,
+                      email: customer.email,
+                      phone: customer.phone,
+                    },
+                    agency_id,
+                    settings.notifications
+                  )
+                }
+              }
+            } catch (error) {
+              console.error("Error sending customer notification:", error)
+              // No lanzar error, solo loguear
+            }
           }
           
           // Transferir documentos del lead al cliente
