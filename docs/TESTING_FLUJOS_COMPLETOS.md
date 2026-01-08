@@ -4,7 +4,7 @@
 
 Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar Y?"**
 
-**Última Actualización:** 8 de Enero 2026, 16:30
+**Última Actualización:** 8 de Enero 2026, 17:00
 
 ---
 
@@ -24,8 +24,8 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 2.1 | Crear Cliente (manual) | Aparece en listado, estadísticas de clientes | ⏳ |
-| 2.2 | Config: Requerir email | Al crear cliente sin email, debe dar error | ⏳ |
+| 2.1 | Crear Cliente (manual) | Aparece en listado, estadísticas de clientes | ✅ UI LISTA |
+| 2.2 | Config: Requerir email | Al crear cliente sin email, debe dar error | ✅ VERIFICADO (Toggle ON) |
 | 2.3 | Config: Campo personalizado | Campo aparece en formulario de cliente | ⏳ |
 | 2.4 | Config: Detectar duplicados | Si existe email duplicado, alerta | ⏳ |
 | 2.5 | Ver detalle cliente | Muestra operaciones, interacciones, notas vinculadas | ✅ VERIFICADO |
@@ -49,7 +49,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 4.1 | Crear Operador | Aparece en listado y selectores | ✅ VERIFICADO |
+| 4.1 | Crear Operador | Aparece en listado y selectores | ✅ VERIFICADO (+ desde todos los forms) |
 | 4.2 | Operador en operación | Se calcula en costos | ⏳ |
 | 4.3 | Pago a operador | Registra pago, actualiza saldo operador | ⏳ |
 
@@ -57,8 +57,8 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 5.1 | Nueva factura desde operación | Pre-carga datos de operación | ✅ UI LISTA |
-| 5.2 | Nueva factura manual | Seleccionar cliente y items | ✅ UI LISTA |
+| 5.1 | Nueva factura desde operación | Pre-carga datos de operación | ✅ VERIFICADO |
+| 5.2 | Nueva factura manual | Seleccionar cliente y items | ✅ VERIFICADO |
 | 5.3 | Autorizar factura AFIP | Obtiene CAE, cambia estado | ⏳ (Requiere config AFIP) |
 | 5.4 | Ver factura | Muestra detalles, permite PDF | ✅ UI LISTA |
 
@@ -187,9 +187,12 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 ### Pendiente de Testing Funcional
 - ✅ Verificar que las validaciones se apliquen al crear operación → FUNCIONA (banner + asteriscos)
-- Crear y verificar estados personalizados
 - ✅ Probar flujo completo de conversión de lead → UI FUNCIONA
-- Crear una factura real
+- ✅ Nueva Factura Electrónica → VERIFICADO (Cliente, Operación, Items)
+- ✅ Config Clientes: Validaciones → VERIFICADO (Email/Teléfono requeridos con toggles)
+- ✅ Página Operadores → VERIFICADO (Listado, Nuevo Operador, Búsqueda)
+- Crear y verificar estados personalizados
+- Crear una factura real con AFIP
 - Crear un segmento con reglas automáticas
 - Configurar una integración y probar conexión
 
