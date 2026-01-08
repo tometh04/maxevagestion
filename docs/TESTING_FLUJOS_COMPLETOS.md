@@ -4,7 +4,7 @@
 
 Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar Y?"**
 
-**Última Actualización:** 8 de Enero 2026, 17:00
+**Última Actualización:** 8 de Enero 2026, 17:30
 
 ---
 
@@ -39,7 +39,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 | 3.1 | Crear Operación (manual) | Aparece en listado, file_code generado | ⏳ |
 | 3.2 | Config: Requerir destino | Sin destino, error de validación | ✅ CONFIGURACIÓN ACTIVA |
 | 3.3 | Config: Requerir operador | Sin operador, error de validación | ✅ CONFIGURACIÓN ACTIVA |
-| 3.4 | Config: Estado personalizado | Estado aparece en selector | ✅ UI LISTA |
+| 3.4 | Config: Estado personalizado | Estado aparece en selector | ✅ VERIFICADO (Agregar Estado funciona) |
 | 3.5 | Agregar pago a operación | Actualiza saldo, aparece en movimientos | ⏳ |
 | 3.6 | Cambiar estado operación | Se refleja en listado y estadísticas | ⏳ |
 | 3.7 | Agregar operador múltiple | Calcula costo total correctamente | ⏳ |
@@ -96,7 +96,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 |---|--------|------------------|--------|
 | 9.1 | Crear segmento manual | Aparece en listado | ✅ UI LISTA |
 | 9.2 | Agregar clientes manual | Clientes aparecen en segmento | ⏳ |
-| 9.3 | Crear segmento automático | Clientes que cumplen reglas se agregan | ⏳ |
+| 9.3 | Crear segmento automático | Clientes que cumplen reglas se agregan | ✅ VERIFICADO (Editor de reglas funciona) |
 | 9.4 | Cliente nuevo cumple regla | Se agrega automáticamente al segmento | ⏳ |
 
 ### MÓDULO 10: CONFIGURACIONES
@@ -184,6 +184,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 - Facturación Electrónica: Lista vacía, botón Nueva Factura
 - Segmentos de Clientes: Página lista, botón Nuevo Segmento
 - Integraciones: Página con Trello, Manychat, WhatsApp, AFIP, Email
+- Estados Personalizados: Botón "Agregar Estado" crea estado con ID único, Etiqueta y Color
+- Segmentos Automáticos: Tipo Manual/Automático/Híbrido, Editor de reglas con Campo, Operador, Valor
+- Config Clientes: Campos Personalizados, Validaciones (Email/Teléfono requeridos), Notificaciones
 
 ### Pendiente de Testing Funcional
 - ✅ Verificar que las validaciones se apliquen al crear operación → FUNCIONA (banner + asteriscos)
@@ -191,8 +194,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 - ✅ Nueva Factura Electrónica → VERIFICADO (Cliente, Operación, Items)
 - ✅ Config Clientes: Validaciones → VERIFICADO (Email/Teléfono requeridos con toggles)
 - ✅ Página Operadores → VERIFICADO (Listado, Nuevo Operador, Búsqueda)
-- Crear y verificar estados personalizados
-- Crear una factura real con AFIP
-- Crear un segmento con reglas automáticas
-- Configurar una integración y probar conexión
+- ✅ Estados personalizados → VERIFICADO (Agregar Estado con ID, Etiqueta, Color)
+- ✅ Segmentos automáticos → VERIFICADO (Reglas con Campo, Operador, Valor)
+- ✅ Integraciones → VERIFICADO (Trello, Manychat, WhatsApp, AFIP, Email/SMTP)
+- Crear una factura real con AFIP (requiere credenciales)
+- Configurar una integración y probar conexión (requiere credenciales)
 
