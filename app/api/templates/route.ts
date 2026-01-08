@@ -48,12 +48,9 @@ export async function GET(request: Request) {
     // Parámetros de filtro
     const templateType = searchParams.get("type")
 
-    // Query base
+    // Query base - simplificada
     let query = (supabase.from("pdf_templates") as any)
-      .select(`
-        *,
-        created_by_user:users!pdf_templates_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .in("agency_id", agencyIds)
       .eq("is_active", true)
       .order("is_default", { ascending: false })

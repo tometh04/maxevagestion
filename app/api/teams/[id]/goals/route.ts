@@ -49,12 +49,9 @@ export async function GET(
     // Parámetros de filtro
     const status = searchParams.get("status") || "active"
 
-    // Query
+    // Query - simplificada
     let query = (supabase.from("team_goals") as any)
-      .select(`
-        *,
-        created_by_user:users!team_goals_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .eq("team_id", teamId)
       .order("period_start", { ascending: false })
 

@@ -24,16 +24,15 @@ export async function GET() {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query
+    // Query - simplificada sin FK names
     const { data: teams, error } = await (supabase.from("teams") as any)
       .select(`
         *,
-        leader:users!teams_leader_id_fkey (id, first_name, last_name, avatar_url),
         members:team_members (
           id,
+          user_id,
           role,
-          joined_at,
-          user:users (id, first_name, last_name, avatar_url, email)
+          joined_at
         )
       `)
       .in("agency_id", agencyIds)

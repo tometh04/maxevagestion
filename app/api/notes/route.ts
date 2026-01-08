@@ -39,15 +39,10 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get("limit") || "50", 10)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
-    // Query base
+    // Query base - simplificada sin FK names
     let query = (supabase.from("notes") as any)
       .select(`
-        *,
-        created_by_user:users!notes_created_by_fkey (id, first_name, last_name, avatar_url),
-        operation:operations (id, file_code, destination),
-        customer:customers (id, first_name, last_name),
-        comments:note_comments (count),
-        attachments:note_attachments (count)
+        *
       `)
       .in("agency_id", agencyIds)
       .eq("status", status)
@@ -150,10 +145,7 @@ export async function POST(request: Request) {
         is_pinned: validatedData.is_pinned,
         created_by: user.id,
       })
-      .select(`
-        *,
-        created_by_user:users!notes_created_by_fkey (id, first_name, last_name, avatar_url)
-      `)
+      .select(`*`)
       .single()
 
     if (error) {

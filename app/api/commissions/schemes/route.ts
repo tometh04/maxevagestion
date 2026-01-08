@@ -33,12 +33,9 @@ export async function GET() {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query
+    // Query - simplificada
     const { data: schemes, error } = await (supabase.from("commission_schemes") as any)
-      .select(`
-        *,
-        created_by_user:users!commission_schemes_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .in("agency_id", agencyIds)
       .eq("is_active", true)
       .order("is_default", { ascending: false })

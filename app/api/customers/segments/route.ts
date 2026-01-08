@@ -35,12 +35,9 @@ export async function GET(request: Request) {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query
+    // Query - simplificada sin FK names
     const { data: segments, error } = await (supabase.from("customer_segments") as any)
-      .select(`
-        *,
-        created_by_user:users!customer_segments_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .in("agency_id", agencyIds)
       .eq("is_active", true)
       .order("priority", { ascending: false })

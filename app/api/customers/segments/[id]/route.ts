@@ -32,12 +32,9 @@ export async function GET(
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Obtener segmento
+    // Obtener segmento - simplificada
     const { data: segment, error } = await (supabase.from("customer_segments") as any)
-      .select(`
-        *,
-        created_by_user:users!customer_segments_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .eq("id", id)
       .in("agency_id", agencyIds)
       .single()

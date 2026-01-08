@@ -34,16 +34,13 @@ export async function GET(
     const { data: note, error } = await (supabase.from("notes") as any)
       .select(`
         *,
-        created_by_user:users!notes_created_by_fkey (id, first_name, last_name, avatar_url),
-        operation:operations (id, file_code, destination),
-        customer:customers (id, first_name, last_name),
         comments:note_comments (
           id,
           content,
           parent_id,
+          created_by,
           created_at,
-          updated_at,
-          created_by_user:users!note_comments_created_by_fkey (id, first_name, last_name, avatar_url)
+          updated_at
         ),
         attachments:note_attachments (
           id,
@@ -51,8 +48,8 @@ export async function GET(
           file_type,
           file_size,
           file_url,
-          created_at,
-          uploaded_by_user:users!note_attachments_uploaded_by_fkey (id, first_name, last_name)
+          uploaded_by,
+          created_at
         )
       `)
       .eq("id", id)
@@ -119,10 +116,7 @@ export async function PUT(
     const { data: note, error } = await (supabase.from("notes") as any)
       .update(validatedData)
       .eq("id", id)
-      .select(`
-        *,
-        created_by_user:users!notes_created_by_fkey (id, first_name, last_name, avatar_url)
-      `)
+      .select(`*`)
       .single()
 
     if (error) {

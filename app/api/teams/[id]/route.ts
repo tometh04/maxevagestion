@@ -28,16 +28,15 @@ export async function GET(
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Obtener equipo con miembros y metas
+    // Obtener equipo con miembros y metas - simplificada
     const { data: team, error } = await (supabase.from("teams") as any)
       .select(`
         *,
-        leader:users!teams_leader_id_fkey (id, first_name, last_name, avatar_url, email),
         members:team_members (
           id,
+          user_id,
           role,
-          joined_at,
-          user:users (id, first_name, last_name, avatar_url, email)
+          joined_at
         ),
         goals:team_goals (
           id,

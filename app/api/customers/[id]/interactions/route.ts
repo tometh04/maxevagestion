@@ -60,13 +60,9 @@ export async function GET(
     const limit = parseInt(searchParams.get("limit") || "50", 10)
     const offset = parseInt(searchParams.get("offset") || "0", 10)
 
-    // Query base
+    // Query base - simplificada
     let query = (supabase.from("customer_interactions") as any)
-      .select(`
-        *,
-        created_by_user:users!customer_interactions_created_by_fkey (id, first_name, last_name, avatar_url),
-        operation:operations (id, file_code, destination)
-      `)
+      .select(`*`)
       .eq("customer_id", customerId)
       .in("agency_id", agencyIds)
       .order("created_at", { ascending: false })
@@ -161,10 +157,7 @@ export async function POST(
         ...validatedData,
         created_by: user.id,
       })
-      .select(`
-        *,
-        created_by_user:users!customer_interactions_created_by_fkey (id, first_name, last_name, avatar_url)
-      `)
+      .select(`*`)
       .single()
 
     if (error) {

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query base de operaciones
+    // Query base de operaciones - simplificada
     let operationsQuery = (supabase.from("operations") as any)
       .select(`
         id,
@@ -34,12 +34,7 @@ export async function GET(request: Request) {
         departure_date,
         created_at,
         agency_id,
-        seller_id,
-        users!operations_seller_id_fkey (
-          id,
-          first_name,
-          last_name
-        )
+        seller_id
       `)
 
     // Filtrar por agencia
@@ -204,11 +199,10 @@ export async function GET(request: Request) {
 
     for (const op of operations || []) {
       if (["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op.status) && op.seller_id) {
-        const seller = op.users as any
         if (!sellerStats[op.seller_id]) {
           sellerStats[op.seller_id] = {
             id: op.seller_id,
-            name: seller ? `${seller.first_name || ''} ${seller.last_name || ''}`.trim() : 'Sin asignar',
+            name: 'Vendedor',
             count: 0,
             sales: 0,
             margin: 0,

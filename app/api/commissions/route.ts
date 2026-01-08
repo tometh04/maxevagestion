@@ -24,13 +24,11 @@ export async function GET(request: Request) {
     // Determinar si puede ver todas las comisiones o solo las propias
     const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
-    // Query base
+    // Query base - simplificada
     let query = (supabase.from("commissions") as any)
       .select(`
         *,
-        user:users!commissions_user_id_fkey (id, first_name, last_name, avatar_url, email),
-        scheme:commission_schemes (id, name, commission_type),
-        approved_by_user:users!commissions_approved_by_fkey (id, first_name, last_name)
+        scheme:commission_schemes (id, name, commission_type)
       `)
       .in("agency_id", agencyIds)
       .order("period_start", { ascending: false })

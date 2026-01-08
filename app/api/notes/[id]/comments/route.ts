@@ -39,12 +39,9 @@ export async function GET(
       )
     }
 
-    // Obtener comentarios
+    // Obtener comentarios - simplificada
     const { data: comments, error } = await (supabase.from("note_comments") as any)
-      .select(`
-        *,
-        created_by_user:users!note_comments_created_by_fkey (id, first_name, last_name, avatar_url)
-      `)
+      .select(`*`)
       .eq("note_id", noteId)
       .order("created_at", { ascending: true })
 
@@ -134,10 +131,7 @@ export async function POST(
         parent_id: validatedData.parent_id,
         created_by: user.id,
       })
-      .select(`
-        *,
-        created_by_user:users!note_comments_created_by_fkey (id, first_name, last_name, avatar_url)
-      `)
+      .select(`*`)
       .single()
 
     if (error) {

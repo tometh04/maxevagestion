@@ -44,12 +44,9 @@ export async function GET(
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Obtener template
+    // Obtener template - simplificada
     const { data: template, error } = await (supabase.from("pdf_templates") as any)
-      .select(`
-        *,
-        created_by_user:users!pdf_templates_created_by_fkey (id, first_name, last_name)
-      `)
+      .select(`*`)
       .eq("id", id)
       .in("agency_id", agencyIds)
       .single()

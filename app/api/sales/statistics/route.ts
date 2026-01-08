@@ -20,7 +20,7 @@ export async function GET(request: Request) {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query de leads
+    // Query de leads - simplificada
     let leadsQuery = (supabase.from("leads") as any)
       .select(`
         id,
@@ -32,12 +32,7 @@ export async function GET(request: Request) {
         assigned_seller_id,
         has_deposit,
         deposit_amount,
-        agency_id,
-        users!leads_assigned_seller_id_fkey (
-          id,
-          first_name,
-          last_name
-        )
+        agency_id
       `)
 
     // Filtrar por agencia
@@ -140,11 +135,10 @@ export async function GET(request: Request) {
 
       // Por vendedor
       if (lead.assigned_seller_id) {
-        const seller = lead.users as any
         if (!bySeller[lead.assigned_seller_id]) {
           bySeller[lead.assigned_seller_id] = {
             id: lead.assigned_seller_id,
-            name: seller ? `${seller.first_name || ''} ${seller.last_name || ''}`.trim() : 'Sin nombre',
+            name: 'Vendedor',
             leads: 0,
             won: 0,
             conversionRate: 0,
