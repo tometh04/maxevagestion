@@ -22,7 +22,7 @@ export async function GET(request: Request) {
     const periodEnd = searchParams.get("periodEnd")
 
     // Determinar si puede ver todas las comisiones o solo las propias
-    const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'MANAGER'
+    const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
     // Query base
     let query = (supabase.from("commissions") as any)
