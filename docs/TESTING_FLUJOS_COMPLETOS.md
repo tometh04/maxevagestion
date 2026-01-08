@@ -4,7 +4,7 @@
 
 Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar Y?"**
 
-**Última Actualización:** 8 de Enero 2026, 18:00
+**Última Actualización:** 8 de Enero 2026, 18:30
 
 ---
 
@@ -188,15 +188,33 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 - Segmentos Automáticos: Tipo Manual/Automático/Híbrido, Editor de reglas con Campo, Operador, Valor
 - Config Clientes: Campos Personalizados, Validaciones (Email/Teléfono requeridos), Notificaciones
 
-### Pendiente de Testing Funcional
-- ✅ Verificar que las validaciones se apliquen al crear operación → FUNCIONA (banner + asteriscos)
-- ✅ Probar flujo completo de conversión de lead → UI FUNCIONA
-- ✅ Nueva Factura Electrónica → VERIFICADO (Cliente, Operación, Items)
-- ✅ Config Clientes: Validaciones → VERIFICADO (Email/Teléfono requeridos con toggles)
-- ✅ Página Operadores → VERIFICADO (Listado, Nuevo Operador, Búsqueda)
-- ✅ Estados personalizados → VERIFICADO (Agregar Estado con ID, Etiqueta, Color)
-- ✅ Segmentos automáticos → VERIFICADO (Reglas con Campo, Operador, Valor)
-- ✅ Integraciones → VERIFICADO (Trello, Manychat, WhatsApp, AFIP, Email/SMTP)
-- Crear una factura real con AFIP (requiere credenciales)
-- Configurar una integración y probar conexión (requiere credenciales)
+### Testing Exhaustivo (8 Enero 2026, 18:30)
+
+#### ✅ VERIFICACIONES COMPLETADAS
+
+| Funcionalidad | Estado | Detalles |
+|---------------|--------|----------|
+| Detalle Cliente → Operaciones | ✅ | Muestra operación OP-20260107-26F00879, Mendoza, USD 1.200 |
+| Equipos → Cargar Usuarios | ✅ | Muestra: Maxi, Tomas, Cande desde backend |
+| Notas → Vincular a Operación | ✅ | Selector carga operación del backend |
+| Notas → Vincular a Cliente | ✅ | Tipo: General/Operación/Cliente |
+| Facturación → Nueva Factura | ✅ | Cliente, Operación Asociada, Items |
+| Templates PDF → Información | ✅ | Nombre, Tipo, Descripción, Tamaño, Colores |
+| Templates PDF → HTML | ✅ | Editor con {{variables}}, Cargar template base |
+| Templates PDF → Variables | ✅ | Lista completa: invoice_number, customer_name, items... |
+| Segmentos → Tipos | ✅ | Manual, Automático, Híbrido |
+| Segmentos → Reglas | ✅ | Campo (Gasto total), Operador (>), Valor |
+| Segmentos → Lógica | ✅ | Y (AND) / O (OR) |
+| Integraciones → Lista | ✅ | Trello, Manychat, WhatsApp, AFIP, Email/SMTP |
+| Integraciones → Resumen | ✅ | Total, Activas, Inactivas, Con Error |
+| Estados Personalizados | ✅ | Se guardan y persisten en BD |
+
+#### ⏳ PENDIENTE (Requiere Deploy)
+
+- Estados personalizados en selector de filtros (código actualizado, deploy en progreso)
+
+#### ⏳ PENDIENTE (Requiere Credenciales)
+
+- Crear factura real con AFIP
+- Configurar y probar conexión de integración
 
