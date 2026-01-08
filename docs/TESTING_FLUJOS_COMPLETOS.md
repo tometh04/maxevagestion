@@ -4,7 +4,7 @@
 
 Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar Y?"**
 
-**Última Actualización:** 8 de Enero 2026, 17:30
+**Última Actualización:** 8 de Enero 2026, 18:00
 
 ---
 
@@ -66,9 +66,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 6.1 | Crear Equipo | Aparece en listado | ✅ UI LISTA |
-| 6.2 | Agregar miembros | Miembros vinculados al equipo | ✅ UI LISTA |
-| 6.3 | Asignar líder | Líder puede ver equipo completo | ✅ UI LISTA |
+| 6.1 | Crear Equipo | Aparece en listado | ✅ VERIFICADO |
+| 6.2 | Agregar miembros | Miembros vinculados al equipo | ✅ VERIFICADO (Carga usuarios del backend) |
+| 6.3 | Asignar líder | Líder puede ver equipo completo | ✅ VERIFICADO (Selector de líder funciona) |
 | 6.4 | Crear meta de equipo | Meta aparece en dashboard | ⏳ |
 | 6.5 | Ventas del equipo | Progreso de meta se actualiza | ⏳ |
 
