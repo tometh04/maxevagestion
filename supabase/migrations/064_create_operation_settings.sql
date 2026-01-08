@@ -77,8 +77,6 @@ CREATE POLICY "Users can view operation settings for their agencies"
   USING (
     agency_id IN (
       SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
-      UNION
-      SELECT id FROM agencies WHERE owner_id = auth.uid()
     )
   );
 
