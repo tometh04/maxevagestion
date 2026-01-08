@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { OperationsFilters } from "./operations-filters"
 import { OperationsTable } from "./operations-table"
 import { NewOperationDialog } from "./new-operation-dialog"
@@ -15,6 +15,12 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
+
+interface CustomStatus {
+  value: string
+  label: string
+  color?: string
+}
 
 interface OperationsPageClientProps {
   sellers: Array<{ id: string; name: string }>
@@ -54,6 +60,25 @@ export function OperationsPageClient({
     dateTo: "",
   })
   const [newOperationDialogOpen, setNewOperationDialogOpen] = useState(false)
+  const [customStatuses, setCustomStatuses] = useState<CustomStatus[]>([])
+
+  // Cargar estados personalizados
+  useEffect(() => {
+    const loadCustomStatuses = async () => {
+      try {
+        const response = await fetch("/api/operations/settings")
+        if (response.ok) {
+          const data = await response.json()
+          if (data.settings?.custom_statuses) {
+            setCustomStatuses(data.settings.custom_statuses)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading custom statuses:", error)
+      }
+    }
+    loadCustomStatuses()
+  }, [])
 
   const handleRefresh = () => {
     // Trigger refresh in OperationsTable
@@ -90,6 +115,7 @@ export function OperationsPageClient({
       <OperationsFilters
         sellers={sellers}
         agencies={agencies}
+        customStatuses={customStatuses}
         onFilterChange={setFilters}
       />
 

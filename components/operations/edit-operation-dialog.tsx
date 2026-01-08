@@ -65,7 +65,7 @@ const operationTypeOptions = [
   { value: "MIXED", label: "Mixto" },
 ]
 
-const statusOptions = [
+const standardStatusOptions = [
   { value: "PRE_RESERVATION", label: "Pre-reserva", color: "bg-gray-500" },
   { value: "RESERVED", label: "Reservado", color: "bg-blue-500" },
   { value: "CONFIRMED", label: "Confirmado", color: "bg-green-500" },
@@ -123,6 +123,30 @@ export function EditOperationDialog({
   const [newOperatorEmail, setNewOperatorEmail] = useState("")
   const [creatingOperator, setCreatingOperator] = useState(false)
   const [localOperators, setLocalOperators] = useState(operators)
+  const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
+
+  // Cargar estados personalizados
+  useEffect(() => {
+    const loadCustomStatuses = async () => {
+      try {
+        const response = await fetch("/api/operations/settings")
+        if (response.ok) {
+          const data = await response.json()
+          if (data.settings?.custom_statuses) {
+            setCustomStatuses(data.settings.custom_statuses)
+          }
+        }
+      } catch (error) {
+        console.error("Error loading custom statuses:", error)
+      }
+    }
+    loadCustomStatuses()
+  }, [])
+
+  // Combinar estados estándar con personalizados
+  const statusOptions = useMemo(() => {
+    return [...standardStatusOptions, ...customStatuses.map(s => ({ value: s.value, label: s.label, color: s.color || "bg-gray-500" }))]
+  }, [customStatuses])
 
   // Sincronizar operadores cuando cambian
   useEffect(() => {

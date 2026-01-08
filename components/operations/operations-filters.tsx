@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import {
@@ -14,7 +14,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { X } from "lucide-react"
 import { DateRangePicker } from "@/components/ui/date-range-picker"
 
-const statusOptions = [
+const standardStatusOptions = [
   { value: "ALL", label: "Todos los estados" },
   { value: "PRE_RESERVATION", label: "Pre-reserva" },
   { value: "RESERVED", label: "Reservado" },
@@ -27,6 +27,7 @@ const statusOptions = [
 interface OperationsFiltersProps {
   sellers: Array<{ id: string; name: string }>
   agencies: Array<{ id: string; name: string }>
+  customStatuses?: Array<{ value: string; label: string; color?: string }>
   onFilterChange: (filters: {
     status: string
     sellerId: string
@@ -39,7 +40,7 @@ interface OperationsFiltersProps {
   }) => void
 }
 
-export function OperationsFilters({ sellers, agencies, onFilterChange }: OperationsFiltersProps) {
+export function OperationsFilters({ sellers, agencies, customStatuses = [], onFilterChange }: OperationsFiltersProps) {
   const [status, setStatus] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
@@ -48,6 +49,12 @@ export function OperationsFilters({ sellers, agencies, onFilterChange }: Operati
   const [paymentDateFrom, setPaymentDateFrom] = useState("")
   const [paymentDateTo, setPaymentDateTo] = useState("")
   const [paymentDateType, setPaymentDateType] = useState("")
+
+  // Combinar estados estándar con personalizados
+  const statusOptions = [
+    ...standardStatusOptions,
+    ...customStatuses.map(s => ({ value: s.value, label: s.label }))
+  ]
 
   const handleApplyFilters = () => {
     onFilterChange({
