@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
+import { CustomersStatisticsPageClient } from "@/components/customers/customers-statistics-page-client"
 
 export default async function CustomersStatisticsPage() {
   const { user } = await getCurrentUser()
@@ -15,27 +16,6 @@ export default async function CustomersStatisticsPage() {
     )
   }
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Estadísticas de Clientes</h1>
-        <p className="text-muted-foreground">
-          Vista de estadísticas y métricas de clientes
-        </p>
-      </div>
-      <div className="rounded-lg border p-6">
-        <p className="text-sm text-muted-foreground">
-          Esta funcionalidad está en desarrollo. Próximamente se mostrarán:
-        </p>
-        <ul className="mt-4 list-disc list-inside space-y-2 text-sm text-muted-foreground">
-          <li>Total de clientes</li>
-          <li>Clientes nuevos por período</li>
-          <li>Clientes por estado</li>
-          <li>Valor promedio por cliente</li>
-          <li>Clientes más activos</li>
-        </ul>
-      </div>
-    </div>
-  )
+  return <CustomersStatisticsPageClient />
 }
 
