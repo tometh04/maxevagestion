@@ -2,10 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
 import {
   Send,
   Loader2,
@@ -13,12 +11,11 @@ import {
   Plane,
   DollarSign,
   Users,
-  Calendar,
   TrendingUp,
   Clock,
-  FileText,
-  Brain,
-  RefreshCw,
+  BarChart3,
+  Zap,
+  ArrowRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -35,38 +32,42 @@ interface CerebroChatProps {
   userName: string
 }
 
-const QUICK_QUESTIONS = [
+const QUICK_ACTIONS = [
+  {
+    icon: TrendingUp,
+    title: "Ventas del mes",
+    description: "Resumen de ventas y métricas",
+    query: "Dame un resumen de ventas de este mes",
+  },
   {
     icon: Plane,
-    text: "¿Qué viajes salen esta semana?",
+    title: "Próximos viajes",
+    description: "Salidas programadas",
+    query: "¿Qué viajes salen esta semana?",
   },
   {
     icon: DollarSign,
-    text: "¿Cuánto hay en caja?",
-  },
-  {
-    icon: TrendingUp,
-    text: "¿Cuánto vendimos este mes?",
+    title: "Estado de caja",
+    description: "Balance actual",
+    query: "¿Cuánto hay en caja?",
   },
   {
     icon: Users,
-    text: "¿Cuántos leads nuevos tenemos?",
+    title: "Leads activos",
+    description: "Consultas pendientes",
+    query: "¿Cuántos leads nuevos tenemos?",
   },
   {
     icon: Clock,
-    text: "¿Qué pagos vencen esta semana?",
+    title: "Pagos pendientes",
+    description: "Vencimientos próximos",
+    query: "¿Qué pagos vencen esta semana?",
   },
   {
-    icon: Calendar,
-    text: "¿Cuáles son las próximas salidas?",
-  },
-  {
-    icon: FileText,
-    text: "Dame un resumen del mes",
-  },
-  {
-    icon: Sparkles,
-    text: "¿Cómo estamos hoy?",
+    icon: BarChart3,
+    title: "Análisis completo",
+    description: "Resumen general del sistema",
+    query: "¿Cómo estamos hoy? Dame un análisis completo",
   },
 ]
 
@@ -75,7 +76,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const { toast } = useToast()
 
   const scrollToBottom = useCallback(() => {
@@ -90,6 +91,14 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px'
+    }
+  }, [input])
 
   const sendMessage = async (messageText: string) => {
     if (!messageText.trim() || isLoading) return
@@ -138,18 +147,14 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
         {
           id: `error-${Date.now()}`,
           role: "assistant",
-          content: `❌ ${error.message || "Error de conexión"}`,
+          content: `Error: ${error.message || "No se pudo conectar"}`,
           timestamp: new Date().toISOString(),
         },
       ])
     } finally {
       setIsLoading(false)
-      inputRef.current?.focus()
+      textareaRef.current?.focus()
     }
-  }
-
-  const handleQuickQuestion = (question: string) => {
-    sendMessage(question)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -159,140 +164,149 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
     }
   }
 
-  const handleNewConversation = () => {
-    setMessages([])
-    setInput("")
-  }
+  const firstName = userName.split(' ')[0]
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between pb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-orange-500/10">
-            <Brain className="h-5 w-5 text-orange-500" />
+    <div className="flex flex-col h-[calc(100vh-120px)] max-w-4xl mx-auto">
+      {messages.length === 0 ? (
+        // Empty State - Welcome Screen
+        <div className="flex-1 flex flex-col items-center justify-center px-4">
+          {/* Logo/Icon */}
+          <div className="relative mb-8">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shadow-lg shadow-orange-500/25">
+              <Zap className="h-10 w-10 text-white" />
+            </div>
+            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-green-500 border-4 border-background" />
           </div>
-          <div>
-            <h1 className="text-lg font-semibold flex items-center gap-2">
-              Cerebro
-              <Badge variant="outline" className="text-xs font-normal border-orange-500/30 text-orange-500">
-                AI
-              </Badge>
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Tu asistente inteligente de MAXEVA
+
+          {/* Welcome Text */}
+          <h1 className="text-3xl font-bold mb-2 text-center">
+            Hola, {firstName}
+          </h1>
+          <p className="text-muted-foreground text-center mb-10 max-w-md">
+            Soy Cerebro, tu asistente de MAXEVA. Puedo ayudarte con información sobre ventas, clientes, operaciones y más.
+          </p>
+
+          {/* Quick Actions Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 w-full max-w-2xl mb-8">
+            {QUICK_ACTIONS.map((action, idx) => (
+              <button
+                key={idx}
+                onClick={() => sendMessage(action.query)}
+                className="group flex flex-col items-start p-4 rounded-xl border border-border bg-card hover:bg-accent hover:border-orange-500/50 transition-all duration-200 text-left"
+              >
+                <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 mb-3 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                  <action.icon className="h-5 w-5" />
+                </div>
+                <span className="font-medium text-sm mb-1">{action.title}</span>
+                <span className="text-xs text-muted-foreground">{action.description}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Input at bottom of welcome */}
+          <div className="w-full max-w-2xl">
+            <div className="relative">
+              <Textarea
+                ref={textareaRef}
+                placeholder="Preguntá lo que quieras..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border-2 focus:border-orange-500 transition-colors"
+                rows={1}
+              />
+              <Button
+                onClick={() => sendMessage(input)}
+                disabled={isLoading || !input.trim()}
+                size="icon"
+                className="absolute right-2 bottom-2 h-10 w-10 rounded-lg bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:shadow-none"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground text-center mt-3">
+              Cerebro analiza datos en tiempo real de tu sistema
             </p>
           </div>
         </div>
-        {messages.length > 0 && (
-          <Button variant="outline" size="sm" onClick={handleNewConversation}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Nueva conversación
-          </Button>
-        )}
-      </div>
-
-      {/* Chat Area */}
-      <Card className="flex-1 flex flex-col overflow-hidden border-2">
-        <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full px-4">
-              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-orange-500/10 mb-4">
-                <Brain className="h-8 w-8 text-orange-500" />
-              </div>
-              <h2 className="text-lg font-medium mb-2">¡Hola {userName.split(' ')[0]}!</h2>
-              <p className="text-sm text-muted-foreground text-center mb-6 max-w-md">
-                Soy Cerebro, tu asistente de MAXEVA. Tengo acceso a toda la información del sistema.
-                Preguntame sobre ventas, clientes, viajes, pagos, o lo que necesites.
-              </p>
-              
-              {/* Quick Questions Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg">
-                {QUICK_QUESTIONS.map((q, idx) => (
-                  <Card
-                    key={idx}
-                    className="border-2 transition-all hover:shadow-md hover:border-orange-500/30 cursor-pointer"
-                    onClick={() => handleQuickQuestion(q.text)}
-                  >
-                    <div className="flex items-center gap-3 p-3">
-                      <div className="p-2 rounded-lg bg-orange-500/10">
-                        <q.icon className="h-4 w-4 text-orange-500" />
-                      </div>
-                      <span className="text-sm">{q.text}</span>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
+      ) : (
+        // Chat View
+        <>
+          <ScrollArea ref={scrollAreaRef} className="flex-1 px-4">
+            <div className="max-w-3xl mx-auto py-6 space-y-6">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
                   className={cn(
-                    "flex gap-3",
+                    "flex gap-4",
                     msg.role === "user" ? "justify-end" : "justify-start"
                   )}
                 >
                   {msg.role === "assistant" && (
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500/10 shrink-0">
-                      <Brain className="h-4 w-4 text-orange-500" />
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow-sm">
+                      <Zap className="h-4 w-4 text-white" />
                     </div>
                   )}
                   <div
                     className={cn(
-                      "rounded-lg px-4 py-3 max-w-[85%]",
+                      "rounded-2xl px-4 py-3 max-w-[80%]",
                       msg.role === "user"
-                        ? "bg-orange-500 text-white"
-                        : "bg-muted"
+                        ? "bg-orange-500 text-white rounded-br-md"
+                        : "bg-muted rounded-bl-md"
                     )}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                   </div>
+                  {msg.role === "user" && (
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center shrink-0 text-white text-xs font-medium shadow-sm">
+                      {firstName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
               ))}
               {isLoading && (
-                <div className="flex gap-3 justify-start">
-                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500/10 shrink-0">
-                    <Brain className="h-4 w-4 text-orange-500" />
+                <div className="flex gap-4 justify-start">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-amber-500 flex items-center justify-center shrink-0 shadow-sm">
+                    <Zap className="h-4 w-4 text-white" />
                   </div>
-                  <div className="bg-muted rounded-lg px-4 py-3">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
+                    <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
-                      Pensando...
+                      <span className="text-sm text-muted-foreground">Analizando...</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
-          )}
-        </ScrollArea>
+          </ScrollArea>
 
-        {/* Input Area */}
-        <div className="p-4 border-t">
-          <div className="flex gap-2">
-            <Input
-              ref={inputRef}
-              placeholder="Escribí tu pregunta..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isLoading}
-              className="flex-1"
-            />
-            <Button
-              onClick={() => sendMessage(input)}
-              disabled={isLoading || !input.trim()}
-              className="bg-orange-500 hover:bg-orange-600 text-white"
-            >
-              <Send className="h-4 w-4" />
-            </Button>
+          {/* Input Area - Chat Mode */}
+          <div className="p-4 border-t bg-background/80 backdrop-blur-sm">
+            <div className="max-w-3xl mx-auto relative">
+              <Textarea
+                ref={textareaRef}
+                placeholder="Seguí preguntando..."
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isLoading}
+                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border-2 focus:border-orange-500 transition-colors"
+                rows={1}
+              />
+              <Button
+                onClick={() => sendMessage(input)}
+                disabled={isLoading || !input.trim()}
+                size="icon"
+                className="absolute right-2 bottom-2 h-10 w-10 rounded-lg bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:shadow-none"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-2 text-center">
-            Cerebro ejecuta consultas en tiempo real sobre la base de datos
-          </p>
-        </div>
-      </Card>
+        </>
+      )}
     </div>
   )
 }
