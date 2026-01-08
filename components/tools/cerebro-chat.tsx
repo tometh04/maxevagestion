@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { Card } from "@/components/ui/card"
 import {
   Send,
   Loader2,
@@ -17,6 +18,7 @@ import {
   Clock,
   FileText,
   Brain,
+  RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
@@ -157,122 +159,140 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
     }
   }
 
+  const handleNewConversation = () => {
+    setMessages([])
+    setInput("")
+  }
+
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)]">
+    <div className="flex flex-col h-[calc(100vh-140px)] max-w-5xl mx-auto">
       {/* Header */}
-      <div className="flex items-center gap-3 pb-4 border-b">
-        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10">
-          <Brain className="h-5 w-5 text-primary" />
+      <div className="flex items-center justify-between pb-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-orange-500/10">
+            <Brain className="h-5 w-5 text-orange-500" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold flex items-center gap-2">
+              Cerebro
+              <Badge variant="outline" className="text-xs font-normal border-orange-500/30 text-orange-500">
+                AI
+              </Badge>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Tu asistente inteligente de MAXEVA
+            </p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-lg font-semibold flex items-center gap-2">
-            Cerebro
-            <Badge variant="outline" className="text-xs font-normal">
-              AI
-            </Badge>
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Preguntame lo que quieras sobre el sistema
-          </p>
-        </div>
+        {messages.length > 0 && (
+          <Button variant="outline" size="sm" onClick={handleNewConversation}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Nueva conversación
+          </Button>
+        )}
       </div>
 
-      {/* Messages Area */}
-      <ScrollArea ref={scrollAreaRef} className="flex-1 py-4">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full px-4">
-            <div className="flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
-              <Brain className="h-8 w-8 text-muted-foreground" />
+      {/* Chat Area */}
+      <Card className="flex-1 flex flex-col overflow-hidden border-2">
+        <ScrollArea ref={scrollAreaRef} className="flex-1 p-4">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full px-4">
+              <div className="flex items-center justify-center w-16 h-16 rounded-full bg-orange-500/10 mb-4">
+                <Brain className="h-8 w-8 text-orange-500" />
+              </div>
+              <h2 className="text-lg font-medium mb-2">¡Hola {userName.split(' ')[0]}!</h2>
+              <p className="text-sm text-muted-foreground text-center mb-6 max-w-md">
+                Soy Cerebro, tu asistente de MAXEVA. Tengo acceso a toda la información del sistema.
+                Preguntame sobre ventas, clientes, viajes, pagos, o lo que necesites.
+              </p>
+              
+              {/* Quick Questions Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 w-full max-w-lg">
+                {QUICK_QUESTIONS.map((q, idx) => (
+                  <Card
+                    key={idx}
+                    className="border-2 transition-all hover:shadow-md hover:border-orange-500/30 cursor-pointer"
+                    onClick={() => handleQuickQuestion(q.text)}
+                  >
+                    <div className="flex items-center gap-3 p-3">
+                      <div className="p-2 rounded-lg bg-orange-500/10">
+                        <q.icon className="h-4 w-4 text-orange-500" />
+                      </div>
+                      <span className="text-sm">{q.text}</span>
+                    </div>
+                  </Card>
+                ))}
+              </div>
             </div>
-            <h2 className="text-lg font-medium mb-2">¡Hola {userName.split(' ')[0]}!</h2>
-            <p className="text-sm text-muted-foreground text-center mb-6 max-w-md">
-              Soy Cerebro, tu asistente de MAXEVA. Tengo acceso a toda la información del sistema.
-              Preguntame sobre ventas, clientes, viajes, pagos, o lo que necesites.
-            </p>
-            
-            {/* Quick Questions Grid */}
-            <div className="grid grid-cols-2 gap-2 w-full max-w-lg">
-              {QUICK_QUESTIONS.map((q, idx) => (
-                <Button
-                  key={idx}
-                  variant="outline"
-                  className="h-auto py-3 px-4 justify-start text-left"
-                  onClick={() => handleQuickQuestion(q.text)}
-                >
-                  <q.icon className="h-4 w-4 mr-2 shrink-0 text-muted-foreground" />
-                  <span className="text-sm truncate">{q.text}</span>
-                </Button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-4 px-1">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={cn(
-                  "flex gap-3",
-                  msg.role === "user" ? "justify-end" : "justify-start"
-                )}
-              >
-                {msg.role === "assistant" && (
-                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted shrink-0">
-                    <Brain className="h-4 w-4 text-muted-foreground" />
-                  </div>
-                )}
+          ) : (
+            <div className="space-y-4">
+              {messages.map((msg) => (
                 <div
+                  key={msg.id}
                   className={cn(
-                    "rounded-lg px-4 py-3 max-w-[85%]",
-                    msg.role === "user"
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted"
+                    "flex gap-3",
+                    msg.role === "user" ? "justify-end" : "justify-start"
                   )}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex gap-3 justify-start">
-                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted shrink-0">
-                  <Brain className="h-4 w-4 text-muted-foreground" />
-                </div>
-                <div className="bg-muted rounded-lg px-4 py-3">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Pensando...
+                  {msg.role === "assistant" && (
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500/10 shrink-0">
+                      <Brain className="h-4 w-4 text-orange-500" />
+                    </div>
+                  )}
+                  <div
+                    className={cn(
+                      "rounded-lg px-4 py-3 max-w-[85%]",
+                      msg.role === "user"
+                        ? "bg-orange-500 text-white"
+                        : "bg-muted"
+                    )}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
-        )}
-      </ScrollArea>
+              ))}
+              {isLoading && (
+                <div className="flex gap-3 justify-start">
+                  <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-500/10 shrink-0">
+                    <Brain className="h-4 w-4 text-orange-500" />
+                  </div>
+                  <div className="bg-muted rounded-lg px-4 py-3">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin text-orange-500" />
+                      Pensando...
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </ScrollArea>
 
-      {/* Input Area */}
-      <div className="pt-4 border-t">
-        <div className="flex gap-2">
-          <Input
-            ref={inputRef}
-            placeholder="Escribí tu pregunta..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={isLoading}
-            className="flex-1"
-          />
-          <Button
-            onClick={() => sendMessage(input)}
-            disabled={isLoading || !input.trim()}
-            size="icon"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        {/* Input Area */}
+        <div className="p-4 border-t">
+          <div className="flex gap-2">
+            <Input
+              ref={inputRef}
+              placeholder="Escribí tu pregunta..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isLoading}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => sendMessage(input)}
+              disabled={isLoading || !input.trim()}
+              className="bg-orange-500 hover:bg-orange-600 text-white"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2 text-center">
+            Cerebro ejecuta consultas en tiempo real sobre la base de datos
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          Cerebro ejecuta consultas en tiempo real sobre la base de datos
-        </p>
-      </div>
+      </Card>
     </div>
   )
 }

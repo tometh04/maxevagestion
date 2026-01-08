@@ -6,7 +6,7 @@ export default async function CerebroPage() {
 
   return (
     <div className="flex flex-1 flex-col p-4 md:p-6">
-      <CerebroChat userName={user.name || "Usuario"} />
+      <CerebroChat userId={user?.id || ""} userName={user?.name || "Usuario"} />
     </div>
   )
 }
