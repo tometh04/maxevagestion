@@ -6,7 +6,7 @@
 
 ## 🎯 Progreso General
 
-**Progreso Total: 16.5%** ████████░░ (11/67 tareas completadas)
+**Progreso Total: 19.5%** █████████░ (13/67 tareas completadas)
 
 ---
 
@@ -62,9 +62,9 @@
 
 ## 🎯 Próxima Funcionalidad a Desarrollar
 
-**Recomendación:** Continuar con **FASE 5: Gestión de Clientes Avanzada**
+**Recomendación:** Continuar con **FASE 6: Equipos y Metas**
 
-**Razón:** Fases 1, 2, 3 y 4 completas. Siguiente: Historial de interacciones y Segmentación de clientes.
+**Razón:** Fases 1-5 completas. Siguiente: Equipos de ventas, metas y comisiones.
 
 ---
 
