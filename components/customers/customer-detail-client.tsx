@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { EditCustomerDialog } from "./edit-customer-dialog"
 import { CustomerMessagesSection } from "@/components/whatsapp/customer-messages-section"
+import { CustomerInteractions } from "./customer-interactions"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -128,6 +129,7 @@ export function CustomerDetailClient({
           <TabsTrigger value="operations">Operaciones ({operations.length})</TabsTrigger>
           <TabsTrigger value="payments">Pagos ({payments.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
+          <TabsTrigger value="interactions">Interacciones</TabsTrigger>
           <TabsTrigger value="messages">Mensajes</TabsTrigger>
         </TabsList>
 
@@ -349,6 +351,13 @@ export function CustomerDetailClient({
 
         <TabsContent value="documents" className="space-y-4">
           <DocumentsSection documents={documents || []} customerId={customer.id} />
+        </TabsContent>
+
+        <TabsContent value="interactions" className="space-y-4">
+          <CustomerInteractions 
+            customerId={customer.id}
+            customerName={`${customer.first_name} ${customer.last_name}`}
+          />
         </TabsContent>
 
         <TabsContent value="messages" className="space-y-4">

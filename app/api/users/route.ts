@@ -1,0 +1,78 @@
+import { NextResponse } from "next/server"
+import { createServerClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+
+export const dynamic = 'force-dynamic'
+
+// GET - Obtener usuarios de las agencias del usuario actual
+export async function GET(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const { searchParams } = new URL(request.url)
+
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+
+    // Parámetros de filtro
+    const role = searchParams.get("role")
+    const search = searchParams.get("search")
+    const excludeUserId = searchParams.get("exclude")
+
+    // Obtener IDs de usuarios de las agencias
+    const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+      .select("user_id")
+      .in("agency_id", agencyIds)
+
+    const userIds = [...new Set((userAgencies || []).map((ua: any) => ua.user_id))]
+
+    if (userIds.length === 0) {
+      return NextResponse.json({ users: [] })
+    }
+
+    // Query de usuarios
+    let query = (supabase.from("users") as any)
+      .select(`
+        id,
+        first_name,
+        last_name,
+        email,
+        avatar_url,
+        role,
+        phone,
+        created_at
+      `)
+      .in("id", userIds)
+      .order("first_name", { ascending: true })
+
+    // Filtros
+    if (role) {
+      query = query.eq("role", role)
+    }
+    if (search) {
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
+    }
+    if (excludeUserId) {
+      query = query.neq("id", excludeUserId)
+    }
+
+    const { data: users, error } = await query
+
+    if (error) {
+      console.error("Error fetching users:", error)
+      return NextResponse.json(
+        { error: "Error al obtener usuarios" },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({ users: users || [] })
+  } catch (error: any) {
+    console.error("Error in GET /api/users:", error)
+    return NextResponse.json(
+      { error: error.message || "Error al obtener usuarios" },
+      { status: 500 }
+    )
+  }
+}

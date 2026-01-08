@@ -99,6 +99,19 @@ const noteColors = [
   { value: '#f3e8ff', label: 'Morado', class: 'bg-purple-100' },
 ]
 
+interface Customer {
+  id: string
+  first_name: string
+  last_name: string
+  email: string
+}
+
+interface Operation {
+  id: string
+  file_code: string
+  destination: string
+}
+
 export function NotesPageClient() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -107,6 +120,10 @@ export function NotesPageClient() {
   const [typeFilter, setTypeFilter] = useState("ALL")
   const [tagFilter, setTagFilter] = useState("ALL")
   const [search, setSearch] = useState("")
+  
+  // Data for linking
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [operations, setOperations] = useState<Operation[]>([])
   
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -123,13 +140,36 @@ export function NotesPageClient() {
     tags: [] as string[],
     color: null as string | null,
     is_pinned: false,
+    operation_id: '' as string,
+    customer_id: '' as string,
   })
   const [newTag, setNewTag] = useState('')
 
   useEffect(() => {
     loadNotes()
+    loadRelatedData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typeFilter, tagFilter])
+
+  const loadRelatedData = async () => {
+    try {
+      // Cargar clientes
+      const customersRes = await fetch('/api/customers?limit=100')
+      if (customersRes.ok) {
+        const data = await customersRes.json()
+        setCustomers(data.customers || [])
+      }
+      
+      // Cargar operaciones
+      const operationsRes = await fetch('/api/operations?limit=100')
+      if (operationsRes.ok) {
+        const data = await operationsRes.json()
+        setOperations(data.operations || [])
+      }
+    } catch (error) {
+      console.error('Error loading related data:', error)
+    }
+  }
 
   const loadNotes = async () => {
     try {
@@ -249,6 +289,8 @@ export function NotesPageClient() {
       tags: [],
       color: null,
       is_pinned: false,
+      operation_id: '',
+      customer_id: '',
     })
     setNewTag('')
   }
@@ -519,7 +561,7 @@ export function NotesPageClient() {
                 <Label>Tipo</Label>
                 <Select 
                   value={formData.note_type} 
-                  onValueChange={(v: any) => setFormData({ ...formData, note_type: v })}
+                  onValueChange={(v: any) => setFormData({ ...formData, note_type: v, operation_id: '', customer_id: '' })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -563,6 +605,62 @@ export function NotesPageClient() {
                 </Select>
               </div>
             </div>
+
+            {/* Selector de operación */}
+            {formData.note_type === 'operation' && (
+              <div>
+                <Label>Operación vinculada *</Label>
+                <Select 
+                  value={formData.operation_id} 
+                  onValueChange={(v) => setFormData({ ...formData, operation_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar operación" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operations.length > 0 ? (
+                      operations.map(op => (
+                        <SelectItem key={op.id} value={op.id}>
+                          {op.file_code} - {op.destination}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground p-2 text-center">
+                        No hay operaciones disponibles
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Selector de cliente */}
+            {formData.note_type === 'customer' && (
+              <div>
+                <Label>Cliente vinculado *</Label>
+                <Select 
+                  value={formData.customer_id} 
+                  onValueChange={(v) => setFormData({ ...formData, customer_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.length > 0 ? (
+                      customers.map(c => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.first_name} {c.last_name} - {c.email}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground p-2 text-center">
+                        No hay clientes disponibles
+                      </div>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div>
               <Label>Color</Label>
