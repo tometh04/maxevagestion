@@ -345,7 +345,7 @@ export function OperationsSettingsPageClient() {
               ))}
               {settings.custom_statuses.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  No hay estados personalizados. Haz clic en "Agregar Estado" para crear uno.
+                  No hay estados personalizados. Haz clic en &quot;Agregar Estado&quot; para crear uno.
                 </p>
               )}
             </CardContent>
