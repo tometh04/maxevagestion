@@ -23,14 +23,14 @@ export async function GET(request: Request) {
 
     if (agencyError) {
       console.error("Error getting user agencies:", agencyError)
-      return NextResponse.json({ users: [], debug: "Error getting agencies" })
+      return NextResponse.json({ users: [] })
     }
 
     const agencyIds = (userAgenciesData || []).map((ua: any) => ua.agency_id)
 
     // Si no hay agencias, retornar vacío
     if (!agencyIds || agencyIds.length === 0) {
-      return NextResponse.json({ users: [], debug: "No agencies found" })
+      return NextResponse.json({ users: [] })
     }
 
     // Obtener IDs de usuarios de las agencias
@@ -40,19 +40,19 @@ export async function GET(request: Request) {
 
     if (userAgenciesError) {
       console.error("Error fetching user_agencies:", userAgenciesError)
-      return NextResponse.json({ users: [], debug: "Error fetching user_agencies" })
+      return NextResponse.json({ users: [] })
     }
 
     const allUserIds = (allUserAgencies || []).map((ua: any) => ua.user_id)
     const userIds = Array.from(new Set(allUserIds)) as string[]
 
     if (userIds.length === 0) {
-      return NextResponse.json({ users: [], debug: "No users in agencies" })
+      return NextResponse.json({ users: [] })
     }
 
-    // Query de usuarios simplificada
+    // Query de usuarios simplificada - La tabla users tiene 'name' no 'first_name/last_name'
     let query = (supabase.from("users") as any)
-      .select("id, first_name, last_name, email, avatar_url, role, phone, created_at")
+      .select("id, name, email, avatar_url, role, phone, created_at, is_active")
       .in("id", userIds)
 
     // Filtros opcionales
@@ -60,27 +60,37 @@ export async function GET(request: Request) {
       query = query.eq("role", role)
     }
     if (search) {
-      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%`)
+      query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`)
     }
     if (excludeUserId) {
       query = query.neq("id", excludeUserId)
     }
 
-    const { data: users, error } = await query
+    const { data: usersData, error } = await query
 
     if (error) {
       console.error("Error fetching users:", error)
       return NextResponse.json(
-        { error: "Error al obtener usuarios", debug: error.message },
+        { error: "Error al obtener usuarios" },
         { status: 500 }
       )
     }
+    
+    // Transformar los datos para compatibilidad con el frontend
+    const users = (usersData || []).map((u: any) => {
+      const nameParts = (u.name || '').split(' ')
+      return {
+        ...u,
+        first_name: nameParts[0] || '',
+        last_name: nameParts.slice(1).join(' ') || '',
+      }
+    })
 
-    return NextResponse.json({ users: users || [] })
+    return NextResponse.json({ users })
   } catch (error: any) {
     console.error("Error in GET /api/users:", error)
     return NextResponse.json(
-      { error: error.message || "Error al obtener usuarios", debug: "catch block" },
+      { error: error.message || "Error al obtener usuarios" },
       { status: 500 }
     )
   }
