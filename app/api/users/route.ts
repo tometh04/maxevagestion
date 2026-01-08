@@ -25,7 +25,8 @@ export async function GET(request: Request) {
       .select("user_id")
       .in("agency_id", agencyIds)
 
-    const userIds = [...new Set((userAgencies || []).map((ua: any) => ua.user_id))]
+    const allUserIds = (userAgencies || []).map((ua: any) => ua.user_id)
+    const userIds = Array.from(new Set(allUserIds)) as string[]
 
     if (userIds.length === 0) {
       return NextResponse.json({ users: [] })
