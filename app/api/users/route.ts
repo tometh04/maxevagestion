@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     if (error) {
       console.error("Error fetching users:", error)
       return NextResponse.json(
-        { error: "Error al obtener usuarios", detail: error.message, code: error.code },
+        { error: "Error al obtener usuarios" },
         { status: 500 }
       )
     }
@@ -99,7 +99,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Error in GET /api/users:", error)
     return NextResponse.json(
-      { error: error.message || "Error al obtener usuarios", stack: error.stack?.slice(0, 200) },
+      { error: error.message || "Error al obtener usuarios" },
       { status: 500 }
     )
   }
