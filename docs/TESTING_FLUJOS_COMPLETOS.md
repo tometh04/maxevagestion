@@ -4,6 +4,8 @@
 
 Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar Y?"**
 
+**Última Actualización:** 8 de Enero 2026, 16:30
+
 ---
 
 ## 🔄 FLUJOS A VERIFICAR
@@ -47,7 +49,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 4.1 | Crear Operador | Aparece en listado y selectores | ⏳ |
+| 4.1 | Crear Operador | Aparece en listado y selectores | ✅ VERIFICADO |
 | 4.2 | Operador en operación | Se calcula en costos | ⏳ |
 | 4.3 | Pago a operador | Registra pago, actualiza saldo operador | ⏳ |
 
@@ -55,18 +57,18 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 5.1 | Nueva factura desde operación | Pre-carga datos de operación | ⏳ |
-| 5.2 | Nueva factura manual | Seleccionar cliente y items | ⏳ |
-| 5.3 | Autorizar factura AFIP | Obtiene CAE, cambia estado | ⏳ |
-| 5.4 | Ver factura | Muestra detalles, permite PDF | ⏳ |
+| 5.1 | Nueva factura desde operación | Pre-carga datos de operación | ✅ UI LISTA |
+| 5.2 | Nueva factura manual | Seleccionar cliente y items | ✅ UI LISTA |
+| 5.3 | Autorizar factura AFIP | Obtiene CAE, cambia estado | ⏳ (Requiere config AFIP) |
+| 5.4 | Ver factura | Muestra detalles, permite PDF | ✅ UI LISTA |
 
 ### MÓDULO 6: EQUIPOS Y USUARIOS
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 6.1 | Crear Equipo | Aparece en listado | ⏳ |
-| 6.2 | Agregar miembros | Miembros vinculados al equipo | ⏳ |
-| 6.3 | Asignar líder | Líder puede ver equipo completo | ⏳ |
+| 6.1 | Crear Equipo | Aparece en listado | ✅ UI LISTA |
+| 6.2 | Agregar miembros | Miembros vinculados al equipo | ✅ UI LISTA |
+| 6.3 | Asignar líder | Líder puede ver equipo completo | ✅ UI LISTA |
 | 6.4 | Crear meta de equipo | Meta aparece en dashboard | ⏳ |
 | 6.5 | Ventas del equipo | Progreso de meta se actualiza | ⏳ |
 
@@ -74,9 +76,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 7.1 | Crear nota general | Aparece en listado | ⏳ |
-| 7.2 | Crear nota de operación | Aparece en listado y en detalle de operación | ⏳ |
-| 7.3 | Crear nota de cliente | Aparece en listado y en detalle de cliente | ⏳ |
+| 7.1 | Crear nota general | Aparece en listado | ✅ UI LISTA |
+| 7.2 | Crear nota de operación | Aparece en listado y en detalle de operación | ✅ UI LISTA |
+| 7.3 | Crear nota de cliente | Aparece en listado y en detalle de cliente | ✅ UI LISTA |
 | 7.4 | Agregar comentario a nota | Comentario visible | ⏳ |
 | 7.5 | Fijar nota | Aparece primero en listado | ⏳ |
 
@@ -92,7 +94,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 9.1 | Crear segmento manual | Aparece en listado | ⏳ |
+| 9.1 | Crear segmento manual | Aparece en listado | ✅ UI LISTA |
 | 9.2 | Agregar clientes manual | Clientes aparecen en segmento | ⏳ |
 | 9.3 | Crear segmento automático | Clientes que cumplen reglas se agregan | ⏳ |
 | 9.4 | Cliente nuevo cumple regla | Se agrega automáticamente al segmento | ⏳ |
@@ -101,7 +103,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 10.1 | Config Operaciones: Estado por defecto | Nueva operación usa ese estado | ⏳ |
+| 10.1 | Config Operaciones: Estado por defecto | Nueva operación usa ese estado | ✅ CONFIGURACIÓN FUNCIONA |
 | 10.2 | Config Operaciones: Alertas | Se generan alertas según config | ⏳ |
 | 10.3 | Config Clientes: Campos custom | Campos aparecen en formularios | ⏳ |
 | 10.4 | Config Finanzas: Monedas | Monedas disponibles en selectores | ⏳ |
@@ -111,7 +113,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 11.1 | Configurar integración | Se guarda config | ⏳ |
+| 11.1 | Configurar integración | Se guarda config | ✅ UI LISTA |
 | 11.2 | Probar conexión | Test exitoso/fallido | ⏳ |
 | 11.3 | Ver logs | Historial de actividad | ⏳ |
 
@@ -120,9 +122,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
 | 12.1 | Dashboard | Muestra métricas actualizadas | ⏳ |
-| 12.2 | Estadísticas clientes | Total, nuevos, inactivos | ⏳ |
-| 12.3 | Estadísticas operaciones | Por estado, destino, tendencias | ⏳ |
-| 12.4 | Estadísticas ventas | Pipeline, conversión, por vendedor | ⏳ |
+| 12.2 | Estadísticas clientes | Total, nuevos, inactivos | ✅ VERIFICADO |
+| 12.3 | Estadísticas operaciones | Por estado, destino, tendencias | ✅ VERIFICADO |
+| 12.4 | Estadísticas ventas | Pipeline, conversión, por vendedor | ✅ VERIFICADO |
 
 ---
 
@@ -147,6 +149,25 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 ---
 
+## 📊 RESUMEN DE PÁGINAS VERIFICADAS (8 Enero 2026)
+
+### ✅ Páginas Funcionando Correctamente
+
+| Página | URL | Estado | Notas |
+|--------|-----|--------|-------|
+| Estadísticas Clientes | `/customers/statistics` | ✅ | Total, crecimiento, gráfico mensual |
+| Estadísticas Operaciones | `/operations/statistics` | ✅ | Total, ventas, margen, tendencia |
+| Estadísticas Ventas | `/sales/statistics` | ✅ | Pipeline, leads, conversión |
+| Detalle Cliente | `/customers/[id]` | ✅ | Pestañas: Info, Ops, Pagos, Docs, Interacciones |
+| Config Operaciones | `/operations/settings` | ✅ | Estados, Validaciones, Alertas |
+| Facturación | `/operations/billing` | ✅ | Lista, búsqueda, nueva factura |
+| Segmentos | `/customers/segments` | ✅ | Crear segmentos |
+| Equipos | `/settings/teams` | ✅ | Crear equipo con usuarios |
+| Notas | `/resources/notes` | ✅ | Vincular a operación/cliente |
+| Integraciones | `/settings/integrations` | ✅ | Trello, Manychat, WhatsApp, AFIP |
+
+---
+
 ## 📝 NOTAS DE TESTING (8 Enero 2026)
 
 ### Verificado ✅
@@ -156,9 +177,18 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 - Detalle de cliente: Muestra pestañas Información, Operaciones, Pagos, Documentos, Interacciones, Mensajes
 - Configuración de Operaciones: Estados, Validaciones, Alertas funcionan y se guardan
 - Validaciones: Requerir Destino, Fecha de Salida, Operador activas
+- Estadísticas de Clientes: Total 1, Crecimiento +100%, Gráfico mensual
+- Estadísticas de Operaciones: Total 1, Ventas, Margen, Tendencia
+- Estadísticas de Ventas: 1000 Leads, Pipeline visual, Tasa 0.1%
+- Facturación Electrónica: Lista vacía, botón Nueva Factura
+- Segmentos de Clientes: Página lista, botón Nuevo Segmento
+- Integraciones: Página con Trello, Manychat, WhatsApp, AFIP, Email
 
-### Pendiente de Testing
-- Verificar que las validaciones se apliquen al crear operación
+### Pendiente de Testing Funcional
+- Verificar que las validaciones se apliquen al crear operación SIN datos requeridos
 - Crear y verificar estados personalizados
 - Probar flujo completo de conversión de lead
+- Crear una factura real
+- Crear un segmento con reglas automáticas
+- Configurar una integración y probar conexión
 
