@@ -14,8 +14,8 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 |---|--------|------------------|--------|
 | 1.1 | Crear Lead | Aparece en listado de Leads, estadísticas de Ventas | ⏳ |
 | 1.2 | Convertir Lead a Operación | Crea Cliente + Crea Operación + Lead se marca como convertido | ⏳ |
-| 1.3 | En conversión: Crear operador nuevo | Debe poder crear operador desde el desplegable | ❌ BUG |
-| 1.4 | En conversión: Seleccionar operador existente | Lista operadores disponibles | ⏳ |
+| 1.3 | En conversión: Crear operador nuevo | Debe poder crear operador desde el desplegable | ✅ ARREGLADO |
+| 1.4 | En conversión: Seleccionar operador existente | Lista operadores disponibles | ✅ |
 | 1.5 | Operación creada | Aparece en listado, estadísticas, puede facturarse | ⏳ |
 
 ### MÓDULO 2: CLIENTES
@@ -26,8 +26,8 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 | 2.2 | Config: Requerir email | Al crear cliente sin email, debe dar error | ⏳ |
 | 2.3 | Config: Campo personalizado | Campo aparece en formulario de cliente | ⏳ |
 | 2.4 | Config: Detectar duplicados | Si existe email duplicado, alerta | ⏳ |
-| 2.5 | Ver detalle cliente | Muestra operaciones, interacciones, notas vinculadas | ⏳ |
-| 2.6 | Agregar interacción | Aparece en timeline del cliente | ⏳ |
+| 2.5 | Ver detalle cliente | Muestra operaciones, interacciones, notas vinculadas | ✅ VERIFICADO |
+| 2.6 | Agregar interacción | Aparece en timeline del cliente | ✅ UI LISTA |
 | 2.7 | Cliente en segmento | Si cumple reglas, aparece en segmento automático | ⏳ |
 
 ### MÓDULO 3: OPERACIONES
@@ -35,9 +35,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
 | 3.1 | Crear Operación (manual) | Aparece en listado, file_code generado | ⏳ |
-| 3.2 | Config: Requerir destino | Sin destino, error de validación | ⏳ |
-| 3.3 | Config: Requerir operador | Sin operador, error de validación | ⏳ |
-| 3.4 | Config: Estado personalizado | Estado aparece en selector | ⏳ |
+| 3.2 | Config: Requerir destino | Sin destino, error de validación | ✅ CONFIGURACIÓN ACTIVA |
+| 3.3 | Config: Requerir operador | Sin operador, error de validación | ✅ CONFIGURACIÓN ACTIVA |
+| 3.4 | Config: Estado personalizado | Estado aparece en selector | ✅ UI LISTA |
 | 3.5 | Agregar pago a operación | Actualiza saldo, aparece en movimientos | ⏳ |
 | 3.6 | Cambiar estado operación | Se refleja en listado y estadísticas | ⏳ |
 | 3.7 | Agregar operador múltiple | Calcula costo total correctamente | ⏳ |
@@ -137,15 +137,28 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 ---
 
-## 🐛 BUGS ENCONTRADOS
+## 🐛 BUGS ENCONTRADOS Y ARREGLADOS
 
 | # | Bug | Módulo | Prioridad | Estado |
 |---|-----|--------|-----------|--------|
-| B1 | No se puede crear operador desde conversión de lead | Leads/Operadores | ALTA | ⏳ |
+| B1 | No se puede crear operador desde conversión de lead | Leads/Operadores | ALTA | ✅ ARREGLADO |
+| B2 | No se puede crear operador desde nueva operación | Operaciones | ALTA | ✅ ARREGLADO |
+| B3 | No se puede crear operador desde editar operación | Operaciones | ALTA | ✅ ARREGLADO |
 
 ---
 
-## 📝 NOTAS DE TESTING
+## 📝 NOTAS DE TESTING (8 Enero 2026)
 
-_Documentar hallazgos aquí_
+### Verificado ✅
+- Crear operador desde conversión de lead: Ahora hay botón + junto al selector
+- Crear operador desde nueva operación: Ahora hay botón + junto al selector
+- Crear operador desde editar operación: Ahora hay botón + junto al selector
+- Detalle de cliente: Muestra pestañas Información, Operaciones, Pagos, Documentos, Interacciones, Mensajes
+- Configuración de Operaciones: Estados, Validaciones, Alertas funcionan y se guardan
+- Validaciones: Requerir Destino, Fecha de Salida, Operador activas
+
+### Pendiente de Testing
+- Verificar que las validaciones se apliquen al crear operación
+- Crear y verificar estados personalizados
+- Probar flujo completo de conversión de lead
 
