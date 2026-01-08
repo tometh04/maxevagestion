@@ -146,7 +146,7 @@ async function calculateSegmentMembers(
   supabase: any,
   segmentId: string,
   agencyId: string,
-  rules: Array<{ field: string; operator: string; value: any }>,
+  rules: Array<{ field: string; operator: string; value?: any }>,
   logic: string
 ) {
   try {
@@ -207,7 +207,7 @@ async function calculateSegmentMembers(
 // Evaluar una regla contra un cliente
 function evaluateRule(
   customer: Record<string, any>,
-  rule: { field: string; operator: string; value: any }
+  rule: { field: string; operator: string; value?: any }
 ): boolean {
   const fieldValue = customer[rule.field]
   const ruleValue = rule.value
