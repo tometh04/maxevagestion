@@ -1,124 +1,87 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 
+export const dynamic = 'force-dynamic'
+
+// GET - Obtener comisiones
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    const month = searchParams.get("month") // YYYY-MM format
-    const year = searchParams.get("year")
-    const status = searchParams.get("status") // PENDING | PAID | ALL
-    const operationId = searchParams.get("operationId") // Filter by operation
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build query
-    let query = supabase
-      .from("commission_records")
-      .select(
-        `
+    // Parámetros de filtro
+    const userId = searchParams.get("userId")
+    const status = searchParams.get("status")
+    const periodStart = searchParams.get("periodStart")
+    const periodEnd = searchParams.get("periodEnd")
+
+    // Determinar si puede ver todas las comisiones o solo las propias
+    const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN' || user.role === 'MANAGER'
+
+    // Query base
+    let query = (supabase.from("commissions") as any)
+      .select(`
         *,
-        operations:operation_id(
-          id,
-          destination,
-          departure_date,
-          sale_amount_total,
-          operator_cost,
-          margin_amount,
-          currency
-        ),
-        sellers:seller_id(
-          id,
-          name
-        ),
-        agencies:agency_id(
-          id,
-          name
-        )
-      `,
-      )
-      .order("date_calculated", { ascending: false })
+        user:users!commissions_user_id_fkey (id, first_name, last_name, avatar_url, email),
+        scheme:commission_schemes (id, name, commission_type),
+        approved_by_user:users!commissions_approved_by_fkey (id, first_name, last_name)
+      `)
+      .in("agency_id", agencyIds)
+      .order("period_start", { ascending: false })
 
-    // Filter by operation if provided
-    if (operationId) {
-      query = query.eq("operation_id", operationId)
+    // Filtrar por usuario si no es admin
+    if (!canViewAll) {
+      query = query.eq("user_id", user.id)
+    } else if (userId) {
+      query = query.eq("user_id", userId)
     }
 
-    // Filter by role
-    if (user.role === "SELLER") {
-      query = query.eq("seller_id", user.id)
-    } else {
-      // ADMIN/SUPER_ADMIN can see all, but filter by agency if needed
-      const { data: userAgencies } = await supabase
-        .from("user_agencies")
-        .select("agency_id")
-        .eq("user_id", user.id)
-
-      const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-      if (agencyIds.length > 0 && user.role !== "SUPER_ADMIN") {
-        query = query.in("agency_id", agencyIds)
-      }
-    }
-
-    // Filter by status
+    // Filtros
     if (status && status !== "ALL") {
       query = query.eq("status", status)
     }
-
-    // Filter by month/year
-    if (month) {
-      const startDate = `${month}-01`
-      const endDate = `${month}-31`
-      query = query.gte("date_calculated", startDate).lte("date_calculated", endDate)
-    } else if (year) {
-      const startDate = `${year}-01-01`
-      const endDate = `${year}-12-31`
-      query = query.gte("date_calculated", startDate).lte("date_calculated", endDate)
+    if (periodStart) {
+      query = query.gte("period_start", periodStart)
+    }
+    if (periodEnd) {
+      query = query.lte("period_end", periodEnd)
     }
 
     const { data: commissions, error } = await query
 
     if (error) {
       console.error("Error fetching commissions:", error)
-      return NextResponse.json({ error: "Error al obtener comisiones" }, { status: 500 })
+      return NextResponse.json(
+        { error: "Error al obtener comisiones" },
+        { status: 500 }
+      )
     }
 
-    // Group by month for summary
-    const monthlySummary = (commissions || []).reduce((acc: any, comm: any) => {
-      const date = new Date(comm.date_calculated)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+    // Calcular totales
+    const totals = {
+      pending: 0,
+      approved: 0,
+      paid: 0,
+    }
 
-      if (!acc[monthKey]) {
-        acc[monthKey] = {
-          month: monthKey,
-          total: 0,
-          pending: 0,
-          paid: 0,
-          count: 0,
-        }
-      }
-
-      acc[monthKey].total += comm.amount || 0
-      acc[monthKey].count += 1
-
-      if (comm.status === "PENDING") {
-        acc[monthKey].pending += comm.amount || 0
-      } else if (comm.status === "PAID") {
-        acc[monthKey].paid += comm.amount || 0
-      }
-
-      return acc
-    }, {})
-
-    return NextResponse.json({
-      commissions: commissions || [],
-      monthlySummary: Object.values(monthlySummary),
+    commissions.forEach((c: any) => {
+      if (c.status === 'pending') totals.pending += c.total_amount
+      else if (c.status === 'approved') totals.approved += c.total_amount
+      else if (c.status === 'paid') totals.paid += c.total_amount
     })
-  } catch (error) {
+
+    return NextResponse.json({ commissions, totals })
+  } catch (error: any) {
     console.error("Error in GET /api/commissions:", error)
-    return NextResponse.json({ error: "Error al obtener comisiones" }, { status: 500 })
+    return NextResponse.json(
+      { error: error.message || "Error al obtener comisiones" },
+      { status: 500 }
+    )
   }
 }
-
