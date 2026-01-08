@@ -89,6 +89,7 @@ interface OperationStatistics {
       count: number
       totalSales: number
       totalMargin: number
+      avgMargin: number
     }>
     topSellers: Array<{
       id: string
