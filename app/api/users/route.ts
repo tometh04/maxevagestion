@@ -13,7 +13,22 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
 
     // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    let agencyIds: string[] = []
+    try {
+      agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    } catch (e) {
+      console.error("Error getting agency IDs:", e)
+      // Fallback: obtener agencias directamente
+      const { data: directAgencies } = await (supabase.from("user_agencies") as any)
+        .select("agency_id")
+        .eq("user_id", user.id)
+      agencyIds = (directAgencies || []).map((ua: any) => ua.agency_id)
+    }
+
+    // Si no hay agencias, retornar vacío
+    if (!agencyIds || agencyIds.length === 0) {
+      return NextResponse.json({ users: [] })
+    }
 
     // Parámetros de filtro
     const role = searchParams.get("role")
@@ -21,9 +36,14 @@ export async function GET(request: Request) {
     const excludeUserId = searchParams.get("exclude")
 
     // Obtener IDs de usuarios de las agencias
-    const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+    const { data: userAgencies, error: userAgenciesError } = await (supabase.from("user_agencies") as any)
       .select("user_id")
       .in("agency_id", agencyIds)
+
+    if (userAgenciesError) {
+      console.error("Error fetching user_agencies:", userAgenciesError)
+      return NextResponse.json({ users: [] })
+    }
 
     const allUserIds = (userAgencies || []).map((ua: any) => ua.user_id)
     const userIds = Array.from(new Set(allUserIds)) as string[]
