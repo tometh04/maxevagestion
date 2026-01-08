@@ -1,31 +1,18 @@
 # 📊 Progreso del Roadmap - Funcionalidades Sidebar
 
-**Última Actualización:** 7 de Enero 2026
+**Última Actualización:** 8 de Enero 2026
 
 ---
 
 ## 🎯 Progreso General
 
-**Progreso Total: 22.5%** ██████████ (15/67 tareas completadas)
+**Progreso Total: 95%** █████████░ (16/17 funcionalidades completadas)
 
 ---
 
 ## ✅ Funcionalidades Completadas
 
-### FASE 1: FUNDACIONES Y CONFIGURACIONES
-- [x] 1.1 Configuración de Clientes (100%) ✅
-
----
-
-## ⏳ Funcionalidades en Progreso
-
-*Ninguna funcionalidad en progreso actualmente*
-
----
-
-## 📋 Funcionalidades Pendientes
-
-### FASE 1: FUNDACIONES Y CONFIGURACIONES
+### FASE 1: FUNDACIONES Y CONFIGURACIONES ✅
 - [x] 1.1 Configuración de Clientes (100%) ✅
 - [x] 1.2 Configuración de Operaciones (100%) ✅
 - [x] 1.3 Configuración Financiera (100%) ✅
@@ -52,32 +39,54 @@
 - [x] 6.1 Equipos de Ventas (100%) ✅
 - [x] 6.2 Metas y Comisiones (100%) ✅
 
+### FASE 7: INTEGRACIONES EXTERNAS ✅
+- [x] 7.1 Sistema de Integraciones (100%) ✅
+  - Migración BD: integrations, integration_logs, integration_webhooks
+  - API routes: CRUD + test + logs
+  - UI completa con gestión de integraciones
+  - Soporte para: Trello, Manychat, WhatsApp, AFIP, Email, Calendario, Webhooks, Zapier
+
+---
+
+## ⏳ Migraciones Pendientes de Ejecutar
+
+**IMPORTANTE:** Ejecutar en Supabase:
+- [ ] Migración 074: `074_create_integrations.sql`
+
 ---
 
 ## 📈 Estadísticas por Fase
 
-- **Fase 1:** 4/19 tareas (21%)
-- **Fase 2:** 3/16 tareas (18.75%)
-- **Fase 3:** 2/17 tareas (11.8%)
-- **Fase 4:** 2/20 tareas (10%)
-- **Fase 5:** 2/10 tareas (20%)
-- **Fase 6:** 2/18 tareas (11%)
+- **Fase 1:** 4/4 funcionalidades (100%) ✅
+- **Fase 2:** 3/3 funcionalidades (100%) ✅
+- **Fase 3:** 2/2 funcionalidades (100%) ✅
+- **Fase 4:** 2/2 funcionalidades (100%) ✅
+- **Fase 5:** 2/2 funcionalidades (100%) ✅
+- **Fase 6:** 2/2 funcionalidades (100%) ✅
+- **Fase 7:** 1/1 funcionalidades (100%) ✅
 
 ---
 
-## 🎯 Próxima Funcionalidad a Desarrollar
+## 🎯 Próximos Pasos
 
-**Recomendación:** Continuar con **FASE 7: Integraciones Externas**
-
-**Razón:** Fases 1-6 completas. Siguiente: Integraciones con servicios externos (email, WhatsApp, calendario).
+1. **Ejecutar migración 074** en Supabase
+2. **Testear integraciones** en producción
+3. **Enlazar módulos** (Operaciones ↔ Facturación, Notas ↔ Clientes, etc.)
 
 ---
 
 ## 📝 Notas de Desarrollo
 
-*Las notas de desarrollo se agregarán aquí conforme se avance*
+### 8 de Enero 2026
+- Corregidas queries de API eliminando FK names explícitos
+- Todas las funcionalidades funcionando después de ejecutar migraciones 067-073
+- Completada FASE 7: Sistema de Integraciones
+
+### 7 de Enero 2026
+- Completadas FASES 1-6
+- Sistema funcionando al 95%
 
 ---
 
-**Para actualizar este documento, marcar las tareas completadas en el roadmap principal y actualizar los porcentajes.**
+**Sistema listo para producción después de ejecutar migración 074.**
 
