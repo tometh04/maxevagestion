@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import * as React from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
@@ -24,11 +24,23 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Plus, Trash2 } from "lucide-react"
+import { CalendarIcon, Plus, Trash2, AlertCircle } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+
+// Configuración de operaciones
+interface OperationSettings {
+  require_destination: boolean
+  require_departure_date: boolean
+  require_operator: boolean
+  require_customer: boolean
+  default_status: string
+  custom_statuses: Array<{ value: string; label: string; color: string }>
+}
 
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
@@ -37,28 +49,27 @@ const operatorSchema = z.object({
   notes: z.string().optional(),
 })
 
+// Esquema base - las validaciones dinámicas se hacen en el backend
 const operationSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
   seller_id: z.string().min(1, "El vendedor es requerido"),
   seller_secondary_id: z.string().optional().nullable(),
-  operator_id: z.string().optional().nullable(), // Compatibilidad hacia atrás
-  operators: z.array(operatorSchema).optional(), // Nuevo formato: múltiples operadores
+  operator_id: z.string().optional().nullable(),
+  operators: z.array(operatorSchema).optional(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]),
   product_type: z.enum(["AEREO", "HOTEL", "PAQUETE", "CRUCERO", "OTRO"]).optional().nullable(),
   origin: z.string().optional(),
-  destination: z.string().min(1, "El destino es requerido"),
-  departure_date: z.date({
-    required_error: "La fecha de salida es requerida",
-  }),
+  destination: z.string().optional(), // Validación dinámica en backend
+  departure_date: z.date().optional(), // Validación dinámica en backend
   return_date: z.date().optional().nullable(),
   checkin_date: z.date().optional().nullable(),
   checkout_date: z.date().optional().nullable(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0).default(0).optional(),
   infants: z.coerce.number().min(0).default(0).optional(),
-  status: z.enum(["PRE_RESERVATION", "RESERVED", "CONFIRMED", "CANCELLED", "TRAVELLED", "CLOSED"]),
+  status: z.string(), // Puede incluir estados personalizados
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
-  operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0").optional(), // Opcional si se usa operators
+  operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0").optional(),
   currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
   sale_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
   operator_cost_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
@@ -96,9 +107,47 @@ export function NewOperationDialog({
   defaultAgencyId,
   defaultSellerId,
 }: NewOperationDialogProps) {
+  const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", notes?: string}>>([])
+  const [settings, setSettings] = useState<OperationSettings | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  // Cargar configuración de operaciones
+  useEffect(() => {
+    if (open) {
+      loadSettings()
+    }
+  }, [open])
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/operations/settings')
+      if (response.ok) {
+        const data = await response.json()
+        setSettings(data)
+      }
+    } catch (error) {
+      console.error('Error loading operation settings:', error)
+    }
+  }
+
+  // Estados disponibles (estándar + personalizados)
+  const availableStatuses = React.useMemo(() => {
+    const standard = [
+      { value: "PRE_RESERVATION", label: "Pre-reserva" },
+      { value: "RESERVED", label: "Reservado" },
+      { value: "CONFIRMED", label: "Confirmado" },
+      { value: "CANCELLED", label: "Cancelado" },
+      { value: "TRAVELLED", label: "Viajado" },
+      { value: "CLOSED", label: "Cerrado" },
+    ]
+    if (settings?.custom_statuses && settings.custom_statuses.length > 0) {
+      return [...standard, ...settings.custom_statuses.map(s => ({ value: s.value, label: s.label }))]
+    }
+    return standard
+  }, [settings])
 
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema),
@@ -118,7 +167,7 @@ export function NewOperationDialog({
       adults: 2,
       children: 0,
       infants: 0,
-      status: "PRE_RESERVATION",
+      status: settings?.default_status || "PRE_RESERVATION",
       sale_amount_total: 0,
       operator_cost: 0,
       currency: "ARS",
@@ -127,6 +176,13 @@ export function NewOperationDialog({
       operators: [],
     },
   })
+
+  // Actualizar estado por defecto cuando se carga la configuración
+  useEffect(() => {
+    if (settings?.default_status) {
+      form.setValue('status', settings.default_status)
+    }
+  }, [settings, form])
 
   // Calcular costo total de operadores
   const totalOperatorCost = operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
@@ -165,6 +221,7 @@ export function NewOperationDialog({
 
   const onSubmit = async (values: OperationFormValues) => {
     setIsLoading(true)
+    setApiError(null)
     try {
       // Si se usan múltiples operadores, enviar el array; si no, usar formato antiguo
       const requestBody: any = {
@@ -177,7 +234,7 @@ export function NewOperationDialog({
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         checkin_date: values.checkin_date ? values.checkin_date.toISOString().split("T")[0] : null,
         checkout_date: values.checkout_date ? values.checkout_date.toISOString().split("T")[0] : null,
-        departure_date: values.departure_date.toISOString().split("T")[0],
+        departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
         sale_currency: values.sale_currency || values.currency || "ARS",
         operator_cost_currency: values.operator_cost_currency || values.currency || "ARS",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
@@ -192,29 +249,71 @@ export function NewOperationDialog({
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || "Error al crear operación")
+        const errorMessage = error.error || "Error al crear operación"
+        setApiError(errorMessage)
+        toast({
+          title: "Error de validación",
+          description: errorMessage,
+          variant: "destructive",
+        })
+        return
       }
 
+      toast({
+        title: "Operación creada",
+        description: "La operación se ha creado correctamente",
+      })
       onSuccess()
       onOpenChange(false)
       form.reset()
       setOperatorList([])
       setUseMultipleOperators(false)
+      setApiError(null)
     } catch (error) {
       console.error("Error creating operation:", error)
-      alert(error instanceof Error ? error.message : "Error al crear operación")
+      const errorMessage = error instanceof Error ? error.message : "Error al crear operación"
+      setApiError(errorMessage)
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      })
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => {
+      if (!open) {
+        setApiError(null)
+      }
+      onOpenChange(open)
+    }}>
       <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nueva Operación</DialogTitle>
           <DialogDescription>Crear una nueva operación manualmente</DialogDescription>
         </DialogHeader>
+
+        {/* Mostrar error del API */}
+        {apiError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{apiError}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Indicadores de campos requeridos según configuración */}
+        {settings && (
+          <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
+            <span className="font-medium">Campos requeridos:</span>{" "}
+            {settings.require_destination && <span className="mr-2">• Destino</span>}
+            {settings.require_departure_date && <span className="mr-2">• Fecha de salida</span>}
+            {settings.require_operator && <span className="mr-2">• Operador</span>}
+            {settings.require_customer && <span className="mr-2">• Cliente</span>}
+          </div>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
