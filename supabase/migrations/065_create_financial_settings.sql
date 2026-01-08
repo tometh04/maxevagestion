@@ -97,6 +97,10 @@ COMMENT ON COLUMN financial_settings.default_commission_rules IS 'Reglas de comi
 -- RLS (Row Level Security)
 ALTER TABLE financial_settings ENABLE ROW LEVEL SECURITY;
 
+-- Eliminar policies existentes si existen
+DROP POLICY IF EXISTS "Users can view financial settings for their agencies" ON financial_settings;
+DROP POLICY IF EXISTS "Only admins can modify financial settings" ON financial_settings;
+
 -- Política: Solo usuarios con acceso a finanzas pueden ver configuración
 CREATE POLICY "Users can view financial settings for their agencies"
   ON financial_settings

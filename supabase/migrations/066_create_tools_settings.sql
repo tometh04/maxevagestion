@@ -84,6 +84,10 @@ COMMENT ON COLUMN tools_settings.notifications_digest_frequency IS 'Frecuencia d
 -- RLS (Row Level Security)
 ALTER TABLE tools_settings ENABLE ROW LEVEL SECURITY;
 
+-- Eliminar policies existentes si existen
+DROP POLICY IF EXISTS "Users can view tools settings for their agencies" ON tools_settings;
+DROP POLICY IF EXISTS "Only admins can modify tools settings" ON tools_settings;
+
 -- Política: Usuarios pueden ver configuración de sus agencias
 CREATE POLICY "Users can view tools settings for their agencies"
   ON tools_settings
