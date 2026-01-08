@@ -86,7 +86,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 8.1 | Crear template | Aparece en listado | ⏳ |
+| 8.1 | Crear template | Aparece en listado | ✅ UI LISTA |
 | 8.2 | Usar variables en template | Se reemplazan al generar | ⏳ |
 | 8.3 | Generar PDF desde operación | PDF generado con datos | ⏳ |
 
@@ -165,6 +165,7 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 | Equipos | `/settings/teams` | ✅ | Crear equipo con usuarios |
 | Notas | `/resources/notes` | ✅ | Vincular a operación/cliente |
 | Integraciones | `/settings/integrations` | ✅ | Trello, Manychat, WhatsApp, AFIP |
+| Templates PDF | `/resources/templates` | ✅ | Crear, buscar, filtrar templates |
 
 ---
 
