@@ -181,9 +181,10 @@ const allNavigation: NavItem[] = [
   // Herramientas - Colapsable
   {
     title: "Herramientas",
-    url: "/emilia",
+    url: "/tools/cerebro",
     icon: Bot,
     items: [
+      { title: "Cerebro", url: "/tools/cerebro" },
       { title: "Emilia", url: "/emilia" },
       { title: "Configuración", url: "/tools/settings" },
     ],
