@@ -14,8 +14,8 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 
 | # | Acción | Impacto Esperado | Estado |
 |---|--------|------------------|--------|
-| 1.1 | Crear Lead | Aparece en listado de Leads, estadísticas de Ventas | ⏳ |
-| 1.2 | Convertir Lead a Operación | Crea Cliente + Crea Operación + Lead se marca como convertido | ⏳ |
+| 1.1 | Crear Lead | Aparece en listado de Leads, estadísticas de Ventas | ✅ UI LISTA |
+| 1.2 | Convertir Lead a Operación | Crea Cliente + Crea Operación + Lead se marca como convertido | ✅ UI VERIFICADO |
 | 1.3 | En conversión: Crear operador nuevo | Debe poder crear operador desde el desplegable | ✅ ARREGLADO |
 | 1.4 | En conversión: Seleccionar operador existente | Lista operadores disponibles | ✅ |
 | 1.5 | Operación creada | Aparece en listado, estadísticas, puede facturarse | ⏳ |
@@ -186,9 +186,9 @@ Cada flujo se verifica con la pregunta: **"Si hago X, ¿dónde debería impactar
 - Integraciones: Página con Trello, Manychat, WhatsApp, AFIP, Email
 
 ### Pendiente de Testing Funcional
-- Verificar que las validaciones se apliquen al crear operación SIN datos requeridos
+- ✅ Verificar que las validaciones se apliquen al crear operación → FUNCIONA (banner + asteriscos)
 - Crear y verificar estados personalizados
-- Probar flujo completo de conversión de lead
+- ✅ Probar flujo completo de conversión de lead → UI FUNCIONA
 - Crear una factura real
 - Crear un segmento con reglas automáticas
 - Configurar una integración y probar conexión
