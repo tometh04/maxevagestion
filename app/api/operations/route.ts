@@ -52,9 +52,31 @@ export async function POST(request: Request) {
       commission_percentage, // Porcentaje de comisión del vendedor
     } = body
 
-    // Validar campos requeridos
-    if (!agency_id || !seller_id || !type || !destination || !departure_date || sale_amount_total === undefined) {
+    // Obtener configuración de operaciones
+    const { data: operationSettings } = await supabase
+      .from("operation_settings")
+      .select("*")
+      .eq("agency_id", agency_id)
+      .maybeSingle()
+
+    const settingsData = operationSettings as any
+
+    // Validar campos requeridos según configuración
+    if (!agency_id || !seller_id || !type || sale_amount_total === undefined) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    // Aplicar validaciones de configuración
+    if (settingsData?.require_destination && !destination) {
+      return NextResponse.json({ error: "El destino es requerido" }, { status: 400 })
+    }
+
+    if (settingsData?.require_departure_date && !departure_date) {
+      return NextResponse.json({ error: "La fecha de salida es requerida" }, { status: 400 })
+    }
+
+    if (settingsData?.require_operator && !operator_id && (!operators || operators.length === 0)) {
+      return NextResponse.json({ error: "El operador es requerido" }, { status: 400 })
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
@@ -178,7 +200,7 @@ export async function POST(request: Request) {
       children: children || 0,
       infants: infants || 0,
       passengers: passengers ? JSON.stringify(passengers) : null,
-      status: status || "PRE_RESERVATION",
+      status: status || settingsData?.default_status || "PRE_RESERVATION",
       sale_amount_total,
       operator_cost: totalOperatorCost, // Costo total de todos los operadores
       currency: currency || "ARS", // Mantener para compatibilidad
@@ -535,6 +557,11 @@ export async function POST(request: Request) {
           }
         }
         
+        // Validar cliente requerido según configuración
+        if (settingsData?.require_customer && !customerId) {
+          return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
+        }
+
         // Asociar cliente a la operación
         if (customerId) {
           const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
