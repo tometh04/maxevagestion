@@ -860,16 +860,18 @@ export async function POST(request: Request) {
         `)
         .eq("status", "PENDING")
         .eq("date_due", currentDate),
+      // Viajes próximos: buscar por departure_date O checkin_date
       supabase
         .from("operations")
         .select(`
-          id, file_code, destination, departure_date, status,
+          id, file_code, destination, departure_date, checkin_date, checkout_date, return_date, status, sale_amount_total, sale_currency,
           customers:customer_id(first_name, last_name, phone),
           users:seller_id(name)
         `)
-        .gte("departure_date", currentDate)
-        .lte("departure_date", endOfWeek.toISOString().split('T')[0])
-        .order("departure_date", { ascending: true }),
+        .or(`departure_date.gte.${currentDate},checkin_date.gte.${currentDate}`)
+        .order("departure_date", { ascending: true })
+        .order("checkin_date", { ascending: true })
+        .limit(20),
       supabase
         .from("leads")
         .select("id, status, source, region, destination")
@@ -909,13 +911,28 @@ export async function POST(request: Request) {
       })),
     }
 
+    // Filtrar viajes que realmente están en el rango próximo (próximos 30 días)
+    const endOfMonth = new Date(today)
+    endOfMonth.setDate(today.getDate() + 30)
+    const endOfMonthStr = endOfMonth.toISOString().split('T')[0]
+    
+    const filteredTrips = (upcomingTrips as any[]).filter((t: any) => {
+      const tripDate = t.departure_date || t.checkin_date
+      return tripDate && tripDate >= currentDate && tripDate <= endOfMonthStr
+    })
+    
     contextData.viajesProximos = {
-      cantidad: upcomingTrips.length,
-      detalles: upcomingTrips.map((t: any) => ({
+      cantidad: filteredTrips.length,
+      detalles: filteredTrips.map((t: any) => ({
         codigo: t.file_code,
         destino: t.destination,
         fechaSalida: t.departure_date,
+        fechaCheckin: t.checkin_date,
+        fechaCheckout: t.checkout_date,
+        fechaRetorno: t.return_date,
         estado: t.status,
+        montoVenta: t.sale_amount_total,
+        monedaVenta: t.sale_currency,
         cliente: t.customers ? `${t.customers.first_name} ${t.customers.last_name}` : null,
         telefono: t.customers?.phone,
         vendedor: t.users?.name,
@@ -965,21 +982,91 @@ export async function POST(request: Request) {
 
     contextData.cuentasFinancieras = accounts
 
-    // Obtener balances de cajas activas
-    const { data: cashBoxes } = await supabase
-      .from("cash_boxes")
-      .select("id, name, currency, current_balance, is_active")
-      .eq("is_active", true)
+    // Obtener balances de cajas activas Y movimientos de caja para calcular balance real
+    const [cashBoxesResult, allCashMovementsResult, allOperationsResult] = await Promise.all([
+      supabase
+        .from("cash_boxes")
+        .select("id, name, currency, current_balance, initial_balance, is_active")
+        .eq("is_active", true),
+      // Obtener TODOS los movimientos de caja para calcular balance real
+      (supabase.from("cash_movements") as any)
+        .select("cash_box_id, type, amount, currency"),
+      // Obtener TODAS las operaciones para contexto general
+      supabase
+        .from("operations")
+        .select("id, file_code, destination, status, sale_amount_total, sale_currency, margin_amount, departure_date, checkin_date, created_at")
+        .order("created_at", { ascending: false })
+        .limit(50),
+    ])
+    
+    const cashBoxes = cashBoxesResult.data || []
+    const allCashMovements = allCashMovementsResult.data || []
+    const allOperations = allOperationsResult.data || []
+    
+    // Calcular balance real de cada caja sumando movimientos
+    const cashBoxBalances: Record<string, { ingresos: number; egresos: number }> = {}
+    for (const mov of allCashMovements as any[]) {
+      if (!mov.cash_box_id) continue
+      if (!cashBoxBalances[mov.cash_box_id]) {
+        cashBoxBalances[mov.cash_box_id] = { ingresos: 0, egresos: 0 }
+      }
+      if (mov.type === 'INCOME') {
+        cashBoxBalances[mov.cash_box_id].ingresos += Number(mov.amount || 0)
+      } else {
+        cashBoxBalances[mov.cash_box_id].egresos += Number(mov.amount || 0)
+      }
+    }
+    
+    // También calcular totales por moneda de todos los movimientos
+    let totalIngresosARS = 0, totalEgresosARS = 0, totalIngresosUSD = 0, totalEgresosUSD = 0
+    for (const mov of allCashMovements as any[]) {
+      if (mov.type === 'INCOME') {
+        if (mov.currency === 'ARS') totalIngresosARS += Number(mov.amount || 0)
+        else if (mov.currency === 'USD') totalIngresosUSD += Number(mov.amount || 0)
+      } else {
+        if (mov.currency === 'ARS') totalEgresosARS += Number(mov.amount || 0)
+        else if (mov.currency === 'USD') totalEgresosUSD += Number(mov.amount || 0)
+      }
+    }
     
     contextData.balancesCajas = {
       totalCajas: cashBoxes?.length || 0,
-      cajas: (cashBoxes || []).map((cb: any) => ({
-        nombre: cb.name,
-        moneda: cb.currency,
-        balance: cb.current_balance,
+      cajas: (cashBoxes || []).map((cb: any) => {
+        const movements = cashBoxBalances[cb.id] || { ingresos: 0, egresos: 0 }
+        const balanceCalculado = (cb.initial_balance || 0) + movements.ingresos - movements.egresos
+        return {
+          nombre: cb.name,
+          moneda: cb.currency,
+          balanceRegistrado: cb.current_balance,
+          balanceCalculado: balanceCalculado,
+          ingresos: movements.ingresos,
+          egresos: movements.egresos,
+        }
+      }),
+      totalARS: totalIngresosARS - totalEgresosARS,
+      totalUSD: totalIngresosUSD - totalEgresosUSD,
+      resumenMovimientos: {
+        ingresosARS: totalIngresosARS,
+        egresosARS: totalEgresosARS,
+        ingresosUSD: totalIngresosUSD,
+        egresosUSD: totalEgresosUSD,
+      },
+    }
+    
+    // Agregar contexto de todas las operaciones para que el AI pueda responder preguntas generales
+    contextData.operacionesRecientes = {
+      total: allOperations.length,
+      detalles: (allOperations as any[]).slice(0, 20).map((op: any) => ({
+        codigo: op.file_code,
+        destino: op.destination,
+        estado: op.status,
+        montoVenta: op.sale_amount_total,
+        moneda: op.sale_currency,
+        margen: op.margin_amount,
+        fechaSalida: op.departure_date,
+        fechaCheckin: op.checkin_date,
+        fechaCreacion: op.created_at,
       })),
-      totalARS: (cashBoxes || []).filter((cb: any) => cb.currency === 'ARS').reduce((sum: number, cb: any) => sum + Number(cb.current_balance || 0), 0),
-      totalUSD: (cashBoxes || []).filter((cb: any) => cb.currency === 'USD').reduce((sum: number, cb: any) => sum + Number(cb.current_balance || 0), 0),
     }
 
     // Paralelizar queries contables (9-11)
