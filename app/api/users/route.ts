@@ -50,10 +50,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ users: [] })
     }
 
-    // Query de usuarios simplificada - La tabla users tiene 'name' no 'first_name/last_name'
+    // Query de usuarios - columnas reales: id, auth_id, name, email, role, is_active, created_at, updated_at
     let query = (supabase.from("users") as any)
-      .select("id, name, email, avatar_url, role, phone, created_at, is_active")
+      .select("id, name, email, role, is_active, created_at")
       .in("id", userIds)
+      .eq("is_active", true)
 
     // Filtros opcionales
     if (role) {
@@ -80,9 +81,17 @@ export async function GET(request: Request) {
     const users = (usersData || []).map((u: any) => {
       const nameParts = (u.name || '').split(' ')
       return {
-        ...u,
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        role: u.role,
+        is_active: u.is_active,
+        created_at: u.created_at,
+        // Campos derivados para compatibilidad
         first_name: nameParts[0] || '',
         last_name: nameParts.slice(1).join(' ') || '',
+        avatar_url: null,
+        phone: null,
       }
     })
 
