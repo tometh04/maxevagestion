@@ -23,7 +23,8 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2 } from "lucide-react"
+import { CalendarIcon, Loader2, Plus } from "lucide-react"
+import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -115,6 +116,18 @@ export function EditOperationDialog({
   operators,
 }: EditOperationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  
+  // Estado para crear nuevo operador
+  const [showNewOperatorDialog, setShowNewOperatorDialog] = useState(false)
+  const [newOperatorName, setNewOperatorName] = useState("")
+  const [newOperatorEmail, setNewOperatorEmail] = useState("")
+  const [creatingOperator, setCreatingOperator] = useState(false)
+  const [localOperators, setLocalOperators] = useState(operators)
+
+  // Sincronizar operadores cuando cambian
+  useEffect(() => {
+    setLocalOperators(operators)
+  }, [operators])
 
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema) as any,
@@ -177,6 +190,50 @@ export function EditOperationDialog({
       isPositive: margin >= 0,
     }
   }, [saleAmount, operatorCost])
+
+  // Función para crear nuevo operador
+  const handleCreateOperator = async () => {
+    if (!newOperatorName.trim()) {
+      toast.error("El nombre del operador es requerido")
+      return
+    }
+
+    setCreatingOperator(true)
+    try {
+      const response = await fetch("/api/operators", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newOperatorName.trim(),
+          contact_email: newOperatorEmail.trim() || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al crear operador")
+      }
+
+      const data = await response.json()
+      const newOperator = data.operator || data
+
+      // Agregar a la lista local y seleccionarlo
+      setLocalOperators(prev => [...prev, newOperator])
+      form.setValue("operator_id", newOperator.id)
+      
+      toast.success(`Operador ${newOperator.name} creado exitosamente`)
+
+      // Limpiar y cerrar
+      setNewOperatorName("")
+      setNewOperatorEmail("")
+      setShowNewOperatorDialog(false)
+    } catch (error) {
+      console.error("Error creating operator:", error)
+      toast.error(error instanceof Error ? error.message : "Error al crear operador")
+    } finally {
+      setCreatingOperator(false)
+    }
+  }
 
   const onSubmit = async (values: OperationFormValues) => {
     setIsLoading(true)
@@ -314,24 +371,35 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Operador</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sin operador" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sin operador</SelectItem>
-                        {operators.map((operator) => (
-                          <SelectItem key={operator.id} value={operator.id}>
-                            {operator.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder="Sin operador" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin operador</SelectItem>
+                          {localOperators.map((operator) => (
+                            <SelectItem key={operator.id} value={operator.id}>
+                              {operator.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowNewOperatorDialog(true)}
+                        title="Crear nuevo operador"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -626,6 +694,66 @@ export function EditOperationDialog({
           </form>
         </Form>
       </DialogContent>
+
+      {/* Diálogo para crear nuevo operador */}
+      <Dialog open={showNewOperatorDialog} onOpenChange={setShowNewOperatorDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Nuevo Operador</DialogTitle>
+            <DialogDescription>
+              Crea un nuevo operador/proveedor para asignarlo a esta operación
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-operator-name">Nombre del operador *</Label>
+              <Input
+                id="edit-operator-name"
+                placeholder="Ej: Despegar, Booking, etc."
+                value={newOperatorName}
+                onChange={(e) => setNewOperatorName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-operator-email">Email (opcional)</Label>
+              <Input
+                id="edit-operator-email"
+                type="email"
+                placeholder="contacto@operador.com"
+                value={newOperatorEmail}
+                onChange={(e) => setNewOperatorEmail(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowNewOperatorDialog(false)
+                setNewOperatorName("")
+                setNewOperatorEmail("")
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={handleCreateOperator}
+              disabled={creatingOperator || !newOperatorName.trim()}
+            >
+              {creatingOperator ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creando...
+                </>
+              ) : (
+                "Crear Operador"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }
