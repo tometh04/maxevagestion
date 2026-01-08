@@ -1,45 +1,19 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 
 export const dynamic = 'force-dynamic'
 
 // GET - Obtener usuarios de las agencias del usuario actual
 export async function GET(request: Request) {
   try {
+    const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Obtener el usuario autenticado directamente desde Supabase Auth
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-
-    if (authError || !authUser) {
-      return NextResponse.json(
-        { error: "No autenticado", users: [] },
-        { status: 401 }
-      )
-    }
-
-    // Obtener el usuario de la tabla users
-    const { data: userData, error: userError } = await (supabase.from("users") as any)
-      .select("id, role")
-      .eq("auth_id", authUser.id)
-      .single()
-
-    if (userError || !userData) {
-      console.error("Error getting user data:", userError)
-      return NextResponse.json({ users: [] })
-    }
-
-    // Obtener agencias del usuario directamente
-    const { data: directAgencies, error: agencyError } = await (supabase.from("user_agencies") as any)
-      .select("agency_id")
-      .eq("user_id", userData.id)
-
-    if (agencyError) {
-      console.error("Error getting user agencies:", agencyError)
-    }
-
-    const agencyIds = (directAgencies || []).map((ua: any) => ua.agency_id)
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Si no hay agencias, retornar vacío
     if (!agencyIds || agencyIds.length === 0) {
