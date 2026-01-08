@@ -130,7 +130,7 @@ export async function GET(request: Request) {
       if (insertError) {
         console.error("Error creating default operation settings:", insertError)
         return NextResponse.json(
-          { error: "Error al crear configuración por defecto" },
+          { error: "Error al crear configuración por defecto", detail: insertError.message, code: insertError.code },
           { status: 500 }
         )
       }
