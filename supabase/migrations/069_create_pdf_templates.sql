@@ -139,12 +139,21 @@ CREATE POLICY "Users can create generated pdfs"
     agency_id IN (SELECT agency_id FROM user_agencies WHERE user_id = auth.uid())
   );
 
+-- Función para actualizar updated_at (si no existe)
+CREATE OR REPLACE FUNCTION update_pdf_template_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 -- Trigger para actualizar updated_at
 DROP TRIGGER IF EXISTS trigger_update_pdf_template_updated_at ON pdf_templates;
 CREATE TRIGGER trigger_update_pdf_template_updated_at
   BEFORE UPDATE ON pdf_templates
   FOR EACH ROW
-  EXECUTE FUNCTION update_note_updated_at();
+  EXECUTE FUNCTION update_pdf_template_updated_at();
 
 -- Insertar templates por defecto (se ejecutará por cada agencia en la app)
 -- Los templates reales se insertarán desde la aplicación

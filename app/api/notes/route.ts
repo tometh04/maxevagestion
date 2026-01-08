@@ -90,7 +90,7 @@ export async function GET(request: Request) {
       .in("agency_id", agencyIds)
       .eq("status", "active")
 
-    const allTags = [...new Set((allNotes || []).flatMap((n: any) => n.tags || []))]
+    const allTags = Array.from(new Set((allNotes || []).flatMap((n: any) => n.tags || [])))
 
     return NextResponse.json({ notes, tags: allTags })
   } catch (error: any) {
