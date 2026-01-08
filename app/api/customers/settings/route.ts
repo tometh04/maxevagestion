@@ -99,8 +99,7 @@ export async function GET(request: Request) {
           created_by: user.id,
         }
 
-        const { data: newData, error: insertError } = await supabase
-          .from("customer_settings")
+        const { data: newData, error: insertError } = await (supabase.from("customer_settings") as any)
           .insert(defaultSettings)
           .select()
           .single()
@@ -180,10 +179,10 @@ export async function PUT(request: Request) {
 
     if (existing) {
       // Actualizar existente
-      const { data, error } = await supabase
-        .from("customer_settings")
+      const existingData = existing as any
+      const { data, error } = await (supabase.from("customer_settings") as any)
         .update(updateData)
-        .eq("id", existing.id)
+        .eq("id", existingData.id)
         .select()
         .single()
 
@@ -198,8 +197,7 @@ export async function PUT(request: Request) {
       result = data
     } else {
       // Crear nueva
-      const { data, error } = await supabase
-        .from("customer_settings")
+      const { data, error } = await (supabase.from("customer_settings") as any)
         .insert({
           agency_id: agencyIds[0],
           ...updateData,

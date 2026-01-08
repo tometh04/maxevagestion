@@ -101,8 +101,9 @@ export async function PATCH(
       .maybeSingle()
 
     // Aplicar validaciones de configuración
-    if (settings?.validations) {
-      const validations = settings.validations as any
+    const settingsData = settings as any
+    if (settingsData?.validations) {
+      const validations = settingsData.validations
       
       if (validations.email?.format === 'email' && body.email) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -137,7 +138,7 @@ export async function PATCH(
     }
 
     // Enviar notificaciones si están configuradas
-    if (settings?.notifications && currentCustomer) {
+    if (settingsData?.notifications && currentCustomer) {
       await sendCustomerNotifications(
         supabase,
         'customer_updated',
@@ -149,7 +150,7 @@ export async function PATCH(
           phone: customer.phone,
         },
         agencyIds[0],
-        settings.notifications
+        settingsData.notifications
       )
     }
 
@@ -176,19 +177,25 @@ export async function DELETE(
     const { id: customerId } = await params
 
     // Obtener cliente antes de eliminar para notificaciones
-    const { data: customer } = await supabase
+    const { data: customerData } = await supabase
       .from("customers")
       .select("*")
       .eq("id", customerId)
       .single()
+    
+    const customer = customerData as any
 
     // Obtener configuración para notificaciones
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-    const { data: settings } = agencyIds.length > 0 ? await supabase
-      .from("customer_settings")
-      .select("*")
-      .eq("agency_id", agencyIds[0])
-      .maybeSingle() : { data: null }
+    let settingsData: any = null
+    if (agencyIds.length > 0) {
+      const { data: settings } = await supabase
+        .from("customer_settings")
+        .select("*")
+        .eq("agency_id", agencyIds[0])
+        .maybeSingle()
+      settingsData = settings
+    }
 
     // Check if customer has operations - obtener más información para mensaje detallado
     const { data: operations, error: checkError } = await supabase
@@ -252,7 +259,7 @@ export async function DELETE(
     }
 
     // Enviar notificaciones si están configuradas
-    if (settings?.notifications && customer && agencyIds.length > 0) {
+    if (settingsData?.notifications && customerData && agencyIds.length > 0) {
       await sendCustomerNotifications(
         supabase,
         'customer_deleted',
@@ -264,7 +271,7 @@ export async function DELETE(
           phone: customer.phone,
         },
         agencyIds[0],
-        settings.notifications
+        settingsData.notifications
       )
     }
 

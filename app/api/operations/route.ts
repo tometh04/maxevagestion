@@ -561,25 +561,27 @@ export async function POST(request: Request) {
                 .single()
               
               if (customer) {
+                const customerData = customer as any
                 const { data: settings } = await supabase
                   .from("customer_settings")
                   .select("*")
                   .eq("agency_id", agency_id)
                   .maybeSingle()
                 
-                if (settings?.notifications) {
+                const settingsData = settings as any
+                if (settingsData?.notifications) {
                   await sendCustomerNotifications(
                     supabase,
                     'customer_operation_created',
                     {
-                      id: customer.id,
-                      first_name: customer.first_name,
-                      last_name: customer.last_name,
-                      email: customer.email,
-                      phone: customer.phone,
+                      id: customerData.id,
+                      first_name: customerData.first_name,
+                      last_name: customerData.last_name,
+                      email: customerData.email,
+                      phone: customerData.phone,
                     },
                     agency_id,
-                    settings.notifications
+                    settingsData.notifications
                   )
                 }
               }

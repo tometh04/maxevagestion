@@ -170,9 +170,11 @@ export async function POST(request: Request) {
       .eq("agency_id", agencyIds[0])
       .maybeSingle()
 
+    const settingsData = settings as any
+
     // Aplicar validaciones de configuración
-    if (settings?.validations) {
-      const validations = settings.validations as any
+    if (settingsData?.validations) {
+      const validations = settingsData.validations
       
       if (validations.email?.required && !email) {
         return NextResponse.json({ error: "Email es requerido" }, { status: 400 })
@@ -191,15 +193,15 @@ export async function POST(request: Request) {
     }
 
     // Verificar documento requerido
-    if (settings?.require_document && (!document_type || !document_number)) {
+    if (settingsData?.require_document && (!document_type || !document_number)) {
       return NextResponse.json({ 
         error: "Tipo y número de documento son requeridos" 
       }, { status: 400 })
     }
 
     // Verificar duplicados si está habilitado
-    if (settings?.duplicate_check_enabled) {
-      const checkFields = settings.duplicate_check_fields || ['email', 'phone']
+    if (settingsData?.duplicate_check_enabled) {
+      const checkFields = settingsData.duplicate_check_fields || ['email', 'phone']
       const duplicateCheck = await checkDuplicateCustomer(
         supabase,
         { email, phone, document_number },
@@ -237,7 +239,7 @@ export async function POST(request: Request) {
     }
 
     // Enviar notificaciones si están configuradas
-    if (settings?.notifications) {
+    if (settingsData?.notifications) {
       await sendCustomerNotifications(
         supabase,
         'new_customer',
@@ -249,7 +251,7 @@ export async function POST(request: Request) {
           phone: customer.phone,
         },
         agencyIds[0],
-        settings.notifications
+        settingsData.notifications
       )
     }
 
