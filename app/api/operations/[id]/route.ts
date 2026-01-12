@@ -277,6 +277,130 @@ export async function PATCH(
       }
     }
 
+    // ============================================
+    // CENTRALIZAR COSTOS DE MÚLTIPLES OPERADORES AL CONFIRMAR
+    // ============================================
+    // Cuando una operación se confirma, si tiene múltiples operadores,
+    // centralizar el costo total al operador principal
+    const statusChangedToConfirmed = body.status === "CONFIRMED" && currentOp.status !== "CONFIRMED"
+    if (statusChangedToConfirmed) {
+      try {
+        // Obtener todos los operadores de la operación
+        const { data: operationOperators } = await supabase
+          .from("operation_operators")
+          .select("*")
+          .eq("operation_id", operationId)
+          .order("created_at", { ascending: true })
+
+        if (operationOperators && operationOperators.length > 1) {
+          // Hay múltiples operadores, centralizar al primero (operador principal)
+          const operatorsArray = operationOperators as Array<{
+            id: string
+            operation_id: string
+            operator_id: string
+            cost: number
+            cost_currency: string
+            notes?: string | null
+            created_at: string
+            updated_at: string
+          }>
+          const primaryOperator = operatorsArray[0]
+          const totalCost = operatorsArray.reduce((sum, op) => sum + Number(op.cost || 0), 0)
+          const primaryCurrency = primaryOperator.cost_currency || op.operator_cost_currency || op.currency || "ARS"
+
+          console.log(`🔄 Centralizando costos de ${operationOperators.length} operadores al operador principal ${primaryOperator.operator_id}`)
+          console.log(`   Costo total: ${totalCost} ${primaryCurrency}`)
+
+          // 1. Actualizar el operador principal con el costo total
+          await (supabase.from("operation_operators") as any)
+            .update({
+              cost: totalCost,
+              cost_currency: primaryCurrency,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", primaryOperator.id)
+
+          // 2. Eliminar los otros operadores
+          const otherOperatorIds = operatorsArray.slice(1).map(op => op.id)
+          if (otherOperatorIds.length > 0) {
+            await (supabase.from("operation_operators") as any)
+              .delete()
+              .in("id", otherOperatorIds)
+            console.log(`   ✅ Eliminados ${otherOperatorIds.length} operadores secundarios`)
+          }
+
+          // 3. Actualizar operator_payments: consolidar en un solo pago al operador principal
+          // Obtener todos los operator_payments pendientes de esta operación
+          const { data: operatorPayments } = await supabase
+            .from("operator_payments")
+            .select("*")
+            .eq("operation_id", operationId)
+            .eq("status", "PENDING")
+
+          if (operatorPayments && operatorPayments.length > 0) {
+            // Encontrar el pago del operador principal
+            const primaryPayment = operatorPayments.find((p: any) => p.operator_id === primaryOperator.operator_id)
+            const otherPayments = operatorPayments.filter((p: any) => p.operator_id !== primaryOperator.operator_id)
+
+            if (primaryPayment) {
+              // Actualizar el pago principal con el costo total
+              await (supabase.from("operator_payments") as any)
+                .update({
+                  amount: totalCost,
+                  currency: primaryCurrency,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", primaryPayment.id)
+              console.log(`   ✅ Actualizado operator_payment principal: ${totalCost} ${primaryCurrency}`)
+            } else {
+              // Si no existe pago del operador principal, crear uno nuevo
+              const { calculateDueDate } = await import("@/lib/accounting/operator-payments")
+              const dueDate = calculateDueDate(
+                op.product_type || "PAQUETE",
+                op.departure_date,
+                null,
+                op.departure_date
+              )
+              await (supabase.from("operator_payments") as any)
+                .insert({
+                  operation_id: operationId,
+                  operator_id: primaryOperator.operator_id,
+                  amount: totalCost,
+                  currency: primaryCurrency,
+                  due_date: dueDate,
+                  status: "PENDING",
+                  notes: `Pago centralizado de múltiples operadores al confirmar operación`,
+                })
+              console.log(`   ✅ Creado nuevo operator_payment principal: ${totalCost} ${primaryCurrency}`)
+            }
+
+            // Eliminar los pagos de los otros operadores
+            if (otherPayments.length > 0) {
+              const otherPaymentIds = otherPayments.map((p: any) => p.id)
+              await (supabase.from("operator_payments") as any)
+                .delete()
+                .in("id", otherPaymentIds)
+              console.log(`   ✅ Eliminados ${otherPaymentIds.length} operator_payments secundarios`)
+            }
+          }
+
+          // 4. Actualizar el operator_id y operator_cost de la operación
+          await (supabase.from("operations") as any)
+            .update({
+              operator_id: primaryOperator.operator_id,
+              operator_cost: totalCost,
+              operator_cost_currency: primaryCurrency,
+            })
+            .eq("id", operationId)
+
+          console.log(`✅ Centralización completada: costo total ${totalCost} ${primaryCurrency} asignado al operador principal`)
+        }
+      } catch (error) {
+        console.error("Error centralizando costos de operadores:", error)
+        // No lanzamos error para no romper la actualización de la operación
+      }
+    }
+
     // Si el status cambió a CONFIRMED o RESERVED, generar alerta de documentación faltante
     if (body.status === "CONFIRMED" || body.status === "RESERVED" || op.status === "CONFIRMED" || op.status === "RESERVED") {
       try {
