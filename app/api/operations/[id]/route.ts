@@ -368,7 +368,7 @@ export async function PATCH(
               const dueDate = calculateDueDate(
                 op.product_type || "PAQUETE",
                 op.departure_date,
-                null,
+                undefined,
                 op.departure_date
               )
               await (supabase.from("operator_payments") as any)
