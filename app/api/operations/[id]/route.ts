@@ -338,9 +338,19 @@ export async function PATCH(
             .eq("status", "PENDING")
 
           if (operatorPayments && operatorPayments.length > 0) {
+            const paymentsArray = operatorPayments as Array<{
+              id: string
+              operation_id: string
+              operator_id: string
+              amount: number
+              currency: string
+              status: string
+              due_date: string
+              notes?: string | null
+            }>
             // Encontrar el pago del operador principal
-            const primaryPayment = operatorPayments.find((p: any) => p.operator_id === primaryOperator.operator_id)
-            const otherPayments = operatorPayments.filter((p: any) => p.operator_id !== primaryOperator.operator_id)
+            const primaryPayment = paymentsArray.find((p) => p.operator_id === primaryOperator.operator_id)
+            const otherPayments = paymentsArray.filter((p) => p.operator_id !== primaryOperator.operator_id)
 
             if (primaryPayment) {
               // Actualizar el pago principal con el costo total
@@ -376,7 +386,7 @@ export async function PATCH(
 
             // Eliminar los pagos de los otros operadores
             if (otherPayments.length > 0) {
-              const otherPaymentIds = otherPayments.map((p: any) => p.id)
+              const otherPaymentIds = otherPayments.map((p) => p.id)
               await (supabase.from("operator_payments") as any)
                 .delete()
                 .in("id", otherPaymentIds)
