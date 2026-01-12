@@ -200,7 +200,7 @@ export async function POST(request: Request) {
       children: children || 0,
       infants: infants || 0,
       passengers: passengers ? JSON.stringify(passengers) : null,
-      status: status || settingsData?.default_status || "PRE_RESERVATION",
+      status: status || settingsData?.default_status || "RESERVED",
       sale_amount_total,
       operator_cost: totalOperatorCost, // Costo total de todos los operadores
       currency: currency || "ARS", // Mantener para compatibilidad
@@ -970,22 +970,41 @@ export async function GET(request: Request) {
       .in("operation_id", operationIds)
     
     // Agrupar pagos por operación y calcular montos
-    const paymentsByOperation: Record<string, { paid: number; pending: number; currency: string }> = {}
+    const paymentsByOperation: Record<string, { 
+      customer_paid: number
+      customer_pending: number
+      operator_paid: number
+      operator_pending: number
+      currency: string 
+    }> = {}
     
     if (payments) {
       const paymentsArray = (payments || []) as any[]
       for (const payment of paymentsArray) {
         const opId = payment.operation_id
         if (!paymentsByOperation[opId]) {
-          paymentsByOperation[opId] = { paid: 0, pending: 0, currency: payment.currency || "ARS" }
+          paymentsByOperation[opId] = { 
+            customer_paid: 0,
+            customer_pending: 0,
+            operator_paid: 0,
+            operator_pending: 0,
+            currency: payment.currency || "ARS" 
+          }
         }
         
         if (payment.direction === "INCOME") {
           // Cobros de clientes
           if (payment.status === "PAID") {
-            paymentsByOperation[opId].paid += Number(payment.amount) || 0
+            paymentsByOperation[opId].customer_paid += Number(payment.amount) || 0
           } else {
-            paymentsByOperation[opId].pending += Number(payment.amount) || 0
+            paymentsByOperation[opId].customer_pending += Number(payment.amount) || 0
+          }
+        } else if (payment.direction === "EXPENSE") {
+          // Pagos a operadores
+          if (payment.status === "PAID") {
+            paymentsByOperation[opId].operator_paid += Number(payment.amount) || 0
+          } else {
+            paymentsByOperation[opId].operator_pending += Number(payment.amount) || 0
           }
         }
       }
@@ -1001,13 +1020,21 @@ export async function GET(request: Request) {
         ? `${mainCustomer.first_name || ""} ${mainCustomer.last_name || ""}`.trim()
         : op.leads?.contact_name || "-"
       
-      const paymentData = paymentsByOperation[op.id] || { paid: 0, pending: 0, currency: op.currency || "ARS" }
+      const paymentData = paymentsByOperation[op.id] || { 
+        customer_paid: 0,
+        customer_pending: 0,
+        operator_paid: 0,
+        operator_pending: 0,
+        currency: op.currency || "ARS" 
+      }
       
       return {
         ...op,
         customer_name: customerName,
-        paid_amount: paymentData.paid,
-        pending_amount: paymentData.pending,
+        paid_amount: paymentData.customer_paid, // Monto Cobrado
+        pending_amount: paymentData.customer_pending, // A cobrar
+        operator_paid_amount: paymentData.operator_paid, // Pagado (a operadores)
+        operator_pending_amount: paymentData.operator_pending, // A pagar (a operadores)
       }
     })
 

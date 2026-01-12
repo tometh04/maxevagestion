@@ -67,20 +67,7 @@ const allNavigation: NavItem[] = [
     module: "dashboard",
     collapsible: false,
   },
-  // Clientes - Colapsable
-  {
-    title: "Clientes",
-    url: "/customers",
-    icon: Users,
-    module: "customers",
-    items: [
-      { title: "Clientes", url: "/customers" },
-      { title: "Segmentos", url: "/customers/segments" },
-      { title: "Estadísticas", url: "/customers/statistics" },
-      { title: "Configuración", url: "/customers/settings" },
-    ],
-  },
-  // Operaciones - Colapsable
+  // Operaciones - Colapsable (moved to second position)
   {
     title: "Operaciones",
     url: "/operations",
@@ -93,9 +80,22 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/operations/settings" },
     ],
   },
-  // Ventas - Colapsable
+  // Base de Datos Clientes - Colapsable (renamed from "Clientes")
   {
-    title: "Ventas",
+    title: "Base de Datos Clientes",
+    url: "/customers",
+    icon: Users,
+    module: "customers",
+    items: [
+      { title: "Clientes", url: "/customers" },
+      { title: "Segmentos", url: "/customers/segments" },
+      { title: "Estadísticas", url: "/customers/statistics" },
+      { title: "Configuración", url: "/customers/settings" },
+    ],
+  },
+  // CRM Ventas - Colapsable (renamed from "Ventas")
+  {
+    title: "CRM Ventas",
     url: "/sales/leads",
     icon: ShoppingCart,
     module: "leads",

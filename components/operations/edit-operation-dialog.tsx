@@ -48,7 +48,7 @@ const operationSchema = z.object({
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0),
   infants: z.coerce.number().min(0),
-  status: z.enum(["PRE_RESERVATION", "RESERVED", "CONFIRMED", "CANCELLED", "TRAVELLED", "CLOSED"]),
+  status: z.enum(["RESERVED", "CONFIRMED", "CANCELLED", "TRAVELLING", "TRAVELLED"]),
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
   operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
@@ -66,12 +66,11 @@ const operationTypeOptions = [
 ]
 
 const standardStatusOptions = [
-  { value: "PRE_RESERVATION", label: "Pre-reserva", color: "bg-gray-500" },
   { value: "RESERVED", label: "Reservado", color: "bg-blue-500" },
   { value: "CONFIRMED", label: "Confirmado", color: "bg-green-500" },
   { value: "CANCELLED", label: "Cancelado", color: "bg-red-500" },
+  { value: "TRAVELLING", label: "En viaje", color: "bg-orange-500" },
   { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
-  { value: "CLOSED", label: "Cerrado", color: "bg-slate-500" },
 ]
 
 interface Operation {
@@ -577,7 +576,7 @@ export function EditOperationDialog({
                 name="children"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Niños</FormLabel>
+                    <FormLabel>Children</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -596,7 +595,7 @@ export function EditOperationDialog({
                 name="infants"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Bebés</FormLabel>
+                    <FormLabel>Infantes</FormLabel>
                     <FormControl>
                       <Input
                         type="number"

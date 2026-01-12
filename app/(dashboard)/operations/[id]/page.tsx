@@ -133,6 +133,7 @@ export default async function OperationDetailPage({
       agencies={agencies}
       sellers={sellers}
       operators={operators}
+      userRole={userRole}
     />
   )
 }

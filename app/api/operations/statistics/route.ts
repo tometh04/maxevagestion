@@ -55,21 +55,19 @@ export async function GET(request: Request) {
 
     // Estadísticas por estado
     const statusCounts: Record<string, number> = {
-      PRE_RESERVATION: 0,
       RESERVED: 0,
       CONFIRMED: 0,
       CANCELLED: 0,
+      TRAVELLING: 0,
       TRAVELLED: 0,
-      CLOSED: 0,
     }
 
     const statusLabels: Record<string, string> = {
-      PRE_RESERVATION: "Pre-reserva",
       RESERVED: "Reservado",
       CONFIRMED: "Confirmado",
       CANCELLED: "Cancelado",
+      TRAVELLING: "En viaje",
       TRAVELLED: "Viajado",
-      CLOSED: "Cerrado",
     }
 
     // Estadísticas por destino
@@ -117,8 +115,8 @@ export async function GET(request: Request) {
 
       totalOperations++
 
-      // Solo estadísticas financieras para operaciones confirmadas/viajadas/cerradas
-      if (["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op.status)) {
+      // Solo estadísticas financieras para operaciones confirmadas/viajadas
+      if (["CONFIRMED", "TRAVELLED"].includes(op.status)) {
         confirmedOperations++
         const saleAmount = parseFloat(op.sale_amount_total) || 0
         const marginAmount = parseFloat(op.margin_amount) || 0

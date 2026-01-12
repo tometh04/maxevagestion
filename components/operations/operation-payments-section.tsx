@@ -77,6 +77,7 @@ interface OperationPaymentsSectionProps {
   currency: string
   saleAmount: number
   operatorCost: number
+  userRole: string
 }
 
 export function OperationPaymentsSection({
@@ -85,9 +86,11 @@ export function OperationPaymentsSection({
   currency,
   saleAmount,
   operatorCost,
+  userRole,
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
-  const [dialogOpen, setDialogOpen] = useState(false)
+  const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
+  const [expenseDialogOpen, setExpenseDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
@@ -397,7 +400,7 @@ export function OperationPaymentsSection({
     }
   }
 
-  const form = useForm<PaymentFormValues>({
+  const incomeForm = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       payer_type: "CUSTOMER",
@@ -410,7 +413,18 @@ export function OperationPaymentsSection({
     },
   })
 
-  const watchPayerType = form.watch("payer_type")
+  const expenseForm = useForm<PaymentFormValues>({
+    resolver: zodResolver(paymentSchema),
+    defaultValues: {
+      payer_type: "OPERATOR",
+      direction: "EXPENSE",
+      method: "Transferencia",
+      amount: 0,
+      currency: currency as "ARS" | "USD",
+      date_paid: new Date(),
+      notes: "",
+    },
+  })
 
   // Calcular totales
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
@@ -422,7 +436,7 @@ export function OperationPaymentsSection({
   const customerDebt = saleAmount - totalPaidByCustomer
   const operatorDebt = operatorCost - totalPaidToOperator
 
-  const onSubmit = async (values: PaymentFormValues) => {
+  const onSubmitIncome = async (values: PaymentFormValues) => {
     setIsLoading(true)
     try {
       const response = await fetch("/api/payments", {
@@ -430,9 +444,44 @@ export function OperationPaymentsSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           operation_id: operationId,
+          payer_type: "CUSTOMER",
+          direction: "INCOME",
           ...values,
           date_paid: values.date_paid.toISOString().split("T")[0],
-          date_due: values.date_paid.toISOString().split("T")[0], // Pago ya realizado
+          date_due: values.date_paid.toISOString().split("T")[0],
+          status: "PAID",
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al registrar cobro")
+      }
+
+      setIncomeDialogOpen(false)
+      incomeForm.reset()
+      router.refresh()
+    } catch (error) {
+      console.error("Error registering income:", error)
+      alert(error instanceof Error ? error.message : "Error al registrar cobro")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const onSubmitExpense = async (values: PaymentFormValues) => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation_id: operationId,
+          payer_type: "OPERATOR",
+          direction: "EXPENSE",
+          ...values,
+          date_paid: values.date_paid.toISOString().split("T")[0],
+          date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
         }),
       })
@@ -442,11 +491,11 @@ export function OperationPaymentsSection({
         throw new Error(error.error || "Error al registrar pago")
       }
 
-      setDialogOpen(false)
-      form.reset()
+      setExpenseDialogOpen(false)
+      expenseForm.reset()
       router.refresh()
     } catch (error) {
-      console.error("Error registering payment:", error)
+      console.error("Error registering expense:", error)
       alert(error instanceof Error ? error.message : "Error al registrar pago")
     } finally {
       setIsLoading(false)
@@ -519,10 +568,18 @@ export function OperationPaymentsSection({
                 Limpiar auto-generados
               </Button>
             )}
-            <Button onClick={() => setDialogOpen(true)} size="sm">
+            {/* Botón Registrar Cobro - visible para todos */}
+            <Button onClick={() => setIncomeDialogOpen(true)} size="sm" variant="default">
               <Plus className="mr-2 h-4 w-4" />
-              Registrar Pago
+              Registrar Cobro
             </Button>
+            {/* Botón Registrar Pago - solo para ADMIN y SUPER_ADMIN */}
+            {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+              <Button onClick={() => setExpenseDialogOpen(true)} size="sm" variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Registrar Pago
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -633,48 +690,20 @@ export function OperationPaymentsSection({
         </CardContent>
       </Card>
 
-      {/* Dialog para registrar pago */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* Dialog para registrar cobro (INCOME) */}
+      <Dialog open={incomeDialogOpen} onOpenChange={setIncomeDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Registrar Pago</DialogTitle>
+            <DialogTitle>Registrar Cobro</DialogTitle>
             <DialogDescription>
-              Registra un pago recibido del cliente o realizado al operador.
+              Registra un cobro recibido del cliente.
             </DialogDescription>
           </DialogHeader>
           
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <Form {...incomeForm}>
+            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="space-y-4">
               <FormField
-                control={form.control}
-                name="payer_type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo de Pago</FormLabel>
-                    <Select 
-                      onValueChange={(value) => {
-                        field.onChange(value)
-                        form.setValue("direction", value === "CUSTOMER" ? "INCOME" : "EXPENSE")
-                      }} 
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="CUSTOMER">Pago del Cliente (Ingreso)</SelectItem>
-                        <SelectItem value="OPERATOR">Pago a Operador (Egreso)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
+                control={incomeForm.control}
                 name="method"
                 render={({ field }) => (
                   <FormItem>
@@ -700,7 +729,7 @@ export function OperationPaymentsSection({
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={form.control}
+                  control={incomeForm.control}
                   name="amount"
                   render={({ field }) => (
                     <FormItem>
@@ -714,7 +743,7 @@ export function OperationPaymentsSection({
                 />
 
                 <FormField
-                  control={form.control}
+                  control={incomeForm.control}
                   name="currency"
                   render={({ field }) => (
                     <FormItem>
@@ -737,11 +766,11 @@ export function OperationPaymentsSection({
               </div>
 
               <FormField
-                control={form.control}
+                control={incomeForm.control}
                 name="date_paid"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Fecha del Pago</FormLabel>
+                    <FormLabel>Fecha del Cobro</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
@@ -776,7 +805,7 @@ export function OperationPaymentsSection({
               />
 
               <FormField
-                control={form.control}
+                control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
@@ -790,7 +819,7 @@ export function OperationPaymentsSection({
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setIncomeDialogOpen(false)}>
                   Cancelar
                 </Button>
                 <Button type="submit" disabled={isLoading}>
@@ -800,7 +829,7 @@ export function OperationPaymentsSection({
                       Guardando...
                     </>
                   ) : (
-                    "Registrar Pago"
+                    "Registrar Cobro"
                   )}
                 </Button>
               </DialogFooter>
@@ -808,6 +837,156 @@ export function OperationPaymentsSection({
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog para registrar pago a operador (EXPENSE) - Solo ADMIN/SUPER_ADMIN */}
+      {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
+        <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Registrar Pago a Operador</DialogTitle>
+              <DialogDescription>
+                Registra un pago realizado al operador.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Form {...expenseForm}>
+              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="space-y-4">
+                <FormField
+                  control={expenseForm.control}
+                  name="method"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Método de Pago</FormLabel>
+                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.value} value={method.value}>
+                              {method.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={expenseForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" min="0" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={expenseForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={expenseForm.control}
+                  name="date_paid"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Fecha del Pago</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, "PPP", { locale: es })
+                              ) : (
+                                <span>Seleccionar fecha</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={expenseForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notas (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Referencia, comprobante, etc." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      "Registrar Pago"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   )
 }

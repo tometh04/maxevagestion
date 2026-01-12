@@ -72,7 +72,7 @@ export async function GET(request: Request) {
     if (!existing) {
       const defaultSettings = {
         agency_id: agencyIds[0],
-        primary_currency: 'ARS',
+        primary_currency: 'USD',
         enabled_currencies: ['ARS', 'USD'],
         exchange_rate_config: {
           source: 'manual',

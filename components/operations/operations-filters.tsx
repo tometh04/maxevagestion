@@ -16,12 +16,11 @@ import { DateRangePicker } from "@/components/ui/date-range-picker"
 
 const standardStatusOptions = [
   { value: "ALL", label: "Todos los estados" },
-  { value: "PRE_RESERVATION", label: "Pre-reserva" },
   { value: "RESERVED", label: "Reservado" },
   { value: "CONFIRMED", label: "Confirmado" },
   { value: "CANCELLED", label: "Cancelado" },
+  { value: "TRAVELLING", label: "En viaje" },
   { value: "TRAVELLED", label: "Viajado" },
-  { value: "CLOSED", label: "Cerrado" },
 ]
 
 interface OperationsFiltersProps {

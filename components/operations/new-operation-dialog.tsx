@@ -149,12 +149,11 @@ export function NewOperationDialog({
   // Estados disponibles (estándar + personalizados)
   const availableStatuses = React.useMemo(() => {
     const standard = [
-      { value: "PRE_RESERVATION", label: "Pre-reserva" },
       { value: "RESERVED", label: "Reservado" },
       { value: "CONFIRMED", label: "Confirmado" },
       { value: "CANCELLED", label: "Cancelado" },
+      { value: "TRAVELLING", label: "En viaje" },
       { value: "TRAVELLED", label: "Viajado" },
-      { value: "CLOSED", label: "Cerrado" },
     ]
     if (settings?.custom_statuses && settings.custom_statuses.length > 0) {
       return [...standard, ...settings.custom_statuses.map(s => ({ value: s.value, label: s.label }))]
@@ -180,7 +179,7 @@ export function NewOperationDialog({
       adults: 2,
       children: 0,
       infants: 0,
-      status: settings?.default_status || "PRE_RESERVATION",
+      status: settings?.default_status || "RESERVED",
       sale_amount_total: 0,
       operator_cost: 0,
       currency: "ARS",
@@ -933,12 +932,11 @@ export function NewOperationDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="PRE_RESERVATION">Pre-reserva</SelectItem>
                         <SelectItem value="RESERVED">Reservado</SelectItem>
                         <SelectItem value="CONFIRMED">Confirmado</SelectItem>
                         <SelectItem value="CANCELLED">Cancelado</SelectItem>
+                        <SelectItem value="TRAVELLING">En viaje</SelectItem>
                         <SelectItem value="TRAVELLED">Viajado</SelectItem>
-                        <SelectItem value="CLOSED">Cerrado</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

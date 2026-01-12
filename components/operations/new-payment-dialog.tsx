@@ -67,7 +67,7 @@ export function NewPaymentDialog({
   open,
   onOpenChange,
   onSuccess,
-  defaultCurrency = "ARS",
+  defaultCurrency = "USD",
 }: NewPaymentDialogProps) {
   const [loading, setLoading] = useState(false)
 

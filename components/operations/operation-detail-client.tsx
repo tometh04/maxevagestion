@@ -33,12 +33,11 @@ import { OperationRequirementsSection } from "./operation-requirements-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
-  PRE_RESERVATION: "Pre-reserva",
   RESERVED: "Reservado",
   CONFIRMED: "Confirmado",
   CANCELLED: "Cancelado",
+  TRAVELLING: "En viaje",
   TRAVELLED: "Viajado",
-  CLOSED: "Cerrado",
 }
 
 const typeLabels: Record<string, string> = {
@@ -68,6 +67,7 @@ interface OperationDetailClientProps {
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
+  userRole: string
 }
 
 export function OperationDetailClient({
@@ -79,6 +79,7 @@ export function OperationDetailClient({
   agencies,
   sellers,
   operators,
+  userRole,
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -385,6 +386,7 @@ export function OperationDetailClient({
             currency={operation.currency}
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
+            userRole={userRole}
           />
         </TabsContent>
 

@@ -135,7 +135,7 @@ const convertLeadSchema = z.object({
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
   operator_cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
   commission_percentage: z.coerce.number().min(0).max(100).default(10).optional(),
-  currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
+  currency: z.enum(["ARS", "USD"]).default("USD").optional(),
   notes: z.string().optional(),
 })
 
@@ -857,7 +857,7 @@ export function ConvertLeadDialog({
                 name="children"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Niños</FormLabel>
+                    <FormLabel>Children</FormLabel>
                     <FormControl>
                       <Input type="number" min="0" {...field} />
                     </FormControl>
@@ -871,7 +871,7 @@ export function ConvertLeadDialog({
                 name="infants"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Bebés</FormLabel>
+                    <FormLabel>Infantes</FormLabel>
                     <FormControl>
                       <Input type="number" min="0" {...field} />
                     </FormControl>

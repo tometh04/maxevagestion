@@ -22,12 +22,11 @@ import {
 import { EditOperationDialog } from "./edit-operation-dialog"
 
 const statusLabels: Record<string, string> = {
-  PRE_RESERVATION: "Pre-reserva",
   RESERVED: "Reservado",
   CONFIRMED: "Confirmado",
   CANCELLED: "Cancelado",
+  TRAVELLING: "En viaje",
   TRAVELLED: "Viajado",
-  CLOSED: "Cerrado",
 }
 
 interface Operation {
@@ -53,8 +52,10 @@ interface Operation {
   status: string
   created_at: string
   customer_name?: string
-  paid_amount?: number
-  pending_amount?: number
+  paid_amount?: number // Monto Cobrado
+  pending_amount?: number // A cobrar
+  operator_paid_amount?: number // Pagado (a operadores)
+  operator_pending_amount?: number // A pagar (a operadores)
 }
 
 interface OperationsTableProps {
@@ -310,7 +311,7 @@ export function OperationsTable({
       {
         accessorKey: "paid_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" />
+          <DataTableColumnHeader column={column} title="Monto Cobrado" />
         ),
         cell: ({ row }) => {
           const paid = row.original.paid_amount || 0
@@ -324,7 +325,7 @@ export function OperationsTable({
       {
         accessorKey: "pending_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pendiente" />
+          <DataTableColumnHeader column={column} title="A cobrar" />
         ),
         cell: ({ row }) => {
           const pending = row.original.pending_amount || 0
@@ -332,6 +333,36 @@ export function OperationsTable({
           const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
           return (
             <div className="text-xs text-orange-600 font-medium">
+              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "operator_paid_amount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Pagado" />
+        ),
+        cell: ({ row }) => {
+          const operatorPaid = row.original.operator_paid_amount || 0
+          return (
+            <div className="text-xs text-blue-600 font-medium">
+              {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "operator_pending_amount",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="A pagar" />
+        ),
+        cell: ({ row }) => {
+          const operatorPending = row.original.operator_pending_amount || 0
+          const operatorCost = row.original.operator_cost || 0
+          const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
+          return (
+            <div className="text-xs text-red-600 font-medium">
               {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
             </div>
           )

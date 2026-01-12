@@ -70,7 +70,7 @@ const fieldLabels: Record<string, string> = {
   departure_date: "Fecha Salida",
   return_date: "Fecha Regreso",
   adults: "Adultos",
-  children: "Niños",
+  children: "Children",
   sale_amount: "Monto Venta",
   operator_cost: "Costo Operador",
   currency: "Moneda",

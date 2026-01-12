@@ -348,9 +348,12 @@ async function findOrCreateCustomer(
 }
 
 function validateStatus(status?: string): string | null {
-  const validStatuses = ['PRE_RESERVATION', 'RESERVED', 'CONFIRMED', 'CANCELLED', 'TRAVELLED', 'CLOSED']
+  const validStatuses = ['RESERVED', 'CONFIRMED', 'CANCELLED', 'TRAVELLING', 'TRAVELLED']
   if (!status) return null
   const upper = status.toUpperCase()
+  // Migrar estados antiguos
+  if (upper === 'PRE_RESERVATION') return 'RESERVED'
+  if (upper === 'CLOSED') return 'TRAVELLED'
   return validStatuses.includes(upper) ? upper : null
 }
 

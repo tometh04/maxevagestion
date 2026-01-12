@@ -39,21 +39,19 @@ interface OperationData {
 }
 
 const statusLabels: Record<string, string> = {
-  PRE_RESERVATION: "Pre-reserva",
   RESERVED: "Reservado",
   CONFIRMED: "Confirmado",
   CANCELLED: "Cancelado",
+  TRAVELLING: "En viaje",
   TRAVELLED: "Viajado",
-  CLOSED: "Cerrado",
 }
 
 const statusColors: Record<string, string> = {
-  PRE_RESERVATION: "bg-gray-500",
   RESERVED: "bg-blue-500",
   CONFIRMED: "bg-green-500",
   CANCELLED: "bg-red-500",
+  TRAVELLING: "bg-orange-500",
   TRAVELLED: "bg-purple-500",
-  CLOSED: "bg-slate-500",
 }
 
 export function OperationHoverCard({ operationId, children }: OperationHoverCardProps) {

@@ -105,7 +105,7 @@ export async function GET(request: Request) {
           },
         ],
         document_templates: [],
-        default_status: "PRE_RESERVATION",
+        default_status: "RESERVED",
         require_destination: true,
         require_departure_date: true,
         require_operator: false,
