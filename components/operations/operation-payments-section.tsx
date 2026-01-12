@@ -439,6 +439,7 @@ export function OperationPaymentsSection({
   const onSubmitIncome = async (values: PaymentFormValues) => {
     setIsLoading(true)
     try {
+      const { payer_type, direction, ...restValues } = values
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -446,7 +447,7 @@ export function OperationPaymentsSection({
           operation_id: operationId,
           payer_type: "CUSTOMER",
           direction: "INCOME",
-          ...values,
+          ...restValues,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -472,6 +473,7 @@ export function OperationPaymentsSection({
   const onSubmitExpense = async (values: PaymentFormValues) => {
     setIsLoading(true)
     try {
+      const { payer_type, direction, ...restValues } = values
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -479,7 +481,7 @@ export function OperationPaymentsSection({
           operation_id: operationId,
           payer_type: "OPERATOR",
           direction: "EXPENSE",
-          ...values,
+          ...restValues,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
