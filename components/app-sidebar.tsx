@@ -88,6 +88,7 @@ const allNavigation: NavItem[] = [
     module: "customers",
     items: [
       { title: "Clientes", url: "/customers" },
+      { title: "Deudores por Ventas", url: "/customers/debtors" },
       { title: "Segmentos", url: "/customers/segments" },
       { title: "Estadísticas", url: "/customers/statistics" },
       { title: "Configuración", url: "/customers/settings" },
