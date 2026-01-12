@@ -47,6 +47,7 @@ interface Operation {
   leads: { contact_name: string | null; destination: string | null; trello_url: string | null } | null
   currency: string
   sale_amount_total: number
+  operator_cost?: number
   margin_amount: number
   margin_percentage: number
   status: string
