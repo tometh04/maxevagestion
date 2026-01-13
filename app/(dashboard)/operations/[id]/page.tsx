@@ -12,7 +12,7 @@ export default async function OperationDetailPage({
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
 
-  // Get operation with related data
+  // Get operation with related data (INTEGRADO: clientes incluidos en la misma query)
   const { data: operation, error: operationError } = await supabase
     .from("operations")
     .select(`
@@ -20,7 +20,11 @@ export default async function OperationDetailPage({
       sellers:seller_id(id, name, email),
       operators:operator_id(id, name, contact_email, contact_phone),
       agencies:agency_id(id, name, city),
-      leads:lead_id(id, contact_name, destination, status)
+      leads:lead_id(id, contact_name, destination, status),
+      operation_customers(
+        *,
+        customers:customer_id(*)
+      )
     `)
     .eq("id", id)
     .single()
@@ -38,14 +42,11 @@ export default async function OperationDetailPage({
     notFound()
   }
 
-  // Get customers
-  const { data: operationCustomers } = await supabase
-    .from("operation_customers")
-    .select(`
-      *,
-      customers:customer_id(*)
-    `)
-    .eq("operation_id", id)
+  // Extraer clientes de la operación (ya están incluidos en la query)
+  const operationCustomers = (op.operation_customers || []) as any[]
+  
+  // Limpiar operation_customers del objeto operation para evitar duplicación
+  const { operation_customers, ...operationWithoutCustomers } = op
 
   // Get documents (de la operación Y del lead asociado si existe)
   const { data: opDocs } = await supabase
@@ -125,7 +126,7 @@ export default async function OperationDetailPage({
 
   return (
     <OperationDetailClient
-      operation={operation}
+      operation={operationWithoutCustomers}
       customers={operationCustomers || []}
       documents={documents || []}
       payments={payments || []}

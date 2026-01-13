@@ -13,7 +13,7 @@ export async function GET(
     const supabase = await createServerClient()
     const { id: operationId } = await params
 
-    // Get operation with related data
+    // Get operation with related data (INTEGRADO: clientes incluidos en la misma query)
     const { data: operation, error: operationError } = await supabase
       .from("operations")
       .select(`
@@ -21,7 +21,11 @@ export async function GET(
         sellers:seller_id(id, name, email),
         operators:operator_id(id, name, contact_email, contact_phone),
         agencies:agency_id(id, name, city),
-        leads:lead_id(id, contact_name, destination, status)
+        leads:lead_id(id, contact_name, destination, status),
+        operation_customers(
+          *,
+          customers:customer_id(*)
+        )
       `)
       .eq("id", operationId)
       .single()
@@ -39,20 +43,15 @@ export async function GET(
     return NextResponse.json({ error: "No autorizado" }, { status: 403 })
   }
 
-  // OPTIMIZACIÓN: Paralelizar todas las queries relacionadas
+  // Extraer clientes de la operación (ya están incluidos en la query)
+  const operationCustomers = (op.operation_customers || []) as any[]
+
+  // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas)
   const [
-    operationCustomersResult,
     documentsResult,
     paymentsResult,
     alertsResult
   ] = await Promise.all([
-    supabase
-      .from("operation_customers")
-      .select(`
-        *,
-        customers:customer_id(*)
-      `)
-      .eq("operation_id", operationId),
     supabase
       .from("documents")
       .select("*")
@@ -70,13 +69,15 @@ export async function GET(
       .order("date_due", { ascending: true }),
   ])
 
-  const operationCustomers = operationCustomersResult.data || []
   const documents = documentsResult.data || []
   const payments = paymentsResult.data || []
   const alerts = alertsResult.data || []
 
+  // Limpiar operation_customers del objeto operation para evitar duplicación
+  const { operation_customers, ...operationWithoutCustomers } = op
+
   return NextResponse.json({
-    operation,
+    operation: operationWithoutCustomers,
     customers: operationCustomers,
     documents: documents,
     payments: payments,
