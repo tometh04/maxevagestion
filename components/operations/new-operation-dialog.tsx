@@ -25,6 +25,7 @@ import {
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2 } from "lucide-react"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -727,25 +728,14 @@ export function NewOperationDialog({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Fecha de Salida *</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground",
-                            )}
-                          >
-                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
-                      </PopoverContent>
-                    </Popover>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                        minDate={new Date()}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -754,36 +744,23 @@ export function NewOperationDialog({
               <FormField
                 control={form.control}
                 name="return_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de Regreso</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground",
-                            )}
-                          >
-                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value || undefined}
-                          onSelect={field.onChange}
-                          initialFocus
+                render={({ field }) => {
+                  const departureDate = form.watch("departure_date")
+                  return (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Fecha de Regreso</FormLabel>
+                      <FormControl>
+                        <DateInputWithCalendar
+                          value={field.value || undefined}
+                          onChange={field.onChange}
+                          placeholder="dd/MM/yyyy"
+                          minDate={departureDate || new Date()}
                         />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
               />
             </div>
 
