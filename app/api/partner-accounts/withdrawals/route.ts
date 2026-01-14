@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import {
+  createLedgerMovement,
+  calculateARSEquivalent,
+} from "@/lib/accounting/ledger"
+import {
+  getExchangeRate,
+  getLatestExchangeRate,
+} from "@/lib/accounting/exchange-rates"
 
 // GET - Obtener retiros (opcionalmente filtrados por socio)
 export async function GET(request: Request) {
@@ -81,6 +89,9 @@ export async function POST(request: Request) {
     if (!withdrawal_date) {
       return NextResponse.json({ error: "Fecha es requerida" }, { status: 400 })
     }
+    if (!account_id) {
+      return NextResponse.json({ error: "Cuenta financiera es requerida. Debe seleccionar de qué cuenta se realiza el retiro." }, { status: 400 })
+    }
 
     // Verificar que el socio existe
     const { data: partner, error: partnerError } = await (supabase
@@ -93,47 +104,63 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Socio no encontrado" }, { status: 404 })
     }
 
-    // Crear movimiento de caja (egreso)
-    let cashMovementId = null
-    if (account_id) {
-      const { data: cashMovement, error: cashError } = await (supabase
-        .from("cash_movements") as any)
-        .insert({
-          user_id: user.id,
-          type: "EXPENSE",
-          category: "RETIRO_SOCIO",
-          amount: amount,
-          currency: currency,
-          movement_date: new Date(withdrawal_date).toISOString(),
-          notes: `Retiro de ${partner.partner_name}${description ? `: ${description}` : ""}`,
-        })
-        .select("id")
-        .single()
+    // Verificar que la cuenta financiera existe
+    const { data: account, error: accountError } = await (supabase
+      .from("financial_accounts") as any)
+      .select("id, currency")
+      .eq("id", account_id)
+      .single()
 
-      if (!cashError && cashMovement) {
-        cashMovementId = cashMovement.id
+    if (accountError || !account) {
+      return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })
+    }
+
+    // Calcular exchange rate si es USD
+    let exchangeRate: number | null = null
+    if (currency === "USD") {
+      const rateDate = new Date(withdrawal_date)
+      exchangeRate = await getExchangeRate(supabase, rateDate)
+      
+      // Si no hay tasa para esa fecha, usar la más reciente disponible
+      if (!exchangeRate) {
+        exchangeRate = await getLatestExchangeRate(supabase)
+      }
+      
+      // Fallback: si aún no hay tasa, usar 1000 como último recurso
+      if (!exchangeRate) {
+        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
+        exchangeRate = 1000
       }
     }
 
-    // Crear movimiento en ledger
-    const { data: ledgerMovement, error: ledgerError } = await (supabase
-      .from("ledger_movements") as any)
-      .insert({
-        account_id: account_id || null,
-        type: "EXPENSE",
-        amount: amount,
-        currency: currency,
-        description: `Retiro socio: ${partner.partner_name}${description ? ` - ${description}` : ""}`,
-        movement_date: new Date(withdrawal_date).toISOString(),
-        created_by: user.id,
-      })
-      .select("id")
-      .single()
+    // Calcular amount_ars_equivalent
+    const amountARS = calculateARSEquivalent(
+      parseFloat(amount),
+      currency as "ARS" | "USD",
+      exchangeRate
+    )
 
-    let ledgerMovementId = null
-    if (!ledgerError && ledgerMovement) {
-      ledgerMovementId = ledgerMovement.id
-    }
+    // Crear movimiento en ledger usando la función centralizada
+    const { id: ledgerMovementId } = await createLedgerMovement(
+      {
+        operation_id: null,
+        lead_id: null,
+        type: "EXPENSE",
+        concept: `Retiro socio: ${partner.partner_name}${description ? ` - ${description}` : ""}`,
+        currency: currency as "ARS" | "USD",
+        amount_original: parseFloat(amount),
+        exchange_rate: currency === "USD" ? exchangeRate : null,
+        amount_ars_equivalent: amountARS,
+        method: "CASH", // Por defecto, se puede ajustar si se agrega campo de método
+        account_id: account_id,
+        seller_id: null,
+        operator_id: null,
+        receipt_number: null,
+        notes: description || null,
+        created_by: user.id,
+      },
+      supabase
+    )
 
     // Crear el retiro
     const { data: withdrawal, error: withdrawalError } = await (supabase
@@ -143,8 +170,8 @@ export async function POST(request: Request) {
         amount,
         currency,
         withdrawal_date,
-        account_id: account_id || null,
-        cash_movement_id: cashMovementId,
+        account_id: account_id,
+        cash_movement_id: null, // Ya no se usa cash_movements, todo va por ledger
         ledger_movement_id: ledgerMovementId,
         description: description || null,
         created_by: user.id,

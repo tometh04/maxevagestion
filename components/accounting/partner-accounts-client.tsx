@@ -87,6 +87,8 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const [withdrawalCurrency, setWithdrawalCurrency] = useState("ARS")
   const [withdrawalDate, setWithdrawalDate] = useState(new Date().toISOString().split("T")[0])
   const [withdrawalDescription, setWithdrawalDescription] = useState("")
+  const [withdrawalAccountId, setWithdrawalAccountId] = useState("")
+  const [financialAccounts, setFinancialAccounts] = useState<Array<{ id: string; name: string; currency: string; type: string }>>([])
 
   const fetchPartners = useCallback(async () => {
     try {
@@ -129,6 +131,24 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     }
     loadData()
   }, [fetchPartners, fetchWithdrawals])
+
+  // Cargar cuentas financieras cuando se abre el diálogo de retiro
+  useEffect(() => {
+    if (newWithdrawalOpen) {
+      const loadFinancialAccounts = async () => {
+        try {
+          const res = await fetch("/api/accounting/financial-accounts")
+          const data = await res.json()
+          if (data.accounts) {
+            setFinancialAccounts(data.accounts.filter((acc: any) => acc.is_active !== false))
+          }
+        } catch (error) {
+          console.error("Error loading financial accounts:", error)
+        }
+      }
+      loadFinancialAccounts()
+    }
+  }, [newWithdrawalOpen])
 
   const handleCreatePartner = async () => {
     if (!partnerName.trim()) {
@@ -173,6 +193,10 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       toast.error("El monto debe ser mayor a 0")
       return
     }
+    if (!withdrawalAccountId) {
+      toast.error("Debes seleccionar una cuenta financiera")
+      return
+    }
 
     setSubmitting(true)
     try {
@@ -184,6 +208,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           amount: parseFloat(withdrawalAmount),
           currency: withdrawalCurrency,
           withdrawal_date: withdrawalDate,
+          account_id: withdrawalAccountId,
           description: withdrawalDescription || null,
         }),
       })
@@ -235,6 +260,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setWithdrawalCurrency("ARS")
     setWithdrawalDate(new Date().toISOString().split("T")[0])
     setWithdrawalDescription("")
+    setWithdrawalAccountId("")
   }
 
   // Calcular totales
@@ -360,6 +386,21 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                     value={withdrawalDate}
                     onChange={(e) => setWithdrawalDate(e.target.value)}
                   />
+                </div>
+                <div>
+                  <Label>Cuenta Financiera *</Label>
+                  <Select value={withdrawalAccountId} onValueChange={setWithdrawalAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {financialAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name} ({account.currency})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label>Descripción (opcional)</Label>
