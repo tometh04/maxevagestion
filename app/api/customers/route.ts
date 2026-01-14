@@ -173,13 +173,11 @@ export async function POST(request: Request) {
     const settingsData = settings as any
 
     // Aplicar validaciones de configuración
+    // NOTA: Email es completamente opcional - no se valida como requerido
     if (settingsData?.validations) {
       const validations = settingsData.validations
       
-      if (validations.email?.required && !email) {
-        return NextResponse.json({ error: "Email es requerido" }, { status: 400 })
-      }
-      
+      // Solo validar formato de email si está presente, pero nunca requerirlo
       if (validations.email?.format === 'email' && email) {
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
         if (!emailRegex.test(email)) {
