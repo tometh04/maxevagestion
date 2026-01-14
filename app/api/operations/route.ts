@@ -175,8 +175,8 @@ export async function POST(request: Request) {
     const billingMarginAmount = body.billing_margin_amount !== undefined ? body.billing_margin_amount : marginAmount
     const billingMarginPercentage = sale_amount_total > 0 ? (billingMarginAmount / sale_amount_total) * 100 : 0
 
-    // Infer product_type from type if not provided
-    const inferredProductType = product_type || (type === 'FLIGHT' ? 'AEREO' : type === 'HOTEL' ? 'HOTEL' : type === 'PACKAGE' ? 'PAQUETE' : type === 'CRUISE' ? 'CRUCERO' : 'OTRO')
+    // Infer product_type from type (ya no viene del formulario)
+    const inferredProductType = type === 'FLIGHT' ? 'AEREO' : type === 'HOTEL' ? 'HOTEL' : type === 'PACKAGE' ? 'PAQUETE' : type === 'CRUISE' ? 'CRUCERO' : 'OTRO'
 
     // Use sale_currency, fallback to currency
     const finalSaleCurrency = sale_currency || currency || "USD"
