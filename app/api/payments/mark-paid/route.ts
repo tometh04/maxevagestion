@@ -471,6 +471,59 @@ export async function POST(request: Request) {
       supabase
     )
 
+    // ============================================
+    // 3. REGISTRAR EN CUENTA DE CAJA SEGÚN MÉTODO DE PAGO
+    // ============================================
+    // Determinar tipo de cuenta de caja según método de pago
+    let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
+    if (paymentData.method === "Efectivo") {
+      cashAccountType = "CASH"
+    } else if (paymentData.method === "Transferencia") {
+      cashAccountType = "BANK"
+    } else if (paymentData.method === "Mercado Pago" || paymentData.method === "MercadoPago" || paymentData.method === "MP") {
+      cashAccountType = "MP"
+    } else if (paymentData.method === "USD") {
+      cashAccountType = "USD"
+    }
+
+    // Obtener o crear cuenta de caja
+    const cashAccountId = await getOrCreateDefaultAccount(
+      cashAccountType,
+      paymentData.currency as "ARS" | "USD",
+      user.id,
+      supabase
+    )
+
+    // Crear movimiento en cuenta de caja
+    // Para INCOME: aumenta la cuenta (INCOME)
+    // Para EXPENSE: disminuye la cuenta (EXPENSE)
+    const cashLedgerType = paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE"
+    
+    await createLedgerMovement(
+      {
+        operation_id: paymentData.operation_id || null,
+        lead_id: null,
+        type: cashLedgerType,
+        concept:
+          paymentData.direction === "INCOME"
+            ? `Cobro en ${paymentData.method || "efectivo"} - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`
+            : `Pago en ${paymentData.method || "efectivo"} - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+        currency: paymentData.currency as "ARS" | "USD",
+        amount_original: parseFloat(paymentData.amount),
+        exchange_rate: paymentData.currency === "USD" ? exchangeRate : null,
+        amount_ars_equivalent: amountARS,
+        method: ledgerMethod,
+        account_id: cashAccountId,
+        seller_id: sellerId,
+        operator_id: operatorId,
+        receipt_number: reference || null,
+        notes: reference || null,
+        created_by: user.id,
+      },
+      supabase
+    )
+    console.log(`✅ Registrado movimiento en cuenta de caja ${cashAccountType} por pago ${paymentId}`)
+
     // Si es un pago a operador, marcar operator_payment como PAID
     if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id) {
       try {
