@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -30,7 +30,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
-import { Loader2 } from "lucide-react"
+import { Loader2, Upload, FileText, X, CheckCircle } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
 
@@ -66,17 +66,19 @@ export function NewCustomerDialog({
   onSuccess,
 }: NewCustomerDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [isProcessingOCR, setIsProcessingOCR] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [ocrSuccess, setOcrSuccess] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, loading: settingsLoading } = useCustomerSettings()
 
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
-    // Schema base
+    // Schema base - sin email ni instagram
     const baseFields: Record<string, z.ZodTypeAny> = {
       first_name: z.string().min(1, "Nombre es requerido"),
       last_name: z.string().min(1, "Apellido es requerido"),
       phone: z.string().min(1, "Teléfono es requerido"),
-      email: z.string().email("Email inválido"),
-      instagram_handle: z.string().optional(),
       document_type: z.string().optional(),
       document_number: z.string().optional(),
       date_of_birth: z.string().optional(),
@@ -86,10 +88,6 @@ export function NewCustomerDialog({
     // Aplicar validaciones de configuración
     if (settings?.validations) {
       const validations = settings.validations
-      
-      if (validations.email?.required) {
-        baseFields.email = z.string().min(1, "Email es requerido").email("Email inválido")
-      }
       
       if (validations.phone?.required) {
         baseFields.phone = z.string().min(1, "Teléfono es requerido")
@@ -133,8 +131,6 @@ export function NewCustomerDialog({
       first_name: "",
       last_name: "",
       phone: "",
-      email: "",
-      instagram_handle: "",
       document_type: "",
       document_number: "",
       date_of_birth: "",
@@ -163,6 +159,130 @@ export function NewCustomerDialog({
     }
   }, [settings, settingsLoading, defaultValues, form])
 
+  // Procesar documento con OCR
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validar tipo de archivo
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Solo se permiten imágenes (JPEG, PNG, WebP)")
+      return
+    }
+
+    // Validar tamaño (máximo 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("El archivo es demasiado grande. Máximo 10MB")
+      return
+    }
+
+    setUploadedFile(file)
+    setIsProcessingOCR(true)
+    setOcrSuccess(false)
+
+    try {
+      // Determinar tipo de documento basado en el tipo seleccionado o inferir
+      const currentDocType = form.getValues("document_type")
+      const documentType = currentDocType === "PASSPORT" ? "PASSPORT" : "DNI"
+
+      // Crear FormData para enviar al endpoint de OCR
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("type", documentType)
+
+      toast.info("Analizando documento con IA...")
+
+      const response = await fetch("/api/documents/ocr-only", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al procesar documento")
+      }
+
+      const data = await response.json()
+      
+      if (data.extractedData) {
+        const extracted = data.extractedData
+        
+        // Autocompletar campos del formulario
+        if (extracted.first_name) {
+          form.setValue("first_name", extracted.first_name)
+        }
+        if (extracted.last_name) {
+          form.setValue("last_name", extracted.last_name)
+        }
+        // Si viene full_name y no hay first_name/last_name separados
+        if (extracted.full_name && !extracted.first_name) {
+          const nameParts = extracted.full_name.split(" ")
+          if (nameParts.length >= 2) {
+            form.setValue("last_name", nameParts[0])
+            form.setValue("first_name", nameParts.slice(1).join(" "))
+          }
+        }
+        if (extracted.document_number) {
+          form.setValue("document_number", extracted.document_number)
+        }
+        if (extracted.document_type) {
+          form.setValue("document_type", extracted.document_type)
+        } else if (documentType) {
+          form.setValue("document_type", documentType)
+        }
+        if (extracted.date_of_birth) {
+          form.setValue("date_of_birth", extracted.date_of_birth)
+        }
+        if (extracted.nationality) {
+          // Mapear nacionalidad a opciones válidas
+          const nationalityMap: Record<string, string> = {
+            "ARG": "Argentina",
+            "ARGENTINA": "Argentina",
+            "BRA": "Brasil",
+            "BRASIL": "Brasil",
+            "BRAZIL": "Brasil",
+            "CHL": "Chile",
+            "CHILE": "Chile",
+            "URY": "Uruguay",
+            "URUGUAY": "Uruguay",
+            "PRY": "Paraguay",
+            "PARAGUAY": "Paraguay",
+            "COL": "Colombia",
+            "COLOMBIA": "Colombia",
+            "MEX": "México",
+            "MEXICO": "México",
+            "ESP": "España",
+            "SPAIN": "España",
+            "USA": "Estados Unidos",
+            "UNITED STATES": "Estados Unidos",
+          }
+          const normalizedNat = extracted.nationality.toUpperCase()
+          const mappedNat = nationalityMap[normalizedNat] || extracted.nationality
+          form.setValue("nationality", mappedNat)
+        }
+
+        setOcrSuccess(true)
+        toast.success("¡Datos extraídos correctamente!")
+      } else {
+        toast.warning("No se pudieron extraer datos del documento")
+      }
+    } catch (error) {
+      console.error("Error processing OCR:", error)
+      toast.error(error instanceof Error ? error.message : "Error al procesar documento")
+    } finally {
+      setIsProcessingOCR(false)
+    }
+  }
+
+  const removeUploadedFile = () => {
+    setUploadedFile(null)
+    setOcrSuccess(false)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+
   const onSubmit = async (values: CustomerFormValues) => {
     setIsLoading(true)
     try {
@@ -171,7 +291,6 @@ export function NewCustomerDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
-          instagram_handle: values.instagram_handle || null,
           document_type: values.document_type || null,
           document_number: values.document_number || null,
           date_of_birth: values.date_of_birth || null,
@@ -189,9 +308,36 @@ export function NewCustomerDialog({
       }
 
       const data = await response.json()
+      const newCustomer = data.customer
+
+      // Si hay un documento subido, guardarlo asociado al cliente
+      if (uploadedFile && newCustomer?.id) {
+        try {
+          const docFormData = new FormData()
+          docFormData.append("file", uploadedFile)
+          docFormData.append("type", values.document_type || "DNI")
+          docFormData.append("customerId", newCustomer.id)
+
+          const docResponse = await fetch("/api/documents/upload-with-ocr", {
+            method: "POST",
+            body: docFormData,
+          })
+
+          if (docResponse.ok) {
+            console.log("✅ Documento guardado en el perfil del cliente")
+          } else {
+            console.error("Error al guardar documento:", await docResponse.text())
+          }
+        } catch (docError) {
+          console.error("Error uploading document to customer:", docError)
+        }
+      }
+
       toast.success("Cliente creado correctamente")
       form.reset()
-      onSuccess(data.customer)
+      setUploadedFile(null)
+      setOcrSuccess(false)
+      onSuccess(newCustomer)
       onOpenChange(false)
     } catch (error) {
       console.error("Error creating customer:", error)
@@ -204,6 +350,8 @@ export function NewCustomerDialog({
   const handleOpenChange = (open: boolean) => {
     if (!open) {
       form.reset()
+      setUploadedFile(null)
+      setOcrSuccess(false)
     }
     onOpenChange(open)
   }
@@ -257,34 +405,6 @@ export function NewCustomerDialog({
                     <FormLabel>Teléfono *</FormLabel>
                     <FormControl>
                       <Input placeholder="+54 11 1234-5678" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email *</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="juan@email.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="instagram_handle"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Instagram</FormLabel>
-                    <FormControl>
-                      <Input placeholder="@usuario" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -370,6 +490,80 @@ export function NewCustomerDialog({
               />
             </div>
 
+            {/* Sección de carga de documento con OCR */}
+            <div className="border rounded-lg p-4 bg-muted/30">
+              <div className="flex items-center gap-2 mb-3">
+                <FileText className="h-5 w-5 text-primary" />
+                <span className="font-medium">Escanear Documento</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Sube una foto del DNI o Pasaporte y los datos se completarán automáticamente
+              </p>
+              
+              {!uploadedFile ? (
+                <div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    id="document-upload"
+                  />
+                  <label htmlFor="document-upload">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full cursor-pointer"
+                      disabled={isProcessingOCR}
+                      asChild
+                    >
+                      <span>
+                        {isProcessingOCR ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Procesando documento...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Subir foto de DNI / Pasaporte
+                          </>
+                        )}
+                      </span>
+                    </Button>
+                  </label>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-3 bg-background rounded-md border">
+                  <div className="flex items-center gap-3">
+                    {ocrSuccess ? (
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                    ) : (
+                      <FileText className="h-5 w-5 text-muted-foreground" />
+                    )}
+                    <div>
+                      <p className="text-sm font-medium truncate max-w-[200px]">
+                        {uploadedFile.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {ocrSuccess ? "Datos extraídos correctamente" : "Documento cargado"}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={removeUploadedFile}
+                    disabled={isProcessingOCR}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+
             {/* Campos personalizados */}
             {settings?.custom_fields && settings.custom_fields.length > 0 && (
               <div className="space-y-4 pt-4 border-t">
@@ -388,11 +582,11 @@ export function NewCustomerDialog({
                 type="button"
                 variant="outline"
                 onClick={() => handleOpenChange(false)}
-                disabled={isLoading}
+                disabled={isLoading || isProcessingOCR}
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || isProcessingOCR}>
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -409,4 +603,3 @@ export function NewCustomerDialog({
     </Dialog>
   )
 }
-

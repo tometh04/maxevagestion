@@ -463,35 +463,6 @@ export function NewOperationDialog({
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
-                name="seller_secondary_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vendedor Secundario</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sin vendedor secundario" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sin vendedor secundario</SelectItem>
-                        {sellers.map((seller) => (
-                          <SelectItem key={seller.id} value={seller.id}>
-                            {seller.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="customer_id"
                 render={({ field }) => (
                   <FormItem>
@@ -526,6 +497,35 @@ export function NewOperationDialog({
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="seller_secondary_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Vendedor Secundario</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Sin vendedor secundario" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">Sin vendedor secundario</SelectItem>
+                        {sellers.map((seller) => (
+                          <SelectItem key={seller.id} value={seller.id}>
+                            {seller.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
