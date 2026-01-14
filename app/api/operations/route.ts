@@ -499,81 +499,74 @@ export async function POST(request: Request) {
     // NOTA: Los pagos se registran manualmente cuando el cliente paga
     // No se generan automáticamente para evitar confusión
 
-    // Update lead status to WON if lead_id exists
-    if (lead_id) {
-      // Obtener datos del lead
-      const { data: leadData } = await (supabase.from("leads") as any)
-        .select("contact_name, contact_phone, contact_email, contact_instagram")
+    // Manejar cliente: puede venir directamente (customer_id) o desde lead_id
+    let customerId: string | null = customer_id || null
+    
+    // Si no hay customer_id pero hay lead_id, buscar/crear cliente desde el lead
+    if (lead_id && !customerId) {
+      const { data: leadData } = await supabase
+        .from("leads")
+        .select("contact_name, contact_email, contact_phone, contact_instagram")
         .eq("id", lead_id)
         .single()
       
-      // Manejar cliente: puede venir directamente (customer_id) o desde lead_id
-      let customerId: string | null = customer_id || null
-      
-      if (lead_id && !customerId) {
-        const { data: leadData } = await supabase
-          .from("leads")
-          .select("contact_name, contact_email, contact_phone, contact_instagram")
-          .eq("id", lead_id)
-          .single()
+      if (leadData) {
+        // Buscar si ya existe un cliente con ese email o teléfono
+        if (leadData.contact_email) {
+          const { data: existingByEmail } = await (supabase.from("customers") as any)
+            .select("id")
+            .eq("email", leadData.contact_email)
+            .single()
+          
+          if (existingByEmail) {
+            customerId = existingByEmail.id
+          }
+        }
         
-        if (leadData) {
-          // Buscar si ya existe un cliente con ese email o teléfono
-          if (leadData.contact_email) {
-            const { data: existingByEmail } = await (supabase.from("customers") as any)
-              .select("id")
-              .eq("email", leadData.contact_email)
-              .single()
-            
-            if (existingByEmail) {
-              customerId = existingByEmail.id
-            }
-          }
+        if (!customerId && leadData.contact_phone) {
+          const { data: existingByPhone } = await (supabase.from("customers") as any)
+            .select("id")
+            .eq("phone", leadData.contact_phone)
+            .single()
           
-          if (!customerId && leadData.contact_phone) {
-            const { data: existingByPhone } = await (supabase.from("customers") as any)
-              .select("id")
-              .eq("phone", leadData.contact_phone)
-              .single()
-            
-            if (existingByPhone) {
-              customerId = existingByPhone.id
-            }
+          if (existingByPhone) {
+            customerId = existingByPhone.id
           }
+        }
+        
+        // Si no existe, crear el cliente
+        if (!customerId) {
+          // Separar nombre en first_name y last_name
+          const nameParts = (leadData.contact_name || "").trim().split(" ")
+          const firstName = nameParts[0] || "Sin nombre"
+          const lastName = nameParts.slice(1).join(" ") || "-"
           
-          // Si no existe, crear el cliente
-          if (!customerId) {
-            // Separar nombre en first_name y last_name
-            const nameParts = (leadData.contact_name || "").trim().split(" ")
-            const firstName = nameParts[0] || "Sin nombre"
-            const lastName = nameParts.slice(1).join(" ") || "-"
-            
-            const { data: newCustomer, error: customerError } = await (supabase.from("customers") as any)
-              .insert({
-                first_name: firstName,
-                last_name: lastName,
-                phone: leadData.contact_phone || "",
-                email: leadData.contact_email || "",
-                instagram_handle: leadData.contact_instagram || null,
-              })
-              .select()
-              .single()
-            
-            if (!customerError && newCustomer) {
-              customerId = newCustomer.id
-              console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
-            }
+          const { data: newCustomer, error: customerError } = await (supabase.from("customers") as any)
+            .insert({
+              first_name: firstName,
+              last_name: lastName,
+              phone: leadData.contact_phone || "",
+              email: leadData.contact_email || "",
+              instagram_handle: leadData.contact_instagram || null,
+            })
+            .select()
+            .single()
+          
+          if (!customerError && newCustomer) {
+            customerId = newCustomer.id
+            console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
           }
         }
       }
-      
-      // Validar cliente requerido según configuración
-      if (settingsData?.require_customer && !customerId) {
-        return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
-      }
+    }
+    
+    // Validar cliente requerido según configuración
+    if (settingsData?.require_customer && !customerId) {
+      return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
+    }
 
-      // Asociar cliente a la operación
-      if (customerId) {
+    // Asociar cliente a la operación
+    if (customerId) {
           const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
             .insert({
               operation_id: operation.id,
@@ -675,7 +668,10 @@ export async function POST(request: Request) {
           }
         }
       }
-      
+    }
+    
+    // Update lead status to WON if lead_id exists
+    if (lead_id) {
       // Actualizar lead a WON
       await (supabase.from("leads") as any).update({ status: "WON" }).eq("id", lead_id)
       
