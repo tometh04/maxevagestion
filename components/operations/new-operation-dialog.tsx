@@ -693,7 +693,7 @@ export function NewOperationDialog({
                       No hay operadores agregados
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Haz clic en "Agregar Operador" para comenzar
+                      Haz clic en &quot;Agregar Operador&quot; para comenzar
                     </p>
                   </div>
                 )}
