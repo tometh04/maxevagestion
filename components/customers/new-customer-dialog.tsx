@@ -291,6 +291,8 @@ export function NewCustomerDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
+          email: null, // Email eliminado del formulario
+          instagram_handle: null, // Instagram eliminado del formulario
           document_type: values.document_type || null,
           document_number: values.document_number || null,
           date_of_birth: values.date_of_birth || null,
