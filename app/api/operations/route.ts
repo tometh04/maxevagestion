@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
-    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, notes?: string}> = []
+    let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, product_type?: string, notes?: string}> = []
     let totalOperatorCost = 0
     let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
@@ -98,6 +98,7 @@ export async function POST(request: Request) {
           operator_id: op.operator_id,
           cost: Number(op.cost),
           cost_currency: op.cost_currency || currency || "USD",
+          product_type: op.product_type || undefined,
           notes: op.notes || undefined
         })
         totalOperatorCost += Number(op.cost)
@@ -305,6 +306,7 @@ export async function POST(request: Request) {
           operator_id: operatorData.operator_id,
           cost: operatorData.cost,
           cost_currency: operatorData.cost_currency,
+          product_type: operatorData.product_type || null,
           notes: operatorData.notes || null
         }))
         

@@ -49,6 +49,7 @@ const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
   cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
+  product_type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -111,7 +112,7 @@ export function NewOperationDialog({
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
-  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", notes?: string}>>([])
+  const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
   
@@ -242,7 +243,7 @@ export function NewOperationDialog({
   }, [operatorList, useMultipleOperators, totalOperatorCost, form])
 
   const addOperator = () => {
-    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "ARS" }])
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "USD", product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -553,9 +554,12 @@ export function NewOperationDialog({
             </div>
 
             {useMultipleOperators ? (
-              <div className="space-y-4 border rounded-lg p-4 mb-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-sm font-semibold">Operadores</h4>
+              <div className="space-y-4 border rounded-lg p-5 mb-4 bg-muted/30">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">Operadores Múltiples</h4>
+                    <p className="text-xs text-muted-foreground mt-1">Agrega operadores y especifica el tipo de producto para cada uno</p>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
@@ -567,98 +571,131 @@ export function NewOperationDialog({
                   </Button>
                 </div>
 
-                {operatorList.map((op, index) => (
-                  <div key={index} className="grid gap-4 md:grid-cols-4 items-end border-b pb-4">
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Operador</label>
-                      <div className="flex gap-1">
-                        <Select
-                          value={op.operator_id}
-                          onValueChange={(value) => updateOperator(index, "operator_id", value)}
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Seleccionar operador" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {localOperators.map((operator) => (
-                              <SelectItem key={operator.id} value={operator.id}>
-                                {operator.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                <div className="space-y-3">
+                  {operatorList.map((op, index) => (
+                    <div key={index} className="bg-background border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-muted-foreground">Operador #{index + 1}</span>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="icon"
-                          className="shrink-0"
-                          onClick={() => setShowNewOperatorDialog(true)}
-                          title="Crear nuevo operador"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeOperator(index)}
+                          className="text-red-600 hover:text-red-700 h-7 w-7 p-0"
                         >
-                          <Plus className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </div>
+                      
+                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                        <div className="md:col-span-2">
+                          <label className="text-xs font-medium mb-1.5 block">Operador *</label>
+                          <div className="flex gap-2">
+                            <Select
+                              value={op.operator_id}
+                              onValueChange={(value) => updateOperator(index, "operator_id", value)}
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Seleccionar operador" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {localOperators.map((operator) => (
+                                  <SelectItem key={operator.id} value={operator.id}>
+                                    {operator.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="shrink-0"
+                              onClick={() => setShowNewOperatorDialog(true)}
+                              title="Crear nuevo operador"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
 
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Costo</label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={op.cost || 0}
-                        onChange={(e) => updateOperator(index, "cost", Number(e.target.value))}
-                        placeholder="0.00"
-                      />
-                    </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Tipo de Producto *</label>
+                          <Select
+                            value={op.product_type || ""}
+                            onValueChange={(value) => updateOperator(index, "product_type", value as "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED")}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operationTypeOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                    <div>
-                      <label className="text-xs text-muted-foreground mb-1 block">Moneda</label>
-                      <Select
-                        value={op.cost_currency}
-                        onValueChange={(value) => updateOperator(index, "cost_currency", value as "ARS" | "USD")}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Costo</label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={op.cost || 0}
+                              onChange={(e) => updateOperator(index, "cost", Number(e.target.value))}
+                              placeholder="0.00"
+                              className="h-9"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium mb-1.5 block">Moneda</label>
+                            <Select
+                              value={op.cost_currency || "USD"}
+                              onValueChange={(value) => updateOperator(index, "cost_currency", value as "ARS" | "USD")}
+                            >
+                              <SelectTrigger className="h-9">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ARS">ARS</SelectItem>
+                                <SelectItem value="USD">USD</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeOperator(index)}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+                  ))}
+                </div>
 
                 {operatorList.length > 0 && (
-                  <div className="pt-2 border-t">
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="font-medium">Costo Total de Operadores:</span>
-                      <span className="font-bold">{form.watch("currency") || "ARS"} {totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                  <div className="pt-4 mt-4 border-t bg-background/50 rounded-md p-3">
+                    <div className="flex justify-between items-center text-sm mb-2">
+                      <span className="font-medium text-muted-foreground">Costo Total de Operadores:</span>
+                      <span className="font-bold">{form.watch("currency") || "USD"} {totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
                     </div>
-                    <div className="flex justify-between items-center text-sm mt-1">
-                      <span className="font-medium">Margen Calculado:</span>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-muted-foreground">Margen Calculado:</span>
                       <span className={`font-bold ${calculatedMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
-                        {form.watch("sale_currency") || form.watch("currency") || "ARS"} {calculatedMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({calculatedMarginPercent.toFixed(1)}%)
+                        {form.watch("sale_currency") || form.watch("currency") || "USD"} {calculatedMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({calculatedMarginPercent.toFixed(1)}%)
                       </span>
                     </div>
                   </div>
                 )}
 
                 {operatorList.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Agrega al menos un operador para continuar
-                  </p>
+                  <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      No hay operadores agregados
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Haz clic en "Agregar Operador" para comenzar
+                    </p>
+                  </div>
                 )}
               </div>
             ) : (
