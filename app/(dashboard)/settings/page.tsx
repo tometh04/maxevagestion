@@ -1,15 +1,5 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { UsersSettings } from "@/components/settings/users-settings"
-import { AgenciesSettings } from "@/components/settings/agencies-settings"
-import { TrelloSettings } from "@/components/settings/trello-settings"
-import { CommissionsSettings } from "@/components/settings/commissions-settings"
-import { AISettings } from "@/components/settings/ai-settings"
-import { SeedMockData } from "@/components/settings/seed-mock-data"
-import { MigrateHistoricalAccounting } from "@/components/settings/migrate-historical-accounting"
-import { ImportSettings } from "@/components/settings/import-settings"
-import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 import { SettingsPageClient } from "@/components/settings/settings-page-client"
 
 interface SettingsPageProps {
@@ -61,44 +51,6 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       </div>
 
       <SettingsPageClient defaultTab={defaultTab} agencies={agencies} firstAgencyId={firstAgencyId} userRole={user.role} />
-        <TabsList>
-          <TabsTrigger value="users">Usuarios</TabsTrigger>
-          <TabsTrigger value="agencies">Agencias</TabsTrigger>
-          <TabsTrigger value="trello">Trello</TabsTrigger>
-          <TabsTrigger value="commissions">Comisiones</TabsTrigger>
-          <TabsTrigger value="ai">AI</TabsTrigger>
-          <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
-          <TabsTrigger value="import">Importar Datos</TabsTrigger>
-          {user.role === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
-        </TabsList>
-        <TabsContent value="users">
-          <UsersSettings />
-        </TabsContent>
-        <TabsContent value="agencies">
-          <AgenciesSettings />
-        </TabsContent>
-        <TabsContent value="trello">
-          <TrelloSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-        </TabsContent>
-        <TabsContent value="commissions">
-          <CommissionsSettings />
-        </TabsContent>
-        <TabsContent value="ai">
-          <AISettings />
-        </TabsContent>
-        <TabsContent value="requirements">
-          <DestinationRequirementsClient />
-        </TabsContent>
-        <TabsContent value="import">
-          <ImportSettings />
-        </TabsContent>
-        {user.role === "SUPER_ADMIN" && (
-          <TabsContent value="seed" className="space-y-4">
-            <SeedMockData />
-            <MigrateHistoricalAccounting />
-          </TabsContent>
-        )}
-      </Tabs>
     </div>
   )
 }
