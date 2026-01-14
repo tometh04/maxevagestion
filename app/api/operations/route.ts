@@ -504,11 +504,12 @@ export async function POST(request: Request) {
     
     // Si no hay customer_id pero hay lead_id, buscar/crear cliente desde el lead
     if (lead_id && !customerId) {
-      const { data: leadData } = await supabase
-        .from("leads")
+      const { data: leadDataResult } = await (supabase.from("leads") as any)
         .select("contact_name, contact_email, contact_phone, contact_instagram")
         .eq("id", lead_id)
         .single()
+      
+      const leadData = leadDataResult as { contact_name?: string; contact_email?: string; contact_phone?: string; contact_instagram?: string } | null
       
       if (leadData) {
         // Buscar si ya existe un cliente con ese email o teléfono
