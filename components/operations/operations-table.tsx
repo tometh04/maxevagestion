@@ -171,6 +171,19 @@ export function OperationsTable({
     setPage(1) // Resetear a página 1 cuando cambian los filtros
   }, [initialFilters])
 
+  // Escuchar eventos de refresh desde el componente padre
+  useEffect(() => {
+    const handleRefresh = () => {
+      fetchOperations()
+    }
+    
+    window.addEventListener("refresh-operations", handleRefresh)
+    
+    return () => {
+      window.removeEventListener("refresh-operations", handleRefresh)
+    }
+  }, [fetchOperations])
+
   const columns: ColumnDef<Operation>[] = useMemo(
     () => [
       {
