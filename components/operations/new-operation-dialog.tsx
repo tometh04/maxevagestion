@@ -64,8 +64,6 @@ const operationSchema = z.object({
   destination: z.string().optional(), // Validación dinámica en backend
   departure_date: z.date().optional(), // Validación dinámica en backend
   return_date: z.date().optional().nullable(),
-  checkin_date: z.date().optional().nullable(),
-  checkout_date: z.date().optional().nullable(),
   adults: z.coerce.number().min(1, "Debe haber al menos 1 adulto"),
   children: z.coerce.number().min(0).default(0).optional(),
   infants: z.coerce.number().min(0).default(0).optional(),
@@ -175,8 +173,6 @@ export function NewOperationDialog({
       destination: "",
       departure_date: undefined,
       return_date: undefined,
-      checkin_date: undefined,
-      checkout_date: undefined,
       adults: 2,
       children: 0,
       infants: 0,
@@ -300,8 +296,8 @@ export function NewOperationDialog({
         origin: values.origin || null,
         product_type: values.product_type || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
-        checkin_date: values.checkin_date ? values.checkin_date.toISOString().split("T")[0] : null,
-        checkout_date: values.checkout_date ? values.checkout_date.toISOString().split("T")[0] : null,
+        checkin_date: null,
+        checkout_date: null,
         departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
         sale_currency: values.sale_currency || values.currency || "ARS",
         operator_cost_currency: values.operator_cost_currency || values.currency || "ARS",
@@ -761,78 +757,6 @@ export function NewOperationDialog({
                   </FormItem>
                   )
                 }}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="checkin_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de Check-in (Hoteles)</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground",
-                            )}
-                          >
-                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value || undefined}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="checkout_date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de Check-out (Hoteles)</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground",
-                            )}
-                          >
-                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Seleccionar fecha</span>}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value || undefined}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
               />
             </div>
 
