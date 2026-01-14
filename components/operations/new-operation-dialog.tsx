@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -59,7 +60,7 @@ const operationSchema = z.object({
   operator_id: z.string().optional().nullable(),
   operators: z.array(operatorSchema).optional(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]),
-  product_type: z.enum(["AEREO", "HOTEL", "PAQUETE", "CRUCERO", "OTRO"]).optional().nullable(),
+  customer_id: z.string().optional().nullable(),
   origin: z.string().optional(),
   destination: z.string().optional(), // Validación dinámica en backend
   departure_date: z.date().optional(), // Validación dinámica en backend
@@ -120,6 +121,11 @@ export function NewOperationDialog({
   const [newOperatorEmail, setNewOperatorEmail] = useState("")
   const [creatingOperator, setCreatingOperator] = useState(false)
   const [localOperators, setLocalOperators] = useState(operators)
+  
+  // Estado para clientes
+  const [customers, setCustomers] = useState<Array<{ id: string; first_name: string; last_name: string }>>([])
+  const [loadingCustomers, setLoadingCustomers] = useState(false)
+  const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
 
   // Sincronizar operadores cuando cambian
   useEffect(() => {
@@ -130,8 +136,29 @@ export function NewOperationDialog({
   useEffect(() => {
     if (open) {
       loadSettings()
+      loadCustomers()
     }
   }, [open])
+
+  // Cargar lista de clientes
+  const loadCustomers = async () => {
+    setLoadingCustomers(true)
+    try {
+      const response = await fetch('/api/customers?limit=200')
+      if (response.ok) {
+        const data = await response.json()
+        setCustomers((data.customers || []).map((c: any) => ({
+          id: c.id,
+          first_name: c.first_name,
+          last_name: c.last_name,
+        })))
+      }
+    } catch (error) {
+      console.error('Error loading customers:', error)
+    } finally {
+      setLoadingCustomers(false)
+    }
+  }
 
   const loadSettings = async () => {
     try {
@@ -168,7 +195,7 @@ export function NewOperationDialog({
       operator_id: null,
       seller_secondary_id: null,
       type: "PACKAGE",
-      product_type: null,
+      customer_id: null,
       origin: "",
       destination: "",
       departure_date: undefined,
@@ -294,7 +321,7 @@ export function NewOperationDialog({
         operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         origin: values.origin || null,
-        product_type: values.product_type || null,
+        customer_id: values.customer_id || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         checkin_date: null,
         checkout_date: null,
@@ -465,24 +492,40 @@ export function NewOperationDialog({
 
               <FormField
                 control={form.control}
-                name="product_type"
+                name="customer_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tipo de Producto</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Se inferirá del tipo" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="AEREO">Aéreo</SelectItem>
-                        <SelectItem value="HOTEL">Hotel</SelectItem>
-                        <SelectItem value="PAQUETE">Paquete</SelectItem>
-                        <SelectItem value="CRUCERO">Crucero</SelectItem>
-                        <SelectItem value="OTRO">Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Cliente {settings?.require_customer && <span className="text-red-500">*</span>}</FormLabel>
+                    <div className="flex gap-2">
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        value={field.value || "none"}
+                        disabled={loadingCustomers}
+                      >
+                        <FormControl>
+                          <SelectTrigger className="flex-1">
+                            <SelectValue placeholder={loadingCustomers ? "Cargando..." : "Sin cliente"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin cliente</SelectItem>
+                          {customers.map((customer) => (
+                            <SelectItem key={customer.id} value={customer.id}>
+                              {customer.first_name} {customer.last_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowNewCustomerDialog(true)}
+                        title="Crear nuevo cliente"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -1048,6 +1091,24 @@ export function NewOperationDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Diálogo para crear nuevo cliente */}
+      <NewCustomerDialog
+        open={showNewCustomerDialog}
+        onOpenChange={setShowNewCustomerDialog}
+        onSuccess={(customer) => {
+          if (customer) {
+            // Agregar el nuevo cliente a la lista y seleccionarlo
+            setCustomers(prev => [...prev, {
+              id: customer.id,
+              first_name: customer.first_name,
+              last_name: customer.last_name,
+            }])
+            form.setValue("customer_id", customer.id)
+            setShowNewCustomerDialog(false)
+          }
+        }}
+      />
     </Dialog>
   )
 }
