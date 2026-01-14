@@ -10,8 +10,15 @@ import { SeedMockData } from "@/components/settings/seed-mock-data"
 import { MigrateHistoricalAccounting } from "@/components/settings/migrate-historical-accounting"
 import { ImportSettings } from "@/components/settings/import-settings"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
+import { SettingsPageClient } from "@/components/settings/settings-page-client"
 
-export default async function SettingsPage() {
+interface SettingsPageProps {
+  searchParams: Promise<{ tab?: string }>
+}
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const params = await searchParams
+  const defaultTab = params.tab || "users"
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
   
@@ -53,7 +60,7 @@ export default async function SettingsPage() {
         <p className="text-muted-foreground">Gestiona la configuración del sistema</p>
       </div>
 
-      <Tabs defaultValue="users" className="w-full">
+      <SettingsPageClient defaultTab={defaultTab} agencies={agencies} firstAgencyId={firstAgencyId} userRole={user.role} />
         <TabsList>
           <TabsTrigger value="users">Usuarios</TabsTrigger>
           <TabsTrigger value="agencies">Agencias</TabsTrigger>
