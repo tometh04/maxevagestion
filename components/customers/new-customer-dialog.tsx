@@ -33,6 +33,16 @@ import { toast } from "sonner"
 import { Loader2, Upload, FileText, X, CheckCircle } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface NewCustomerDialogProps {
   open: boolean
@@ -71,6 +81,7 @@ export function NewCustomerDialog({
   const [ocrSuccess, setOcrSuccess] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, loading: settingsLoading } = useCustomerSettings()
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
@@ -349,18 +360,35 @@ export function NewCustomerDialog({
     }
   }
 
-  const handleOpenChange = (open: boolean) => {
-    if (!open) {
-      form.reset()
-      setUploadedFile(null)
-      setOcrSuccess(false)
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && open) {
+      // Si se intenta cerrar, mostrar confirmación
+      setShowCloseConfirm(true)
+    } else {
+      onOpenChange(newOpen)
     }
-    onOpenChange(open)
+  }
+
+  const handleConfirmClose = () => {
+    setShowCloseConfirm(false)
+    form.reset()
+    setUploadedFile(null)
+    setOcrSuccess(false)
+    onOpenChange(false)
+  }
+
+  const handleCancelClose = () => {
+    setShowCloseConfirm(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent 
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
         <DialogHeader>
           <DialogTitle>Nuevo Cliente</DialogTitle>
           <DialogDescription>
@@ -602,6 +630,25 @@ export function NewCustomerDialog({
           </form>
         </Form>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+
+      {/* Diálogo de confirmación para cerrar */}
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro que quieres cerrar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Perderás todos los cambios no guardados. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelClose}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmClose} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Cerrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }

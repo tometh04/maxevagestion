@@ -33,6 +33,16 @@ import { cn } from "@/lib/utils"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 
 // Configuración de operaciones
@@ -115,6 +125,8 @@ export function NewOperationDialog({
   const [operatorList, setOperatorList] = useState<Array<{operator_id: string, cost: number, cost_currency: "ARS" | "USD", product_type?: "FLIGHT" | "HOTEL" | "PACKAGE" | "CRUISE" | "TRANSFER" | "MIXED", notes?: string}>>([])
   const [settings, setSettings] = useState<OperationSettings | null>(null)
   const [apiError, setApiError] = useState<string | null>(null)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [pendingClose, setPendingClose] = useState(false)
   
   // Estado para crear nuevo operador
   const [showNewOperatorDialog, setShowNewOperatorDialog] = useState(false)
@@ -375,14 +387,39 @@ export function NewOperationDialog({
     }
   }
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (!newOpen && open) {
+      // Si se intenta cerrar, mostrar confirmación
+      setShowCloseConfirm(true)
+      setPendingClose(true)
+    } else {
+      onOpenChange(newOpen)
+    }
+  }
+
+  const handleConfirmClose = () => {
+    setShowCloseConfirm(false)
+    setApiError(null)
+    form.reset()
+    setOperatorList([])
+    setUseMultipleOperators(false)
+    onOpenChange(false)
+    setPendingClose(false)
+  }
+
+  const handleCancelClose = () => {
+    setShowCloseConfirm(false)
+    setPendingClose(false)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={(open) => {
-      if (!open) {
-        setApiError(null)
-      }
-      onOpenChange(open)
-    }}>
-      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto">
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent 
+          className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto"
+          onEscapeKeyDown={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+        >
         <DialogHeader>
           <DialogTitle>Nueva Operación</DialogTitle>
           <DialogDescription>Crear una nueva operación manualmente</DialogDescription>
@@ -865,7 +902,7 @@ export function NewOperationDialog({
                 name="children"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Niños</FormLabel>
+                    <FormLabel>Children</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -884,7 +921,7 @@ export function NewOperationDialog({
                 name="infants"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Bebés</FormLabel>
+                    <FormLabel>Infantes</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -1146,7 +1183,26 @@ export function NewOperationDialog({
           }
         }}
       />
-    </Dialog>
+      </Dialog>
+
+      {/* Diálogo de confirmación para cerrar */}
+      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Estás seguro que quieres cerrar?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Perderás todos los cambios no guardados. Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelClose}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmClose} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Cerrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   )
 }
 
