@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
     let operatorsList: Array<{operator_id: string, cost: number, cost_currency: string, notes?: string}> = []
     let totalOperatorCost = 0
-    let finalOperatorCostCurrency = operator_cost_currency || currency || "ARS"
+    let finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
     let primaryOperatorId: string | null = operator_id || null
 
     if (operators && Array.isArray(operators) && operators.length > 0) {
@@ -97,13 +97,13 @@ export async function POST(request: Request) {
         operatorsList.push({
           operator_id: op.operator_id,
           cost: Number(op.cost),
-          cost_currency: op.cost_currency || currency || "ARS",
+          cost_currency: op.cost_currency || currency || "USD",
           notes: op.notes || undefined
         })
         totalOperatorCost += Number(op.cost)
         // Usar la moneda del primer operador como moneda principal
         if (operatorsList.length === 1) {
-          finalOperatorCostCurrency = op.cost_currency || currency || "ARS"
+          finalOperatorCostCurrency = op.cost_currency || currency || "USD"
         }
       }
       // El primer operador es el principal
@@ -118,10 +118,10 @@ export async function POST(request: Request) {
       operatorsList.push({
         operator_id: operator_id,
         cost: Number(operator_cost),
-        cost_currency: operator_cost_currency || currency || "ARS"
+        cost_currency: operator_cost_currency || currency || "USD"
       })
       totalOperatorCost = Number(operator_cost)
-      finalOperatorCostCurrency = operator_cost_currency || currency || "ARS"
+      finalOperatorCostCurrency = operator_cost_currency || currency || "USD"
       primaryOperatorId = operator_id
     } else {
       // Sin operadores: permitir operaciones sin operador (costo = 0)
@@ -179,7 +179,7 @@ export async function POST(request: Request) {
     const inferredProductType = product_type || (type === 'FLIGHT' ? 'AEREO' : type === 'HOTEL' ? 'HOTEL' : type === 'PACKAGE' ? 'PAQUETE' : type === 'CRUISE' ? 'CRUCERO' : 'OTRO')
 
     // Use sale_currency, fallback to currency
-    const finalSaleCurrency = sale_currency || currency || "ARS"
+    const finalSaleCurrency = sale_currency || currency || "USD"
 
     const operationData: Record<string, any> = {
       agency_id,
@@ -203,7 +203,7 @@ export async function POST(request: Request) {
       status: status || settingsData?.default_status || "RESERVED",
       sale_amount_total,
       operator_cost: totalOperatorCost, // Costo total de todos los operadores
-      currency: currency || "ARS", // Mantener para compatibilidad
+      currency: currency || "USD", // Mantener para compatibilidad
       sale_currency: finalSaleCurrency,
       operator_cost_currency: finalOperatorCostCurrency,
       margin_amount: marginAmount,

@@ -47,7 +47,7 @@ interface OperationSettings {
 const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
-  cost_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
+  cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
   notes: z.string().optional(),
 })
 
@@ -72,9 +72,9 @@ const operationSchema = z.object({
   status: z.string(), // Puede incluir estados personalizados
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
   operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0").optional(),
-  currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
-  sale_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
-  operator_cost_currency: z.enum(["ARS", "USD"]).default("ARS").optional(),
+  currency: z.enum(["ARS", "USD"]).default("USD").optional(),
+  sale_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
+  operator_cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -183,9 +183,9 @@ export function NewOperationDialog({
       status: settings?.default_status || "RESERVED",
       sale_amount_total: 0,
       operator_cost: 0,
-      currency: "ARS",
-      sale_currency: "ARS",
-      operator_cost_currency: "ARS",
+      currency: "USD",
+      sale_currency: "USD",
+      operator_cost_currency: "USD",
       operators: [],
     },
   })
@@ -210,7 +210,7 @@ export function NewOperationDialog({
       // Asegurar que cost_currency tenga un valor por defecto
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
-        cost_currency: (op.cost_currency || "ARS") as "ARS" | "USD"
+        cost_currency: (op.cost_currency || "USD") as "ARS" | "USD"
       }))
       form.setValue("operators", operatorsWithDefaults)
     } else if (!useMultipleOperators) {
@@ -728,14 +728,14 @@ export function NewOperationDialog({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Fecha de Salida *</FormLabel>
-                    <FormControl>
+                        <FormControl>
                       <DateInputWithCalendar
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="dd/MM/yyyy"
                         minDate={new Date()}
                       />
-                    </FormControl>
+                        </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -747,9 +747,9 @@ export function NewOperationDialog({
                 render={({ field }) => {
                   const departureDate = form.watch("departure_date")
                   return (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Fecha de Regreso</FormLabel>
-                      <FormControl>
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de Regreso</FormLabel>
+                        <FormControl>
                         <DateInputWithCalendar
                           value={field.value || undefined}
                           onChange={field.onChange}
@@ -757,8 +757,8 @@ export function NewOperationDialog({
                           minDate={departureDate || new Date()}
                         />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                    <FormMessage />
+                  </FormItem>
                   )
                 }}
               />

@@ -67,7 +67,7 @@ export function FinancesSettingsPageClient() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<FinancialSettings>({
-    primary_currency: 'ARS',
+    primary_currency: 'USD',
     enabled_currencies: ['ARS', 'USD'],
     exchange_rate_config: {
       source: 'manual',

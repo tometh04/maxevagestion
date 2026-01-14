@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS financial_settings (
   
   -- Configuración de monedas y tipos de cambio
   -- Moneda principal del sistema
-  primary_currency TEXT DEFAULT 'ARS' CHECK (primary_currency IN ('ARS', 'USD')),
+  primary_currency TEXT DEFAULT 'USD' CHECK (primary_currency IN ('ARS', 'USD')),
   
   -- Monedas habilitadas (JSON array)
   -- Ejemplo: ["ARS", "USD"]

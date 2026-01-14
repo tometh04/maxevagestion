@@ -171,7 +171,7 @@ export function EditOperationDialog({
       status: (operation.status as any) || "PRE_RESERVATION",
       sale_amount_total: operation.sale_amount_total || 0,
       operator_cost: operation.operator_cost || 0,
-      currency: (operation.currency as any) || "ARS",
+      currency: (operation.currency as any) || "USD",
     },
   })
 
@@ -194,7 +194,7 @@ export function EditOperationDialog({
         status: (operation.status as any) || "PRE_RESERVATION",
         sale_amount_total: operation.sale_amount_total || 0,
         operator_cost: operation.operator_cost || 0,
-        currency: (operation.currency as any) || "ARS",
+        currency: (operation.currency as any) || "USD",
       })
     }
   }, [operation, form])
@@ -492,13 +492,13 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Fecha de Salida *</FormLabel>
-                    <FormControl>
+                        <FormControl>
                       <DateInputWithCalendar
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="dd/MM/yyyy"
                       />
-                    </FormControl>
+                        </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -510,9 +510,9 @@ export function EditOperationDialog({
                 render={({ field }) => {
                   const departureDate = form.watch("departure_date")
                   return (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Fecha de Regreso</FormLabel>
-                      <FormControl>
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Fecha de Regreso</FormLabel>
+                        <FormControl>
                         <DateInputWithCalendar
                           value={field.value || undefined}
                           onChange={field.onChange}
@@ -520,8 +520,8 @@ export function EditOperationDialog({
                           minDate={departureDate}
                         />
                       </FormControl>
-                      <FormMessage />
-                    </FormItem>
+                    <FormMessage />
+                  </FormItem>
                   )
                 }}
               />

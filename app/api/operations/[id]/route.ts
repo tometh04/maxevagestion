@@ -156,7 +156,7 @@ export async function PATCH(
     }
 
     // Detectar cambio de moneda
-    const oldCurrency = currentOp.currency || currentOp.sale_currency || "ARS"
+    const oldCurrency = currentOp.currency || currentOp.sale_currency || "USD"
     const newCurrency = body.currency || body.sale_currency || oldCurrency
     const currencyChanged = oldCurrency !== newCurrency
 
@@ -187,7 +187,7 @@ export async function PATCH(
     }
 
     const op = operation as any
-    const currency = op.currency || op.sale_currency || "ARS"
+    const currency = op.currency || op.sale_currency || "USD"
 
     // ============================================
     // MANEJAR CAMBIO DE MONEDA
@@ -212,8 +212,8 @@ export async function PATCH(
         (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost)) {
       try {
         // Obtener monedas de la operación actualizada
-        const saleCurrency = op.sale_currency || op.currency || "ARS"
-        const operatorCostCurrency = op.operator_cost_currency || op.currency || "ARS"
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+        const operatorCostCurrency = op.operator_cost_currency || op.currency || "USD"
         
         // Convertir costo del operador a la misma moneda de venta si es necesario
         let operatorCostForIVA = newOperatorCost
