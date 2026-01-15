@@ -92,6 +92,7 @@ export function NewCustomerDialog({
       phone: z.string().min(1, "Teléfono es requerido"),
       document_type: z.string().optional(),
       document_number: z.string().optional(),
+      procedure_number: z.string().optional(),
       date_of_birth: z.string().optional(),
       nationality: z.string().optional(),
     }
@@ -136,17 +137,18 @@ export function NewCustomerDialog({
 
   type CustomerFormValues = z.infer<typeof customerSchema>
 
-  // Generar valores por defecto incluyendo campos personalizados
-  const defaultValues = useMemo(() => {
-    const baseDefaults: any = {
-      first_name: "",
-      last_name: "",
-      phone: "",
-      document_type: "",
-      document_number: "",
-      date_of_birth: "",
-      nationality: "",
-    }
+    // Generar valores por defecto incluyendo campos personalizados
+    const defaultValues = useMemo(() => {
+      const baseDefaults: any = {
+        first_name: "",
+        last_name: "",
+        phone: "",
+        document_type: "",
+        document_number: "",
+        procedure_number: "",
+        date_of_birth: "",
+        nationality: "",
+      }
 
     // Agregar valores por defecto de campos personalizados
     if (settings?.custom_fields) {
@@ -237,6 +239,9 @@ export function NewCustomerDialog({
         if (extracted.document_number) {
           form.setValue("document_number", extracted.document_number)
         }
+        if (extracted.procedure_number) {
+          form.setValue("procedure_number", extracted.procedure_number)
+        }
         if (extracted.document_type) {
           form.setValue("document_type", extracted.document_type)
         } else if (documentType) {
@@ -306,6 +311,7 @@ export function NewCustomerDialog({
           instagram_handle: null, // Instagram eliminado del formulario
           document_type: values.document_type || null,
           document_number: values.document_number || null,
+          procedure_number: values.procedure_number || null,
           date_of_birth: values.date_of_birth || null,
           nationality: values.nationality || null,
         }),
@@ -482,20 +488,6 @@ export function NewCustomerDialog({
 
               <FormField
                 control={form.control}
-                name="date_of_birth"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fecha de Nacimiento</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
                 name="nationality"
                 render={({ field }) => (
                   <FormItem>
@@ -514,6 +506,34 @@ export function NewCustomerDialog({
                         ))}
                       </SelectContent>
                     </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="date_of_birth"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha de Nacimiento</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="procedure_number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Número de Trámite</FormLabel>
+                    <FormControl>
+                      <Input placeholder="12345678" {...field} />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

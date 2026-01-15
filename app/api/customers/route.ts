@@ -149,6 +149,7 @@ export async function POST(request: Request) {
       instagram_handle,
       document_type,
       document_number,
+      procedure_number,
       date_of_birth,
       nationality,
     } = body
@@ -225,6 +226,7 @@ export async function POST(request: Request) {
         instagram_handle: instagram_handle || null,
         document_type: document_type || null,
         document_number: document_number || null,
+        procedure_number: procedure_number || null,
         date_of_birth: date_of_birth || null,
         nationality: nationality || null,
       })

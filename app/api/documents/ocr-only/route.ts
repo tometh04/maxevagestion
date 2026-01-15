@@ -94,6 +94,7 @@ TAREA: Extraer los datos visibles del pasaporte y devolverlos en formato JSON.
 CAMPOS A EXTRAER:
 - document_type: "PASSPORT"
 - document_number: Número del pasaporte (ej: "AAE422895")
+- procedure_number: Número de trámite o pasaporte (si está visible en el documento)
 - first_name: Nombre(s) 
 - last_name: Apellido(s)
 - full_name: Nombre completo
@@ -116,6 +117,7 @@ TAREA: Extraer los datos visibles del DNI y devolverlos en formato JSON.
 CAMPOS A EXTRAER:
 - document_type: "DNI"
 - document_number: Número de documento
+- procedure_number: Número de trámite del DNI (generalmente aparece en el frente del documento, puede estar como "TRAMITE N°", "Tram. N°", "Trámite" o similar)
 - first_name: Nombre(s)
 - last_name: Apellido(s)
 - full_name: Nombre completo tal como aparece
@@ -126,6 +128,11 @@ CAMPOS A EXTRAER:
 CONVERSIÓN DE FECHAS:
 - Si la fecha aparece como "09 ENE 1987" convierte a "1987-01-09"
 - Si aparece como "09/01/1987" convierte a "1987-01-09"
+
+IMPORTANTE SOBRE EL NÚMERO DE TRÁMITE:
+- Busca el número de trámite en el frente del documento, generalmente en la parte inferior o cerca del número de documento
+- Puede aparecer como "TRAMITE N° XXXXXXXX" o similar
+- Solo inclúyelo si lo puedes leer claramente
 
 RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas leer. Si un campo no es legible, omítelo o usa null.`
     }
