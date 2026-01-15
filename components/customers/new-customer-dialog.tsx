@@ -176,15 +176,15 @@ export function NewCustomerDialog({
     if (!file) return
 
     // Validar tipo de archivo
-    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+    const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
     if (!allowedTypes.includes(file.type)) {
-      toast.error("Solo se permiten imágenes (JPEG, PNG, WebP)")
+      toast.error("Solo se permiten imágenes (JPEG, PNG, WebP) o PDFs")
       return
     }
 
-    // Validar tamaño (máximo 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error("El archivo es demasiado grande. Máximo 10MB")
+    // Validar tamaño (máximo 15MB)
+    if (file.size > 15 * 1024 * 1024) {
+      toast.error("El archivo es demasiado grande. Máximo 15MB")
       return
     }
 
@@ -527,7 +527,7 @@ export function NewCustomerDialog({
                 <span className="font-medium">Escanear Documento</span>
               </div>
               <p className="text-sm text-muted-foreground mb-3">
-                Sube una foto del DNI o Pasaporte y los datos se completarán automáticamente
+                Sube una foto o PDF del DNI o Pasaporte y los datos se completarán automáticamente
               </p>
               
               {!uploadedFile ? (
@@ -535,7 +535,7 @@ export function NewCustomerDialog({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
                     onChange={handleFileUpload}
                     className="hidden"
                     id="document-upload"
@@ -557,7 +557,7 @@ export function NewCustomerDialog({
                         ) : (
                           <>
                             <Upload className="mr-2 h-4 w-4" />
-                            Subir foto de DNI / Pasaporte
+                            Subir foto o PDF de DNI / Pasaporte
                           </>
                         )}
                       </span>
