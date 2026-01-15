@@ -115,7 +115,7 @@ export function NewOperatorDialog({
 
   const handleConfirmClose = () => {
     setShowCloseConfirm(false)
-    form.reset()
+      form.reset()
     onOpenChange(false)
   }
 
@@ -125,7 +125,7 @@ export function NewOperatorDialog({
 
   return (
     <>
-      <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent 
           className="max-w-lg"
           onEscapeKeyDown={(e) => e.preventDefault()}
@@ -238,7 +238,7 @@ export function NewOperatorDialog({
           </form>
         </Form>
       </DialogContent>
-      </Dialog>
+    </Dialog>
 
       {/* Diálogo de confirmación para cerrar */}
       <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>

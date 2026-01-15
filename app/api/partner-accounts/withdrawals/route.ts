@@ -109,7 +109,7 @@ export async function POST(request: Request) {
       .from("financial_accounts") as any)
       .select("id, currency")
       .eq("id", account_id)
-      .single()
+        .single()
 
     if (accountError || !account) {
       return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })

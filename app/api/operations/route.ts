@@ -560,119 +560,119 @@ export async function POST(request: Request) {
             console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
           }
         }
-      }
-    }
-    
-    // Validar cliente requerido según configuración
-    if (settingsData?.require_customer && !customerId) {
-      return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
-    }
-
-    // Asociar cliente a la operación
-    if (customerId) {
-      const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
-        .insert({
-          operation_id: operation.id,
-          customer_id: customerId,
-          role: "MAIN"
-        })
-        .select()
-        .single()
-      
-      if (operationCustomerError) {
-        console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
-        // No lanzar error, pero loguear para debug
-      } else {
-        console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
+          }
+        }
         
-        // Enviar notificación al cliente si está configurada
-        try {
-          const { data: customer } = await supabase
-            .from("customers")
-            .select("*")
-            .eq("id", customerId)
+        // Validar cliente requerido según configuración
+        if (settingsData?.require_customer && !customerId) {
+          return NextResponse.json({ error: "Se debe asociar al menos un cliente" }, { status: 400 })
+        }
+
+        // Asociar cliente a la operación
+        if (customerId) {
+          const { data: operationCustomerData, error: operationCustomerError } = await (supabase.from("operation_customers") as any)
+            .insert({
+              operation_id: operation.id,
+              customer_id: customerId,
+              role: "MAIN"
+            })
+            .select()
             .single()
           
-          if (customer) {
-            const customerData = customer as any
-            const { data: settings } = await supabase
-              .from("customer_settings")
-              .select("*")
-              .eq("agency_id", agency_id)
-              .maybeSingle()
+          if (operationCustomerError) {
+            console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
+            // No lanzar error, pero loguear para debug
+          } else {
+            console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
             
-            const settingsData = settings as any
-            if (settingsData?.notifications) {
-              await sendCustomerNotifications(
-                supabase,
-                'customer_operation_created',
-                {
-                  id: customerData.id,
-                  first_name: customerData.first_name,
-                  last_name: customerData.last_name,
-                  email: customerData.email,
-                  phone: customerData.phone,
-                },
-                agency_id,
-                settingsData.notifications
-              )
+            // Enviar notificación al cliente si está configurada
+            try {
+              const { data: customer } = await supabase
+                .from("customers")
+                .select("*")
+                .eq("id", customerId)
+                .single()
+              
+              if (customer) {
+                const customerData = customer as any
+                const { data: settings } = await supabase
+                  .from("customer_settings")
+                  .select("*")
+                  .eq("agency_id", agency_id)
+                  .maybeSingle()
+                
+                const settingsData = settings as any
+                if (settingsData?.notifications) {
+                  await sendCustomerNotifications(
+                    supabase,
+                    'customer_operation_created',
+                    {
+                      id: customerData.id,
+                      first_name: customerData.first_name,
+                      last_name: customerData.last_name,
+                      email: customerData.email,
+                      phone: customerData.phone,
+                    },
+                    agency_id,
+                    settingsData.notifications
+                  )
+                }
+              }
+            } catch (error) {
+              console.error("Error sending customer notification:", error)
+              // No lanzar error, solo loguear
             }
           }
-        } catch (error) {
-          console.error("Error sending customer notification:", error)
-          // No lanzar error, solo loguear
+          
+      // Transferir documentos del lead al cliente (solo si hay lead_id)
+      if (lead_id) {
+          try {
+            const { data: leadDocuments, error: docsError } = await supabase
+              .from("documents")
+              .select("id")
+              .eq("lead_id", lead_id)
+              .is("customer_id", null)
+            
+            if (!docsError && leadDocuments && leadDocuments.length > 0) {
+              const { error: updateDocsError } = await (supabase.from("documents") as any)
+                .update({ customer_id: customerId })
+                .in("id", leadDocuments.map((d: any) => d.id))
+              
+              if (!updateDocsError) {
+                console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
+              } else {
+                console.error("Error transferring documents:", updateDocsError)
+              }
+            }
+          } catch (error) {
+            console.error("Error transferring documents from lead to customer:", error)
+          }
+          
+          // Transferir documentos del lead a la operación también
+          try {
+            const { data: leadDocsForOp, error: docsOpError } = await supabase
+              .from("documents")
+              .select("id")
+              .eq("lead_id", lead_id)
+              .is("operation_id", null)
+            
+            if (!docsOpError && leadDocsForOp && leadDocsForOp.length > 0) {
+              const { error: updateDocsOpError } = await (supabase.from("documents") as any)
+                .update({ operation_id: operation.id })
+                .in("id", leadDocsForOp.map((d: any) => d.id))
+              
+              if (!updateDocsOpError) {
+                console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
+              } else {
+                console.error("Error transferring documents to operation:", updateDocsOpError)
+              }
+            }
+          } catch (error) {
+            console.error("Error transferring documents from lead to operation:", error)
+          }
         }
       }
       
-      // Transferir documentos del lead al cliente (solo si hay lead_id)
-      if (lead_id) {
-        try {
-          const { data: leadDocuments, error: docsError } = await supabase
-            .from("documents")
-            .select("id")
-            .eq("lead_id", lead_id)
-            .is("customer_id", null)
-          
-          if (!docsError && leadDocuments && leadDocuments.length > 0) {
-            const { error: updateDocsError } = await (supabase.from("documents") as any)
-              .update({ customer_id: customerId })
-              .in("id", leadDocuments.map((d: any) => d.id))
-            
-            if (!updateDocsError) {
-              console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
-            } else {
-              console.error("Error transferring documents:", updateDocsError)
-            }
-          }
-        } catch (error) {
-          console.error("Error transferring documents from lead to customer:", error)
-        }
-        
-        // Transferir documentos del lead a la operación también
-        try {
-          const { data: leadDocsForOp, error: docsOpError } = await supabase
-            .from("documents")
-            .select("id")
-            .eq("lead_id", lead_id)
-            .is("operation_id", null)
-          
-          if (!docsOpError && leadDocsForOp && leadDocsForOp.length > 0) {
-            const { error: updateDocsOpError } = await (supabase.from("documents") as any)
-              .update({ operation_id: operation.id })
-              .in("id", leadDocsForOp.map((d: any) => d.id))
-            
-            if (!updateDocsOpError) {
-              console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
-            } else {
-              console.error("Error transferring documents to operation:", updateDocsOpError)
-            }
-          }
-        } catch (error) {
-          console.error("Error transferring documents from lead to operation:", error)
-        }
-      }
-    }
-    
     // Update lead status to WON if lead_id exists
     if (lead_id) {
       // Actualizar lead a WON
