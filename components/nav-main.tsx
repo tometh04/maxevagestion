@@ -112,9 +112,9 @@ export function NavMain({ items, pathname }: NavMainProps) {
                                       const subSubIsActive = pathname === subSubItem.url || pathname?.startsWith(subSubItem.url + "/")
                                       return (
                                         <SidebarMenuSubItem key={subSubItem.url}>
-                                          <SidebarMenuSubButton asChild isActive={subSubIsActive}>
+                                          <SidebarMenuSubButton asChild isActive={subSubIsActive} className="pl-4">
                                             <Link href={subSubItem.url}>
-                                              <span className="pl-4">{subSubItem.title}</span>
+                                              {subSubItem.title}
                                             </Link>
                                           </SidebarMenuSubButton>
                                         </SidebarMenuSubItem>
