@@ -34,8 +34,15 @@ interface SearchResult {
   subtitle?: string
 }
 
-export function CommandMenu() {
-  const [open, setOpen] = useState(false)
+interface CommandMenuProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}
+
+export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuProps = {}) {
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen
+  const setOpen = onOpenChange || setInternalOpen
   const [search, setSearch] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)

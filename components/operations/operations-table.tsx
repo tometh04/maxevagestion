@@ -57,6 +57,8 @@ interface Operation {
   pending_amount?: number // A cobrar
   operator_paid_amount?: number // Pagado (a operadores)
   operator_pending_amount?: number // A pagar (a operadores)
+  reservation_code_air?: string | null
+  reservation_code_hotel?: string | null
 }
 
 interface OperationsTableProps {
@@ -189,11 +191,13 @@ export function OperationsTable({
       {
         id: "searchText",
         accessorFn: (row) => {
-          // Texto de búsqueda que incluye destino, cliente y otros campos
+          // Texto de búsqueda que incluye destino, cliente, códigos de reserva y otros campos
           const destination = row.destination || row.leads?.destination || ""
           const customerName = row.customer_name || row.leads?.contact_name || ""
           const trelloUrl = row.leads?.trello_url || ""
-          return `${destination} ${customerName} ${trelloUrl}`.toLowerCase()
+          const reservationAir = row.reservation_code_air || ""
+          const reservationHotel = row.reservation_code_hotel || ""
+          return `${destination} ${customerName} ${trelloUrl} ${reservationAir} ${reservationHotel}`.toLowerCase()
         },
         enableHiding: false,
         enableSorting: false,
@@ -309,6 +313,36 @@ export function OperationsTable({
             )
           }
           return <div className="text-xs">-</div>
+        },
+      },
+      {
+        accessorKey: "reservation_code_air",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Cod. Rva Aéreo" />
+        ),
+        cell: ({ row }) => {
+          const code = row.original.reservation_code_air
+          if (!code) return <div className="text-xs text-muted-foreground">-</div>
+          return (
+            <div className="text-xs font-mono max-w-[100px] truncate" title={code}>
+              {code}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "reservation_code_hotel",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Cod. Rva Hotel" />
+        ),
+        cell: ({ row }) => {
+          const code = row.original.reservation_code_hotel
+          if (!code) return <div className="text-xs text-muted-foreground">-</div>
+          return (
+            <div className="text-xs font-mono max-w-[100px] truncate" title={code}>
+              {code}
+            </div>
+          )
         },
       },
       {

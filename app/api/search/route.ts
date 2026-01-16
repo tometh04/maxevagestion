@@ -45,10 +45,10 @@ export async function GET(request: Request) {
         .catch((err: any) => ({ type: 'customers', data: null, error: err }))
     )
 
-    // Buscar operaciones (por código, destino)
+    // Buscar operaciones (por código, destino, códigos de reserva)
     let operationQuery = (supabase.from("operations") as any)
-      .select("id, file_code, destination, status, agency_id")
-      .or(`file_code.ilike.${searchTerm},destination.ilike.${searchTerm}`)
+      .select("id, file_code, destination, status, agency_id, reservation_code_air, reservation_code_hotel")
+      .or(`file_code.ilike.${searchTerm},destination.ilike.${searchTerm},reservation_code_air.ilike.${searchTerm},reservation_code_hotel.ilike.${searchTerm}`)
       .limit(5)
     
     // Aplicar filtros de permisos para operaciones
@@ -129,11 +129,28 @@ export async function GET(request: Request) {
           CLOSED: "Cerrado",
         }
         result.data.forEach((o: any) => {
+          // Determinar qué mostramos en el título según qué coincidió
+          const queryLower = query.toLowerCase()
+          let title = o.file_code || o.destination || "Sin código"
+          
+          // Si el código de búsqueda coincide con un código de reserva, mostrarlo primero
+          if (o.reservation_code_air && o.reservation_code_air.toLowerCase().includes(queryLower)) {
+            title = `Cod. Aéreo: ${o.reservation_code_air}`
+          } else if (o.reservation_code_hotel && o.reservation_code_hotel.toLowerCase().includes(queryLower)) {
+            title = `Cod. Hotel: ${o.reservation_code_hotel}`
+          }
+          
+          const subtitleParts = []
+          if (o.destination) subtitleParts.push(o.destination)
+          if (o.reservation_code_air) subtitleParts.push(`Rva Aéreo: ${o.reservation_code_air}`)
+          if (o.reservation_code_hotel) subtitleParts.push(`Rva Hotel: ${o.reservation_code_hotel}`)
+          subtitleParts.push(statusLabels[o.status] || o.status)
+          
           results.push({
             id: o.id,
             type: "operation",
-            title: o.file_code || o.destination || "Sin código",
-            subtitle: `${o.destination || "Sin destino"} - ${statusLabels[o.status] || o.status}`,
+            title: title,
+            subtitle: subtitleParts.join(" - "),
           })
         })
       } else if (result.type === 'operators' && result.data) {
