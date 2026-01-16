@@ -238,6 +238,8 @@ export interface Database {
           seller_secondary_id: string | null
           sale_currency: 'ARS' | 'USD'
           operator_cost_currency: 'ARS' | 'USD'
+          reservation_code_air: string | null
+          reservation_code_hotel: string | null
           created_at: string
           updated_at: string
         }
@@ -269,6 +271,8 @@ export interface Database {
           seller_secondary_id?: string | null
           sale_currency?: 'ARS' | 'USD'
           operator_cost_currency?: 'ARS' | 'USD'
+          reservation_code_air?: string | null
+          reservation_code_hotel?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -300,6 +304,8 @@ export interface Database {
           seller_secondary_id?: string | null
           sale_currency?: 'ARS' | 'USD'
           operator_cost_currency?: 'ARS' | 'USD'
+          reservation_code_air?: string | null
+          reservation_code_hotel?: string | null
           created_at?: string
           updated_at?: string
         }

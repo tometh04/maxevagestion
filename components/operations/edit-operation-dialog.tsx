@@ -53,6 +53,8 @@ const operationSchema = z.object({
   sale_amount_total: z.coerce.number().min(0, "El monto debe ser mayor a 0"),
   operator_cost: z.coerce.number().min(0, "El costo debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  reservation_code_air: z.string().optional().nullable(),
+  reservation_code_hotel: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -94,6 +96,8 @@ interface Operation {
   currency: string
   margin_amount?: number
   margin_percentage?: number
+  reservation_code_air?: string | null
+  reservation_code_hotel?: string | null
 }
 
 interface EditOperationDialogProps {
@@ -172,6 +176,8 @@ export function EditOperationDialog({
       sale_amount_total: operation.sale_amount_total || 0,
       operator_cost: operation.operator_cost || 0,
       currency: (operation.currency as any) || "USD",
+      reservation_code_air: operation.reservation_code_air || null,
+      reservation_code_hotel: operation.reservation_code_hotel || null,
     },
   })
 
@@ -195,6 +201,8 @@ export function EditOperationDialog({
         sale_amount_total: operation.sale_amount_total || 0,
         operator_cost: operation.operator_cost || 0,
         currency: (operation.currency as any) || "USD",
+        reservation_code_air: operation.reservation_code_air || null,
+        reservation_code_hotel: operation.reservation_code_hotel || null,
       })
     }
   }, [operation, form])
@@ -673,6 +681,48 @@ export function EditOperationDialog({
                   </FormItem>
                 )}
               />
+            </div>
+
+            {/* Códigos de Reserva */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Códigos de Reserva</h3>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="reservation_code_air"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Código de Reserva Aéreo</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: ABC123"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="reservation_code_hotel"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Código de Reserva Hotel</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: XYZ789"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <DialogFooter>

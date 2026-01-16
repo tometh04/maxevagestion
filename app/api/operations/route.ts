@@ -50,6 +50,8 @@ export async function POST(request: Request) {
       sale_currency,
       operator_cost_currency, // Compatibilidad hacia atrás
       commission_percentage, // Porcentaje de comisión del vendedor
+      reservation_code_air,
+      reservation_code_hotel,
     } = body
 
     // Obtener configuración de operaciones
@@ -211,6 +213,8 @@ export async function POST(request: Request) {
       margin_percentage: marginPercentage,
       billing_margin_amount: billingMarginAmount,
       billing_margin_percentage: billingMarginPercentage,
+      reservation_code_air: reservation_code_air || null,
+      reservation_code_hotel: reservation_code_hotel || null,
     }
 
     const { data: operation, error: operationError } = await (supabase.from("operations") as any)
