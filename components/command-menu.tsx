@@ -84,12 +84,16 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   const searchData = useCallback(async (query: string) => {
     if (!query || query.length < 2) {
       setResults([])
+      setLoading(false)
       return
     }
 
     setLoading(true)
     try {
       const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      if (!response.ok) {
+        throw new Error("Search request failed")
+      }
       const data = await response.json()
       setResults(data.results || [])
     } catch (error) {
@@ -100,13 +104,28 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     }
   }, [])
 
+  // Resetear estado cuando se abre el dialog
   useEffect(() => {
+    if (open) {
+      // Cuando se abre, resetear búsqueda y resultados
+      setSearch("")
+      setResults([])
+      setLoading(false)
+    }
+  }, [open])
+
+  useEffect(() => {
+    // Solo buscar si el dialog está abierto
+    if (!open) {
+      return
+    }
+
     const timer = setTimeout(() => {
       searchData(search)
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [search, searchData])
+  }, [search, searchData, open])
 
   const runCommand = useCallback((command: () => void) => {
     closeOpen()
