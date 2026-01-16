@@ -42,24 +42,43 @@ interface CommandMenuProps {
 export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuProps = {}) {
   const [internalOpen, setInternalOpen] = useState(false)
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
-  const setOpen = onOpenChange || setInternalOpen
   const [search, setSearch] = useState("")
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const router = useRouter()
+
+  // Función para toggle que funciona con ambos modos (controlado y no controlado)
+  const toggleOpen = useCallback(() => {
+    if (controlledOpen !== undefined && onOpenChange) {
+      // Modo controlado: usar onOpenChange
+      onOpenChange(!open)
+    } else {
+      // Modo no controlado: usar setInternalOpen
+      setInternalOpen((prev) => !prev)
+    }
+  }, [open, controlledOpen, onOpenChange])
+
+  // Función para cerrar que funciona con ambos modos
+  const closeOpen = useCallback(() => {
+    if (controlledOpen !== undefined && onOpenChange) {
+      onOpenChange(false)
+    } else {
+      setInternalOpen(false)
+    }
+  }, [controlledOpen, onOpenChange])
 
   // Toggle con ⌘K o Ctrl+K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault()
-        setOpen((open) => !open)
+        toggleOpen()
       }
     }
 
     document.addEventListener("keydown", down)
     return () => document.removeEventListener("keydown", down)
-  }, [])
+  }, [toggleOpen])
 
   // Búsqueda con debounce
   const searchData = useCallback(async (query: string) => {
@@ -90,9 +109,9 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   }, [search, searchData])
 
   const runCommand = useCallback((command: () => void) => {
-    setOpen(false)
+    closeOpen()
     command()
-  }, [])
+  }, [closeOpen])
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -113,8 +132,16 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     runCommand(() => router.push(path))
   }
 
+  const handleOpenChange = (newOpen: boolean) => {
+    if (controlledOpen !== undefined && onOpenChange) {
+      onOpenChange(newOpen)
+    } else {
+      setInternalOpen(newOpen)
+    }
+  }
+
   return (
-    <CommandDialog open={open} onOpenChange={setOpen}>
+    <CommandDialog open={open} onOpenChange={handleOpenChange}>
       <CommandInput 
         placeholder="Buscar clientes, operaciones, leads, operadores..." 
         value={search}
