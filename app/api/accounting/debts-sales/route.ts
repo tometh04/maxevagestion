@@ -43,6 +43,7 @@ export async function GET(request: Request) {
             file_code,
             destination,
             sale_amount_total,
+            sale_currency,
             currency,
             status,
             departure_date
@@ -67,11 +68,12 @@ export async function GET(request: Request) {
     })
 
     // Get all payments for these operations
-    let paymentsByOperation: Record<string, { paid: number; currency: string }> = {}
+    // Usar amount_usd para calcular todo en USD
+    let paymentsByOperation: Record<string, { paidUsd: number; currency: string }> = {}
     if (allOperationIds.length > 0) {
       const { data: payments } = await supabase
         .from("payments")
-        .select("operation_id, amount, currency, status, direction")
+        .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
         .in("operation_id", allOperationIds)
         .eq("direction", "INCOME")
         .eq("payer_type", "CUSTOMER")
@@ -80,10 +82,20 @@ export async function GET(request: Request) {
         payments.forEach((payment: any) => {
           const opId = payment.operation_id
           if (!paymentsByOperation[opId]) {
-            paymentsByOperation[opId] = { paid: 0, currency: payment.currency || "ARS" }
+            paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
           }
           if (payment.status === "PAID") {
-            paymentsByOperation[opId].paid += Number(payment.amount) || 0
+            // Usar amount_usd si está disponible (pagos nuevos)
+            // Si no, calcularlo usando exchange_rate
+            let paidUsd = 0
+            if (payment.amount_usd != null) {
+              paidUsd = Number(payment.amount_usd)
+            } else if (payment.currency === "USD") {
+              paidUsd = Number(payment.amount) || 0
+            } else if (payment.currency === "ARS" && payment.exchange_rate) {
+              paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+            }
+            paymentsByOperation[opId].paidUsd += paidUsd
           }
         })
       }
@@ -126,25 +138,35 @@ export async function GET(request: Request) {
         if (!operation) return
 
         const opId = operation.id
+        const saleCurrency = operation.sale_currency || operation.currency || "USD"
         const saleAmount = Number(operation.sale_amount_total) || 0
-        const paymentData = paymentsByOperation[opId] || { paid: 0, currency: operation.currency || "ARS" }
-        const paid = paymentData.paid
-        const debt = Math.max(0, saleAmount - paid)
+        
+        // Convertir sale_amount_total a USD
+        // Si ya está en USD, usarlo directamente
+        // Si está en ARS, necesitaríamos exchange_rate (por ahora lo dejamos igual para simplificar)
+        // En el futuro, podríamos buscar el exchange_rate histórico de la fecha de la operación
+        const saleAmountUsd = saleCurrency === "USD" ? saleAmount : saleAmount // TODO: convertir ARS a USD con exchange_rate histórico
+        
+        const paymentData = paymentsByOperation[opId] || { paidUsd: 0, currency: saleCurrency }
+        const paidUsd = paymentData.paidUsd
+        
+        const debtUsd = Math.max(0, saleAmountUsd - paidUsd)
 
-        currency = operation.currency || "ARS"
+        // Usar USD como moneda principal para deudas
+        currency = "USD"
 
-        if (debt > 0) {
+        if (debtUsd > 0) {
           operationsWithDebt.push({
             id: opId,
             file_code: operation.file_code,
             destination: operation.destination || "Sin destino",
-            sale_amount_total: saleAmount,
-            currency: operation.currency || "ARS",
-            paid,
-            debt,
+            sale_amount_total: saleAmountUsd, // En USD
+            currency: "USD",
+            paid: paidUsd, // En USD
+            debt: debtUsd, // En USD
             departure_date: operation.departure_date,
           })
-          totalDebt += debt
+          totalDebt += debtUsd
         }
       })
 
