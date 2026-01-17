@@ -143,27 +143,41 @@ Se extendió la funcionalidad OCR para soportar archivos PDF además de imágene
 
 ### 2025-01-17
 
-#### Mejora: Manejo de Errores en Cuentas Socios
+#### Mejora: Cuentas Socios - Creación y Retiros
 **Fecha:** 2025-01-17
 
 **Descripción:**
-Se mejoró el manejo de errores en el módulo de Cuentas Socios para proporcionar mensajes más claros y ayudar a identificar problemas.
+Se mejoró completamente el módulo de Cuentas Socios para permitir creación de socios, registro de retiros, y que estos impacten correctamente en la caja y reportes financieros.
+
+**Funcionalidades:**
+- Crear socio (nombre, notas opcionales)
+- Registrar retiro (socio, cuenta financiera, monto, moneda, fecha, descripción)
+- El retiro impacta automáticamente en la caja:
+  - Se crea un `ledger_movement` tipo `EXPENSE` en la cuenta financiera seleccionada
+  - El balance de la cuenta se recalcula automáticamente (disminuye con EXPENSE)
+  - Si hay $10,000 USD en efectivo y se retira $2,000 USD, quedan $8,000 USD
+- Método de pago automático según tipo de cuenta financiera (CASH, BANK, MP, USD)
 
 **Mejoras implementadas:**
-- Mejorado manejo de errores en `handleCreatePartner`
-- Mejorado manejo de errores en `handleCreateWithdrawal`
-- Agregados logs de depuración para identificar problemas
-- Mensajes de error más descriptivos para el usuario
-- Validación mejorada de campos requeridos (trim en campos de texto)
-- Mensajes específicos cuando falta cuenta financiera en retiros
+- Mejorado manejo de errores en `handleCreatePartner` (frontend)
+- Mejorado manejo de errores en `handleCreateWithdrawal` (frontend)
+- Agregados logs detallados en API para depuración
+- Mensajes de error más descriptivos
+- Validación mejorada de campos (trim en nombre, validación de cuenta financiera)
+- Método de pago automático según tipo de cuenta financiera seleccionada
+- Tipo de cambio automático para retiros en USD
 
 **Archivos modificados:**
-- `components/accounting/partner-accounts-client.tsx`
+- `components/accounting/partner-accounts-client.tsx` - Mejoras en UI y manejo de errores
+- `app/api/partner-accounts/route.ts` - Logs mejorados y validación de nombre
+- `app/api/partner-accounts/withdrawals/route.ts` - Método de pago según cuenta, logs mejorados
 
 **Notas:**
 - El botón "Nuevo Socio" solo aparece para usuarios con rol SUPER_ADMIN
 - El retiro requiere cuenta financiera obligatoria (validado en frontend y backend)
-- Los errores ahora incluyen más información para facilitar la depuración
+- El retiro impacta inmediatamente en el balance de la cuenta financiera seleccionada
+- El balance se calcula como: `initial_balance + SUM(ledger_movements)` donde EXPENSE resta
+- Los retiros aparecen en reportes financieros y posición contable mensual
 
 ---
 
@@ -288,34 +302,6 @@ COMMENT ON COLUMN customers.procedure_number IS
 - [ ] Descarga de planillas a Excel (DS por ventas y cuentas por pagar)
 - [ ] Conversor de moneda en cobros y pagos
 - [ ] Forma de cargar pagos con tarjeta de crédito
-
----
-
-## Correcciones Recientes
-
-### 2025-01-17
-
-#### Mejora: Manejo de Errores en Cuentas Socios
-**Fecha:** 2025-01-17
-
-**Descripción:**
-Se mejoró el manejo de errores en el módulo de Cuentas Socios para proporcionar mensajes más claros y ayudar a identificar problemas.
-
-**Mejoras implementadas:**
-- Mejorado manejo de errores en `handleCreatePartner`
-- Mejorado manejo de errores en `handleCreateWithdrawal`
-- Agregados logs de depuración para identificar problemas
-- Mensajes de error más descriptivos para el usuario
-- Validación mejorada de campos requeridos (trim en campos de texto)
-- Mensajes específicos cuando falta cuenta financiera en retiros
-
-**Archivos modificados:**
-- `components/accounting/partner-accounts-client.tsx`
-
-**Notas:**
-- El botón "Nuevo Socio" solo aparece para usuarios con rol SUPER_ADMIN
-- El retiro requiere cuenta financiera obligatoria (validado en frontend y backend)
-- Los errores ahora incluyen más información para facilitar la depuración
 
 ---
 
