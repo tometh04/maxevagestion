@@ -308,40 +308,10 @@ export async function POST(request: Request) {
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
 
-        // 9. Crear movimiento de caja (cash_movements)
-        // Obtener caja por defecto
-        const { data: defaultCashBox } = await supabase
-          .from("cash_boxes")
-          .select("id")
-          .eq("agency_id", agencyId || "")
-          .eq("currency", currency)
-          .eq("is_default", true)
-          .eq("is_active", true)
-          .maybeSingle()
-
-        const cashMovementData = {
-          operation_id,
-          cash_box_id: (defaultCashBox as any)?.id || null,
-          user_id: user.id,
-          type: direction === "INCOME" ? "INCOME" : "EXPENSE",
-          category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
-          amount: parseFloat(amount),
-          currency,
-          movement_date: date_paid || new Date().toISOString(),
-          notes: notes || null,
-          is_touristic: true,
-          payment_id: payment.id, // Referencia al pago
-        }
-
-        const { data: cashMovement, error: cashError } = await (supabase.from("cash_movements") as any)
-          .insert(cashMovementData)
-          .select("id")
-          .single()
-
-        if (cashError) {
-          console.warn("Warning: Could not create cash movement:", cashError)
-          // No fallamos, el pago ya se creó
-        }
+        // 9. NOTA: Ya no se crean cash_movements
+        // El sistema ahora usa ledger_movements y financial_accounts
+        // Los movimientos contables se crean cuando se marca el pago como pagado (mark-paid)
+        // Esto se hace en app/api/payments/mark-paid/route.ts
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
         if (payer_type === "OPERATOR") {
