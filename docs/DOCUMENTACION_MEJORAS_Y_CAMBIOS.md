@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-17
+**Última actualización:** 2025-01-17 (Actualizado con todas las mejoras recientes)
 
 ---
 
@@ -137,6 +137,104 @@ Se extendió la funcionalidad OCR para soportar archivos PDF además de imágene
 - Múltiples métodos de extracción (biblioteca y raw bytes)
 - Validación de tipo de archivo y tamaño
 
+### 5. Sistema de Pagos con Tipo de Cambio Obligatorio
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se mejoró completamente el sistema de pagos para garantizar que todos los cálculos se realicen correctamente en USD, incluyendo conversión obligatoria de ARS a USD mediante tipo de cambio.
+
+**Funcionalidades:**
+- Campo `exchange_rate` obligatorio para pagos en ARS
+- Cálculo automático de `amount_usd` para todos los pagos
+- Visualización de equivalente USD en tiempo real en el formulario
+- Validación que exige tipo de cambio para pagos en ARS
+- Creación de movimiento en CAJA además del movimiento en RESULTADO
+- Todos los KPIs ahora se calculan en USD
+
+**Mejoras implementadas:**
+- Agregado campo `exchange_rate` al schema de pagos
+- Formulario muestra campo de tipo de cambio cuando moneda es ARS
+- Cálculo en tiempo real: "Equivale a USD X.XX"
+- Validación en frontend y backend
+- API guarda `exchange_rate` y `amount_usd` al crear pago
+- KPI de deudas calcula totales EN USD (convierte ARS usando exchange_rate)
+
+**Archivos modificados:**
+- `components/operations/operation-payments-section.tsx` - Campo exchange_rate en formularios
+- `app/api/payments/route.ts` - Guardado de exchange_rate y amount_usd, creación de movimiento en CAJA
+- `components/cash/cash-summary-client.tsx` - Cálculo de KPIs en USD
+
+**Migración de base de datos:**
+- `supabase/migrations/083_add_exchange_rate_to_payments.sql` - Columnas `exchange_rate` y `amount_usd`
+
+---
+
+### 6. Reubicación de "Deudores por Ventas" a Contabilidad
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se movió la funcionalidad "Deudores por Ventas" del módulo de Clientes al módulo de Contabilidad (dentro de Finanzas), ya que es información financiera sobre cuentas por cobrar.
+
+**Funcionalidades:**
+- Ruta actualizada: `/customers/debtors` → `/accounting/debts-sales`
+- Componente renombrado: `CustomersDebtorsPageClient` → `DebtsSalesPageClient`
+- API route movido: `/api/customers/debtors` → `/api/accounting/debts-sales`
+- Permisos actualizados: de `customers` a `accounting`
+- Breadcrumbs y links actualizados para apuntar a Contabilidad
+
+**Archivos modificados/movidos:**
+- `app/(dashboard)/customers/debtors/page.tsx` → `app/(dashboard)/accounting/debts-sales/page.tsx`
+- `components/customers/customers-debtors-page-client.tsx` → `components/accounting/debts-sales-page-client.tsx`
+- `app/api/customers/debtors/route.ts` → `app/api/accounting/debts-sales/route.ts`
+- `components/app-sidebar.tsx` - Actualizado sidebar para mostrar en Contabilidad
+
+---
+
+### 7. Mejora de Interfaz del Sidebar
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se mejoró la legibilidad del sidebar aumentando el ancho y reduciendo el espaciado de los submenús para que los textos largos quepan mejor en una sola línea.
+
+**Funcionalidades:**
+- Ancho del sidebar aumentado de 16rem (256px) a 20rem (320px)
+- Espaciado reducido en submenús (margin y padding reducidos)
+- Mejor visualización de textos largos como "Cuentas Financieras" y "Deudores por Ventas"
+
+**Archivos modificados:**
+- `components/ui/sidebar.tsx` - Ancho aumentado, espaciado reducido
+- `components/nav-main.tsx` - Padding reducido en nivel 3
+
+**Detalles técnicos:**
+- `SIDEBAR_WIDTH`: `16rem` → `20rem`
+- `SidebarMenuSub`: `mx-3.5` → `mx-1`, `px-2.5` → `px-1.5`
+- `SidebarMenuSubButton` nivel 3: `pl-4` → `pl-1`
+
+---
+
+### 8. Eliminación de Funcionalidad de Segmentos
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se eliminó completamente la funcionalidad de "Segmentos" de clientes ya que no se estaba utilizando y no era necesaria.
+
+**Archivos eliminados:**
+- `app/(dashboard)/customers/segments/page.tsx`
+- `components/customers/customer-segments-page-client.tsx`
+- `app/api/customers/segments/route.ts`
+- `app/api/customers/segments/[id]/route.ts`
+- `app/api/customers/segments/[id]/members/route.ts`
+
+**Archivos modificados:**
+- `components/app-sidebar.tsx` - Removida ruta "Segmentos"
+
+**Nota:**
+- La migración SQL `071_create_customer_segments.sql` NO se eliminó (las migraciones son históricas)
+
 ---
 
 ## Correcciones Recientes
@@ -221,6 +319,59 @@ Type error: Argument of type '(open: any) => boolean' is not assignable to param
 
 ---
 
+### 2025-01-17
+
+#### Error: Pagos no impactaban en la caja
+**Problema:**
+- Los pagos se registraban en RESULTADO (Ventas) pero NO en CAJA
+- El balance de efectivo no se actualizaba al registrar pagos
+- El código intentaba crear `cash_movements` obsoleto con campo `payment_id` que no existía
+
+**Solución:**
+1. Eliminado código obsoleto de creación de `cash_movements` en `payments/route.ts`
+2. Agregada creación de `ledger_movement` en cuenta de CAJA además del de RESULTADO
+3. El movimiento en CAJA se crea automáticamente al crear un pago con `status: "PAID"`
+
+**Archivos modificados:**
+- `app/api/payments/route.ts` - Eliminado cash_movements obsoleto, agregado movimiento en CAJA
+
+---
+
+#### Error: KPI de pagos sumaba incorrectamente monedas diferentes
+**Problema:**
+- El KPI mostraba USD 150,100 cuando se había pagado 150,000 ARS
+- Estaba sumando `amount` directamente sin convertir ARS a USD
+- Ejemplo: 150,000 ARS se sumaba como 150,000 USD (incorrecto)
+
+**Solución:**
+- KPI ahora calcula totales EN USD usando `amount_usd` si está disponible
+- Si no hay `amount_usd`, calcula: USD = amount, ARS = amount / exchange_rate
+- Todos los totales se muestran en USD con etiqueta "(USD)"
+- Tabla de pagos muestra: Monto Original, Tipo de Cambio (T/C), Equiv. USD
+
+**Archivos modificados:**
+- `components/operations/operation-payments-section.tsx` - Cálculo correcto en USD
+- `app/api/payments/route.ts` - Guardado de `amount_usd` en todos los pagos
+
+---
+
+#### Error: Cálculo de deudas mezclaba monedas incorrectamente
+**Problema:**
+- La lista de "Deudores por Ventas" mostraba USD 100 cuando la deuda era USD 1,200
+- `sale_amount_total` en ARS se usaba directamente como USD
+- Ejemplo: 200,000 ARS se mostraba como 200,000 USD (incorrecto)
+
+**Solución:**
+- API ahora busca `exchange_rate` histórico para fecha de la operación
+- Convierte ARS a USD: `saleAmountUsd = saleAmount / exchangeRate`
+- Todos los cálculos ahora se hacen correctamente en USD
+- Ejemplo: 200,000 ARS / 1500 TC = 133.33 USD (correcto)
+
+**Archivos modificados:**
+- `app/api/accounting/debts-sales/route.ts` - Conversión correcta ARS a USD con exchange_rate histórico
+
+---
+
 ### 2025-01-16
 
 #### Error: PDF OCR retornaba "No se encontraron imágenes en el PDF"
@@ -258,6 +409,27 @@ Type error: Argument of type '(open: any) => boolean' is not assignable to param
 
 ## Migraciones de Base de Datos
 
+### Migración 083: Tipo de Cambio y Monto USD en Pagos
+**Archivo:** `supabase/migrations/083_add_exchange_rate_to_payments.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Agregar columna exchange_rate (tipo de cambio usado)
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(18,4);
+
+-- Agregar columna amount_usd (monto equivalente en USD)
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS amount_usd NUMERIC(18,2);
+
+-- Comentarios
+COMMENT ON COLUMN payments.exchange_rate IS 'Tipo de cambio ARS/USD usado al momento del pago';
+COMMENT ON COLUMN payments.amount_usd IS 'Monto equivalente en USD (para pagos en ARS: amount / exchange_rate, para USD: amount)';
+
+-- Índice para búsquedas por monto USD
+CREATE INDEX IF NOT EXISTS idx_payments_amount_usd ON payments(amount_usd) WHERE amount_usd IS NOT NULL;
+```
+
 ### Migración 081: Códigos de Reserva en Operaciones
 **Archivo:** `supabase/migrations/081_add_reservation_codes_to_operations.sql`
 **Fecha:** 2025-01-17
@@ -290,7 +462,6 @@ COMMENT ON COLUMN customers.procedure_number IS
 ## Pendientes / Roadmap
 
 ### En desarrollo / Pendientes de cliente
-- [ ] Cambiar moneda predeterminada a USD
 - [ ] Eliminar check-in/check-out de operaciones
 - [ ] Corregir validación de fechas
 - [ ] Revisar comportamiento del diálogo en algunas operaciones
@@ -298,10 +469,16 @@ COMMENT ON COLUMN customers.procedure_number IS
 
 ### Mejoras futuras sugeridas
 - [ ] Carga integrada de cliente y operación
-- [ ] OCR automático en carga de cliente (parcialmente implementado)
 - [ ] Descarga de planillas a Excel (DS por ventas y cuentas por pagar)
-- [ ] Conversor de moneda en cobros y pagos
 - [ ] Forma de cargar pagos con tarjeta de crédito
+- [ ] Búsqueda exhaustiva en todo el sistema para conversión correcta ARS/USD (dashboard, reportes, tablas)
+
+### Mejoras Completadas ✅
+- [x] Cambiar moneda predeterminada a USD - **COMPLETADO** (2025-01-17)
+- [x] Conversor de moneda en cobros y pagos - **COMPLETADO** (2025-01-17)
+  - Campo exchange_rate obligatorio para ARS
+  - Cálculo automático de amount_usd
+  - Visualización de equivalente USD en tiempo real
 
 ---
 
