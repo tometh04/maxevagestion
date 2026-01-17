@@ -119,7 +119,11 @@ export async function GET(request: Request) {
       }>
     }> = []
 
-    customers?.forEach((customer: any) => {
+    // Obtener tasa de cambio más reciente como fallback (una sola vez fuera del loop)
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+    // Cambiar forEach a for...of para permitir await dentro del loop
+    for (const customer of customers || []) {
       const operations = customer.operation_customers || []
       const operationsWithDebt: Array<{
         id: string
@@ -133,9 +137,6 @@ export async function GET(request: Request) {
       }> = []
       let totalDebt = 0
       let currency = "ARS"
-
-      // Obtener tasa de cambio más reciente como fallback
-      const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
 
       // Usar for...of para poder usar await correctamente
       for (const oc of operations) {
@@ -191,7 +192,7 @@ export async function GET(request: Request) {
           operationsWithDebt,
         })
       }
-    })
+    }
 
     // Sort by total debt (descending)
     debtors.sort((a, b) => b.totalDebt - a.totalDebt)
