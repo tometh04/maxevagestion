@@ -107,7 +107,7 @@ export async function POST(request: Request) {
     // Verificar que la cuenta financiera existe y obtener su tipo para el método de pago
     const { data: account, error: accountError } = await (supabase
       .from("financial_accounts") as any)
-      .select("id, currency, type")
+      .select("id, name, currency, type, agency_id")
       .eq("id", account_id)
       .single()
 
@@ -115,6 +115,17 @@ export async function POST(request: Request) {
       console.error("Error fetching financial account:", accountError)
       return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })
     }
+
+    console.log(`💸 partner-withdrawals: Cuenta seleccionada para retiro`, {
+      partner_id,
+      account_id,
+      account_name: account.name,
+      account_type: account.type,
+      account_currency: account.currency,
+      account_agency_id: account.agency_id,
+      withdrawal_amount: amount,
+      withdrawal_currency: currency,
+    })
 
     // Determinar método de pago según el tipo de cuenta financiera
     // Los tipos de cuenta son: CASH_ARS, CASH_USD, CHECKING_ARS, CHECKING_USD, etc.
@@ -200,6 +211,16 @@ export async function POST(request: Request) {
       console.error("Error creating withdrawal:", withdrawalError)
       return NextResponse.json({ error: "Error al registrar retiro" }, { status: 500 })
     }
+
+    console.log(`✅ partner-withdrawals: Retiro registrado exitosamente`, {
+      withdrawal_id: withdrawal.id,
+      partner_name: partner.partner_name,
+      amount,
+      currency,
+      account_id,
+      account_name: account.name,
+      ledger_movement_id: ledgerMovementId,
+    })
 
     return NextResponse.json({ 
       withdrawal,
