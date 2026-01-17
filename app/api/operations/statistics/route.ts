@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { subMonths, startOfMonth, endOfMonth, format } from "date-fns"
 import { es } from "date-fns/locale"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
         destination,
         status,
         sale_amount_total,
+        sale_currency,
         operator_cost,
         margin_amount,
         margin_percentage,
@@ -101,9 +103,13 @@ export async function GET(request: Request) {
       }
     }
 
+    // Obtener tasa de cambio más reciente como fallback
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
     // Procesar operaciones
-    let totalSales = 0
-    let totalMargin = 0
+    // TODO: Convertir todo a USD para consistencia
+    let totalSales = 0 // En USD
+    let totalMargin = 0 // En USD
     let totalOperations = 0
     let confirmedOperations = 0
 
@@ -118,11 +124,29 @@ export async function GET(request: Request) {
       // Solo estadísticas financieras para operaciones confirmadas/viajadas
       if (["CONFIRMED", "TRAVELLED"].includes(op.status)) {
         confirmedOperations++
+        const saleCurrency = op.sale_currency || op.currency || "USD"
         const saleAmount = parseFloat(op.sale_amount_total) || 0
         const marginAmount = parseFloat(op.margin_amount) || 0
 
-        totalSales += saleAmount
-        totalMargin += marginAmount
+        // Convertir a USD
+        let saleAmountUsd = saleAmount
+        let marginAmountUsd = marginAmount
+        
+        if (saleCurrency === "ARS") {
+          // Obtener tasa de cambio histórica para la fecha de la operación
+          const operationDate = op.departure_date || op.created_at
+          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+          if (!exchangeRate) {
+            exchangeRate = latestExchangeRate
+          }
+          // Convertir ARS a USD: dividir por el exchange_rate
+          saleAmountUsd = saleAmount / exchangeRate
+          marginAmountUsd = marginAmount / exchangeRate
+        }
+        // Si ya está en USD, no necesita conversión
+
+        totalSales += saleAmountUsd
+        totalMargin += marginAmountUsd
 
         // Por destino
         const dest = op.destination || "Sin destino"
@@ -130,22 +154,22 @@ export async function GET(request: Request) {
           destinationStats[dest] = {
             destination: dest,
             count: 0,
-            totalSales: 0,
-            totalMargin: 0,
+            totalSales: 0, // En USD
+            totalMargin: 0, // En USD
             avgMargin: 0,
           }
         }
         destinationStats[dest].count++
-        destinationStats[dest].totalSales += saleAmount
-        destinationStats[dest].totalMargin += marginAmount
+        destinationStats[dest].totalSales += saleAmountUsd
+        destinationStats[dest].totalMargin += marginAmountUsd
 
         // Por mes (usando departure_date)
         if (op.departure_date) {
           const monthKey = format(new Date(op.departure_date), "yyyy-MM")
           if (monthlyStats[monthKey]) {
             monthlyStats[monthKey].count++
-            monthlyStats[monthKey].sales += saleAmount
-            monthlyStats[monthKey].margin += marginAmount
+            monthlyStats[monthKey].sales += saleAmountUsd // En USD
+            monthlyStats[monthKey].margin += marginAmountUsd // En USD
           }
         }
       }
@@ -202,13 +226,32 @@ export async function GET(request: Request) {
             id: op.seller_id,
             name: 'Vendedor',
             count: 0,
-            sales: 0,
-            margin: 0,
+            sales: 0, // En USD
+            margin: 0, // En USD
           }
         }
+        
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+        const saleAmount = parseFloat(op.sale_amount_total) || 0
+        const marginAmount = parseFloat(op.margin_amount) || 0
+
+        // Convertir a USD
+        let saleAmountUsd = saleAmount
+        let marginAmountUsd = marginAmount
+        
+        if (saleCurrency === "ARS") {
+          const operationDate = op.departure_date || op.created_at
+          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+          if (!exchangeRate) {
+            exchangeRate = latestExchangeRate
+          }
+          saleAmountUsd = saleAmount / exchangeRate
+          marginAmountUsd = marginAmount / exchangeRate
+        }
+
         sellerStats[op.seller_id].count++
-        sellerStats[op.seller_id].sales += parseFloat(op.sale_amount_total) || 0
-        sellerStats[op.seller_id].margin += parseFloat(op.margin_amount) || 0
+        sellerStats[op.seller_id].sales += saleAmountUsd
+        sellerStats[op.seller_id].margin += marginAmountUsd
       }
     }
 

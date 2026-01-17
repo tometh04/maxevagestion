@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-      let query = supabase.from("operations").select("sale_amount_total, margin_amount, operator_cost, currency, created_at, departure_date")
+      let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -73,17 +73,17 @@ export async function GET(request: Request) {
       // Obtener tasa de cambio más reciente como fallback
       const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
 
-      // Calcular totales convirtiendo todo a ARS
-      let totalSalesARS = 0
-      let totalMarginARS = 0
-      let totalCostARS = 0
+      // Calcular totales convirtiendo todo a USD (según requisito: todo el sistema en USD)
+      let totalSalesUSD = 0
+      let totalMarginUSD = 0
+      let totalCostUSD = 0
 
       const operationsArray = (operations || []) as any[]
       for (const op of operationsArray) {
         const saleAmount = parseFloat(op.sale_amount_total || "0")
         const marginAmount = parseFloat(op.margin_amount || "0")
         const costAmount = parseFloat(op.operator_cost || "0")
-        const currency = op.currency || "ARS"
+        const saleCurrency = op.sale_currency || op.currency || "USD"
 
         // Obtener tasa de cambio para la fecha de la operación
         const operationDate = op.departure_date || op.created_at
@@ -92,26 +92,31 @@ export async function GET(request: Request) {
           exchangeRate = latestExchangeRate
         }
 
-        if (currency === "USD") {
-          // Convertir USD a ARS
-          totalSalesARS += saleAmount * exchangeRate
-          totalMarginARS += marginAmount * exchangeRate
-          totalCostARS += costAmount * exchangeRate
-        } else {
-          // Ya está en ARS
-          totalSalesARS += saleAmount
-          totalMarginARS += marginAmount
-          totalCostARS += costAmount
+        // Convertir todo a USD
+        let saleAmountUsd = saleAmount
+        let marginAmountUsd = marginAmount
+        let costAmountUsd = costAmount
+
+        if (saleCurrency === "ARS") {
+          // Convertir ARS a USD: dividir por el exchange_rate
+          saleAmountUsd = saleAmount / exchangeRate
+          marginAmountUsd = marginAmount / exchangeRate
+          costAmountUsd = costAmount / exchangeRate
         }
+        // Si ya está en USD, no necesita conversión
+
+        totalSalesUSD += saleAmountUsd
+        totalMarginUSD += marginAmountUsd
+        totalCostUSD += costAmountUsd
       }
 
       const operationsCount = (operations || []).length
-      const avgMarginPercent = operationsCount > 0 && totalSalesARS > 0 ? (totalMarginARS / totalSalesARS) * 100 : 0
+      const avgMarginPercent = operationsCount > 0 && totalSalesUSD > 0 ? (totalMarginUSD / totalSalesUSD) * 100 : 0
 
     const result = {
-        totalSales: totalSalesARS,
-        totalMargin: totalMarginARS,
-        totalCost: totalCostARS,
+        totalSales: totalSalesUSD, // Ahora en USD
+        totalMargin: totalMarginUSD, // Ahora en USD
+        totalCost: totalCostUSD, // Ahora en USD
         operationsCount,
         avgMarginPercent,
       }

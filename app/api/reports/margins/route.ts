@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
         operation_date,
         departure_date,
         sale_amount_total,
+        sale_currency,
         operator_cost,
         margin_amount,
         margin_percentage,
@@ -66,7 +68,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener reporte" }, { status: 500 })
     }
 
-    // Calcular totales
+    // Obtener tasa de cambio más reciente como fallback
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+    // Calcular totales - TODO en USD (según requisito: todo el sistema en USD)
     const totals: any = {
       count: operations?.length || 0,
       total_sale_usd: 0,
@@ -75,46 +80,58 @@ export async function GET(request: Request) {
       total_cost_ars: 0,
       total_margin_usd: 0,
       total_margin_ars: 0,
-      currency: "USD", // Moneda principal según cuál tenga más ventas
-      total_sale: 0,
-      total_cost: 0,
-      total_margin: 0,
-      total_sale_other: 0,
-      total_margin_other: 0,
+      currency: "USD", // Siempre USD según requisito
+      total_sale: 0, // Total general en USD (ARS convertido + USD original)
+      total_cost: 0, // Total general en USD
+      total_margin: 0, // Total general en USD
+      total_sale_other: 0, // Para compatibilidad (ARS sin convertir)
+      total_margin_other: 0, // Para compatibilidad
       avg_margin_percent: 0,
     }
 
     for (const op of operations || []) {
+      const saleCurrency = op.sale_currency || op.currency || "USD"
       const sale = Number(op.sale_amount_total) || 0
       const cost = Number(op.operator_cost) || 0
       const margin = Number(op.margin_amount) || 0
 
-      if (op.currency === "ARS") {
+      // Obtener tasa de cambio histórica
+      const operationDate = op.departure_date || op.operation_date || op.created_at
+      let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+      if (!exchangeRate) {
+        exchangeRate = latestExchangeRate
+      }
+
+      // Convertir a USD
+      let saleUsd = sale
+      let costUsd = cost
+      let marginUsd = margin
+
+      if (saleCurrency === "ARS") {
         totals.total_sale_ars += sale
         totals.total_cost_ars += cost
         totals.total_margin_ars += margin
+        
+        // Convertir ARS a USD: dividir por exchange_rate
+        saleUsd = sale / exchangeRate
+        costUsd = cost / exchangeRate
+        marginUsd = margin / exchangeRate
       } else {
         totals.total_sale_usd += sale
         totals.total_cost_usd += cost
         totals.total_margin_usd += margin
+        // Ya está en USD, no necesita conversión
       }
+
+      // Sumar al total general (siempre en USD)
+      totals.total_sale += saleUsd
+      totals.total_cost += costUsd
+      totals.total_margin += marginUsd
     }
 
-    // Determinar moneda principal
-    if (totals.total_sale_ars > totals.total_sale_usd) {
-      totals.currency = "ARS"
-      totals.total_sale = totals.total_sale_ars
-      totals.total_cost = totals.total_cost_ars
-      totals.total_margin = totals.total_margin_ars
-      totals.total_sale_other = totals.total_sale_usd
-      totals.total_margin_other = totals.total_margin_usd
-    } else {
-      totals.total_sale = totals.total_sale_usd
-      totals.total_cost = totals.total_cost_usd
-      totals.total_margin = totals.total_margin_usd
-      totals.total_sale_other = totals.total_sale_ars
-      totals.total_margin_other = totals.total_margin_ars
-    }
+    // Para compatibilidad con frontend que puede usar total_sale_other
+    totals.total_sale_other = totals.total_sale_ars
+    totals.total_margin_other = totals.total_margin_ars
 
     totals.avg_margin_percent = totals.total_sale > 0 ? (totals.total_margin / totals.total_sale) * 100 : 0
 
