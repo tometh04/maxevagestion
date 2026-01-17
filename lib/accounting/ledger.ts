@@ -356,10 +356,14 @@ export async function getOrCreateDefaultAccount(
   const validType = typeMapping[type] || (currency === "ARS" ? "CASH_ARS" : "CASH_USD")
 
   // Buscar cuenta existente del tipo y moneda válidos
+  // IMPORTANTE: Ordenar por created_at ASC para siempre devolver la misma cuenta (la más antigua)
+  // Esto asegura consistencia - si hay múltiples cuentas del mismo tipo, siempre usamos la primera creada
   const { data: existing, error: existingError } = await (supabase.from("financial_accounts") as any)
     .select("id")
     .eq("type", validType)
     .eq("currency", currency)
+    .eq("is_active", true) // Solo cuentas activas
+    .order("created_at", { ascending: true }) // Siempre la misma cuenta (la más antigua)
     .limit(1)
     .maybeSingle()
 
