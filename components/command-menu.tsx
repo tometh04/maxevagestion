@@ -88,16 +88,23 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
       return
     }
 
+    console.log("[CommandMenu] Searching for:", query)
     setLoading(true)
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`)
+      const url = `/api/search?q=${encodeURIComponent(query)}`
+      console.log("[CommandMenu] Fetching:", url)
+      const response = await fetch(url)
+      console.log("[CommandMenu] Response status:", response.status, response.ok)
       if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[CommandMenu] Search request failed:", response.status, errorText)
         throw new Error("Search request failed")
       }
       const data = await response.json()
+      console.log("[CommandMenu] Search results:", data.results?.length || 0, "results")
       setResults(data.results || [])
     } catch (error) {
-      console.error("Search error:", error)
+      console.error("[CommandMenu] Search error:", error)
       setResults([])
     } finally {
       setLoading(false)
@@ -119,21 +126,27 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   useEffect(() => {
     // Solo buscar si el dialog está abierto
     if (!open) {
+      console.log("[CommandMenu] Dialog closed, skipping search")
       return
     }
 
     // Si el search está vacío o muy corto, no buscar
     if (!search || search.trim().length < 2) {
+      console.log("[CommandMenu] Search too short:", search)
       setResults([])
       setLoading(false)
       return
     }
 
+    console.log("[CommandMenu] Scheduling search for:", search)
     const timer = setTimeout(() => {
       searchData(search)
     }, 300)
 
-    return () => clearTimeout(timer)
+    return () => {
+      console.log("[CommandMenu] Clearing search timer")
+      clearTimeout(timer)
+    }
   }, [search, searchData, open])
 
   const runCommand = useCallback((command: () => void) => {
