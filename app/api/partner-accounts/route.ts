@@ -97,29 +97,44 @@ export async function POST(request: Request) {
 
     const { partner_name, user_id, notes } = body
 
-    if (!partner_name) {
+    if (!partner_name || !partner_name.trim()) {
       return NextResponse.json({ error: "El nombre del socio es requerido" }, { status: 400 })
     }
+
+    // Limpiar y validar nombre
+    const cleanedName = partner_name.trim()
+
+    console.log("[PartnerAccounts API] Creating partner:", { partner_name: cleanedName, user_id, notes })
 
     const { data: partner, error } = await (supabase
       .from("partner_accounts") as any)
       .insert({
-        partner_name,
+        partner_name: cleanedName,
         user_id: user_id || null,
-        notes: notes || null,
+        notes: notes?.trim() || null,
+        is_active: true,
       })
       .select()
       .single()
 
     if (error) {
-      console.error("Error creating partner account:", error)
-      return NextResponse.json({ error: "Error al crear cuenta de socio" }, { status: 500 })
+      console.error("[PartnerAccounts API] Error creating partner account:", error)
+      console.error("[PartnerAccounts API] Error details:", JSON.stringify(error, null, 2))
+      return NextResponse.json({ 
+        error: `Error al crear cuenta de socio: ${error.message || "Error desconocido"}`,
+        details: error.message
+      }, { status: 500 })
     }
 
+    console.log("[PartnerAccounts API] Partner created successfully:", partner?.id)
     return NextResponse.json({ partner })
-  } catch (error) {
-    console.error("Error in POST /api/partner-accounts:", error)
-    return NextResponse.json({ error: "Error interno" }, { status: 500 })
+  } catch (error: any) {
+    console.error("[PartnerAccounts API] Exception in POST /api/partner-accounts:", error)
+    console.error("[PartnerAccounts API] Stack trace:", error.stack)
+    return NextResponse.json({ 
+      error: `Error interno: ${error.message || "Error desconocido"}`,
+      details: error.message
+    }, { status: 500 })
   }
 }
 

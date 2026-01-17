@@ -104,15 +104,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Socio no encontrado" }, { status: 404 })
     }
 
-    // Verificar que la cuenta financiera existe
+    // Verificar que la cuenta financiera existe y obtener su tipo para el método de pago
     const { data: account, error: accountError } = await (supabase
       .from("financial_accounts") as any)
-      .select("id, currency")
+      .select("id, currency, type")
       .eq("id", account_id)
-        .single()
+      .single()
 
     if (accountError || !account) {
+      console.error("Error fetching financial account:", accountError)
       return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })
+    }
+
+    // Determinar método de pago según el tipo de cuenta financiera
+    let paymentMethod: "CASH" | "BANK" | "MP" | "USD" | "OTHER" = "OTHER"
+    if (account.type === "CASH") {
+      paymentMethod = "CASH"
+    } else if (account.type === "BANK") {
+      paymentMethod = "BANK"
+    } else if (account.type === "MP") {
+      paymentMethod = "MP"
+    } else if (account.type === "USD") {
+      paymentMethod = "USD"
     }
 
     // Calcular exchange rate si es USD
@@ -151,7 +164,7 @@ export async function POST(request: Request) {
         amount_original: parseFloat(amount),
         exchange_rate: currency === "USD" ? exchangeRate : null,
         amount_ars_equivalent: amountARS,
-        method: "CASH", // Por defecto, se puede ajustar si se agrega campo de método
+        method: paymentMethod, // Método según tipo de cuenta financiera (CASH, BANK, MP, USD)
         account_id: account_id,
         seller_id: null,
         operator_id: null,
