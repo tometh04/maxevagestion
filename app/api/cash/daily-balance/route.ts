@@ -36,15 +36,10 @@ export async function GET(request: Request) {
       let totalBalance = 0
 
       // Calcular balance de cada cuenta hasta ese día
-      // IMPORTANTE: Solo sumar cuentas ARS para el gráfico (las USD se muestran en KPIs separados)
-      // Las cajas deben ser completamente independientes
+      // Las cajas ARS y USD son independientes - cada una usa su propia moneda
       for (const account of accounts) {
         try {
-          // Solo incluir cuentas ARS en el gráfico (independientes de USD)
           const accountCurrency = account.currency as "ARS" | "USD"
-          if (accountCurrency !== "ARS") {
-            continue // Omitir cuentas USD del gráfico (son independientes)
-          }
 
           // Obtener balance inicial
           const initialBalance = parseFloat(account.initial_balance || "0")

@@ -117,14 +117,15 @@ export async function POST(request: Request) {
     }
 
     // Determinar método de pago según el tipo de cuenta financiera
+    // Los tipos de cuenta son: CASH_ARS, CASH_USD, CHECKING_ARS, CHECKING_USD, etc.
     let paymentMethod: "CASH" | "BANK" | "MP" | "USD" | "OTHER" = "OTHER"
-    if (account.type === "CASH") {
+    if (account.type === "CASH_ARS" || account.type === "CASH_USD") {
       paymentMethod = "CASH"
-    } else if (account.type === "BANK") {
+    } else if (account.type === "CHECKING_ARS" || account.type === "CHECKING_USD") {
       paymentMethod = "BANK"
-    } else if (account.type === "MP") {
+    } else if (account.type === "CREDIT_CARD") {
       paymentMethod = "MP"
-    } else if (account.type === "USD") {
+    } else if (account.type === "SAVINGS_USD" || account.type === "SAVINGS_ARS") {
       paymentMethod = "USD"
     }
 
