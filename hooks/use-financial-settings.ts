@@ -52,7 +52,7 @@ export function useFinancialSettings() {
       setError(err.message || 'Error al cargar configuración')
       // Usar configuración por defecto si falla
       setSettings({
-        primary_currency: 'ARS',
+        primary_currency: 'USD',
         enabled_currencies: ['ARS', 'USD'],
         exchange_rate_config: {
           source: 'manual',

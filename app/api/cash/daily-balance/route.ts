@@ -36,21 +36,35 @@ export async function GET(request: Request) {
       let totalBalance = 0
 
       // Calcular balance de cada cuenta hasta ese día
+      // IMPORTANTE: Solo sumar cuentas ARS para el gráfico (las USD se muestran en KPIs separados)
+      // Las cajas deben ser completamente independientes
       for (const account of accounts) {
         try {
+          // Solo incluir cuentas ARS en el gráfico (independientes de USD)
+          const accountCurrency = account.currency as "ARS" | "USD"
+          if (accountCurrency !== "ARS") {
+            continue // Omitir cuentas USD del gráfico (son independientes)
+          }
+
           // Obtener balance inicial
           const initialBalance = parseFloat(account.initial_balance || "0")
           
-          // Sumar movimientos hasta esa fecha
+          // Para cuentas ARS, usar amount_ars_equivalent
+          // Para cuentas USD, usar amount_original (pero ya las omitimos arriba)
           const { data: movements } = await (supabase.from("ledger_movements") as any)
-            .select("amount_ars_equivalent, type")
+            .select("amount_original, amount_ars_equivalent, type, currency")
             .eq("account_id", account.id)
             .lte("created_at", `${dateStr}T23:59:59`)
 
           let accountBalance = initialBalance
           if (movements) {
             for (const movement of movements) {
-              const amount = parseFloat(movement.amount_ars_equivalent || "0")
+              // Para ARS: usar amount_ars_equivalent
+              // Para USD: usar amount_original (aunque no deberían estar aquí)
+              const amount = accountCurrency === "ARS" 
+                ? parseFloat(movement.amount_ars_equivalent || "0")
+                : parseFloat(movement.amount_original || "0")
+              
               if (movement.type === "INCOME" || movement.type === "FX_GAIN") {
                 accountBalance += amount
               } else if (movement.type === "EXPENSE" || movement.type === "FX_LOSS" || movement.type === "COMMISSION" || movement.type === "OPERATOR_PAYMENT") {

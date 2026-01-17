@@ -84,7 +84,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const [partnerNotes, setPartnerNotes] = useState("")
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
   const [withdrawalAmount, setWithdrawalAmount] = useState("")
-  const [withdrawalCurrency, setWithdrawalCurrency] = useState("ARS")
+  const [withdrawalCurrency, setWithdrawalCurrency] = useState("USD")
   const [withdrawalDate, setWithdrawalDate] = useState(new Date().toISOString().split("T")[0])
   const [withdrawalDescription, setWithdrawalDescription] = useState("")
   const [withdrawalAccountId, setWithdrawalAccountId] = useState("")
@@ -264,7 +264,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const resetWithdrawalForm = () => {
     setSelectedPartnerId("")
     setWithdrawalAmount("")
-    setWithdrawalCurrency("ARS")
+    setWithdrawalCurrency("USD")
     setWithdrawalDate(new Date().toISOString().split("T")[0])
     setWithdrawalDescription("")
     setWithdrawalAccountId("")
