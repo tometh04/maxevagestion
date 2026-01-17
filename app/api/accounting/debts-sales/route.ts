@@ -13,9 +13,9 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    // Verificar permiso de acceso
-    if (!canAccessModule(user.role as any, "customers")) {
-      return NextResponse.json({ error: "No tiene permiso para ver clientes" }, { status: 403 })
+    // Verificar permiso de acceso (accounting en vez de customers)
+    if (!canAccessModule(user.role as any, "accounting")) {
+      return NextResponse.json({ error: "No tiene permiso para ver esta sección" }, { status: 403 })
     }
 
     // Get user agencies
@@ -163,7 +163,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ debtors })
   } catch (error) {
-    console.error("Error in GET /api/customers/debtors:", error)
+    console.error("Error in GET /api/accounting/debts-sales:", error)
     return NextResponse.json({ error: "Error al obtener deudores" }, { status: 500 })
   }
 }

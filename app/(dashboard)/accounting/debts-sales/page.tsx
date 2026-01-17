@@ -1,11 +1,11 @@
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { CustomersDebtorsPageClient } from "@/components/customers/customers-debtors-page-client"
+import { DebtsSalesPageClient } from "@/components/accounting/debts-sales-page-client"
 
-export default async function CustomersDebtorsPage() {
+export default async function DebtsSalesPage() {
   const { user } = await getCurrentUser()
   
-  if (!canAccessModule(user.role as any, "customers")) {
+  if (!canAccessModule(user.role as any, "accounting")) {
     return (
       <div className="space-y-6">
         <div>
@@ -16,5 +16,5 @@ export default async function CustomersDebtorsPage() {
     )
   }
 
-  return <CustomersDebtorsPageClient />
+  return <DebtsSalesPageClient />
 }

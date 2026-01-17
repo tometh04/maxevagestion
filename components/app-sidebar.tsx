@@ -88,7 +88,6 @@ const allNavigation: NavItem[] = [
     module: "customers",
     items: [
       { title: "Clientes", url: "/customers" },
-      { title: "Deudores por Ventas", url: "/customers/debtors" },
       { title: "Segmentos", url: "/customers/segments" },
       { title: "Estadísticas", url: "/customers/statistics" },
       { title: "Configuración", url: "/customers/settings" },
@@ -132,6 +131,7 @@ const allNavigation: NavItem[] = [
           { title: "IVA", url: "/accounting/iva" },
           { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
           { title: "Posición Mensual", url: "/accounting/monthly-position" },
+          { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
           { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },

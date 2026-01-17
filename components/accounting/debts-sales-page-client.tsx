@@ -55,7 +55,7 @@ interface Debtor {
   operationsWithDebt: DebtorOperation[]
 }
 
-export function CustomersDebtorsPageClient() {
+export function DebtsSalesPageClient() {
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,7 +65,7 @@ export function CustomersDebtorsPageClient() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/customers/debtors")
+      const response = await fetch("/api/accounting/debts-sales")
       if (response.ok) {
         const data = await response.json()
         setDebtors(data.debtors || [])
@@ -106,7 +106,7 @@ export function CustomersDebtorsPageClient() {
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/customers">Base de Datos Clientes</Link>
+                <Link href="/accounting/ledger">Contabilidad</Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -134,7 +134,7 @@ export function CustomersDebtorsPageClient() {
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/customers">Base de Datos Clientes</Link>
+                <Link href="/accounting/ledger">Contabilidad</Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -185,9 +185,9 @@ export function CustomersDebtorsPageClient() {
           </p>
         </div>
         <Button variant="outline" asChild>
-          <Link href="/customers">
+          <Link href="/accounting/ledger">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver a Clientes
+            Volver a Contabilidad
           </Link>
         </Button>
       </div>
