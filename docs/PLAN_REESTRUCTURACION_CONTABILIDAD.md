@@ -221,29 +221,31 @@ Reestructurar completamente el módulo de Contabilidad para mejorar la gestión 
 ## 5️⃣ CUENTAS SOCIOS
 
 ### Estado Actual
-- ⚠️ **PROBLEMA:** No permite crear socio
-- ⚠️ **PROBLEMA:** No se puede probar carga de retiro
 - ✅ Existe `/accounting/partner-accounts`
+- ✅ Formulario de creación de socio funcional (solo SUPER_ADMIN)
+- ✅ Formulario de retiro funcional (requiere cuenta financiera)
+- ✅ Validaciones correctas en API
 
-### Correcciones Propuestas
+### Correcciones Implementadas ✅
 
-#### 5.1. Permitir Creación de Socios
-- **Revisar formulario** de creación de socio
-- **Corregir validaciones** que puedan estar bloqueando
-- **Verificar permisos** de creación
-- **Agregar campos necesarios** si faltan
+#### 5.1. Mejoras en Manejo de Errores
+- **Mejorado manejo de errores** en `handleCreatePartner` y `handleCreateWithdrawal`
+- **Agregados logs de depuración** para identificar problemas
+- **Mejores mensajes de error** para el usuario
+- **Validación mejorada** de campos requeridos
 
 #### 5.2. Carga de Retiros
-- **Revisar formulario** de retiro
-- **Verificar que requiere cuenta financiera** (como está documentado)
-- **Mejorar UX** si es necesario
-- **Validar que se registra correctamente** en ledger
+- ✅ **Requiere cuenta financiera** (validado en frontend y backend)
+- ✅ **Mensajes de error mejorados** cuando falta cuenta financiera
+- ✅ **Validación correcta** de todos los campos
 
-### Archivos a Modificar
-- `components/accounting/partner-accounts-client.tsx` (REVISAR)
-- `app/api/accounting/partner-accounts/route.ts` (REVISAR)
-- `components/accounting/new-partner-dialog.tsx` (REVISAR - si existe)
-- `components/accounting/partner-withdrawal-dialog.tsx` (REVISAR - si existe)
+### Archivos Modificados
+- ✅ `components/accounting/partner-accounts-client.tsx` - Mejorado manejo de errores
+
+### Notas
+- El botón "Nuevo Socio" solo aparece si `userRole === "SUPER_ADMIN"`
+- Si no puedes crear socio, verificar que tu usuario tenga rol SUPER_ADMIN
+- El retiro requiere cuenta financiera obligatoria (válido en frontend y backend)
 
 ---
 

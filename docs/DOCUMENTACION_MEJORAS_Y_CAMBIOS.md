@@ -263,6 +263,34 @@ COMMENT ON COLUMN customers.procedure_number IS
 
 ---
 
+## Correcciones Recientes
+
+### 2025-01-17
+
+#### Mejora: Manejo de Errores en Cuentas Socios
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se mejoró el manejo de errores en el módulo de Cuentas Socios para proporcionar mensajes más claros y ayudar a identificar problemas.
+
+**Mejoras implementadas:**
+- Mejorado manejo de errores en `handleCreatePartner`
+- Mejorado manejo de errores en `handleCreateWithdrawal`
+- Agregados logs de depuración para identificar problemas
+- Mensajes de error más descriptivos para el usuario
+- Validación mejorada de campos requeridos (trim en campos de texto)
+- Mensajes específicos cuando falta cuenta financiera en retiros
+
+**Archivos modificados:**
+- `components/accounting/partner-accounts-client.tsx`
+
+**Notas:**
+- El botón "Nuevo Socio" solo aparece para usuarios con rol SUPER_ADMIN
+- El retiro requiere cuenta financiera obligatoria (validado en frontend y backend)
+- Los errores ahora incluyen más información para facilitar la depuración
+
+---
+
 ## Notas para Desarrollo
 
 ### Convenciones de Commits

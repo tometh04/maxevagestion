@@ -162,14 +162,17 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          partner_name: partnerName,
-          notes: partnerNotes || null,
+          partner_name: partnerName.trim(),
+          notes: partnerNotes.trim() || null,
         }),
       })
 
+      const data = await res.json()
+
       if (!res.ok) {
-        const error = await res.json()
-        throw new Error(error.error)
+        const errorMessage = data.error || `Error ${res.status}: ${res.statusText}`
+        console.error("Error creating partner:", errorMessage)
+        throw new Error(errorMessage)
       }
 
       toast.success("Socio creado correctamente")
@@ -178,7 +181,8 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       setPartnerNotes("")
       fetchPartners()
     } catch (error: any) {
-      toast.error(error.message || "Error al crear socio")
+      console.error("Error in handleCreatePartner:", error)
+      toast.error(error.message || "Error al crear socio. Verifica que tengas los permisos necesarios.")
     } finally {
       setSubmitting(false)
     }
@@ -194,7 +198,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       return
     }
     if (!withdrawalAccountId) {
-      toast.error("Debes seleccionar una cuenta financiera")
+      toast.error("Debes seleccionar una cuenta financiera. Este campo es obligatorio para registrar el retiro contablemente.")
       return
     }
 
@@ -209,23 +213,26 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           currency: withdrawalCurrency,
           withdrawal_date: withdrawalDate,
           account_id: withdrawalAccountId,
-          description: withdrawalDescription || null,
+          description: withdrawalDescription.trim() || null,
         }),
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error)
+        const errorMessage = data.error || `Error ${res.status}: ${res.statusText}`
+        console.error("Error creating withdrawal:", errorMessage)
+        throw new Error(errorMessage)
       }
 
-      toast.success(data.message || "Retiro registrado")
+      toast.success(data.message || "Retiro registrado correctamente")
       setNewWithdrawalOpen(false)
       resetWithdrawalForm()
       fetchPartners()
       fetchWithdrawals()
     } catch (error: any) {
-      toast.error(error.message || "Error al registrar retiro")
+      console.error("Error in handleCreateWithdrawal:", error)
+      toast.error(error.message || "Error al registrar retiro. Verifica que la cuenta financiera esté configurada correctamente.")
     } finally {
       setSubmitting(false)
     }
