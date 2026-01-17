@@ -493,6 +493,15 @@ export async function POST(request: Request) {
       user.id,
       supabase
     )
+    console.log(`💵 mark-paid: Cuenta de caja seleccionada`, {
+      paymentId,
+      method: paymentData.method,
+      currency: paymentData.currency,
+      cashAccountType,
+      cashAccountId,
+      amount: paymentData.amount,
+      direction: paymentData.direction,
+    })
 
     // Crear movimiento en cuenta de caja
     // Para INCOME: aumenta la cuenta (INCOME)

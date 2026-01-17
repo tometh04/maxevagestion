@@ -359,7 +359,7 @@ export async function getOrCreateDefaultAccount(
   // IMPORTANTE: Ordenar por created_at ASC para siempre devolver la misma cuenta (la más antigua)
   // Esto asegura consistencia - si hay múltiples cuentas del mismo tipo, siempre usamos la primera creada
   const { data: existing, error: existingError } = await (supabase.from("financial_accounts") as any)
-    .select("id")
+    .select("id, name, type, currency, agency_id")
     .eq("type", validType)
     .eq("currency", currency)
     .eq("is_active", true) // Solo cuentas activas
@@ -368,6 +368,13 @@ export async function getOrCreateDefaultAccount(
     .maybeSingle()
 
   if (existing && !existingError) {
+    console.log(`🔍 getOrCreateDefaultAccount: Usando cuenta existente`, {
+      accountId: existing.id,
+      name: existing.name,
+      type: validType,
+      currency,
+      agency_id: existing.agency_id,
+    })
     return existing.id
   }
 
@@ -390,12 +397,19 @@ export async function getOrCreateDefaultAccount(
       initial_balance: 0,
       created_by: userId,
     })
-    .select("id")
+    .select("id, name, type, currency")
     .single()
 
   if (error || !newAccount) {
     throw new Error(`Error creando cuenta por defecto: ${error?.message || "Unknown error"}`)
   }
+
+  console.log(`✅ getOrCreateDefaultAccount: Nueva cuenta creada`, {
+    accountId: newAccount.id,
+    name: newAccount.name,
+    type: validType,
+    currency,
+  })
 
   return newAccount.id
 }
