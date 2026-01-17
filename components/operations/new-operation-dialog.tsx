@@ -343,8 +343,8 @@ export function NewOperationDialog({
         checkin_date: null,
         checkout_date: null,
         departure_date: values.departure_date ? values.departure_date.toISOString().split("T")[0] : null,
-        sale_currency: values.sale_currency || values.currency || "ARS",
-        operator_cost_currency: values.operator_cost_currency || values.currency || "ARS",
+        sale_currency: values.sale_currency || values.currency || "USD",
+        operator_cost_currency: values.operator_cost_currency || values.currency || "USD",
         // Si hay múltiples operadores, el costo total ya está calculado en operator_cost
         operator_cost: useMultipleOperators ? totalOperatorCost : (values.operator_cost || 0),
       }
