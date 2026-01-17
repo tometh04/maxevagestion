@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       method,
       amount,
       currency,
+      exchange_rate: providedExchangeRate, // Tipo de cambio del frontend
       date_paid,
       date_due,
       status,
@@ -114,9 +115,13 @@ export async function POST(request: Request) {
         const operatorId = operation?.operator_id || null
         const agencyId = operation?.agency_id
 
-        // 3. Calcular tasa de cambio si es USD
+        // 3. Calcular tasa de cambio
+        // Si es USD: buscar tasa para convertir a ARS
+        // Si es ARS: usar la tasa proporcionada por el frontend para calcular equivalente USD
         let exchangeRate: number | null = null
+        
         if (currency === "USD") {
+          // Para USD, buscar tasa de cambio
           const rateDate = date_paid ? new Date(date_paid) : new Date()
           exchangeRate = await getExchangeRate(supabase, rateDate)
           if (!exchangeRate) {
@@ -125,13 +130,17 @@ export async function POST(request: Request) {
           if (!exchangeRate) {
             exchangeRate = 1000 // Fallback
           }
+        } else if (currency === "ARS" && providedExchangeRate) {
+          // Para ARS, usar la tasa proporcionada
+          exchangeRate = parseFloat(providedExchangeRate)
         }
 
-        const amountARS = calculateARSEquivalent(
-          parseFloat(amount),
-          currency as "ARS" | "USD",
-          exchangeRate
-        )
+        // Calcular equivalente en ARS
+        // Para ARS: amount_ars_equivalent = amount (es la misma moneda)
+        // Para USD: amount_ars_equivalent = amount * exchangeRate
+        const amountARS = currency === "ARS" 
+          ? parseFloat(amount) 
+          : calculateARSEquivalent(parseFloat(amount), "USD", exchangeRate)
 
         // 4. Determinar tipo de cuenta y obtenerla
         // Obtener o crear cuenta financiera según el tipo de movimiento y el plan de cuentas
@@ -308,10 +317,53 @@ export async function POST(request: Request) {
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
 
-        // 9. NOTA: Ya no se crean cash_movements
-        // El sistema ahora usa ledger_movements y financial_accounts
-        // Los movimientos contables se crean cuando se marca el pago como pagado (mark-paid)
-        // Esto se hace en app/api/payments/mark-paid/route.ts
+        // 9. CREAR MOVIMIENTO EN CUENTA DE CAJA
+        // Determinar tipo de cuenta de caja según método de pago y moneda
+        let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
+        if (method === "Efectivo") {
+          cashAccountType = "CASH"
+        } else if (method === "Transferencia") {
+          cashAccountType = "BANK"
+        } else if (method === "MercadoPago" || method === "MP") {
+          cashAccountType = "MP"
+        }
+
+        // Obtener o crear cuenta de caja según tipo y moneda
+        const cashAccountId = await getOrCreateDefaultAccount(
+          cashAccountType,
+          currency as "ARS" | "USD",
+          user.id,
+          supabase
+        )
+
+        // Crear movimiento en la cuenta de caja
+        // Para INCOME: aumenta la caja (tipo INCOME)
+        // Para EXPENSE: disminuye la caja (tipo EXPENSE)
+        const cashLedgerType = direction === "INCOME" ? "INCOME" : "EXPENSE"
+        
+        await createLedgerMovement(
+          {
+            operation_id,
+            lead_id: null,
+            type: cashLedgerType,
+            concept: direction === "INCOME"
+              ? `Cobro en ${method || "efectivo"} - Op. ${operation_id.slice(0, 8)}`
+              : `Pago en ${method || "efectivo"} - Op. ${operation_id.slice(0, 8)}`,
+            currency: currency as "ARS" | "USD",
+            amount_original: parseFloat(amount),
+            exchange_rate: exchangeRate,
+            amount_ars_equivalent: amountARS,
+            method: ledgerMethod,
+            account_id: cashAccountId,
+            seller_id: sellerId,
+            operator_id: payer_type === "OPERATOR" ? operatorId : null,
+            receipt_number: null,
+            notes: notes || null,
+            created_by: user.id,
+          },
+          supabase
+        )
+        console.log(`💵 Creado movimiento en cuenta de CAJA ${cashAccountType} - ${currency} para pago ${payment.id}`)
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
         if (payer_type === "OPERATOR") {

@@ -53,6 +53,7 @@ const paymentSchema = z.object({
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  exchange_rate: z.coerce.number().optional(), // Tipo de cambio para ARS
   date_paid: z.date({
     required_error: "Fecha de pago es requerida",
   }),
@@ -407,7 +408,8 @@ export function OperationPaymentsSection({
       direction: "INCOME",
       method: "Transferencia",
       amount: 0,
-      currency: currency as "ARS" | "USD",
+      currency: "USD", // Default USD
+      exchange_rate: undefined,
       date_paid: new Date(),
       notes: "",
     },
@@ -420,7 +422,8 @@ export function OperationPaymentsSection({
       direction: "EXPENSE",
       method: "Transferencia",
       amount: 0,
-      currency: currency as "ARS" | "USD",
+      currency: "USD", // Default USD
+      exchange_rate: undefined,
       date_paid: new Date(),
       notes: "",
     },
@@ -437,6 +440,12 @@ export function OperationPaymentsSection({
   const operatorDebt = operatorCost - totalPaidToOperator
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
+    // Validar tipo de cambio si es ARS
+    if (values.currency === "ARS" && !values.exchange_rate) {
+      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+      return
+    }
+    
     setIsLoading(true)
     try {
       const { payer_type, direction, ...restValues } = values
@@ -448,6 +457,7 @@ export function OperationPaymentsSection({
           payer_type: "CUSTOMER",
           direction: "INCOME",
           ...restValues,
+          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -471,6 +481,12 @@ export function OperationPaymentsSection({
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
+    // Validar tipo de cambio si es ARS
+    if (values.currency === "ARS" && !values.exchange_rate) {
+      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+      return
+    }
+    
     setIsLoading(true)
     try {
       const { payer_type, direction, ...restValues } = values
@@ -482,6 +498,7 @@ export function OperationPaymentsSection({
           payer_type: "OPERATOR",
           direction: "EXPENSE",
           ...restValues,
+          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -767,6 +784,35 @@ export function OperationPaymentsSection({
                 />
               </div>
 
+              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
+              {incomeForm.watch("currency") === "ARS" && (
+                <FormField
+                  control={incomeForm.control}
+                  name="exchange_rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          min="0" 
+                          placeholder="Ej: 1200" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        {field.value && incomeForm.watch("amount") 
+                          ? `Equivale a USD ${(incomeForm.watch("amount") / field.value).toFixed(2)}`
+                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                        }
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
               <FormField
                 control={incomeForm.control}
                 name="date_paid"
@@ -915,6 +961,35 @@ export function OperationPaymentsSection({
                   )}
                 />
               </div>
+
+              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
+              {expenseForm.watch("currency") === "ARS" && (
+                <FormField
+                  control={expenseForm.control}
+                  name="exchange_rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="number" 
+                          step="0.01" 
+                          min="0" 
+                          placeholder="Ej: 1200" 
+                          {...field} 
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        {field.value && expenseForm.watch("amount") 
+                          ? `Equivale a USD ${(expenseForm.watch("amount") / field.value).toFixed(2)}`
+                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                        }
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <FormField
                   control={expenseForm.control}
