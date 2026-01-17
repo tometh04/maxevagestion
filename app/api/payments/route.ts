@@ -75,6 +75,16 @@ export async function POST(request: Request) {
       }
     }
 
+    // Calcular amount_usd para el pago
+    // Si es USD: amount_usd = amount
+    // Si es ARS: amount_usd = amount / exchange_rate
+    let amountUsd: number | null = null
+    if (currency === "USD") {
+      amountUsd = parseFloat(amount)
+    } else if (currency === "ARS" && providedExchangeRate) {
+      amountUsd = parseFloat(amount) / parseFloat(providedExchangeRate)
+    }
+
     // 1. Crear el pago en tabla payments
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
@@ -85,6 +95,8 @@ export async function POST(request: Request) {
       method: method || "Otro",
       amount,
         currency,
+      exchange_rate: providedExchangeRate ? parseFloat(providedExchangeRate) : null,
+      amount_usd: amountUsd,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
       status: status || "PENDING", // Cambiar default a PENDING para evitar duplicados

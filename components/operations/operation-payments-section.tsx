@@ -429,15 +429,35 @@ export function OperationPaymentsSection({
     },
   })
 
-  // Calcular totales
+  // Calcular totales EN USD
+  // Si el pago tiene amount_usd, usarlo directamente
+  // Si no, convertir: USD = amount, ARS = amount / exchange_rate (o 0 si no hay tasa)
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
   const operatorPayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
   
-  const totalPaidByCustomer = customerPayments.reduce((sum, p) => sum + Number(p.amount), 0)
-  const totalPaidToOperator = operatorPayments.reduce((sum, p) => sum + Number(p.amount), 0)
+  const calculateUsdAmount = (p: any): number => {
+    // Si ya tiene amount_usd calculado, usarlo
+    if (p.amount_usd != null) {
+      return Number(p.amount_usd)
+    }
+    // Si es USD, usar el amount directamente
+    if (p.currency === "USD") {
+      return Number(p.amount)
+    }
+    // Si es ARS y tiene exchange_rate, convertir
+    if (p.currency === "ARS" && p.exchange_rate) {
+      return Number(p.amount) / Number(p.exchange_rate)
+    }
+    // Fallback: si es ARS sin exchange_rate, no podemos convertir correctamente
+    // Mostrar 0 o el amount (esto no debería pasar con pagos nuevos)
+    return 0
+  }
   
-  const customerDebt = saleAmount - totalPaidByCustomer
-  const operatorDebt = operatorCost - totalPaidToOperator
+  const totalPaidByCustomerUsd = customerPayments.reduce((sum, p) => sum + calculateUsdAmount(p), 0)
+  const totalPaidToOperatorUsd = operatorPayments.reduce((sum, p) => sum + calculateUsdAmount(p), 0)
+  
+  const customerDebt = saleAmount - totalPaidByCustomerUsd
+  const operatorDebt = operatorCost - totalPaidToOperatorUsd
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar tipo de cambio si es ARS
@@ -528,16 +548,16 @@ export function OperationPaymentsSection({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Deuda del Cliente
+              Deuda del Cliente (USD)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currency} {customerDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              USD {customerDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Pagado: {currency} {totalPaidByCustomer.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
-              {" / "} Total: {currency} {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              Pagado: USD {totalPaidByCustomerUsd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
+              {" / "} Total: USD {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {customerDebt <= 0 && (
               <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
@@ -549,16 +569,16 @@ export function OperationPaymentsSection({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pendiente a Operador
+              Pendiente a Operador (USD)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {currency} {operatorDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              USD {operatorDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Pagado: {currency} {totalPaidToOperator.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
-              {" / "} Total: {currency} {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              Pagado: USD {totalPaidToOperatorUsd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
+              {" / "} Total: USD {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {operatorDebt <= 0 && (
               <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
@@ -613,7 +633,9 @@ export function OperationPaymentsSection({
                   <TableHead>Fecha</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead>Método</TableHead>
-                  <TableHead>Monto</TableHead>
+                  <TableHead>Monto Original</TableHead>
+                  <TableHead>T/C</TableHead>
+                  <TableHead>Equiv. USD</TableHead>
                   <TableHead>Estado</TableHead>
                   <TableHead className="w-[100px] text-right">Acciones</TableHead>
                 </TableRow>
@@ -643,6 +665,28 @@ export function OperationPaymentsSection({
                     <TableCell>{payment.method || "-"}</TableCell>
                     <TableCell>
                       {payment.currency} {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {payment.currency === "ARS" && payment.exchange_rate 
+                        ? Number(payment.exchange_rate).toLocaleString("es-AR", { minimumFractionDigits: 2 })
+                        : "-"
+                      }
+                    </TableCell>
+                    <TableCell>
+                      {(() => {
+                        // Calcular USD equivalente
+                        if (payment.amount_usd != null) {
+                          return `USD ${Number(payment.amount_usd).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                        }
+                        if (payment.currency === "USD") {
+                          return `USD ${Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                        }
+                        if (payment.currency === "ARS" && payment.exchange_rate) {
+                          const usd = Number(payment.amount) / Number(payment.exchange_rate)
+                          return `USD ${usd.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                        }
+                        return "-"
+                      })()}
                     </TableCell>
                     <TableCell>
                       <Badge variant={payment.status === "PAID" ? "default" : "secondary"}>
