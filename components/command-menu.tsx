@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   CommandDialog,
@@ -104,14 +104,16 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     }
   }, [])
 
-  // Resetear estado cuando se abre el dialog
+  // Resetear estado cuando el dialog cambia de cerrado a abierto
+  const prevOpenRef = useRef(open)
   useEffect(() => {
-    if (open) {
-      // Cuando se abre, resetear búsqueda y resultados
+    // Si el dialog se abre (pasó de false a true), resetear estado
+    if (!prevOpenRef.current && open) {
       setSearch("")
       setResults([])
       setLoading(false)
     }
+    prevOpenRef.current = open
   }, [open])
 
   useEffect(() => {

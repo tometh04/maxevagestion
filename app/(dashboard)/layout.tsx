@@ -5,7 +5,6 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
-import { CommandMenu } from "@/components/command-menu"
 
 export default async function DashboardLayout({
   children,
@@ -47,7 +46,6 @@ export default async function DashboardLayout({
           </div>
         </div>
       </SidebarInset>
-      <CommandMenu />
     </SidebarProvider>
   )
 }
