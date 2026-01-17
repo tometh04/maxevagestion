@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -133,19 +134,31 @@ export async function GET(request: Request) {
       let totalDebt = 0
       let currency = "ARS"
 
-      operations.forEach((oc: any) => {
+      // Obtener tasa de cambio más reciente como fallback
+      const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+      // Usar for...of para poder usar await correctamente
+      for (const oc of operations) {
         const operation = oc.operations
-        if (!operation) return
+        if (!operation) continue
 
         const opId = operation.id
         const saleCurrency = operation.sale_currency || operation.currency || "USD"
         const saleAmount = Number(operation.sale_amount_total) || 0
         
         // Convertir sale_amount_total a USD
-        // Si ya está en USD, usarlo directamente
-        // Si está en ARS, necesitaríamos exchange_rate (por ahora lo dejamos igual para simplificar)
-        // En el futuro, podríamos buscar el exchange_rate histórico de la fecha de la operación
-        const saleAmountUsd = saleCurrency === "USD" ? saleAmount : saleAmount // TODO: convertir ARS a USD con exchange_rate histórico
+        let saleAmountUsd = saleAmount
+        if (saleCurrency === "ARS") {
+          // Obtener tasa de cambio histórica para la fecha de la operación
+          const operationDate = operation.departure_date || operation.created_at
+          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+          if (!exchangeRate) {
+            exchangeRate = latestExchangeRate
+          }
+          // Convertir ARS a USD: dividir por el exchange_rate
+          saleAmountUsd = saleAmount / exchangeRate
+        }
+        // Si ya está en USD, saleAmountUsd = saleAmount (ya está correcto)
         
         const paymentData = paymentsByOperation[opId] || { paidUsd: 0, currency: saleCurrency }
         const paidUsd = paymentData.paidUsd
@@ -168,7 +181,7 @@ export async function GET(request: Request) {
           })
           totalDebt += debtUsd
         }
-      })
+      }
 
       if (operationsWithDebt.length > 0) {
         debtors.push({
