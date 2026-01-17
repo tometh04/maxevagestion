@@ -113,6 +113,7 @@ export async function getAccountBalance(
     .from("financial_accounts") as any)
     .select(`
       initial_balance,
+      currency,
       chart_account_id,
       chart_of_accounts:chart_account_id(
         category
@@ -126,12 +127,14 @@ export async function getAccountBalance(
   }
 
   const initialBalance = parseFloat(account.initial_balance || "0")
+  const accountCurrency = account.currency as "ARS" | "USD"
   const category = account.chart_of_accounts?.category
 
   // Sumar todos los movimientos del ledger para esta cuenta
+  // IMPORTANTE: Para cuentas USD, usar amount_original. Para ARS, usar amount_ars_equivalent
   const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
-    .select("type, amount_ars_equivalent")
+    .select("type, amount_original, amount_ars_equivalent, currency")
     .eq("account_id", accountId)
 
   if (movementsError) {
@@ -140,7 +143,12 @@ export async function getAccountBalance(
 
   const movementsSum =
     movements?.reduce((sum: number, m: any) => {
-      const amount = parseFloat(m.amount_ars_equivalent || "0")
+      // Determinar qué monto usar según la moneda de la cuenta
+      // Si la cuenta es USD, usar amount_original (en USD)
+      // Si la cuenta es ARS, usar amount_ars_equivalent (en ARS)
+      const amount = accountCurrency === "USD" 
+        ? parseFloat(m.amount_original || "0")
+        : parseFloat(m.amount_ars_equivalent || "0")
       
       // Para PASIVOS, la lógica es inversa:
       // - EXPENSE aumenta el pasivo (debes más)
