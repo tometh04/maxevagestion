@@ -182,7 +182,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
   }
 
   return (
-    <CommandDialog open={open} onOpenChange={handleOpenChange}>
+    <CommandDialog open={open} onOpenChange={handleOpenChange} shouldFilter={false}>
       <CommandInput 
         placeholder="Buscar clientes, operaciones, leads, operadores..." 
         value={search}
