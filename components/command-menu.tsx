@@ -104,21 +104,26 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     }
   }, [])
 
-  // Resetear estado cuando el dialog cambia de cerrado a abierto
-  const prevOpenRef = useRef(open)
+  // Resetear estado cuando el dialog se abre
   useEffect(() => {
-    // Si el dialog se abre (pasó de false a true), resetear estado
-    if (!prevOpenRef.current && open) {
+    if (open) {
+      // Resetear solo cuando se abre el dialog
       setSearch("")
       setResults([])
       setLoading(false)
     }
-    prevOpenRef.current = open
   }, [open])
 
   useEffect(() => {
-    // Solo buscar si el dialog está abierto
+    // Solo buscar si el dialog está abierto y hay texto para buscar
     if (!open) {
+      return
+    }
+
+    // Si el search está vacío, no buscar
+    if (!search || search.trim().length < 2) {
+      setResults([])
+      setLoading(false)
       return
     }
 
