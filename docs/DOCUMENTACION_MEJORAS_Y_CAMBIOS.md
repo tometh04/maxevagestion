@@ -273,10 +273,15 @@ Se renombró la funcionalidad "Pagos Recurrentes" a "Gastos Recurrentes" y se im
 - `supabase/migrations/085_create_recurring_payment_categories.sql` - Tabla de categorías
 - `supabase/migrations/086_add_category_id_to_recurring_payments.sql` - Relación con categorías
 
-**Pendiente:**
-- Selector de categoría en dialogs de nuevo/editar (próximo paso)
-- Filtros de fecha (mes/año)
-- Gráficos de análisis por categoría
+**Funcionalidades completadas:**
+- ✅ Selector de categoría en dialogs de nuevo/editar
+- ✅ Filtros de fecha (mes/año) con inicialización automática
+- ⏳ Gráficos de análisis por categoría (pendiente)
+
+**Detalles adicionales:**
+- Selector de categoría muestra colores de cada categoría (indicador circular)
+- Filtros de fecha permiten seleccionar mes y año para filtrar por `next_due_date` o `start_date`
+- Filtros combinables: proveedor + agencia + estado + mes/año
 
 ---
 
