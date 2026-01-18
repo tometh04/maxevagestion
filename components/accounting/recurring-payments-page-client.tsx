@@ -174,23 +174,51 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   // Función para calcular si un gasto recurrente tiene vencimiento en un mes específico
   const hasVencimientoInMonth = (payment: any, year: string, month: string): boolean => {
     const filterDate = `${year}-${month.padStart(2, "0")}`
+    const filterStart = new Date(parseInt(year), parseInt(month) - 1, 1)
+    const filterEnd = new Date(parseInt(year), parseInt(month), 0) // Último día del mes
+
+    // CRÍTICO: Si tiene end_date y el mes seleccionado está DESPUÉS de end_date, NO mostrar
+    if (payment.end_date) {
+      const endDate = new Date(payment.end_date)
+      // Si el primer día del mes filtrado es después de end_date, no mostrar
+      if (filterStart > endDate) {
+        return false
+      }
+    }
+
+    // Si no está activo, no mostrar
+    if (!payment.is_active) {
+      // Aún así, verificar si es parte del filtro de estado
+      // Esta validación se hace después en el filtro por estado
+    }
     
     // Si tiene next_due_date, verificar si está en el mes
     if (payment.next_due_date) {
       const dueDate = payment.next_due_date.substring(0, 7) // YYYY-MM
-      if (dueDate === filterDate) return true
+      if (dueDate === filterDate) {
+        // Verificar que no haya pasado end_date
+        if (payment.end_date) {
+          const endDate = new Date(payment.end_date)
+          const nextDue = new Date(payment.next_due_date)
+          if (nextDue <= endDate) {
+            return true
+          }
+        } else {
+          return true
+        }
+      }
     }
 
     // Si no tiene next_due_date pero tiene start_date y frecuencia,
     // calcular si alguno de los vencimientos futuros cae en el mes seleccionado
     if (payment.start_date && payment.frequency) {
       const startDate = new Date(payment.start_date)
-      const filterStart = new Date(parseInt(year), parseInt(month) - 1, 1)
-      const filterEnd = new Date(parseInt(year), parseInt(month), 0) // Último día del mes
 
-      // Verificar si start_date está en el mes seleccionado
+      // Verificar si start_date está en el mes seleccionado (y no ha pasado end_date)
       if (startDate.getFullYear() === parseInt(year) && startDate.getMonth() === parseInt(month) - 1) {
-        return true
+        if (!payment.end_date || startDate <= new Date(payment.end_date)) {
+          return true
+        }
       }
 
       // Calcular vencimientos futuros según la frecuencia
@@ -199,8 +227,24 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
       const maxIterations = 120 // Máximo 10 años para evitar loops infinitos
 
       while (iterations < maxIterations && currentDate <= filterEnd) {
+        // Verificar si este vencimiento está dentro del mes seleccionado
         if (currentDate >= filterStart && currentDate <= filterEnd) {
-          return true // Este vencimiento cae en el mes seleccionado
+          // Verificar que no haya pasado end_date
+          if (payment.end_date) {
+            const endDate = new Date(payment.end_date)
+            if (currentDate <= endDate) {
+              return true // Este vencimiento cae en el mes seleccionado y antes de end_date
+            }
+          } else {
+            return true // Este vencimiento cae en el mes seleccionado
+          }
+        }
+
+        // Si ya pasamos el mes seleccionado Y también pasamos end_date, salir
+        if (currentDate > filterEnd) {
+          if (payment.end_date && currentDate > new Date(payment.end_date)) {
+            break
+          }
         }
 
         // Calcular siguiente vencimiento según frecuencia
@@ -249,9 +293,9 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     // Filtro por proveedor
     if (providerFilter !== "ALL") {
       filtered = filtered.filter((p) => {
-        const name = p.provider_name || p.operators?.name
-        return name === providerFilter
-      })
+      const name = p.provider_name || p.operators?.name
+      return name === providerFilter
+    })
     }
 
     // Filtro por mes/año (mejorado: calcula vencimientos futuros según frecuencia)
