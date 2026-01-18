@@ -54,9 +54,22 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [isActiveFilter, setIsActiveFilter] = useState<string>("ALL")
   const [providerFilter, setProviderFilter] = useState<string>("ALL")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
+  const [monthFilter, setMonthFilter] = useState<string>("")
+  const [yearFilter, setYearFilter] = useState<string>("")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [tableError, setTableError] = useState<string | null>(null)
+
+  // Inicializar filtros de fecha con mes/año actual
+  useEffect(() => {
+    const now = new Date()
+    if (!monthFilter) {
+      setMonthFilter(String(now.getMonth() + 1).padStart(2, "0"))
+    }
+    if (!yearFilter) {
+      setYearFilter(String(now.getFullYear()))
+    }
+  }, [])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -126,14 +139,38 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     return Array.from(providers).sort()
   }, [payments])
 
-  // Filtrar pagos por proveedor
+  // Filtrar pagos por proveedor y fecha
   const filteredPayments = useMemo(() => {
-    if (providerFilter === "ALL") return payments
-    return payments.filter((p) => {
-      const name = p.provider_name || p.operators?.name
-      return name === providerFilter
-    })
-  }, [payments, providerFilter])
+    let filtered = payments
+
+    // Filtro por proveedor
+    if (providerFilter !== "ALL") {
+      filtered = filtered.filter((p) => {
+        const name = p.provider_name || p.operators?.name
+        return name === providerFilter
+      })
+    }
+
+    // Filtro por mes/año (filtrar por next_due_date o start_date)
+    if (monthFilter && yearFilter) {
+      const filterDate = `${yearFilter}-${monthFilter.padStart(2, "0")}`
+      filtered = filtered.filter((p) => {
+        // Verificar si next_due_date está en el mes/año seleccionado
+        if (p.next_due_date) {
+          const dueDate = p.next_due_date.substring(0, 7) // YYYY-MM
+          if (dueDate === filterDate) return true
+        }
+        // Verificar si start_date está en el mes/año seleccionado
+        if (p.start_date) {
+          const startDate = p.start_date.substring(0, 7) // YYYY-MM
+          if (startDate === filterDate) return true
+        }
+        return false
+      })
+    }
+
+    return filtered
+  }, [payments, providerFilter, monthFilter, yearFilter])
 
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
@@ -274,6 +311,43 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <SelectItem value="ALL">Todos</SelectItem>
                   <SelectItem value="ACTIVE">Activos</SelectItem>
                   <SelectItem value="INACTIVE">Inactivos</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Filtro por Mes */}
+              <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Mes" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los meses</SelectItem>
+                  {Array.from({ length: 12 }, (_, i) => {
+                    const month = String(i + 1).padStart(2, "0")
+                    const monthName = new Date(2024, i).toLocaleDateString("es-AR", { month: "long" })
+                    return (
+                      <SelectItem key={month} value={month}>
+                        {monthName.charAt(0).toUpperCase() + monthName.slice(1)}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+
+              {/* Filtro por Año */}
+              <Select value={yearFilter} onValueChange={setYearFilter}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue placeholder="Año" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los años</SelectItem>
+                  {Array.from({ length: 5 }, (_, i) => {
+                    const year = new Date().getFullYear() - 2 + i
+                    return (
+                      <SelectItem key={year} value={String(year)}>
+                        {year}
+                      </SelectItem>
+                    )
+                  })}
                 </SelectContent>
               </Select>
 
