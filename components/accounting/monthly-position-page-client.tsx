@@ -9,8 +9,10 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Download } from "lucide-react"
+import { CalendarIcon, Download, Save } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Input } from "@/components/ui/input"
+import { toast } from "@/hooks/use-toast"
 
 interface MonthlyPositionPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -48,6 +50,12 @@ interface MonthlyPosition {
     resultadoARS?: number
     resultadoUSD?: number
   }
+  monthlyExchangeRate?: number | null
+  profitDistribution?: {
+    commissions: { ars: number; usd: number }
+    operatingExpenses: { ars: number; usd: number }
+    partnerShares: { ars: number; usd: number }
+  }
 }
 
 function formatCurrency(amount: number, currency: "ARS" | "USD" = "ARS"): string {
@@ -83,6 +91,8 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
   const [position, setPosition] = useState<MonthlyPosition | null>(null)
   const [loading, setLoading] = useState(true)
   const [datePickerOpen, setDatePickerOpen] = useState(false)
+  const [exchangeRate, setExchangeRate] = useState<string>("")
+  const [savingExchangeRate, setSavingExchangeRate] = useState(false)
 
   const fetchPosition = useCallback(async () => {
     setLoading(true)
@@ -98,6 +108,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
         const data = await response.json()
         console.log(`[MonthlyPosition] Received data:`, data)
         setPosition(data)
+        // Actualizar el TC en el input si existe
+        if (data.monthlyExchangeRate) {
+          setExchangeRate(data.monthlyExchangeRate.toString())
+        } else {
+          setExchangeRate("")
+        }
       } else {
         const errorText = await response.text()
         console.error("Error fetching monthly position:", response.status, errorText)
@@ -121,6 +137,55 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
     }
   }
 
+  const handleSaveExchangeRate = async () => {
+    const rate = parseFloat(exchangeRate)
+    if (isNaN(rate) || rate <= 0) {
+      toast({
+        title: "Error",
+        description: "El tipo de cambio debe ser un número mayor a 0",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSavingExchangeRate(true)
+    try {
+      const response = await fetch("/api/accounting/monthly-exchange-rates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          month,
+          usd_to_ars_rate: rate,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Éxito",
+          description: "Tipo de cambio guardado correctamente",
+        })
+        // Recargar la posición para actualizar datos
+        fetchPosition()
+      } else {
+        const error = await response.json()
+        toast({
+          title: "Error",
+          description: error.error || "Error al guardar tipo de cambio",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Error al guardar tipo de cambio",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingExchangeRate(false)
+    }
+  }
+
   const selectedDate = new Date(year, month - 1, 1)
 
   return (
@@ -138,7 +203,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
               <Label>Mes y Año</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
@@ -191,6 +256,33 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
                 </Select>
               </div>
             )}
+
+            {/* Selector de Tipo de Cambio Mensual */}
+            <div className="space-y-2">
+              <Label>Tipo de Cambio USD/ARS</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  placeholder="Ej: 1500"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(e.target.value)}
+                  step="0.0001"
+                  min="0"
+                />
+                <Button
+                  onClick={handleSaveExchangeRate}
+                  disabled={savingExchangeRate || !exchangeRate}
+                  size="icon"
+                >
+                  <Save className="h-4 w-4" />
+                </Button>
+              </div>
+              {position?.monthlyExchangeRate && (
+                <p className="text-xs text-muted-foreground">
+                  Actual: {position.monthlyExchangeRate.toFixed(4)}
+                </p>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -478,6 +570,70 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </div>
             </CardContent>
           </Card>
+
+          {/* DISTRIBUCIÓN DE GANANCIAS */}
+          {position.profitDistribution && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Distribución de Ganancias del Mes</CardTitle>
+                <CardDescription>Desglose de cómo se distribuye la ganancia del período</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+                      <span className="text-sm font-medium">Comisiones</span>
+                      <div className="font-bold text-blue-600 text-sm sm:text-base break-words">
+                        {formatCurrency(position.profitDistribution.commissions.ars, "ARS")}
+                        {position.profitDistribution.commissions.usd !== 0 && (
+                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
+                            ({formatCurrency(position.profitDistribution.commissions.usd, "USD")})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Comisiones pagadas a vendedores
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+                      <span className="text-sm font-medium">Gastos Operativos</span>
+                      <div className="font-bold text-orange-600 text-sm sm:text-base break-words">
+                        {formatCurrency(position.profitDistribution.operatingExpenses.ars, "ARS")}
+                        {position.profitDistribution.operatingExpenses.usd !== 0 && (
+                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
+                            ({formatCurrency(position.profitDistribution.operatingExpenses.usd, "USD")})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Gastos recurrentes y administrativos
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
+                      <span className="text-sm font-medium">Participaciones Societarias</span>
+                      <div className="font-bold text-purple-600 text-sm sm:text-base break-words">
+                        {formatCurrency(position.profitDistribution.partnerShares.ars, "ARS")}
+                        {position.profitDistribution.partnerShares.usd !== 0 && (
+                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
+                            ({formatCurrency(position.profitDistribution.partnerShares.usd, "USD")})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Retiros de socios del mes
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (
         <Card>

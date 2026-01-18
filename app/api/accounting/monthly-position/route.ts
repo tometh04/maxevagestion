@@ -27,6 +27,19 @@ export async function GET(request: Request) {
     // Calcular fecha de corte (último día del mes)
     const lastDay = new Date(year, month, 0).getDate()
     const dateTo = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
+    const dateFrom = `${year}-${String(month).padStart(2, "0")}-01`
+
+    // Obtener tipo de cambio mensual
+    let monthlyExchangeRate: number | null = null
+    const { data: exchangeRateData } = await (supabase.from("monthly_exchange_rates") as any)
+      .select("usd_to_ars_rate")
+      .eq("year", year)
+      .eq("month", month)
+      .maybeSingle()
+    
+    if (exchangeRateData) {
+      monthlyExchangeRate = parseFloat(exchangeRateData.usd_to_ars_rate)
+    }
 
     // Obtener todas las cuentas del plan de cuentas activas
     const { data: chartAccounts, error: chartError } = await (supabase.from("chart_of_accounts") as any)
@@ -524,6 +537,81 @@ export async function GET(request: Request) {
     const resultado_mes_ars = ingresosARS - costosARS - gastosARS
     const resultado_mes_usd = ingresosUSD - costosUSD - gastosUSD
 
+    // Calcular distribución de ganancias del mes
+    // 1. Comisiones pagadas en el mes (de la tabla commissions)
+    let commissionsARS = 0
+    let commissionsUSD = 0
+    const { data: commissions } = await (supabase.from("commissions") as any)
+      .select("total_amount, status")
+      .eq("status", "paid")
+      .gte("paid_at", `${dateFrom}T00:00:00`)
+      .lte("paid_at", `${dateTo}T23:59:59`)
+    
+    if (commissions) {
+      // Las comisiones se almacenan en ARS normalmente, pero pueden tener conversión
+      for (const commission of commissions as any[]) {
+        commissionsARS += parseFloat(commission.total_amount || "0")
+      }
+    }
+
+    // 2. Gastos operativos (recurring_payments pagados en el mes via ledger_movements)
+    let operatingExpensesARS = 0
+    let operatingExpensesUSD = 0
+    // Buscar movimientos de gastos recurrentes pagados en el mes
+    const { data: recurringMovements } = await supabase
+      .from("ledger_movements")
+      .select("amount_original, currency, amount_ars_equivalent")
+      .gte("created_at", `${dateFrom}T00:00:00`)
+      .lte("created_at", `${dateTo}T23:59:59`)
+      .eq("type", "EXPENSE")
+      .like("description", "%recurrente%")
+    
+    if (recurringMovements) {
+      for (const movement of recurringMovements as any[]) {
+        if (movement.currency === "USD") {
+          operatingExpensesUSD += parseFloat(movement.amount_original || "0")
+        } else {
+          operatingExpensesARS += parseFloat(movement.amount_ars_equivalent || "0")
+        }
+      }
+    }
+
+    // 3. Participaciones societarias (retiros de socios en el mes)
+    let partnerSharesARS = 0
+    let partnerSharesUSD = 0
+    const { data: withdrawals } = await (supabase.from("partner_withdrawals") as any)
+      .select("amount, currency")
+      .gte("withdrawal_date", dateFrom)
+      .lte("withdrawal_date", dateTo)
+    
+    if (withdrawals) {
+      for (const withdrawal of withdrawals as any[]) {
+        if (withdrawal.currency === "USD") {
+          partnerSharesUSD += parseFloat(withdrawal.amount || "0")
+        } else {
+          partnerSharesARS += parseFloat(withdrawal.amount || "0")
+        }
+      }
+    }
+
+    // Convertir distribución a USD usando TC mensual si está disponible
+    let distributionUSD = {
+      commissions: 0,
+      operatingExpenses: 0,
+      partnerShares: 0,
+    }
+    
+    if (monthlyExchangeRate) {
+      distributionUSD.commissions = commissionsARS / monthlyExchangeRate
+      distributionUSD.operatingExpenses = operatingExpensesARS / monthlyExchangeRate
+      distributionUSD.partnerShares = partnerSharesARS / monthlyExchangeRate
+      
+      // Sumar también los USD directos
+      distributionUSD.commissions += commissionsUSD
+      distributionUSD.operatingExpenses += operatingExpensesUSD
+      distributionUSD.partnerShares += partnerSharesUSD
+    }
+
     return NextResponse.json({
       year,
       month,
@@ -555,6 +643,23 @@ export async function GET(request: Request) {
         gastosUSD: Math.round(gastosUSD * 100) / 100,
         resultadoARS: Math.round(resultado_mes_ars * 100) / 100,
         resultadoUSD: Math.round(resultado_mes_usd * 100) / 100,
+      },
+      // Información de tipo de cambio mensual
+      monthlyExchangeRate: monthlyExchangeRate,
+      // Distribución de ganancias
+      profitDistribution: {
+        commissions: {
+          ars: Math.round(commissionsARS * 100) / 100,
+          usd: Math.round(distributionUSD.commissions * 100) / 100,
+        },
+        operatingExpenses: {
+          ars: Math.round(operatingExpensesARS * 100) / 100,
+          usd: Math.round(distributionUSD.operatingExpenses * 100) / 100,
+        },
+        partnerShares: {
+          ars: Math.round(partnerSharesARS * 100) / 100,
+          usd: Math.round(distributionUSD.partnerShares * 100) / 100,
+        },
       },
       accounts: chartAccounts || [],
     })
