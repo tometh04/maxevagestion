@@ -171,6 +171,77 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     return Array.from(providers).sort()
   }, [payments])
 
+  // Función para calcular si un gasto recurrente tiene vencimiento en un mes específico
+  const hasVencimientoInMonth = (payment: any, year: string, month: string): boolean => {
+    const filterDate = `${year}-${month.padStart(2, "0")}`
+    
+    // Si tiene next_due_date, verificar si está en el mes
+    if (payment.next_due_date) {
+      const dueDate = payment.next_due_date.substring(0, 7) // YYYY-MM
+      if (dueDate === filterDate) return true
+    }
+
+    // Si no tiene next_due_date pero tiene start_date y frecuencia,
+    // calcular si alguno de los vencimientos futuros cae en el mes seleccionado
+    if (payment.start_date && payment.frequency) {
+      const startDate = new Date(payment.start_date)
+      const filterStart = new Date(parseInt(year), parseInt(month) - 1, 1)
+      const filterEnd = new Date(parseInt(year), parseInt(month), 0) // Último día del mes
+
+      // Verificar si start_date está en el mes seleccionado
+      if (startDate.getFullYear() === parseInt(year) && startDate.getMonth() === parseInt(month) - 1) {
+        return true
+      }
+
+      // Calcular vencimientos futuros según la frecuencia
+      let currentDate = new Date(startDate)
+      let iterations = 0
+      const maxIterations = 120 // Máximo 10 años para evitar loops infinitos
+
+      while (iterations < maxIterations && currentDate <= filterEnd) {
+        if (currentDate >= filterStart && currentDate <= filterEnd) {
+          return true // Este vencimiento cae en el mes seleccionado
+        }
+
+        // Calcular siguiente vencimiento según frecuencia
+        switch (payment.frequency) {
+          case "WEEKLY":
+            currentDate = new Date(currentDate)
+            currentDate.setDate(currentDate.getDate() + 7)
+            break
+          case "BIWEEKLY":
+            currentDate = new Date(currentDate)
+            currentDate.setDate(currentDate.getDate() + 14)
+            break
+          case "MONTHLY":
+            currentDate = new Date(currentDate)
+            currentDate.setMonth(currentDate.getMonth() + 1)
+            break
+          case "QUARTERLY":
+            currentDate = new Date(currentDate)
+            currentDate.setMonth(currentDate.getMonth() + 3)
+            break
+          case "YEARLY":
+            currentDate = new Date(currentDate)
+            currentDate.setFullYear(currentDate.getFullYear() + 1)
+            break
+          default:
+            currentDate = new Date(currentDate)
+            currentDate.setMonth(currentDate.getMonth() + 1)
+        }
+
+        // Si llegamos más allá del mes seleccionado sin encontrarlo, salir
+        if (currentDate > filterEnd && currentDate.getFullYear() > parseInt(year)) {
+          break
+        }
+
+        iterations++
+      }
+    }
+
+    return false
+  }
+
   // Filtrar pagos por proveedor y fecha
   const filteredPayments = useMemo(() => {
     let filtered = payments
@@ -183,22 +254,9 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
       })
     }
 
-    // Filtro por mes/año (filtrar por next_due_date o start_date)
+    // Filtro por mes/año (mejorado: calcula vencimientos futuros según frecuencia)
     if (monthFilter && monthFilter !== "ALL" && yearFilter && yearFilter !== "ALL") {
-      const filterDate = `${yearFilter}-${monthFilter.padStart(2, "0")}`
-      filtered = filtered.filter((p) => {
-        // Verificar si next_due_date está en el mes/año seleccionado
-        if (p.next_due_date) {
-          const dueDate = p.next_due_date.substring(0, 7) // YYYY-MM
-          if (dueDate === filterDate) return true
-        }
-        // Verificar si start_date está en el mes/año seleccionado
-        if (p.start_date) {
-          const startDate = p.start_date.substring(0, 7) // YYYY-MM
-          if (startDate === filterDate) return true
-        }
-        return false
-      })
+      filtered = filtered.filter((p) => hasVencimientoInMonth(p, yearFilter, monthFilter))
     }
 
     return filtered
