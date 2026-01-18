@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-17 (Actualizado con todas las mejoras recientes)
+**Última actualización:** 2025-01-17 (Actualizado con Gastos Recurrentes y Sistema de Pago Masivo)
 
 ---
 
@@ -237,6 +237,96 @@ Se eliminó completamente la funcionalidad de "Segmentos" de clientes ya que no 
 
 ---
 
+### 9. Renombrado "Pagos Recurrentes" → "Gastos Recurrentes" y Sistema de Categorías
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se renombró la funcionalidad "Pagos Recurrentes" a "Gastos Recurrentes" y se implementó un sistema de categorías para clasificar los gastos recurrentes.
+
+**Funcionalidades:**
+- Renombrado en sidebar, títulos de página y mensajes
+- Sistema de categorías predefinidas:
+  - Servicios (luz, agua, gas, internet, telefonía)
+  - Alquiler (oficina o espacio físico)
+  - Marketing (publicidad, redes sociales, promociones)
+  - Salarios (salarios y honorarios de empleados)
+  - Impuestos (impuestos y contribuciones)
+  - Otros (gastos varios)
+- Cada categoría tiene un color asignado para gráficos futuros
+- API para gestionar categorías (crear nuevas categorías - solo SUPER_ADMIN)
+
+**Mejoras implementadas:**
+- Tabla `recurring_payment_categories` creada con categorías predefinidas
+- Campo `category_id` agregado a `recurring_payments` (nullable para compatibilidad)
+- Gastos existentes asignados automáticamente a categoría "Otros"
+- API `/api/accounting/recurring-payments/categories` para obtener y crear categorías
+
+**Archivos modificados:**
+- `components/app-sidebar.tsx` - Renombrado "Pagos Recurrentes" → "Gastos Recurrentes"
+- `components/accounting/recurring-payments-page-client.tsx` - Títulos y mensajes actualizados
+
+**Archivos creados:**
+- `app/api/accounting/recurring-payments/categories/route.ts` - API de categorías
+
+**Migraciones de base de datos:**
+- `supabase/migrations/085_create_recurring_payment_categories.sql` - Tabla de categorías
+- `supabase/migrations/086_add_category_id_to_recurring_payments.sql` - Relación con categorías
+
+**Pendiente:**
+- Selector de categoría en dialogs de nuevo/editar (próximo paso)
+- Filtros de fecha (mes/año)
+- Gráficos de análisis por categoría
+
+---
+
+### 10. Sistema de Pago Masivo a Operadores
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se implementó un sistema completo de pago masivo a operadores que permite registrar múltiples pagos en una sola transacción, con soporte para pagos parciales y conversión de moneda.
+
+**Funcionalidades:**
+- Dialog de pago masivo con filtros:
+  - Filtro por operador
+  - Filtro por moneda (ARS/USD/Todas)
+  - Filtro por fecha de viaje (preparado)
+  - Selección múltiple con checkboxes
+  - Monto editable por operación (pagos parciales)
+- Conversor de moneda:
+  - Campo TC manual cuando hay mezcla de monedas
+  - Conversión automática ARS/USD y USD/ARS
+  - Validación de TC requerido
+- API de pago masivo:
+  - Actualiza `paid_amount` en `operator_payments`
+  - Cambia status a PAID si `paid_amount >= amount`
+  - Crea `ledger_movements` en cuenta origen y RESULTADO
+  - Soporta conversión de moneda en pagos
+- UI mejorada:
+  - Botón "Cargar Pago Masivo" en página principal
+  - Badge "Parcial" para pagos parciales
+  - Muestra monto pagado en tabla
+
+**Archivos creados:**
+- `components/accounting/bulk-payment-dialog.tsx` - Dialog completo de pago masivo
+- `app/api/accounting/operator-payments/bulk/route.ts` - API de pago masivo
+
+**Archivos modificados:**
+- `app/(dashboard)/accounting/operator-payments/page.tsx` - Carga de operadores y cuentas
+- `components/accounting/operator-payments-page-client.tsx` - Botón y badges
+- `lib/supabase/types.ts` - Tipos TypeScript actualizados con `paid_amount`
+
+**Migraciones de base de datos:**
+- `supabase/migrations/084_add_paid_amount_to_operator_payments.sql` - Campo `paid_amount` para pagos parciales
+
+**Detalles técnicos:**
+- Pagos parciales: `paid_amount` se actualiza y `status` cambia a PAID solo si `paid_amount >= amount`
+- Conversión de moneda: Se calcula `amount_usd` y `amount_ars_equivalent` según el TC proporcionado
+- Ledger movements: Se crean en la cuenta de origen (origen del pago) y en RESULTADO/COSTOS
+
+---
+
 ## Correcciones Recientes
 
 ### 2025-01-17
@@ -408,6 +498,104 @@ Type error: Argument of type '(open: any) => boolean' is not assignable to param
 ---
 
 ## Migraciones de Base de Datos
+
+### Migración 083: Tipo de Cambio y Monto USD en Pagos
+**Archivo:** `supabase/migrations/083_add_exchange_rate_to_payments.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Agregar columna exchange_rate (tipo de cambio usado)
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS exchange_rate NUMERIC(18,4);
+
+-- Agregar columna amount_usd (monto equivalente en USD)
+ALTER TABLE payments
+ADD COLUMN IF NOT EXISTS amount_usd NUMERIC(18,2);
+
+-- Comentarios
+COMMENT ON COLUMN payments.exchange_rate IS 'Tipo de cambio ARS/USD usado al momento del pago';
+COMMENT ON COLUMN payments.amount_usd IS 'Monto equivalente en USD (para pagos en ARS: amount / exchange_rate, para USD: amount)';
+
+-- Índice para búsquedas por monto USD
+CREATE INDEX IF NOT EXISTS idx_payments_amount_usd ON payments(amount_usd) WHERE amount_usd IS NOT NULL;
+```
+
+### Migración 081: Códigos de Reserva en Operaciones
+**Archivo:** `supabase/migrations/081_add_reservation_codes_to_operations.sql`
+**Fecha:** 2025-01-17
+
+```sql
+ALTER TABLE operations
+ADD COLUMN IF NOT EXISTS reservation_code_air TEXT,
+ADD COLUMN IF NOT EXISTS reservation_code_hotel TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_operations_reservation_code_air 
+  ON operations(reservation_code_air) WHERE reservation_code_air IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_operations_reservation_code_hotel 
+  ON operations(reservation_code_hotel) WHERE reservation_code_hotel IS NOT NULL;
+```
+
+### Migración 086: Categorías en Gastos Recurrentes
+**Archivo:** `supabase/migrations/086_add_category_id_to_recurring_payments.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Agregar columna category_id (nullable para mantener compatibilidad)
+ALTER TABLE recurring_payments
+ADD COLUMN IF NOT EXISTS category_id UUID REFERENCES recurring_payment_categories(id) ON DELETE SET NULL;
+
+-- Índice para mejorar búsquedas por categoría
+CREATE INDEX IF NOT EXISTS idx_recurring_payments_category ON recurring_payments(category_id) WHERE category_id IS NOT NULL;
+
+-- Asignar categoría "Otros" a gastos existentes sin categoría
+UPDATE recurring_payments
+SET category_id = (SELECT id FROM recurring_payment_categories WHERE name = 'Otros' LIMIT 1)
+WHERE category_id IS NULL;
+```
+
+### Migración 085: Tabla de Categorías de Gastos Recurrentes
+**Archivo:** `supabase/migrations/085_create_recurring_payment_categories.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Crear tabla de categorías
+CREATE TABLE IF NOT EXISTS recurring_payment_categories (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  color TEXT NOT NULL DEFAULT '#3b82f6',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insertar categorías predefinidas
+INSERT INTO recurring_payment_categories (name, description, color) VALUES
+  ('Servicios', 'Servicios básicos (luz, agua, gas, internet, telefonía)', '#3b82f6'),
+  ('Alquiler', 'Alquiler de oficina o espacio físico', '#ef4444'),
+  ('Marketing', 'Publicidad, redes sociales, promociones', '#10b981'),
+  ('Salarios', 'Salarios y honorarios de empleados', '#f59e0b'),
+  ('Impuestos', 'Impuestos y contribuciones', '#8b5cf6'),
+  ('Otros', 'Gastos varios que no encajan en otras categorías', '#6b7280')
+ON CONFLICT (name) DO NOTHING;
+```
+
+### Migración 084: Pagos Parciales en Operator Payments
+**Archivo:** `supabase/migrations/084_add_paid_amount_to_operator_payments.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Agregar columna paid_amount (monto parcialmente pagado)
+ALTER TABLE operator_payments
+ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(18,2) NOT NULL DEFAULT 0;
+
+COMMENT ON COLUMN operator_payments.paid_amount IS 
+  'Monto parcialmente pagado. Permite pagos parciales: si paid_amount < amount, el pago sigue siendo PENDING; si paid_amount >= amount, el pago puede marcarse como PAID.';
+
+-- Índice para búsquedas de pagos parciales
+CREATE INDEX IF NOT EXISTS idx_operator_payments_paid_amount 
+  ON operator_payments(paid_amount) WHERE paid_amount > 0 AND paid_amount < amount;
+```
 
 ### Migración 083: Tipo de Cambio y Monto USD en Pagos
 **Archivo:** `supabase/migrations/083_add_exchange_rate_to_payments.sql`
