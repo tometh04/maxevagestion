@@ -39,6 +39,7 @@ const recurringPaymentSchema = z.object({
   notes: z.string().optional().nullable(),
   invoice_number: z.string().optional().nullable(),
   reference: z.string().optional().nullable(),
+  category_id: z.string().uuid().optional().nullable(),
 })
 
 type RecurringPaymentFormValues = z.infer<typeof recurringPaymentSchema>
@@ -67,6 +68,7 @@ export function EditRecurringPaymentDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [hasEndDate, setHasEndDate] = useState(false)
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
   const form = useForm<RecurringPaymentFormValues>({
     resolver: zodResolver(recurringPaymentSchema) as any,
@@ -82,25 +84,43 @@ export function EditRecurringPaymentDialog({
       notes: null,
       invoice_number: null,
       reference: null,
+      category_id: null,
     },
   })
 
+  // Cargar categorías
+  const fetchCategories = async () => {
+    try {
+      const response = await fetch("/api/accounting/recurring-payments/categories")
+      if (response.ok) {
+        const data = await response.json()
+        setCategories(data.categories || [])
+      }
+    } catch (error) {
+      console.error("Error fetching categories:", error)
+    }
+  }
+
   useEffect(() => {
-    if (open && payment) {
-      form.reset({
-        amount: payment.amount || 0,
-        currency: payment.currency || "ARS",
-        frequency: payment.frequency || "MONTHLY",
-        start_date: payment.start_date || new Date().toISOString().split("T")[0],
-        end_date: payment.end_date || null,
-        next_due_date: payment.next_due_date || new Date().toISOString().split("T")[0],
-        is_active: payment.is_active !== undefined ? payment.is_active : true,
-        description: payment.description || "",
-        notes: payment.notes || null,
-        invoice_number: payment.invoice_number || null,
-        reference: payment.reference || null,
-      })
-      setHasEndDate(!!payment.end_date)
+    if (open) {
+      fetchCategories()
+      if (payment) {
+        form.reset({
+          amount: payment.amount || 0,
+          currency: payment.currency || "ARS",
+          frequency: payment.frequency || "MONTHLY",
+          start_date: payment.start_date || new Date().toISOString().split("T")[0],
+          end_date: payment.end_date || null,
+          next_due_date: payment.next_due_date || new Date().toISOString().split("T")[0],
+          is_active: payment.is_active !== undefined ? payment.is_active : true,
+          description: payment.description || "",
+          notes: payment.notes || null,
+          invoice_number: payment.invoice_number || null,
+          reference: payment.reference || null,
+          category_id: payment.category_id || null,
+        })
+        setHasEndDate(!!payment.end_date)
+      }
     }
   }, [open, payment, form])
 
@@ -336,6 +356,38 @@ export function EditRecurringPaymentDialog({
                     <FormControl>
                       <Input {...field} />
                     </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="category_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoría (Opcional)</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar categoría" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">Sin categoría</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: category.color }}
+                              />
+                              {category.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

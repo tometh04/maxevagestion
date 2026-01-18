@@ -36,6 +36,7 @@ export async function PATCH(
     if (body.notes !== undefined) updates.notes = body.notes || null
     if (body.invoice_number !== undefined) updates.invoice_number = body.invoice_number || null
     if (body.reference !== undefined) updates.reference = body.reference || null
+    if (body.category_id !== undefined) updates.category_id = body.category_id || null
 
     await updateRecurringPayment(supabase, id, updates)
 

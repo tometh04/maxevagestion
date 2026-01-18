@@ -92,6 +92,7 @@ export async function POST(request: Request) {
       notes,
       invoice_number,
       reference,
+      category_id,
     } = body
 
     // Validar campos requeridos
@@ -127,6 +128,7 @@ export async function POST(request: Request) {
         notes: notes || null,
         invoice_number: invoice_number || null,
         reference: reference || null,
+        category_id: category_id || null,
         agency_id: userAny.agency_id || null,
         created_by: user.id,
       })
