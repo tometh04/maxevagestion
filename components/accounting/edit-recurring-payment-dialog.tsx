@@ -39,7 +39,7 @@ const recurringPaymentSchema = z.object({
   notes: z.string().optional().nullable(),
   invoice_number: z.string().optional().nullable(),
   reference: z.string().optional().nullable(),
-  category_id: z.string().uuid().optional().nullable(),
+  category_id: z.string().optional().nullable(),
 })
 
 type RecurringPaymentFormValues = z.infer<typeof recurringPaymentSchema>
@@ -117,7 +117,7 @@ export function EditRecurringPaymentDialog({
           notes: payment.notes || null,
           invoice_number: payment.invoice_number || null,
           reference: payment.reference || null,
-          category_id: payment.category_id || null,
+          category_id: payment.category_id || "none",
         })
         setHasEndDate(!!payment.end_date)
       }
@@ -133,6 +133,7 @@ export function EditRecurringPaymentDialog({
         body: JSON.stringify({
           ...values,
           end_date: hasEndDate ? values.end_date : null,
+          category_id: values.category_id === "none" ? null : values.category_id,
         }),
       })
 
@@ -374,7 +375,7 @@ export function EditRecurringPaymentDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Sin categoría</SelectItem>
+                        <SelectItem value="none">Sin categoría</SelectItem>
                         {categories.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
                             <div className="flex items-center gap-2">
