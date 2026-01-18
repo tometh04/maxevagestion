@@ -72,33 +72,44 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El tipo de cambio debe ser mayor a 0" }, { status: 400 })
     }
 
-    // Intentar obtener el ID del usuario, pero permitir NULL si no existe
+    // Verificar si el usuario existe en la tabla users antes de asignar created_by
     let createdByUserId: string | null = null
     try {
-      // Verificar si el usuario existe en la tabla users
-      const { data: userCheck } = await (supabase.from("users") as any)
+      const { data: userCheck, error: userCheckError } = await (supabase.from("users") as any)
         .select("id")
         .eq("id", user.id)
         .maybeSingle()
       
-      if (userCheck) {
+      if (!userCheckError && userCheck && userCheck.id) {
         createdByUserId = user.id
+        console.log(`[MonthlyExchangeRate] User verified: ${user.id}`)
       } else {
-        console.warn(`User ID ${user.id} not found in users table, saving without created_by`)
+        console.warn(`[MonthlyExchangeRate] User ID ${user.id} not found in users table (error: ${userCheckError?.message || 'no data'}), saving without created_by`)
       }
-    } catch (userError) {
-      console.warn("Could not verify user in users table, saving without created_by:", userError)
+    } catch (userError: any) {
+      console.warn(`[MonthlyExchangeRate] Error checking user existence: ${userError?.message}`, userError)
+      // Continuar sin created_by
+    }
+
+    // Construir el objeto de datos para upsert
+    const upsertData: any = {
+      year,
+      month,
+      usd_to_ars_rate: parseFloat(usd_to_ars_rate),
+      updated_at: new Date().toISOString(),
+    }
+    
+    // Solo agregar created_by si el usuario existe
+    if (createdByUserId) {
+      upsertData.created_by = createdByUserId
+    } else {
+      // No incluir created_by en el upsert (permanecerá NULL o el valor actual)
+      // En Supabase, si no incluyes el campo en un UPDATE, no se modifica
     }
 
     const { data, error } = await (supabase.from("monthly_exchange_rates") as any)
       .upsert(
-        {
-          year,
-          month,
-          usd_to_ars_rate: parseFloat(usd_to_ars_rate),
-          created_by: createdByUserId, // Puede ser NULL
-          updated_at: new Date().toISOString(),
-        },
+        upsertData,
         {
           onConflict: "year,month",
         }
@@ -109,12 +120,33 @@ export async function POST(request: Request) {
     if (error) {
       console.error("Error upserting monthly exchange rate:", error)
       
-      // Error más descriptivo
-      if (error.code === "23503") {
-        return NextResponse.json({ 
-          error: "Error de referencia: El usuario no existe en la tabla users. El tipo de cambio se guardará sin creador.",
-          details: error.message 
-        }, { status: 500 })
+      // Si es error de foreign key, intentar de nuevo sin created_by
+      if (error.code === "23503" && createdByUserId) {
+        console.log(`[MonthlyExchangeRate] Retrying without created_by due to FK constraint`)
+        const { data: retryData, error: retryError } = await (supabase.from("monthly_exchange_rates") as any)
+          .upsert(
+            {
+              year,
+              month,
+              usd_to_ars_rate: parseFloat(usd_to_ars_rate),
+              updated_at: new Date().toISOString(),
+              // NO incluir created_by
+            },
+            {
+              onConflict: "year,month",
+            }
+          )
+          .select()
+          .single()
+        
+        if (retryError) {
+          return NextResponse.json({ 
+            error: "Error al guardar tipo de cambio mensual",
+            details: retryError.message 
+          }, { status: 500 })
+        }
+        
+        return NextResponse.json({ data: retryData })
       }
       
       return NextResponse.json({ 

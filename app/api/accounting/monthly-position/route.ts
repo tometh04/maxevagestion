@@ -134,8 +134,18 @@ export async function GET(request: Request) {
     const balances: Record<string, number> = {}
     const balancesByCurrency: Record<string, { ars: number; usd: number }> = {}
 
-    // Calcular balances de cuentas financieras
-    const financialAccountsArrayForBalance = (financialAccounts || []) as any[]
+    // Filtrar cuentas financieras por agencia ANTES de calcular balances
+    let financialAccountsArrayForBalance = (financialAccounts || []) as any[]
+    
+    // Si no es "ALL", filtrar solo las cuentas de la agencia seleccionada (excluir cuentas globales sin agency_id)
+    if (agencyId !== "ALL") {
+      financialAccountsArrayForBalance = financialAccountsArrayForBalance.filter((acc: any) => {
+        // Incluir cuentas de la agencia específica
+        return acc.agency_id === agencyId
+      })
+      console.log(`[MonthlyPosition] Filtrando por agencia ${agencyId}: ${financialAccountsArrayForBalance.length} cuentas (de ${(financialAccounts || []).length} totales)`)
+    }
+    
     console.log(`[MonthlyPosition] Procesando ${financialAccountsArrayForBalance.length} cuentas financieras con chart_account_id`)
     
     for (const account of financialAccountsArrayForBalance) {
@@ -329,26 +339,11 @@ export async function GET(request: Request) {
         balancesByCurrency["PASIVO_CORRIENTE"].ars += pendingARS
         balancesByCurrency["PASIVO_CORRIENTE"].usd += pendingUSD
         
-        // Convertir a USD usando TC mensual para el balance total (si hay TC)
-        let totalInUSD = 0
-        if (monthlyExchangeRate) {
-          // Convertir ARS a USD usando TC mensual
-          totalInUSD = pendingUSD + (pendingARS / monthlyExchangeRate)
-        } else {
-          // Si no hay TC, mantener en ARS (asumiendo que el balance total está en ARS)
-          totalInUSD = pendingARS + pendingUSD // Esto no es ideal, pero sin TC no podemos convertir
-        }
+        // NO agregar al balance total aquí - los balances ya están calculados en ARS/USD por separado
+        // El balance total se calculará al final usando TC mensual si está disponible
+        // Solo agregamos a balancesByCurrency para mostrar valores separados por moneda
         
-        // Agregar al balance total (convertido a la moneda base si hay TC)
-        if (monthlyExchangeRate) {
-          // Si hay TC, agregar todo en USD equivalente
-          balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + totalInUSD
-        } else {
-          // Sin TC, sumar ARS + USD (aproximado)
-          balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + pendingARS + pendingUSD
-        }
-        
-        console.log(`[MonthlyPosition] Pagos pendientes (recurrentes + operator_payments + payments): ARS=${pendingARS}, USD=${pendingUSD}, Total USD=${totalInUSD.toFixed(2)} (TC=${monthlyExchangeRate || 'N/A'})`)
+        console.log(`[MonthlyPosition] Pagos pendientes (recurrentes + operator_payments + payments): ARS=${pendingARS}, USD=${pendingUSD} (TC=${monthlyExchangeRate || 'N/A'})`)
       }
     } catch (error) {
       console.error("Error obteniendo pagos pendientes:", error)
@@ -541,15 +536,16 @@ export async function GET(request: Request) {
     const activoCorriente = balancesByCurrency["ACTIVO_CORRIENTE"] || { ars: 0, usd: 0 }
     const activoNoCorriente = balancesByCurrency["ACTIVO_NO_CORRIENTE"] || { ars: 0, usd: 0 }
     
-    const activo_corriente = balances["ACTIVO_CORRIENTE"] || 0
-    const activo_no_corriente = balances["ACTIVO_NO_CORRIENTE"] || 0
-    
     // Obtener balances de pasivos por moneda
     const pasivoCorriente = balancesByCurrency["PASIVO_CORRIENTE"] || { ars: 0, usd: 0 }
     const pasivoNoCorriente = balancesByCurrency["PASIVO_NO_CORRIENTE"] || { ars: 0, usd: 0 }
     
-    const pasivo_corriente = balances["PASIVO_CORRIENTE"] || 0
-    const pasivo_no_corriente = balances["PASIVO_NO_CORRIENTE"] || 0
+    // Calcular balances totales usando valores ARS (son los que se muestran como principales)
+    // Los valores entre paréntesis (USD) se calculan después con TC mensual
+    const activo_corriente = activoCorriente.ars
+    const activo_no_corriente = activoNoCorriente.ars
+    const pasivo_corriente = pasivoCorriente.ars
+    const pasivo_no_corriente = pasivoNoCorriente.ars
     const patrimonio_neto = balances["PATRIMONIO_NETO_NONE"] || 0
 
     const resultado_mes = ingresos - costos - gastos
