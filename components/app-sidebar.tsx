@@ -132,7 +132,7 @@ const allNavigation: NavItem[] = [
           { title: "Posición Mensual", url: "/accounting/monthly-position" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
-          { title: "Pagos Recurrentes", url: "/accounting/recurring-payments" },
+          { title: "Gastos Recurrentes", url: "/accounting/recurring-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
         ],
       },

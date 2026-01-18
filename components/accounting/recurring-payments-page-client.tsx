@@ -230,7 +230,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Pagos Recurrentes</CardTitle>
+              <CardTitle>Gastos Recurrentes</CardTitle>
               <CardDescription>Gestión de pagos automáticos a proveedores</CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -288,8 +288,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           {filteredPayments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               {providerFilter !== "ALL" 
-                ? `No hay pagos recurrentes para "${providerFilter}"`
-                : "No se encontraron pagos recurrentes"
+                ? `No hay gastos recurrentes para "${providerFilter}"`
+                : "No se encontraron gastos recurrentes"
               }
             </div>
           ) : (
