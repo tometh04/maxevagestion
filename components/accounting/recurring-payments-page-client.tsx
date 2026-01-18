@@ -79,10 +79,10 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   // Inicializar filtros de fecha con mes/año actual
   useEffect(() => {
     const now = new Date()
-    if (!monthFilter) {
+    if (!monthFilter || monthFilter === "") {
       setMonthFilter(String(now.getMonth() + 1).padStart(2, "0"))
     }
-    if (!yearFilter) {
+    if (!yearFilter || yearFilter === "") {
       setYearFilter(String(now.getFullYear()))
     }
   }, [])
@@ -184,7 +184,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     }
 
     // Filtro por mes/año (filtrar por next_due_date o start_date)
-    if (monthFilter && yearFilter) {
+    if (monthFilter && monthFilter !== "ALL" && yearFilter && yearFilter !== "ALL") {
       const filterDate = `${yearFilter}-${monthFilter.padStart(2, "0")}`
       filtered = filtered.filter((p) => {
         // Verificar si next_due_date está en el mes/año seleccionado
@@ -431,7 +431,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <SelectValue placeholder="Mes" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los meses</SelectItem>
+                  <SelectItem value="ALL">Todos los meses</SelectItem>
                   {Array.from({ length: 12 }, (_, i) => {
                     const month = String(i + 1).padStart(2, "0")
                     const monthName = new Date(2024, i).toLocaleDateString("es-AR", { month: "long" })
@@ -450,7 +450,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <SelectValue placeholder="Año" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los años</SelectItem>
+                  <SelectItem value="ALL">Todos los años</SelectItem>
                   {Array.from({ length: 5 }, (_, i) => {
                     const year = new Date().getFullYear() - 2 + i
                     return (

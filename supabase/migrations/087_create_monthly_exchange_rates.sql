@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS monthly_exchange_rates (
   usd_to_ars_rate NUMERIC(18,4) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE(year, month)
 );
 
