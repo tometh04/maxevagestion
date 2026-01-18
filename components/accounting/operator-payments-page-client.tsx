@@ -5,6 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { BulkPaymentDialog } from "./bulk-payment-dialog"
+import { CreditCard } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -46,13 +49,15 @@ const statusColors: Record<string, string> = {
 
 interface OperatorPaymentsPageClientProps {
   agencies: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string }>
 }
 
-export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageClientProps) {
+export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaymentsPageClientProps) {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
+  const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
 
   useEffect(() => {
     async function fetchPayments() {
@@ -173,8 +178,16 @@ export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageCli
       {/* Payments Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Pagos a Operadores</CardTitle>
-          <CardDescription>Cuentas a pagar a operadores</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Pagos a Operadores</CardTitle>
+              <CardDescription>Cuentas a pagar a operadores</CardDescription>
+            </div>
+            <Button onClick={() => setBulkPaymentOpen(true)}>
+              <CreditCard className="h-4 w-4 mr-2" />
+              Cargar Pago Masivo
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {payments.length === 0 ? (
@@ -198,6 +211,8 @@ export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageCli
                     payment.status === "PENDING" &&
                     new Date(payment.due_date) < new Date()
                   const displayStatus = isOverdue ? "OVERDUE" : payment.status
+                  const paidAmount = parseFloat(payment.paid_amount || "0") || 0
+                  const isPartial = paidAmount > 0 && paidAmount < parseFloat(payment.amount || "0")
 
                   return (
                     <TableRow key={payment.id}>
@@ -211,7 +226,12 @@ export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageCli
                       </TableCell>
                       <TableCell>{payment.operators?.name || "-"}</TableCell>
                       <TableCell className="font-medium">
-                        {formatCurrency(payment.amount, payment.currency)}
+                        <div>{formatCurrency(payment.amount, payment.currency)}</div>
+                        {isPartial && (
+                          <div className="text-xs text-muted-foreground">
+                            Pagado: {formatCurrency(paidAmount, payment.currency)}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
@@ -222,9 +242,16 @@ export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageCli
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusColors[displayStatus] || "bg-gray-500"}>
-                          {statusLabels[displayStatus] || displayStatus}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge className={statusColors[displayStatus] || "bg-gray-500"}>
+                            {statusLabels[displayStatus] || displayStatus}
+                          </Badge>
+                          {isPartial && (
+                            <Badge variant="outline" className="text-xs">
+                              Parcial
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -234,6 +261,14 @@ export function OperatorPaymentsPageClient({ agencies }: OperatorPaymentsPageCli
           )}
         </CardContent>
       </Card>
+
+      {/* Bulk Payment Dialog */}
+      <BulkPaymentDialog
+        open={bulkPaymentOpen}
+        onOpenChange={setBulkPaymentOpen}
+        operators={operators}
+        agencies={agencies}
+      />
     </div>
   )
 }

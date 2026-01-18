@@ -23,6 +23,9 @@ export default async function OperatorPaymentsPage() {
     agencies = data || []
   }
 
+  // Get operators
+  const { data: operators } = await supabase.from("operators").select("id, name").order("name")
+
   return (
     <div className="space-y-6">
       <div>
@@ -32,7 +35,10 @@ export default async function OperatorPaymentsPage() {
         </p>
       </div>
 
-      <OperatorPaymentsPageClient agencies={agencies} />
+      <OperatorPaymentsPageClient 
+        agencies={agencies}
+        operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
+      />
     </div>
   )
 }
