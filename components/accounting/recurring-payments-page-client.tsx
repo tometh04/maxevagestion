@@ -27,6 +27,21 @@ import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  Legend,
+} from "recharts"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -59,6 +74,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [tableError, setTableError] = useState<string | null>(null)
+  const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
   // Inicializar filtros de fecha con mes/año actual
   useEffect(() => {
@@ -100,6 +116,22 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
       setLoading(false)
     }
   }, [isActiveFilter, agencyFilter])
+
+  // Cargar categorías
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await fetch("/api/accounting/recurring-payments/categories")
+        if (response.ok) {
+          const data = await response.json()
+          setCategories(data.categories || [])
+        }
+      } catch (error) {
+        console.error("Error fetching categories:", error)
+      }
+    }
+    fetchCategories()
+  }, [])
 
   useEffect(() => {
     fetchData()
@@ -180,6 +212,85 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const totalMonthlyUSD = payments
     .filter((p) => p.is_active && p.frequency === "MONTHLY" && p.currency === "USD")
     .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+
+  // Datos para gráficos
+  // 1. Gráfico de barras: Gastos por categoría (mensual)
+  const expensesByCategory = useMemo(() => {
+    const categoryMap = new Map<string, number>()
+    
+    filteredPayments.forEach((p) => {
+      const categoryId = p.category_id || "sin_categoria"
+      const category = categories.find(c => c.id === categoryId)
+      const categoryName = category?.name || "Sin categoría"
+      const amount = parseFloat(p.amount || "0")
+      
+      // Convertir todo a USD para comparación (simplificado - usar 1:1 para USD, convertir ARS)
+      const amountUsd = p.currency === "USD" ? amount : amount / 1500 // Simplificado, idealmente usar TC real
+      
+      categoryMap.set(categoryName, (categoryMap.get(categoryName) || 0) + amountUsd)
+    })
+
+    return Array.from(categoryMap.entries())
+      .map(([name, value]) => ({ name, value: Number(value.toFixed(2)) }))
+      .sort((a, b) => b.value - a.value)
+  }, [filteredPayments, categories])
+
+  // 2. Gráfico de torta: Distribución porcentual
+  const categoryDistribution = useMemo(() => {
+    const total = expensesByCategory.reduce((sum, item) => sum + item.value, 0)
+    if (total === 0) return []
+    
+    return expensesByCategory.map((item) => ({
+      name: item.name,
+      value: item.value,
+      percentage: ((item.value / total) * 100).toFixed(1),
+    }))
+  }, [expensesByCategory])
+
+  // 3. Gráfico de líneas: Evolución mensual (últimos 6 meses)
+  const monthlyEvolution = useMemo(() => {
+    const months: Record<string, Record<string, number>> = {}
+    const last6Months = Array.from({ length: 6 }, (_, i) => {
+      const date = new Date()
+      date.setMonth(date.getMonth() - i)
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+    }).reverse()
+
+    // Inicializar meses
+    last6Months.forEach((month) => {
+      months[month] = {}
+      categories.forEach((cat) => {
+        months[month][cat.name] = 0
+      })
+      months[month]["Sin categoría"] = 0
+    })
+
+    // Agregar gastos a sus meses correspondientes
+    filteredPayments.forEach((p) => {
+      if (p.next_due_date) {
+        const monthKey = p.next_due_date.substring(0, 7)
+        if (months[monthKey]) {
+          const categoryId = p.category_id || "sin_categoria"
+          const category = categories.find(c => c.id === categoryId)
+          const categoryName = category?.name || "Sin categoría"
+          const amount = parseFloat(p.amount || "0")
+          const amountUsd = p.currency === "USD" ? amount : amount / 1500
+          
+          months[monthKey][categoryName] = (months[monthKey][categoryName] || 0) + amountUsd
+        }
+      }
+    })
+
+    return last6Months.map((month) => {
+      const monthName = new Date(month + "-01").toLocaleDateString("es-AR", { month: "short", year: "numeric" })
+      return {
+        month: monthName,
+        ...months[month],
+      }
+    })
+  }, [filteredPayments, categories])
+
+  const CHART_COLORS = categories.map(c => c.color).concat(["#6b7280"]) // Agregar color para "Sin categoría"
 
   if (loading) {
     return (
