@@ -3,87 +3,77 @@
 import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Download, Save } from "lucide-react"
+import { CalendarIcon, Save, RefreshCw, TrendingUp, TrendingDown, Wallet, Building2, Users, Truck } from "lucide-react"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
-import { Input } from "@/components/ui/input"
-import { toast } from "@/hooks/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
-interface MonthlyPositionPageClientProps {
-  agencies: Array<{ id: string; name: string }>
-  userRole: string
+interface Agency {
+  id: string
+  name: string
 }
 
 interface MonthlyPosition {
   year: number
   month: number
-  dateTo: string
+  agencyId: string
+  monthlyExchangeRate: number | null
+  latestExchangeRate: number
+  detalle: {
+    efectivo: { usd: number; ars: number }
+    bancos: { usd: number; ars: number }
+    cuentasPorCobrar: number
+    cuentasPorPagar: number
+    gastosRecurrentesPendientes: { usd: number; ars: number }
+  }
   activo: {
-    corriente: { ars: number; usd: number }
-    no_corriente: { ars: number; usd: number }
-    total: { ars: number; usd: number }
+    corriente: number
+    no_corriente: number
+    total: number
   }
   pasivo: {
-    corriente: { ars: number; usd: number }
-    no_corriente: { ars: number; usd: number }
-    total: { ars: number; usd: number }
-  }
-  patrimonio_neto: {
+    corriente: number
+    no_corriente: number
     total: number
   }
+  patrimonio_neto: number
   resultado: {
-    ingresos: number
-    costos: number
-    gastos: number
-    total: number
-    ingresosARS?: number
-    ingresosUSD?: number
-    costosARS?: number
-    costosUSD?: number
-    gastosARS?: number
-    gastosUSD?: number
-    resultadoARS?: number
-    resultadoUSD?: number
-  }
-  monthlyExchangeRate?: number | null
-  profitDistribution?: {
-    commissions: { ars: number; usd: number }
-    operatingExpenses: { ars: number; usd: number }
-    partnerShares: { ars: number; usd: number }
+    ingresos: { usd: number; ars: number; total: number }
+    costos: { usd: number; ars: number; total: number }
+    gastos: { usd: number; ars: number; total: number }
+    resultado: number
   }
 }
 
-function formatCurrency(amount: number, currency: "ARS" | "USD" = "ARS"): string {
-  // Para USD, usar formato con punto como separador decimal
-  if (currency === "USD") {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
-  
-  // Para ARS, usar formato argentino sin decimales
+interface MonthlyPositionPageClientProps {
+  agencies: Agency[]
+  userRole: string
+}
+
+function formatUSD(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+  }).format(amount)
+}
+
+function formatARS(amount: number): string {
   return new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency: "ARS",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(Math.round(amount))
+    minimumFractionDigits: 2,
+  }).format(amount)
 }
 
-const monthNames = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
-]
-
 export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositionPageClientProps) {
+  const { toast } = useToast()
   const currentDate = new Date()
   const [year, setYear] = useState(currentDate.getFullYear())
   const [month, setMonth] = useState(currentDate.getMonth() + 1)
@@ -102,32 +92,35 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
         month: month.toString(),
         agencyId,
       })
-      console.log(`[MonthlyPosition] Fetching with params: year=${year}, month=${month}, agencyId=${agencyId}`)
       const response = await fetch(`/api/accounting/monthly-position?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
-        console.log(`[MonthlyPosition] Received data:`, data)
         setPosition(data)
-        // Actualizar el TC en el input si existe
         if (data.monthlyExchangeRate) {
           setExchangeRate(data.monthlyExchangeRate.toString())
         } else {
           setExchangeRate("")
         }
       } else {
-        const errorText = await response.text()
-        console.error("Error fetching monthly position:", response.status, errorText)
+        console.error("Error fetching position:", await response.text())
+        toast({
+          title: "Error",
+          description: "No se pudo cargar la posición contable",
+          variant: "destructive",
+        })
       }
     } catch (error) {
       console.error("Error:", error)
     } finally {
       setLoading(false)
     }
-  }, [year, month, agencyId])
+  }, [year, month, agencyId, toast])
 
   useEffect(() => {
     fetchPosition()
   }, [fetchPosition])
+
+  const selectedDate = new Date(year, month - 1, 1)
 
   const handleDateSelect = (date: Date | undefined) => {
     if (date) {
@@ -153,11 +146,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
       const response = await fetch("/api/accounting/monthly-exchange-rates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          year,
-          month,
-          usd_to_ars_rate: rate,
-        }),
+        body: JSON.stringify({ year, month, usd_to_ars_rate: rate }),
       })
 
       if (response.ok) {
@@ -165,17 +154,17 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
           title: "Éxito",
           description: "Tipo de cambio guardado correctamente",
         })
-        // Recargar la posición para actualizar datos
         fetchPosition()
       } else {
-        const error = await response.json()
+        const errorData = await response.json()
         toast({
           title: "Error",
-          description: error.error || "Error al guardar tipo de cambio",
+          description: errorData.error || "No se pudo guardar el tipo de cambio",
           variant: "destructive",
         })
       }
     } catch (error) {
+      console.error("Error saving exchange rate:", error)
       toast({
         title: "Error",
         description: "Error al guardar tipo de cambio",
@@ -186,41 +175,28 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
     }
   }
 
-  const selectedDate = new Date(year, month - 1, 1)
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Posición Contable Mensual</h1>
-          <p className="text-muted-foreground">Estado de situación patrimonial al cierre del mes</p>
-        </div>
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-bold">Posición Contable Mensual</h1>
+        <p className="text-muted-foreground">Estado de situación patrimonial al cierre del mes (en USD)</p>
       </div>
 
       {/* Filtros */}
       <Card>
         <CardHeader>
-          <CardTitle>Filtros</CardTitle>
+          <CardTitle className="text-lg">Filtros</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Mes y Año */}
             <div className="space-y-2">
               <Label>Mes y Año</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !selectedDate && "text-muted-foreground"
-                    )}
-                  >
+                  <Button variant="outline" className="w-full justify-start text-left font-normal">
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? (
-                      format(selectedDate, "MMMM yyyy", { locale: es })
-                    ) : (
-                      <span>Seleccionar fecha</span>
-                    )}
+                    {format(selectedDate, "MMMM yyyy", { locale: es })}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -238,6 +214,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </Popover>
             </div>
 
+            {/* Agencia */}
             {agencies.length > 0 && (
               <div className="space-y-2">
                 <Label>Agencia</Label>
@@ -257,31 +234,36 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
               </div>
             )}
 
-            {/* Selector de Tipo de Cambio Mensual */}
+            {/* Tipo de Cambio */}
             <div className="space-y-2">
-              <Label>Tipo de Cambio USD/ARS</Label>
+              <Label>TC Mensual (USD/ARS)</Label>
               <div className="flex gap-2">
                 <Input
                   type="number"
-                  placeholder="Ej: 1500"
+                  placeholder={`Ej: ${position?.latestExchangeRate || 1000}`}
                   value={exchangeRate}
                   onChange={(e) => setExchangeRate(e.target.value)}
-                  step="0.0001"
+                  step="0.01"
                   min="0"
                 />
-                <Button
-                  onClick={handleSaveExchangeRate}
-                  disabled={savingExchangeRate || !exchangeRate}
-                  size="icon"
-                >
+                <Button onClick={handleSaveExchangeRate} disabled={savingExchangeRate || !exchangeRate} size="icon">
                   <Save className="h-4 w-4" />
                 </Button>
               </div>
               {position?.monthlyExchangeRate && (
                 <p className="text-xs text-muted-foreground">
-                  Actual: {position.monthlyExchangeRate.toFixed(4)}
+                  Guardado: {position.monthlyExchangeRate}
                 </p>
               )}
+            </div>
+
+            {/* Botón Actualizar */}
+            <div className="space-y-2">
+              <Label>&nbsp;</Label>
+              <Button onClick={fetchPosition} disabled={loading} className="w-full">
+                <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
+                Actualizar
+              </Button>
             </div>
           </div>
         </CardContent>
@@ -295,120 +277,137 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
         </Card>
       ) : position ? (
         <>
-          {/* Resumen Ejecutivo */}
+          {/* KPIs Principales */}
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Activo</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                  Total Activo
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl font-bold text-green-600 break-words">
-                  {formatCurrency(position.activo.total.ars, "ARS")}
-                  {position.activo.total.usd > 0 && (
-                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
-                      ({formatCurrency(position.activo.total.usd, "USD")})
-                    </span>
-                  )}
+                <div className="text-2xl font-bold text-green-600">
+                  {formatUSD(position.activo.total)}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Total Pasivo</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingDown className="h-4 w-4 text-red-500" />
+                  Total Pasivo
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl font-bold text-red-600 break-words">
-                  {formatCurrency(position.pasivo.total.ars, "ARS")}
-                  {position.pasivo.total.usd > 0 && (
-                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
-                      ({formatCurrency(position.pasivo.total.usd, "USD")})
-                    </span>
-                  )}
+                <div className="text-2xl font-bold text-red-600">
+                  {formatUSD(position.pasivo.total)}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Patrimonio Neto</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <Wallet className="h-4 w-4 text-blue-500" />
+                  Patrimonio Neto
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-xl sm:text-2xl font-bold text-blue-600 break-words">
-                  {formatCurrency(position.patrimonio_neto.total)}
+                <div className={cn("text-2xl font-bold", position.patrimonio_neto >= 0 ? "text-blue-600" : "text-red-600")}>
+                  {formatUSD(position.patrimonio_neto)}
                 </div>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">Resultado del Mes</CardTitle>
+                <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4" />
+                  Resultado del Mes
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className={`text-xl sm:text-2xl font-bold break-words ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {formatCurrency(position.resultado.resultadoARS || position.resultado.total, "ARS")}
-                  {position.resultado.resultadoUSD !== undefined && position.resultado.resultadoUSD !== 0 && (
-                    <span className="ml-2 text-sm sm:text-base text-muted-foreground">
-                      ({formatCurrency(position.resultado.resultadoUSD, "USD")})
-                    </span>
-                  )}
+                <div className={cn("text-2xl font-bold", position.resultado.resultado >= 0 ? "text-green-600" : "text-red-600")}>
+                  {formatUSD(position.resultado.resultado)}
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Detalle por Rubros */}
-          <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+          {/* Detalle */}
+          <div className="grid gap-6 lg:grid-cols-2">
             {/* ACTIVO */}
             <Card>
               <CardHeader>
-                <CardTitle>ACTIVO</CardTitle>
+                <CardTitle className="text-green-600">ACTIVO</CardTitle>
                 <CardDescription>Recursos y bienes de la empresa</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Activo Corriente</span>
-                    <div className="font-bold text-green-600 text-sm sm:text-base break-words">
-                      {formatCurrency(position.activo.corriente.ars, "ARS")}
-                      {position.activo.corriente.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.activo.corriente.usd, "USD")})
-                        </span>
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm text-muted-foreground">Activo Corriente</h4>
+                  
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-4 w-4 text-green-500" />
+                      <span>Efectivo USD</span>
+                    </div>
+                    <span className="font-medium">{formatUSD(position.detalle.efectivo.usd)}</span>
+                  </div>
+
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Wallet className="h-4 w-4 text-blue-500" />
+                      <span>Efectivo ARS</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-medium">{formatARS(position.detalle.efectivo.ars)}</span>
+                      {position.monthlyExchangeRate && position.detalle.efectivo.ars > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          ≈ {formatUSD(position.detalle.efectivo.ars / position.monthlyExchangeRate)}
+                        </p>
                       )}
                     </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Caja, Bancos, Cuentas por Cobrar, Activos en Stock
+
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-green-500" />
+                      <span>Bancos USD</span>
+                    </div>
+                    <span className="font-medium">{formatUSD(position.detalle.bancos.usd)}</span>
                   </div>
+
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-blue-500" />
+                      <span>Bancos ARS</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-medium">{formatARS(position.detalle.bancos.ars)}</span>
+                      {position.monthlyExchangeRate && position.detalle.bancos.ars > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          ≈ {formatUSD(position.detalle.bancos.ars / position.monthlyExchangeRate)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-between items-center py-2 border-b bg-yellow-50 dark:bg-yellow-950/30 px-2 rounded">
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-yellow-600" />
+                      <span className="font-medium">Cuentas por Cobrar</span>
+                    </div>
+                    <span className="font-bold text-yellow-600">{formatUSD(position.detalle.cuentasPorCobrar)}</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Lo que los clientes nos deben</p>
                 </div>
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Activo No Corriente</span>
-                    <div className="font-bold text-green-600 text-sm sm:text-base break-words">
-                      {formatCurrency(position.activo.no_corriente.ars, "ARS")}
-                      {position.activo.no_corriente.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.activo.no_corriente.usd, "USD")})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Inversiones a largo plazo
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                    <span className="text-base sm:text-lg font-bold">Total Activo</span>
-                    <div className="text-base sm:text-lg font-bold text-green-600 break-words">
-                      {formatCurrency(position.activo.total.ars, "ARS")}
-                      {position.activo.total.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.activo.total.usd, "USD")})
-                        </span>
-                      )}
-                    </div>
+
+                <div className="pt-4 border-t">
+                  <div className="flex justify-between items-center">
+                    <span className="text-lg font-bold">Total Activo</span>
+                    <span className="text-lg font-bold text-green-600">{formatUSD(position.activo.total)}</span>
                   </div>
                 </div>
               </CardContent>
@@ -417,232 +416,117 @@ export function MonthlyPositionPageClient({ agencies, userRole }: MonthlyPositio
             {/* PASIVO Y PATRIMONIO */}
             <Card>
               <CardHeader>
-                <CardTitle>PASIVO Y PATRIMONIO NETO</CardTitle>
+                <CardTitle className="text-red-600">PASIVO Y PATRIMONIO NETO</CardTitle>
                 <CardDescription>Obligaciones y capital</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Pasivo Corriente</span>
-                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
-                      {formatCurrency(position.pasivo.corriente.ars, "ARS")}
-                      {position.pasivo.corriente.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.pasivo.corriente.usd, "USD")})
-                        </span>
-                      )}
+                <div className="space-y-3">
+                  <h4 className="font-medium text-sm text-muted-foreground">Pasivo Corriente</h4>
+
+                  <div className="flex justify-between items-center py-2 border-b bg-orange-50 dark:bg-orange-950/30 px-2 rounded">
+                    <div className="flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-orange-600" />
+                      <span className="font-medium">Cuentas por Pagar (Operadores)</span>
                     </div>
+                    <span className="font-bold text-orange-600">{formatUSD(position.detalle.cuentasPorPagar)}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Cuentas por Pagar, IVA a Pagar, Sueldos a Pagar
+                  <p className="text-xs text-muted-foreground">Lo que debemos a operadores/proveedores</p>
+
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span>Gastos Recurrentes Pendientes (USD)</span>
+                    <span className="font-medium">{formatUSD(position.detalle.gastosRecurrentesPendientes.usd)}</span>
                   </div>
-                </div>
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Pasivo No Corriente</span>
-                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
-                      {formatCurrency(position.pasivo.no_corriente.ars, "ARS")}
-                      {position.pasivo.no_corriente.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.pasivo.no_corriente.usd, "USD")})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Préstamos a largo plazo
-                  </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Total Pasivo</span>
-                    <div className="font-bold text-red-600 text-sm sm:text-base break-words">
-                      {formatCurrency(position.pasivo.total.ars, "ARS")}
-                      {position.pasivo.total.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.pasivo.total.usd, "USD")})
-                        </span>
+
+                  <div className="flex justify-between items-center py-2 border-b">
+                    <span>Gastos Recurrentes Pendientes (ARS)</span>
+                    <div className="text-right">
+                      <span className="font-medium">{formatARS(position.detalle.gastosRecurrentesPendientes.ars)}</span>
+                      {position.monthlyExchangeRate && position.detalle.gastosRecurrentesPendientes.ars > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          ≈ {formatUSD(position.detalle.gastosRecurrentesPendientes.ars / position.monthlyExchangeRate)}
+                        </p>
                       )}
                     </div>
                   </div>
                 </div>
-                <div>
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                    <span className="text-sm font-medium">Patrimonio Neto</span>
-                    <span className="font-bold text-blue-600 text-sm sm:text-base break-words">{formatCurrency(position.patrimonio_neto.total)}</span>
+
+                <div className="pt-4 border-t space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Total Pasivo</span>
+                    <span className="font-bold text-red-600">{formatUSD(position.pasivo.total)}</span>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    Capital, Reservas, Resultados Acumulados
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Patrimonio Neto</span>
+                    <span className={cn("font-bold", position.patrimonio_neto >= 0 ? "text-blue-600" : "text-red-600")}>
+                      {formatUSD(position.patrimonio_neto)}
+                    </span>
                   </div>
-                </div>
-                <div className="pt-2 border-t">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                    <span className="text-base sm:text-lg font-bold">Total Pasivo + Patrimonio</span>
-                    <div className="text-base sm:text-lg font-bold break-words">
-                      {formatCurrency(position.pasivo.total.ars + position.patrimonio_neto.total, "ARS")}
-                      {position.pasivo.total.usd > 0 && (
-                        <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                          ({formatCurrency(position.pasivo.total.usd, "USD")})
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex justify-between items-center pt-2 border-t">
+                    <span className="text-lg font-bold">Total Pasivo + Patrimonio</span>
+                    <span className="text-lg font-bold">{formatUSD(position.pasivo.total + position.patrimonio_neto)}</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* RESULTADO DEL MES */}
+          {/* Resultado del Mes */}
           <Card>
             <CardHeader>
-              <CardTitle>RESULTADO DEL MES ({monthNames[month - 1]} {year})</CardTitle>
-              <CardDescription>Estado de resultados del período</CardDescription>
+              <CardTitle>Resultado del Mes</CardTitle>
+              <CardDescription>
+                Resumen de ingresos, costos y gastos de {format(selectedDate, "MMMM yyyy", { locale: es })}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                  <span className="text-sm font-medium">Ingresos</span>
-                  <div className="font-bold text-green-600 text-sm sm:text-base break-words">
-                    {formatCurrency((position.resultado.ingresosARS || 0), "ARS")}
-                    {(position.resultado.ingresosUSD !== undefined && position.resultado.ingresosUSD !== 0) && (
-                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                        ({formatCurrency(position.resultado.ingresosUSD, "USD")})
-                      </span>
-                    )}
+            <CardContent>
+              <div className="grid gap-4 sm:grid-cols-4">
+                <div className="p-4 rounded-lg bg-green-50 dark:bg-green-950/30">
+                  <p className="text-sm text-muted-foreground mb-1">Ingresos (cobros)</p>
+                  <p className="text-xl font-bold text-green-600">{formatUSD(position.resultado.ingresos.total)}</p>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <p>USD: {formatUSD(position.resultado.ingresos.usd)}</p>
+                    <p>ARS: {formatARS(position.resultado.ingresos.ars)}</p>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Ventas de Viajes, Otros Ingresos
-                </div>
-              </div>
-              <div>
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                  <span className="text-sm font-medium">Costos</span>
-                  <div className="font-bold text-red-600 text-sm sm:text-base break-words">
-                    {(position.resultado.costosARS || 0) > 0 ? (
-                      <>-{formatCurrency(position.resultado.costosARS || 0, "ARS")}</>
-                    ) : (
-                      <>{formatCurrency(0, "ARS")}</>
-                    )}
-                    {(position.resultado.costosUSD !== undefined && position.resultado.costosUSD !== 0) && (
-                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                        (-{formatCurrency(position.resultado.costosUSD, "USD")})
-                      </span>
-                    )}
+
+                <div className="p-4 rounded-lg bg-orange-50 dark:bg-orange-950/30">
+                  <p className="text-sm text-muted-foreground mb-1">Costos (operadores)</p>
+                  <p className="text-xl font-bold text-orange-600">{formatUSD(position.resultado.costos.total)}</p>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <p>USD: {formatUSD(position.resultado.costos.usd)}</p>
+                    <p>ARS: {formatARS(position.resultado.costos.ars)}</p>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Costo de Operadores, Otros Costos
-                </div>
-              </div>
-              <div>
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                  <span className="text-sm font-medium">Gastos</span>
-                  <div className="font-bold text-red-600 text-sm sm:text-base break-words">
-                    {(position.resultado.gastosARS || 0) > 0 ? (
-                      <>-{formatCurrency(position.resultado.gastosARS || 0, "ARS")}</>
-                    ) : (
-                      <>{formatCurrency(0, "ARS")}</>
-                    )}
-                    {(position.resultado.gastosUSD !== undefined && position.resultado.gastosUSD !== 0) && (
-                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                        (-{formatCurrency(position.resultado.gastosUSD, "USD")})
-                      </span>
-                    )}
+
+                <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/30">
+                  <p className="text-sm text-muted-foreground mb-1">Gastos</p>
+                  <p className="text-xl font-bold text-red-600">{formatUSD(position.resultado.gastos.total)}</p>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    <p>USD: {formatUSD(position.resultado.gastos.usd)}</p>
+                    <p>ARS: {formatARS(position.resultado.gastos.ars)}</p>
                   </div>
                 </div>
-                <div className="text-xs text-muted-foreground">
-                  Gastos Administrativos, Comercialización, Comisiones, Gastos Financieros
-                </div>
-              </div>
-              <div className="pt-2 border-t">
-                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-                  <span className="text-base sm:text-lg font-bold">Resultado del Mes</span>
-                  <div className={`text-base sm:text-lg font-bold break-words ${(position.resultado.resultadoARS || position.resultado.total) >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    {formatCurrency(position.resultado.resultadoARS || position.resultado.total, "ARS")}
-                    {position.resultado.resultadoUSD !== undefined && position.resultado.resultadoUSD !== 0 && (
-                      <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                        ({formatCurrency(position.resultado.resultadoUSD, "USD")})
-                      </span>
-                    )}
-                  </div>
+
+                <div className={cn("p-4 rounded-lg", position.resultado.resultado >= 0 ? "bg-blue-50 dark:bg-blue-950/30" : "bg-red-100 dark:bg-red-950/50")}>
+                  <p className="text-sm text-muted-foreground mb-1">Resultado</p>
+                  <p className={cn("text-xl font-bold", position.resultado.resultado >= 0 ? "text-blue-600" : "text-red-600")}>
+                    {formatUSD(position.resultado.resultado)}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Ingresos - Costos - Gastos
+                  </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-
-          {/* DISTRIBUCIÓN DE GANANCIAS */}
-          {position.profitDistribution && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Distribución de Ganancias del Mes</CardTitle>
-                <CardDescription>Desglose de cómo se distribuye la ganancia del período</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                      <span className="text-sm font-medium">Comisiones</span>
-                      <div className="font-bold text-blue-600 text-sm sm:text-base break-words">
-                        {formatCurrency(position.profitDistribution.commissions.ars, "ARS")}
-                        {position.profitDistribution.commissions.usd !== 0 && (
-                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                            ({formatCurrency(position.profitDistribution.commissions.usd, "USD")})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Comisiones pagadas a vendedores
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                      <span className="text-sm font-medium">Gastos Operativos</span>
-                      <div className="font-bold text-orange-600 text-sm sm:text-base break-words">
-                        {formatCurrency(position.profitDistribution.operatingExpenses.ars, "ARS")}
-                        {position.profitDistribution.operatingExpenses.usd !== 0 && (
-                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                            ({formatCurrency(position.profitDistribution.operatingExpenses.usd, "USD")})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Gastos recurrentes y administrativos
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-2">
-                      <span className="text-sm font-medium">Participaciones Societarias</span>
-                      <div className="font-bold text-purple-600 text-sm sm:text-base break-words">
-                        {formatCurrency(position.profitDistribution.partnerShares.ars, "ARS")}
-                        {position.profitDistribution.partnerShares.usd !== 0 && (
-                          <span className="ml-2 text-xs sm:text-sm text-muted-foreground">
-                            ({formatCurrency(position.profitDistribution.partnerShares.usd, "USD")})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Retiros de socios del mes
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </>
       ) : (
         <Card>
           <CardContent className="py-8">
-            <div className="text-center text-muted-foreground">No se pudo cargar la posición contable</div>
+            <div className="text-center text-muted-foreground">No hay datos disponibles</div>
           </CardContent>
         </Card>
       )}
     </div>
   )
 }
-
