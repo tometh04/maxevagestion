@@ -242,11 +242,17 @@ export async function GET(request: Request) {
     // Agregar pagos pendientes como pasivos corrientes
     try {
       // 1. Pagos recurrentes pendientes (que aún no se han generado)
-      const { data: recurringPayments } = await supabase
+      let recurringPaymentsQuery = supabase
         .from("recurring_payments")
         .select("amount, currency, next_due_date, is_active, agency_id")
         .eq("is_active", true)
         .lte("next_due_date", dateTo)
+      
+      if (agencyId !== "ALL") {
+        recurringPaymentsQuery = recurringPaymentsQuery.eq("agency_id", agencyId)
+      }
+      
+      const { data: recurringPayments } = await recurringPaymentsQuery
       
       // 2. Operator payments pendientes (pueden venir de pagos recurrentes o operaciones)
       let operatorPaymentsQuery = supabase
@@ -279,12 +285,9 @@ export async function GET(request: Request) {
       let pendingARS = 0
       let pendingUSD = 0
       
-      // Sumar pagos recurrentes
+      // Sumar pagos recurrentes (ya filtrados por agencia en query)
       if (recurringPayments && recurringPayments.length > 0) {
         for (const rp of recurringPayments as any[]) {
-          if (agencyId !== "ALL" && rp.agency_id !== agencyId) {
-            continue
-          }
           const amount = parseFloat(rp.amount || "0")
           if (rp.currency === "ARS") {
             pendingARS += amount
@@ -326,10 +329,26 @@ export async function GET(request: Request) {
         balancesByCurrency["PASIVO_CORRIENTE"].ars += pendingARS
         balancesByCurrency["PASIVO_CORRIENTE"].usd += pendingUSD
         
-        // También agregar al balance total (aproximado)
-        balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + pendingARS + (pendingUSD * 1000)
+        // Convertir a USD usando TC mensual para el balance total (si hay TC)
+        let totalInUSD = 0
+        if (monthlyExchangeRate) {
+          // Convertir ARS a USD usando TC mensual
+          totalInUSD = pendingUSD + (pendingARS / monthlyExchangeRate)
+        } else {
+          // Si no hay TC, mantener en ARS (asumiendo que el balance total está en ARS)
+          totalInUSD = pendingARS + pendingUSD // Esto no es ideal, pero sin TC no podemos convertir
+        }
         
-        console.log(`[MonthlyPosition] Pagos pendientes (recurrentes + operator_payments + payments): ARS=${pendingARS}, USD=${pendingUSD}`)
+        // Agregar al balance total (convertido a la moneda base si hay TC)
+        if (monthlyExchangeRate) {
+          // Si hay TC, agregar todo en USD equivalente
+          balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + totalInUSD
+        } else {
+          // Sin TC, sumar ARS + USD (aproximado)
+          balances["PASIVO_CORRIENTE"] = (balances["PASIVO_CORRIENTE"] || 0) + pendingARS + pendingUSD
+        }
+        
+        console.log(`[MonthlyPosition] Pagos pendientes (recurrentes + operator_payments + payments): ARS=${pendingARS}, USD=${pendingUSD}, Total USD=${totalInUSD.toFixed(2)} (TC=${monthlyExchangeRate || 'N/A'})`)
       }
     } catch (error) {
       console.error("Error obteniendo pagos pendientes:", error)
@@ -612,19 +631,36 @@ export async function GET(request: Request) {
       distributionUSD.partnerShares += partnerSharesUSD
     }
 
+    // Calcular totales en USD usando TC mensual si está disponible
+    let activoTotalARS = activoCorriente.ars + activoNoCorriente.ars
+    let activoTotalUSD = activoCorriente.usd + activoNoCorriente.usd
+    let pasivoTotalARS = pasivoCorriente.ars + pasivoNoCorriente.ars
+    let pasivoTotalUSD = pasivoCorriente.usd + pasivoNoCorriente.usd
+    
+    // Si hay TC mensual, convertir ARS a USD para mostrar valores entre paréntesis
+    if (monthlyExchangeRate) {
+      // Los valores USD ya incluyen los USD directos
+      // Sumar la conversión de ARS a USD usando TC mensual
+      activoTotalUSD = activoTotalUSD + (activoTotalARS / monthlyExchangeRate)
+      pasivoTotalUSD = pasivoTotalUSD + (pasivoTotalARS / monthlyExchangeRate)
+    } else {
+      // Sin TC mensual, solo mostrar USD directos (sin conversión)
+      // Los valores entre paréntesis solo mostrarán USD directos, no conversión
+    }
+    
     return NextResponse.json({
       year,
       month,
       dateTo,
       activo: {
-        corriente: { ars: Math.round(activoCorriente.ars * 100) / 100, usd: Math.round(activoCorriente.usd * 100) / 100 },
-        no_corriente: { ars: Math.round(activoNoCorriente.ars * 100) / 100, usd: Math.round(activoNoCorriente.usd * 100) / 100 },
-        total: { ars: Math.round((activoCorriente.ars + activoNoCorriente.ars) * 100) / 100, usd: Math.round((activoCorriente.usd + activoNoCorriente.usd) * 100) / 100 },
+        corriente: { ars: Math.round(activoCorriente.ars * 100) / 100, usd: monthlyExchangeRate ? Math.round((activoCorriente.usd + (activoCorriente.ars / monthlyExchangeRate)) * 100) / 100 : Math.round(activoCorriente.usd * 100) / 100 },
+        no_corriente: { ars: Math.round(activoNoCorriente.ars * 100) / 100, usd: monthlyExchangeRate ? Math.round((activoNoCorriente.usd + (activoNoCorriente.ars / monthlyExchangeRate)) * 100) / 100 : Math.round(activoNoCorriente.usd * 100) / 100 },
+        total: { ars: Math.round(activoTotalARS * 100) / 100, usd: Math.round(activoTotalUSD * 100) / 100 },
       },
       pasivo: {
-        corriente: { ars: Math.round(pasivoCorriente.ars * 100) / 100, usd: Math.round(pasivoCorriente.usd * 100) / 100 },
-        no_corriente: { ars: Math.round(pasivoNoCorriente.ars * 100) / 100, usd: Math.round(pasivoNoCorriente.usd * 100) / 100 },
-        total: { ars: Math.round((pasivoCorriente.ars + pasivoNoCorriente.ars) * 100) / 100, usd: Math.round((pasivoCorriente.usd + pasivoNoCorriente.usd) * 100) / 100 },
+        corriente: { ars: Math.round(pasivoCorriente.ars * 100) / 100, usd: monthlyExchangeRate ? Math.round((pasivoCorriente.usd + (pasivoCorriente.ars / monthlyExchangeRate)) * 100) / 100 : Math.round(pasivoCorriente.usd * 100) / 100 },
+        no_corriente: { ars: Math.round(pasivoNoCorriente.ars * 100) / 100, usd: monthlyExchangeRate ? Math.round((pasivoNoCorriente.usd + (pasivoNoCorriente.ars / monthlyExchangeRate)) * 100) / 100 : Math.round(pasivoNoCorriente.usd * 100) / 100 },
+        total: { ars: Math.round(pasivoTotalARS * 100) / 100, usd: Math.round(pasivoTotalUSD * 100) / 100 },
       },
       patrimonio_neto: {
         total: Math.round(patrimonio_neto * 100) / 100,
