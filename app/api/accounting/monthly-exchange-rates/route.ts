@@ -72,13 +72,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El tipo de cambio debe ser mayor a 0" }, { status: 400 })
     }
 
+    // Intentar obtener el ID del usuario, pero permitir NULL si no existe
+    let createdByUserId: string | null = null
+    try {
+      // Verificar si el usuario existe en la tabla users
+      const { data: userCheck } = await (supabase.from("users") as any)
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle()
+      
+      if (userCheck) {
+        createdByUserId = user.id
+      } else {
+        console.warn(`User ID ${user.id} not found in users table, saving without created_by`)
+      }
+    } catch (userError) {
+      console.warn("Could not verify user in users table, saving without created_by:", userError)
+    }
+
     const { data, error } = await (supabase.from("monthly_exchange_rates") as any)
       .upsert(
         {
           year,
           month,
           usd_to_ars_rate: parseFloat(usd_to_ars_rate),
-          created_by: user.id,
+          created_by: createdByUserId, // Puede ser NULL
           updated_at: new Date().toISOString(),
         },
         {
@@ -90,7 +108,19 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Error upserting monthly exchange rate:", error)
-      return NextResponse.json({ error: "Error al guardar tipo de cambio mensual" }, { status: 500 })
+      
+      // Error más descriptivo
+      if (error.code === "23503") {
+        return NextResponse.json({ 
+          error: "Error de referencia: El usuario no existe en la tabla users. El tipo de cambio se guardará sin creador.",
+          details: error.message 
+        }, { status: 500 })
+      }
+      
+      return NextResponse.json({ 
+        error: "Error al guardar tipo de cambio mensual",
+        details: error.message 
+      }, { status: 500 })
     }
 
     return NextResponse.json({ data })
