@@ -447,6 +447,50 @@ export interface Database {
           updated_at?: string
         }
       }
+      operator_payments: {
+        Row: {
+          id: string
+          operation_id: string
+          operator_id: string
+          amount: number
+          paid_amount: number
+          currency: 'ARS' | 'USD'
+          due_date: string
+          status: 'PENDING' | 'PAID' | 'OVERDUE'
+          ledger_movement_id: string | null
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          operation_id: string
+          operator_id: string
+          amount: number
+          paid_amount?: number
+          currency: 'ARS' | 'USD'
+          due_date: string
+          status?: 'PENDING' | 'PAID' | 'OVERDUE'
+          ledger_movement_id?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          operation_id?: string
+          operator_id?: string
+          amount?: number
+          paid_amount?: number
+          currency?: 'ARS' | 'USD'
+          due_date?: string
+          status?: 'PENDING' | 'PAID' | 'OVERDUE'
+          ledger_movement_id?: string | null
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
       commission_rules: {
         Row: {
           id: string
