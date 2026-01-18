@@ -14,6 +14,12 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
+    // Obtener filtros de query params
+    const currencyFilter = searchParams.get("currency") // "ALL" | "USD" | "ARS"
+    const customerIdFilter = searchParams.get("customerId") // ID de cliente
+    const dateFromFilter = searchParams.get("dateFrom") // YYYY-MM-DD
+    const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
+
     // Verificar permiso de acceso (accounting en vez de customers)
     if (!canAccessModule(user.role as any, "accounting")) {
       return NextResponse.json({ error: "No tiene permiso para ver esta sección" }, { status: 403 })
@@ -183,6 +189,12 @@ export async function GET(request: Request) {
           })
           totalDebt += debtUsd
         }
+      }
+
+      // Filtro por ID de cliente
+      if (customerIdFilter && customer.id !== customerIdFilter) {
+        // Si hay filtro de cliente y no coincide, saltar este cliente
+        continue
       }
 
       if (operationsWithDebt.length > 0) {

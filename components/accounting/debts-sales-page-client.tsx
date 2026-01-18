@@ -28,6 +28,16 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Download, Filter, X } from "lucide-react"
+import * as XLSX from "xlsx"
 
 interface DebtorOperation {
   id: string
@@ -57,17 +67,37 @@ interface Debtor {
 
 export function DebtsSalesPageClient() {
   const [debtors, setDebtors] = useState<Debtor[]>([])
+  const [allDebtors, setAllDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
+  const [currencyFilter, setCurrencyFilter] = useState<string>("ALL")
+  const [customerFilter, setCustomerFilter] = useState<string>("")
+  const [dateFromFilter, setDateFromFilter] = useState<string>("")
+  const [dateToFilter, setDateToFilter] = useState<string>("")
 
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/accounting/debts-sales")
+      const params = new URLSearchParams()
+      if (currencyFilter !== "ALL") {
+        params.append("currency", currencyFilter)
+      }
+      if (customerFilter) {
+        params.append("customerId", customerFilter)
+      }
+      if (dateFromFilter) {
+        params.append("dateFrom", dateFromFilter)
+      }
+      if (dateToFilter) {
+        params.append("dateTo", dateToFilter)
+      }
+
+      const response = await fetch(`/api/accounting/debts-sales?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
+        setAllDebtors(data.debtors || [])
         setDebtors(data.debtors || [])
       } else {
         const errorData = await response.json().catch(() => ({}))
@@ -79,7 +109,7 @@ export function DebtsSalesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [currencyFilter, customerFilter, dateFromFilter, dateToFilter])
 
   useEffect(() => {
     fetchDebtors()
@@ -91,6 +121,74 @@ export function DebtsSalesPageClient() {
 
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${Math.round(amount).toLocaleString("es-AR")}`
+  }
+
+  // Filtrar deudores localmente (por búsqueda de nombre de cliente)
+  const filteredDebtors = useMemo(() => {
+    if (!customerFilter.trim()) return debtors
+    
+    const searchTerm = customerFilter.toLowerCase().trim()
+    return debtors.filter((debtor) => {
+      const firstName = debtor.customer.first_name?.toLowerCase() || ""
+      const lastName = debtor.customer.last_name?.toLowerCase() || ""
+      const fullName = `${firstName} ${lastName}`.trim()
+      return fullName.includes(searchTerm) || firstName.includes(searchTerm) || lastName.includes(searchTerm)
+    })
+  }, [debtors, customerFilter])
+
+  // Exportar a Excel
+  const handleExportExcel = () => {
+    const workbook = XLSX.utils.book_new()
+
+    // Hoja 1: Resumen por Cliente
+    const summaryData = filteredDebtors.map((debtor) => {
+      const customerName = extractCustomerName(
+        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
+          debtor.customer.first_name ||
+          ""
+      )
+      return {
+        Cliente: customerName,
+        "Documento": debtor.customer.document_number || "",
+        "Email": debtor.customer.email || "",
+        "Teléfono": debtor.customer.phone || "",
+        "Deuda Total (USD)": debtor.totalDebt,
+        "Cantidad Operaciones": debtor.operationsWithDebt.length,
+      }
+    })
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Cliente")
+
+    // Hoja 2: Detalle de Operaciones
+    const detailData: any[] = []
+    filteredDebtors.forEach((debtor) => {
+      const customerName = extractCustomerName(
+        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
+          debtor.customer.first_name ||
+          ""
+      )
+      debtor.operationsWithDebt.forEach((op) => {
+        detailData.push({
+          Cliente: customerName,
+          "Código Operación": op.file_code || "-",
+          Destino: op.destination,
+          "Fecha Salida": op.departure_date
+            ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+            : "-",
+          "Total Venta (USD)": op.sale_amount_total,
+          "Pagado (USD)": op.paid,
+          "Deuda (USD)": op.debt,
+        })
+      })
+    })
+
+    const detailSheet = XLSX.utils.json_to_sheet(detailData)
+    XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Operaciones")
+
+    // Guardar archivo
+    const fileName = `deudores-por-ventas-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
+    XLSX.writeFile(workbook, fileName)
   }
 
   if (loading) {
@@ -154,8 +252,8 @@ export function DebtsSalesPageClient() {
     )
   }
 
-  const totalDebt = debtors.reduce((sum, d) => sum + d.totalDebt, 0)
-  const totalDebtors = debtors.length
+  const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
+  const totalDebtors = filteredDebtors.length
 
   return (
     <div className="space-y-6">
@@ -192,6 +290,81 @@ export function DebtsSalesPageClient() {
         </Button>
       </div>
 
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5" />
+            Filtros
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            {/* Filtro por Moneda */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Moneda</label>
+              <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todas</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="ARS">ARS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro por Cliente (búsqueda por nombre) */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Cliente</label>
+              <Input
+                placeholder="Buscar por nombre..."
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+              />
+            </div>
+
+            {/* Filtro por Fecha Desde */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Fecha Desde</label>
+              <Input
+                type="date"
+                value={dateFromFilter}
+                onChange={(e) => setDateFromFilter(e.target.value)}
+              />
+            </div>
+
+            {/* Filtro por Fecha Hasta */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Fecha Hasta</label>
+              <div className="flex gap-2">
+                <Input
+                  type="date"
+                  value={dateToFilter}
+                  onChange={(e) => setDateToFilter(e.target.value)}
+                />
+                {(dateFromFilter || dateToFilter || currencyFilter !== "ALL" || customerFilter) && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setCurrencyFilter("ALL")
+                      setCustomerFilter("")
+                      setDateFromFilter("")
+                      setDateToFilter("")
+                    }}
+                    title="Limpiar filtros"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -213,7 +386,7 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-600">
-              {debtors.length > 0 ? formatCurrency(totalDebt, debtors[0]?.currency || "ARS") : "$ 0"}
+              {filteredDebtors.length > 0 ? formatCurrency(totalDebt, filteredDebtors[0]?.currency || "USD") : "$ 0"}
             </div>
             <p className="text-xs text-muted-foreground">Monto total pendiente</p>
           </CardContent>
@@ -226,7 +399,7 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {debtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
+              {filteredDebtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
             </div>
             <p className="text-xs text-muted-foreground">Total de operaciones</p>
           </CardContent>
@@ -236,19 +409,33 @@ export function DebtsSalesPageClient() {
       {/* Tabla de deudores */}
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Deudores</CardTitle>
-          <CardDescription>
-            Clientes que tienen pagos pendientes de operaciones
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Lista de Deudores</CardTitle>
+              <CardDescription>
+                Clientes que tienen pagos pendientes de operaciones
+              </CardDescription>
+            </div>
+            <Button
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={filteredDebtors.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Exportar Excel
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          {debtors.length === 0 ? (
+          {filteredDebtors.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
-              No hay clientes con deudas pendientes
+              {debtors.length === 0
+                ? "No hay clientes con deudas pendientes"
+                : "No se encontraron resultados con los filtros aplicados"}
             </div>
           ) : (
             <div className="space-y-4">
-              {debtors.map((debtor) => {
+              {filteredDebtors.map((debtor) => {
                 const customerName = extractCustomerName(
                   `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
                     debtor.customer.first_name ||
