@@ -123,8 +123,9 @@ export async function GET(request: Request) {
     const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
 
     // Cambiar forEach a for...of para permitir await dentro del loop
-    for (const customer of customers || []) {
-      const operations = customer.operation_customers || []
+    const customersList = (customers || []) as any[]
+    for (const customer of customersList) {
+      const operations = (customer.operation_customers || []) as any[]
       const operationsWithDebt: Array<{
         id: string
         file_code: string | null
