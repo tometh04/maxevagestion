@@ -166,13 +166,47 @@ export async function POST(request: Request) {
         )
 
         // 8. Crear ledger_movement en cuenta de RESULTADO (COSTO)
-        // Obtener cuenta de costo por operador
-        const costAccount = await getOrCreateDefaultAccount(
-          "RESULTADO",
-          "COSTOS",
-          null,
-          supabase
-        )
+        // Obtener cuenta de costo por operador (RESULTADO > COSTOS > "4.2.01")
+        const { data: costosChart } = await (supabase.from("chart_of_accounts") as any)
+          .select("id")
+          .eq("account_code", "4.2.01")
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        let costAccountId: string
+        if (costosChart) {
+          let costosFinancialAccount = await (supabase.from("financial_accounts") as any)
+            .select("id")
+            .eq("chart_account_id", costosChart.id)
+            .eq("is_active", true)
+            .maybeSingle()
+          
+          if (!costosFinancialAccount) {
+            const { data: newFA } = await (supabase.from("financial_accounts") as any)
+              .insert({
+                name: "Costo de Operadores",
+                type: "CASH_ARS",
+                currency: paymentCurrency as "ARS" | "USD",
+                chart_account_id: costosChart.id,
+                initial_balance: 0,
+                is_active: true,
+                created_by: user.id,
+              })
+              .select("id")
+              .single()
+            costosFinancialAccount = newFA
+          }
+          costAccountId = costosFinancialAccount.id
+        } else {
+          // Fallback: usar cuenta por defecto
+          const accountType = paymentCurrency === "USD" ? "USD" : "CASH"
+          costAccountId = await getOrCreateDefaultAccount(
+            accountType,
+            paymentCurrency as "ARS" | "USD",
+            user.id,
+            supabase
+          )
+        }
 
         await createLedgerMovement(
           {
@@ -187,7 +221,7 @@ export async function POST(request: Request) {
               ? parseFloat(amount_to_pay) * (exchangeRateValue || 1000)
               : parseFloat(amount_to_pay),
             method: ledgerMethod,
-            account_id: costAccount.id,
+            account_id: costAccountId,
             seller_id: sellerId,
             operator_id: operatorId,
             receipt_number: receipt_number,
