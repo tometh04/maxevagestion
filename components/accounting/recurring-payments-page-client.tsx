@@ -557,6 +557,104 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         </CardContent>
       </Card>
 
+      {/* Gráficos de Análisis */}
+      {filteredPayments.length > 0 && (
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Gráfico de barras: Gastos por categoría */}
+          <Card className="col-span-2">
+            <CardHeader>
+              <CardTitle>Gastos por Categoría (Mensual)</CardTitle>
+              <CardDescription>Distribución de gastos recurrentes por categoría</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={expensesByCategory}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Gráfico de líneas: Evolución mensual */}
+          <Card className="col-span-2">
+            <CardHeader>
+              <CardTitle>Evolución de Gastos por Categoría</CardTitle>
+              <CardDescription>Últimos 6 meses</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyEvolution}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <Legend />
+                    {categories.map((cat, index) => (
+                      <Line
+                        key={cat.id}
+                        type="monotone"
+                        dataKey={cat.name}
+                        stroke={cat.color}
+                        strokeWidth={2}
+                        dot={{ fill: cat.color }}
+                      />
+                    ))}
+                    <Line
+                      type="monotone"
+                      dataKey="Sin categoría"
+                      stroke="#6b7280"
+                      strokeWidth={2}
+                      dot={{ fill: "#6b7280" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Gráfico de torta: Distribución porcentual */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribución por Categoría</CardTitle>
+              <CardDescription>Porcentaje del total de gastos</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[300px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={categoryDistribution}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ name, percentage }) => `${name}: ${percentage}%`}
+                      outerRadius={100}
+                      fill="#8884d8"
+                      dataKey="value"
+                    >
+                      {categoryDistribution.map((entry, index) => {
+                        const category = categories.find(c => c.name === entry.name)
+                        return (
+                          <Cell key={`cell-${index}`} fill={category?.color || "#6b7280"} />
+                        )
+                      })}
+                    </Pie>
+                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {/* Dialogs */}
       <NewRecurringPaymentDialog
         open={newDialogOpen}
