@@ -276,12 +276,25 @@ Se renombró la funcionalidad "Pagos Recurrentes" a "Gastos Recurrentes" y se im
 **Funcionalidades completadas:**
 - ✅ Selector de categoría en dialogs de nuevo/editar
 - ✅ Filtros de fecha (mes/año) con inicialización automática
-- ⏳ Gráficos de análisis por categoría (pendiente)
+- ✅ Gráficos de análisis por categoría (barras, líneas, torta)
 
 **Detalles adicionales:**
 - Selector de categoría muestra colores de cada categoría (indicador circular)
 - Filtros de fecha permiten seleccionar mes y año para filtrar por `next_due_date` o `start_date`
 - Filtros combinables: proveedor + agencia + estado + mes/año
+- **Gráficos implementados:**
+  - **Gráfico de barras:** Gastos por categoría (mensual) - muestra totales en USD por categoría
+  - **Gráfico de líneas:** Evolución de gastos por categoría - últimos 6 meses con múltiples líneas por categoría
+  - **Gráfico de torta:** Distribución porcentual - porcentaje del total de gastos por categoría
+- Gráficos usan colores de categorías desde la base de datos
+- Datos calculados desde `filteredPayments` (respeta todos los filtros activos)
+
+**Archivos modificados adicionales:**
+- `components/accounting/new-recurring-payment-dialog.tsx` - Campo `category_id` agregado
+- `components/accounting/edit-recurring-payment-dialog.tsx` - Campo `category_id` agregado
+- `components/accounting/recurring-payments-page-client.tsx` - Filtros de fecha, gráficos y lógica de datos
+
+**Estado:** ✅ **COMPLETADO** - Todas las funcionalidades del Paso 4 implementadas
 
 ---
 
