@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-17 (Actualizado con Gastos Recurrentes y Sistema de Pago Masivo)
+**Última actualización:** 2025-01-18 (Actualizado con correcciones en Gastos Recurrentes: SelectItem, filtro por fecha, y respeto de fecha fin)
 
 ---
 
@@ -345,6 +345,186 @@ Se implementó un sistema completo de pago masivo a operadores que permite regis
 
 ---
 
+### 11. Posición Contable Mensual - TC Mensual y Distribución de Ganancias
+
+**Fecha:** 2025-01-17
+
+**Descripción:**
+Se mejoró completamente la funcionalidad de Posición Contable Mensual agregando gestión de tipos de cambio mensuales y visualización detallada de distribución de ganancias del mes.
+
+**Funcionalidades implementadas:**
+
+#### Tipos de Cambio Mensuales:
+- Nueva tabla `monthly_exchange_rates` para almacenar TC por mes/año
+- API para gestionar TC mensuales (GET/POST `/api/accounting/monthly-exchange-rates`)
+- Selector de TC en la interfaz:
+  - Input para ingresar TC manualmente (ej: 1500)
+  - Botón "Guardar" para guardar el TC del mes seleccionado
+  - Muestra el TC actual si ya existe para ese mes
+- El TC se usa para convertir distribución de ganancias a USD
+
+#### Distribución de Ganancias del Mes:
+- Nueva sección "Distribución de Ganancias del Mes" que muestra:
+  - **Comisiones**: Total de comisiones pagadas en el mes (ARS y USD)
+  - **Gastos Operativos**: Total de gastos recurrentes pagados en el mes (ARS y USD)
+  - **Participaciones Societarias**: Total de retiros de socios en el mes (ARS y USD)
+- Los cálculos se realizan automáticamente basándose en:
+  - Comisiones: Tabla `commissions` con `status='paid'` y fecha de pago en el mes
+  - Gastos operativos: `ledger_movements` de tipo EXPENSE vinculados a pagos recurrentes en el mes
+  - Participaciones: Tabla `partner_withdrawals` con fecha de retiro en el mes
+- Conversión a USD usando el TC mensual configurado (si existe)
+
+**Archivos creados:**
+- `supabase/migrations/087_create_monthly_exchange_rates.sql` - Tabla de TC mensuales
+- `app/api/accounting/monthly-exchange-rates/route.ts` - API de gestión de TC mensuales
+
+**Archivos modificados:**
+- `app/api/accounting/monthly-position/route.ts` - Agregado cálculo de distribución y obtención de TC mensual
+- `components/accounting/monthly-position-page-client.tsx` - Agregado selector de TC y sección de distribución
+
+**Migraciones de base de datos:**
+- `supabase/migrations/087_create_monthly_exchange_rates.sql`
+  - Tabla `monthly_exchange_rates` con campos: `year`, `month`, `usd_to_ars_rate`
+  - Constraint UNIQUE(year, month)
+  - Índice para búsquedas rápidas
+
+**Detalles técnicos:**
+- El TC mensual es opcional: si no existe, la distribución solo muestra ARS
+- Si existe TC mensual, se usa para convertir ARS a USD: `ars_amount / tc_monthly`
+- Los USD directos se suman a los USD convertidos
+- La distribución se calcula filtrando por mes/año en las fechas correspondientes:
+  - Comisiones: `paid_at` entre inicio y fin del mes
+  - Gastos operativos: `created_at` de `ledger_movements` entre inicio y fin del mes
+  - Participaciones: `withdrawal_date` entre inicio y fin del mes
+
+**UI/UX:**
+- El selector de TC está en la sección de filtros (cuarta columna en grid)
+- La sección "Distribución de Ganancias" aparece después del "Resultado del Mes"
+- Cada categoría muestra monto en ARS y USD (si hay TC configurado)
+- Colores diferentes por categoría: Comisiones (azul), Gastos Operativos (naranja), Participaciones (púrpura)
+
+#### Error: SelectItem sin value en Gastos Recurrentes
+**Fecha:** 2025-01-17
+
+**Problema:**
+- Los filtros de mes y año en Gastos Recurrentes usaban `value=""` (string vacío)
+- React Select no permite `value=""` en `SelectItem`, causando error: "A <Select.Item /> must have a value prop that is not an empty string"
+- La aplicación no cargaba correctamente
+
+**Solución:**
+- Cambiado `value=""` a `value="ALL"` en filtros de mes y año
+- Actualizada lógica de filtrado para manejar `"ALL"` correctamente
+- Filtrado solo aplica cuando mes/año NO son `"ALL"`
+
+**Archivos modificados:**
+- `components/accounting/recurring-payments-page-client.tsx`
+
+---
+
+#### Error: Foreign key constraint en monthly_exchange_rates
+**Fecha:** 2025-01-17
+
+**Problema:**
+- Error 500 al guardar tipo de cambio mensual
+- `insert or update on table "monthly_exchange_rates" violates foreign key constraint "monthly_exchange_rates_created_by_fkey"`
+- La migración 087 usaba `auth.users(id)` pero debería ser `users(id)`
+
+**Solución:**
+- Actualizada migración 087 para usar `users(id)` en lugar de `auth.users(id)`
+- Mantiene consistencia con todas las demás migraciones del proyecto
+
+**Archivos modificados:**
+- `supabase/migrations/087_create_monthly_exchange_rates.sql`
+
+**Nota:** La migración debe ejecutarse manualmente en Supabase SQL Editor si ya estaba en producción con la referencia incorrecta.
+
+---
+
+#### Error: SelectItem sin value en diálogos de Gastos Recurrentes
+**Fecha:** 2025-01-18
+
+**Problema:**
+- Error de React Select: "A <Select.Item /> must have a value prop that is not an empty string"
+- Los diálogos de crear/editar gasto recurrente usaban `<SelectItem value="">Sin categoría</SelectItem>`
+- React Select no permite valores vacíos, causando que la aplicación no cargara correctamente
+- Error aparecía al abrir cualquier página de Gastos Recurrentes
+
+**Solución:**
+- Cambiado `value=""` a `value="none"` en el SelectItem de categoría
+- Actualizada lógica para convertir `"none"` a `null` antes de enviar al backend
+- Actualizado schema de Zod para aceptar `"none"` como valor válido
+- Actualizado valor por defecto del formulario para usar `"none"` en lugar de `null`
+
+**Archivos modificados:**
+- `components/accounting/new-recurring-payment-dialog.tsx`
+- `components/accounting/edit-recurring-payment-dialog.tsx`
+
+**Detalles técnicos:**
+- En `onSubmit`: `category_id: values.category_id === "none" ? null : values.category_id`
+- Schema actualizado: `category_id: z.string().optional().nullable()` (removida validación `.uuid()`)
+- Valor por defecto: `category_id: "none"` en lugar de `null`
+
+---
+
+#### Mejora: Filtro por mes/año en Gastos Recurrentes con cálculo de vencimientos futuros
+**Fecha:** 2025-01-18
+
+**Problema:**
+- El filtro por mes/año solo mostraba gastos cuyo `next_due_date` estaba exactamente en el mes seleccionado
+- Un gasto mensual creado en enero no aparecía al filtrar por febrero, marzo, etc.
+- Los usuarios esperaban ver todos los gastos que tendrían vencimientos en el mes seleccionado, no solo el próximo vencimiento
+
+**Solución:**
+- Implementada función `hasVencimientoInMonth` que calcula vencimientos futuros según la frecuencia:
+  - **WEEKLY**: Suma 7 días
+  - **BIWEEKLY**: Suma 14 días
+  - **MONTHLY**: Suma 1 mes
+  - **QUARTERLY**: Suma 3 meses
+  - **YEARLY**: Suma 1 año
+- La función calcula iterativamente todos los vencimientos futuros hasta encontrar uno en el mes seleccionado
+- Límite de 120 iteraciones (máximo 10 años) para evitar loops infinitos
+- Verifica tanto `next_due_date` como `start_date` para gastos nuevos
+
+**Archivos modificados:**
+- `components/accounting/recurring-payments-page-client.tsx`
+
+**Ejemplo práctico:**
+- Gasto mensual creado el 18/01/2026 con `start_date = 18/01/2026`
+- Al filtrar por "Febrero 2026": Aparece (calcula que el 18/02/2026 es un vencimiento válido)
+- Al filtrar por "Marzo 2026": Aparece (calcula que el 18/03/2026 es un vencimiento válido)
+
+---
+
+#### Corrección: Respeto de fecha fin (end_date) en filtro de Gastos Recurrentes
+**Fecha:** 2025-01-18
+
+**Problema:**
+- Los gastos recurrentes con `end_date` (fecha de fin) seguían apareciendo en filtros de meses posteriores a la fecha de fin
+- Ejemplo: Gasto con `end_date = 12/03/2026` aparecía al filtrar por "Mayo 2026" (incorrecto)
+- El filtro no validaba si el mes seleccionado estaba después de la fecha de fin
+
+**Solución:**
+- Agregada validación temprana en `hasVencimientoInMonth`:
+  - Si `end_date` existe y el primer día del mes seleccionado es después de `end_date`, retorna `false`
+- Validación en cálculo de vencimientos:
+  - Cada vencimiento calculado se verifica contra `end_date`
+  - Si un vencimiento está después de `end_date`, no se considera válido
+- Validación en `next_due_date`:
+  - Si `next_due_date` existe pero está después de `end_date`, no se muestra
+
+**Archivos modificados:**
+- `components/accounting/recurring-payments-page-client.tsx`
+
+**Ejemplo práctico:**
+- Gasto mensual con `start_date = 18/01/2026` y `end_date = 12/03/2026`
+- Al filtrar por "Enero 2026": Aparece ✅
+- Al filtrar por "Febrero 2026": Aparece ✅
+- Al filtrar por "Marzo 2026": Aparece ✅ (si hay un vencimiento antes del 12/03)
+- Al filtrar por "Abril 2026": NO aparece ❌ (pasó la fecha de fin)
+- Al filtrar por "Mayo 2026": NO aparece ❌ (pasó la fecha de fin)
+
+---
+
 ## Correcciones Recientes
 
 ### 2025-01-17
@@ -552,6 +732,33 @@ CREATE INDEX IF NOT EXISTS idx_operations_reservation_code_air
 CREATE INDEX IF NOT EXISTS idx_operations_reservation_code_hotel 
   ON operations(reservation_code_hotel) WHERE reservation_code_hotel IS NOT NULL;
 ```
+
+### Migración 087: Tipos de Cambio Mensuales
+**Archivo:** `supabase/migrations/087_create_monthly_exchange_rates.sql`
+**Fecha:** 2025-01-17
+
+```sql
+-- Tabla para almacenar tipos de cambio mensuales
+CREATE TABLE IF NOT EXISTS monthly_exchange_rates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  year INTEGER NOT NULL,
+  month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+  usd_to_ars_rate NUMERIC(18,4) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  UNIQUE(year, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_monthly_exchange_rates_year_month 
+  ON monthly_exchange_rates(year, month);
+```
+
+**Nota:** La referencia usa `users(id)` en lugar de `auth.users(id)` para mantener consistencia con el resto del sistema.
+
+**Propósito:** Permite configurar un tipo de cambio USD/ARS específico para cada mes, usado para dolarizar balances y distribuciones en la Posición Contable Mensual.
+
+**Nota:** La migración fue corregida para usar `users(id)` en lugar de `auth.users(id)` para mantener consistencia con el resto del sistema.
 
 ### Migración 086: Categorías en Gastos Recurrentes
 **Archivo:** `supabase/migrations/086_add_category_id_to_recurring_payments.sql`
