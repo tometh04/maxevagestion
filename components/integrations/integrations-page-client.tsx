@@ -90,7 +90,8 @@ export function IntegrationsPageClient() {
   const [afipSetupData, setAfipSetupData] = useState({
     agency_id: '',
     cuit: '',
-    clave_fiscal: '',
+    username: '',
+    password: '',
     point_of_sale: 1,
     environment: 'sandbox' as 'sandbox' | 'production',
   })
@@ -100,6 +101,7 @@ export function IntegrationsPageClient() {
   useEffect(() => {
     loadIntegrations()
     loadAgencies()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function loadAgencies() {
@@ -178,7 +180,7 @@ export function IntegrationsPageClient() {
     try {
       setSettingUpAfip(true)
       
-      if (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.clave_fiscal) {
+      if (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.username || !afipSetupData.password) {
         toast.error('Complete todos los campos requeridos')
         return
       }
@@ -199,7 +201,7 @@ export function IntegrationsPageClient() {
       toast.success('AFIP configurado correctamente. Ya puedes comenzar a facturar.')
       setShowNewDialog(false)
       setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', clave_fiscal: '', point_of_sale: 1, environment: 'sandbox' })
+      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'sandbox' })
       loadIntegrations()
     } catch (error: any) {
       toast.error(error.message || 'Error al configurar AFIP')
@@ -356,15 +358,27 @@ export function IntegrationsPageClient() {
                         </p>
                       </div>
                       <div>
-                        <Label>Clave Fiscal *</Label>
+                        <Label>Usuario de ARCA *</Label>
+                        <Input 
+                          type="text"
+                          value={afipSetupData.username}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, username: e.target.value })}
+                          placeholder="Usuario de ARCA (puede ser el CUIT)"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Usuario con el que ingresas a ARCA/AFIP
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Clave Fiscal / Password *</Label>
                         <Input 
                           type="password"
-                          value={afipSetupData.clave_fiscal}
-                          onChange={(e) => setAfipSetupData({ ...afipSetupData, clave_fiscal: e.target.value })}
+                          value={afipSetupData.password}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, password: e.target.value })}
                           placeholder="Tu clave fiscal de AFIP"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          La clave fiscal que usas para ingresar a AFIP
+                          La clave fiscal/password que usas para ingresar a AFIP
                         </p>
                       </div>
                       <div>
@@ -475,7 +489,7 @@ export function IntegrationsPageClient() {
                   <Button variant="outline" onClick={() => {
                     setShowNewDialog(false)
                     setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', clave_fiscal: '', point_of_sale: 1, environment: 'sandbox' })
+                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'sandbox' })
                   }}>
                     Cancelar
                   </Button>
@@ -483,7 +497,7 @@ export function IntegrationsPageClient() {
                     onClick={createIntegration} 
                     disabled={
                       formData.integration_type === 'afip'
-                        ? (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.clave_fiscal || settingUpAfip)
+                        ? (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.username || !afipSetupData.password || settingUpAfip)
                         : (!formData.name || !formData.integration_type)
                     }
                   >

@@ -18,7 +18,10 @@ export const dynamic = 'force-dynamic'
 const setupAfipSchema = z.object({
   agency_id: z.string().uuid("ID de agencia inválido"),
   cuit: z.string().min(1, "CUIT es requerido"),
-  clave_fiscal: z.string().min(1, "Clave Fiscal es requerida"),
+  // Usuario de ARCA (puede ser el CUIT o un usuario específico)
+  username: z.string().min(1, "Usuario de ARCA es requerido"),
+  // Password/Clave Fiscal
+  password: z.string().min(1, "Clave Fiscal/Password es requerida"),
   point_of_sale: z.number().int().positive("Punto de venta debe ser un número positivo"),
   environment: z.enum(['sandbox', 'production']).default('sandbox'),
   // API Key de AFIP SDK (opcional, puede venir de env vars globales)
@@ -76,7 +79,8 @@ export async function POST(request: Request) {
     const setupResult = await setupAfipAutomatically(
       apiKey,
       formattedCuit,
-      validatedData.clave_fiscal,
+      validatedData.username,
+      validatedData.password,
       validatedData.point_of_sale,
       validatedData.environment
     )
@@ -111,7 +115,7 @@ export async function POST(request: Request) {
     }
 
     // Crear log
-    await supabase.from("integration_logs").insert({
+    await (supabase.from("integration_logs") as any).insert({
       integration_id: saveResult.integrationId,
       log_type: 'success',
       action: 'setup',

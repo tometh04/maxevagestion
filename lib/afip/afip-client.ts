@@ -116,7 +116,49 @@ export async function getLastVoucherNumber(
 }
 
 /**
+ * Obtiene el Ticket de Acceso (TA) para un servicio web específico
+ * Documentación: https://docs.afipsdk.com/integracion/api
+ * AFIP SDK maneja automáticamente el caching y renovación del TA
+ */
+async function getTicketAcceso(
+  config: AfipConfig,
+  service: 'wsfe' | 'wsfev1' = 'wsfev1'
+): Promise<{
+  success: boolean
+  token?: string
+  sign?: string
+  error?: string
+}> {
+  try {
+    const response = await afipRequest<any>(
+      config,
+      `/afip/auth`,
+      'POST',
+      {
+        environment: config.environment,
+        cuit: config.cuit,
+        service, // WSID del servicio (wsfe, wsfev1, etc.)
+        // Si hay certificado, AFIP SDK lo usa automáticamente
+        // Si no, usa el certificado de desarrollo
+      }
+    )
+
+    return {
+      success: true,
+      token: response.token || response.Token,
+      sign: response.sign || response.Sign,
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Error al obtener Ticket de Acceso',
+    }
+  }
+}
+
+/**
  * Crea una factura electrónica
+ * Documentación: https://afipsdk.com/api-factura-electronica/
  */
 export async function createInvoice(
   config: AfipConfig,
@@ -127,6 +169,16 @@ export async function createInvoice(
     const lastVoucher = await getLastVoucherNumber(config, request.PtoVta, request.CbteTipo)
     const nextNumber = (lastVoucher.data?.CbteNro || 0) + 1
 
+    // Obtener Ticket de Acceso (TA) - AFIP SDK lo cachea automáticamente
+    const ta = await getTicketAcceso(config, 'wsfev1')
+    if (!ta.success) {
+      return {
+        success: false,
+        error: ta.error || 'Error al obtener Ticket de Acceso',
+      }
+    }
+
+    // Crear factura usando el Web Service de Facturación Electrónica
     const response = await afipRequest<any>(
       config,
       `/facturacion/crear`,
@@ -134,6 +186,10 @@ export async function createInvoice(
       {
         environment: config.environment,
         cuit: config.cuit,
+        // Ticket de Acceso
+        token: ta.token,
+        sign: ta.sign,
+        // Datos del comprobante
         pto_vta: request.PtoVta,
         cbte_tipo: request.CbteTipo,
         cbte_nro: nextNumber,

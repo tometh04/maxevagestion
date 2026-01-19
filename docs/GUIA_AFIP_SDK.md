@@ -1,24 +1,63 @@
 # 📋 Guía Completa: Configuración y Uso de AFIP SDK
 
-Esta guía te explica paso a paso cómo configurar AFIP SDK y crear facturas electrónicas.
+Esta guía explica cómo configurar AFIP SDK y crear facturas electrónicas usando la integración completa.
 
 ---
 
-## 🚀 CONFIGURACIÓN SIMPLIFICADA (NUEVO)
+## ⚙️ CONFIGURACIÓN INICIAL (Solo una vez - para el administrador del sistema)
 
-Ahora puedes configurar AFIP directamente desde la interfaz, sin necesidad de variables de entorno. Solo necesitas tu **CUIT** y **Clave Fiscal**.
+### 1.1. Obtener API Key de AFIP SDK
+
+**IMPORTANTE:** Esta configuración la hace el **administrador del sistema**, no cada cliente.
+
+1. Ve a [https://afipsdk.com](https://afipsdk.com)
+2. Crea una cuenta o inicia sesión
+3. Ve a tu dashboard y obtén tu **API Key** (access_token)
+4. Revisa los planes disponibles:
+   - **Plan Free**: 1 CUIT, 1,000 requests/mes (suficiente para desarrollo)
+   - **Planes pagos**: Más CUITs, más requests, automatizaciones, etc.
+
+### 1.2. Configurar API Key en Vercel
+
+1. Ve a tu proyecto en [Vercel Dashboard](https://vercel.com)
+2. Ve a **Settings** → **Environment Variables**
+3. Agrega la siguiente variable:
+
+```
+AFIP_SDK_API_KEY=tu_api_key_aqui
+```
+
+**⚠️ IMPORTANTE:**
+- Esta API Key es **TUYA** (del sistema), no de cada cliente
+- Se usa para todas las llamadas a AFIP SDK
+- Los clientes NO necesitan tener su propia cuenta de AFIP SDK
+
+### 1.3. Configurar en Local (.env.local)
+
+Si estás desarrollando en local, crea un archivo `.env.local` en la raíz del proyecto:
+
+```bash
+# .env.local
+AFIP_SDK_API_KEY=tu_api_key_aqui
+```
+
+**⚠️ IMPORTANTE:**
+- El archivo `.env.local` NO debe subirse a Git (ya está en `.gitignore`)
+- Reinicia el servidor de desarrollo después de agregar la variable
 
 ---
 
-## 🔧 PASO 1: Configurar AFIP desde la Interfaz
+## 🚀 CONFIGURACIÓN POR CLIENTE (Desde la UI)
 
-### 1.1. Acceder a Configuración de Integraciones
+Cada cliente puede configurar su propia integración AFIP desde la interfaz, ingresando solo su CUIT y credenciales de ARCA.
+
+### 2.1. Acceder a Configuración de Integraciones
 
 1. Inicia sesión en la aplicación
 2. Ve a **Configuración** → **Integraciones** (o directamente a `/settings/integrations`)
 3. Verás la lista de integraciones disponibles
 
-### 1.2. Configurar AFIP
+### 2.2. Configurar AFIP
 
 1. Haz clic en **"Nueva Integración"**
 2. Selecciona el tipo **"AFIP"**
@@ -28,37 +67,37 @@ Ahora puedes configurar AFIP directamente desde la interfaz, sin necesidad de va
 
 - **Agencia**: Selecciona la agencia para la cual configurarás AFIP
 - **CUIT**: Ingresa tu CUIT sin guiones (ej: `20123456789`)
-- **Clave Fiscal**: Ingresa tu clave fiscal de AFIP (la misma que usas para ingresar a AFIP)
+- **Usuario de ARCA**: Usuario con el que ingresas a ARCA/AFIP (puede ser el mismo CUIT)
+- **Clave Fiscal / Password**: La clave fiscal/password que usas para ingresar a AFIP
 - **Punto de Venta**: Número de punto de venta habilitado en AFIP (por defecto: `1`)
 - **Ambiente**: 
   - **Sandbox (Pruebas)**: Para probar sin facturar reales
   - **Producción**: Para facturar reales
 
-### 1.3. Autorizar Servicio en AFIP (IMPORTANTE)
+### 2.3. Autorizar Servicio en AFIP (IMPORTANTE)
 
-**⚠️ ANTES de configurar en la aplicación, debes autorizar el servicio en AFIP:**
+**⚠️ ANTES de configurar en la aplicación, el cliente debe autorizar el servicio en AFIP:**
 
 1. Ingresa a [AFIP Clave Fiscal](https://www.afip.gob.ar/claveFiscal/)
 2. Ve a **"Administrador de Relaciones"**
 3. Busca el servicio **"WebServices"** → **"Facturación Electrónica"**
 4. Autoriza el servicio para tu CUIT
-5. Si usas AFIP SDK, también debes autorizar el servicio para el CUIT de AFIP SDK
+5. Asegúrate de tener **Clave Fiscal de Nivel 4** si es necesario (algunos servicios lo requieren)
 
 **📝 Nota:** Este paso es necesario para que el sistema pueda facturar en tu nombre.
 
-### 1.4. Guardar Configuración
+### 2.4. Guardar Configuración
 
 1. Completa todos los campos del formulario
 2. Haz clic en **"Configurar AFIP"**
 3. El sistema automáticamente:
-   - Creará el certificado digital
-   - Autorizará el servicio
-   - Obtendrá el token de acceso
-   - Guardará toda la configuración
+   - Crea el certificado digital (desarrollo o producción según el ambiente)
+   - Autoriza el servicio de Facturación Electrónica (WSFE)
+   - Guarda toda la configuración de forma segura
 
 4. Si todo está correcto, verás el mensaje: **"AFIP configurado correctamente. Ya puedes comenzar a facturar."**
 
-### 1.5. Verificar Configuración
+### 2.5. Verificar Configuración
 
 1. En la lista de integraciones, busca tu integración de AFIP
 2. Haz clic en el botón de **"Probar"** (icono de play)
@@ -67,20 +106,20 @@ Ahora puedes configurar AFIP directamente desde la interfaz, sin necesidad de va
 
 ---
 
-## 📝 PASO 2: Crear una Factura Electrónica
+## 📝 PASO 3: Crear una Factura Electrónica
 
-### 2.1. Acceder a la Página de Facturación
+### 3.1. Acceder a la Página de Facturación
 
 1. Inicia sesión en la aplicación
 2. Ve a **Operaciones** → **Facturación** (o directamente a `/operations/billing`)
 3. Verás la lista de facturas existentes
 
-### 2.2. Crear Nueva Factura
+### 3.2. Crear Nueva Factura
 
 1. Haz clic en el botón **"Nueva Factura"** (esquina superior derecha)
 2. Serás redirigido a `/operations/billing/new`
 
-### 2.3. Completar el Formulario
+### 3.3. Completar el Formulario
 
 #### **Sección 1: Tipo de Comprobante**
 
@@ -93,62 +132,41 @@ Ahora puedes configurar AFIP directamente desde la interfaz, sin necesidad de va
 #### **Sección 2: Datos del Cliente**
 
 - **Seleccionar Cliente**: Busca y selecciona un cliente de la lista
-  - Si el cliente tiene CUIT, se auto-completa
-  - Si tiene DNI, también se auto-completa
 - **Operación Asociada** (opcional): Vincula la factura a una operación específica
-- **Nombre/Razón Social**: Se auto-completa al seleccionar cliente (puedes editarlo)
-- **CUIT/DNI**: Se auto-completa al seleccionar cliente (puedes editarlo)
+- **Nombre/Razón Social**: Se auto-completa al seleccionar cliente
+- **CUIT/DNI**: Se auto-completa al seleccionar cliente
 - **Fecha Desde/Hasta (Servicio)**: Fechas del período de servicio
 
 #### **Sección 3: Conceptos / Items**
 
-Agrega los items a facturar:
+Agrega los items a facturar con descripción, cantidad, precio unitario e IVA.
 
-1. **Descripción**: Descripción del servicio/producto
-2. **Cantidad**: Cantidad (por defecto: 1)
-3. **Precio Unitario**: Precio por unidad
-4. **IVA %**: Porcentaje de IVA:
-   - 0% (Exento)
-   - 10.5%
-   - 21% (por defecto)
-   - 27%
-
-**Agregar más items:**
-- Haz clic en **"Agregar Item"** para agregar más conceptos
-- Puedes eliminar items con el botón de basura (si hay más de uno)
-
-#### **Sección 4: Resumen**
-
-En el panel derecho verás:
-- **Subtotal**: Suma de todos los items sin IVA
-- **IVA**: Total de IVA
-- **Total**: Monto total a facturar
-- **Tipo de Comprobante**: Confirmación del tipo seleccionado
-- **Punto de Venta**: Confirmación del punto de venta
-
-### 2.4. Guardar Factura (Borrador)
+### 3.4. Guardar Factura (Borrador)
 
 1. Revisa todos los datos
 2. Haz clic en **"Crear Factura (Borrador)"**
 3. La factura se guardará con estado **"Borrador"**
-4. Serás redirigido a la lista de facturas
 
 ---
 
-## ✅ PASO 3: Autorizar Factura con AFIP
+## ✅ PASO 4: Autorizar Factura con AFIP
 
-### 3.1. Encontrar la Factura
+### 4.1. Encontrar la Factura
 
 1. Ve a la lista de facturas (`/operations/billing`)
 2. Busca la factura que acabas de crear (estado: **"Borrador"**)
 
-### 3.2. Autorizar
+### 4.2. Autorizar
 
 1. Haz clic en el botón **"Autorizar"** de la factura
-2. El sistema enviará la factura a AFIP usando la configuración de tu agencia
+2. El sistema automáticamente:
+   - Obtiene el Ticket de Acceso (TA) usando tu certificado
+   - Envía la factura a AFIP usando el Web Service de Facturación Electrónica
+   - Espera la respuesta de AFIP
+
 3. Espera la respuesta (puede tardar unos segundos)
 
-### 3.3. Resultados Posibles
+### 4.3. Resultados Posibles
 
 #### ✅ **Autorizada (Success)**
 - Estado cambia a **"Autorizada"**
@@ -181,7 +199,6 @@ En el panel derecho verás:
 
 - **Borrador**: Factura creada pero no enviada a AFIP
 - **Pendiente**: Factura enviada a AFIP, esperando respuesta
-- **Enviada**: Factura enviada a AFIP
 - **Autorizada**: Factura aprobada por AFIP (tiene CAE)
 - **Rechazada**: Factura rechazada por AFIP (revisar errores)
 - **Anulada**: Factura cancelada
@@ -190,10 +207,13 @@ En el panel derecho verás:
 
 ## ⚠️ Errores Comunes y Soluciones
 
+### Error: "API Key de AFIP SDK es requerida"
+**Solución**: El administrador del sistema debe configurar `AFIP_SDK_API_KEY` en las variables de entorno de Vercel.
+
 ### Error: "AFIP no está configurado para esta agencia"
 **Solución**: 
 1. Ve a **Configuración** → **Integraciones**
-2. Configura AFIP para tu agencia (ver Paso 1)
+2. Configura AFIP para tu agencia (ver Paso 2)
 3. Asegúrate de haber autorizado el servicio en AFIP Clave Fiscal
 
 ### Error: "No tiene permiso para crear facturas"
@@ -206,25 +226,24 @@ En el panel derecho verás:
 - Punto de venta no habilitado
 - Tipo de comprobante incorrecto para la condición IVA
 - Servicio no autorizado en AFIP
+- Certificado no válido o expirado
 
 **Solución**: 
 1. Revisa los errores en el detalle de la factura
 2. Verifica que hayas autorizado el servicio en AFIP Clave Fiscal
 3. Corrige los datos y vuelve a intentar
 
-### Error: "No se puede autorizar una factura en estado X"
-**Solución**: Solo puedes autorizar facturas en estado "Borrador" o "Pendiente"
-
-### Error: "Error al configurar AFIP"
+### Error: "Error al crear certificado"
 **Posibles causas:**
-- CUIT o Clave Fiscal incorrectos
+- Usuario o password incorrectos
+- CUIT inválido
+- Clave Fiscal sin nivel suficiente
 - Servicio no autorizado en AFIP
-- Problemas de conexión con AFIP SDK
 
 **Solución**:
-1. Verifica que tu CUIT y Clave Fiscal sean correctos
-2. Asegúrate de haber autorizado el servicio en AFIP Clave Fiscal
-3. Intenta nuevamente después de unos minutos
+1. Verifica que tu usuario y password de ARCA sean correctos
+2. Asegúrate de tener Clave Fiscal de nivel suficiente
+3. Autoriza el servicio en AFIP Clave Fiscal antes de configurar
 
 ---
 
@@ -235,6 +254,8 @@ Para probar sin afectar producción:
 1. Al configurar AFIP, selecciona **"Sandbox (Pruebas)"** en el campo Ambiente
 2. Las facturas en sandbox no son válidas fiscalmente
 3. Una vez probado, puedes cambiar a **"Producción"** editando la integración
+
+**Nota:** En sandbox puedes usar el CUIT de prueba `20-40937847-2` sin necesidad de certificado propio.
 
 ---
 
@@ -247,14 +268,26 @@ Cada agencia puede tener su propia configuración de AFIP:
    - CUIT
    - Punto de Venta
    - Ambiente (Sandbox/Producción)
+   - Certificado digital
 3. Al crear una factura, se usa automáticamente la configuración de la agencia de la factura
+
+---
+
+## 🔐 Seguridad
+
+- Tu Clave Fiscal se almacena de forma segura en la base de datos (encriptada)
+- Los certificados y keys se generan automáticamente y se guardan encriptados
+- Cada agencia tiene su propia configuración aislada
+- Solo usuarios con permisos de ADMIN pueden configurar integraciones
+- La API Key de AFIP SDK se configura solo en variables de entorno del servidor
 
 ---
 
 ## 📚 Recursos Adicionales
 
-- **Documentación AFIP SDK**: [https://afipsdk.com/docs](https://afipsdk.com/docs)
+- **Documentación AFIP SDK**: [https://docs.afipsdk.com](https://docs.afipsdk.com)
 - **AFIP Clave Fiscal**: [https://www.afip.gob.ar/claveFiscal/](https://www.afip.gob.ar/claveFiscal/)
+- **Automatizaciones AFIP SDK**: [https://afipsdk.com/docs/automations/integrations/api](https://afipsdk.com/docs/automations/integrations/api)
 - **Tipos de Comprobante**: Ver `lib/afip/types.ts`
 - **Código del Cliente**: Ver `lib/afip/afip-client.ts`
 
@@ -265,19 +298,19 @@ Cada agencia puede tener su propia configuración de AFIP:
 Si tienes problemas:
 
 1. Revisa los logs en Vercel (Functions → Logs)
-2. Verifica que hayas autorizado el servicio en AFIP Clave Fiscal
-3. Prueba la conexión desde **Configuración** → **Integraciones** → **Probar**
-4. Consulta la documentación de AFIP SDK
-5. Contacta al equipo de desarrollo
+2. Verifica que el administrador haya configurado `AFIP_SDK_API_KEY`
+3. Verifica que hayas autorizado el servicio en AFIP Clave Fiscal
+4. Prueba la conexión desde **Configuración** → **Integraciones** → **Probar**
+5. Consulta la documentación de AFIP SDK
+6. Contacta al equipo de desarrollo
 
 ---
 
-## 🔐 Seguridad
+## 💰 Costos
 
-- Tu Clave Fiscal se almacena de forma segura en la base de datos
-- Los certificados y tokens se generan automáticamente y se guardan encriptados
-- Cada agencia tiene su propia configuración aislada
-- Solo usuarios con permisos de ADMIN pueden configurar integraciones
+- **AFIP SDK**: Tiene un plan gratuito (1 CUIT, 1,000 requests/mes) y planes pagos según uso
+- **AFIP/ARCA**: Los Web Services oficiales no tienen costo adicional por factura emitida
+- **Certificados Digitales**: Si usas certificados propios, pueden tener costo según el emisor
 
 ---
 
