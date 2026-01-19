@@ -25,7 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
 import {
@@ -40,7 +40,6 @@ import { Label } from "@/components/ui/label"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Download, Filter, X } from "lucide-react"
 import * as XLSX from "xlsx"
-import { format, parseISO } from "date-fns"
 
 interface DebtorOperation {
   id: string
