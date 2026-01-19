@@ -5,9 +5,9 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
 import { 
   createInvoice, 
-  isAfipConfigured,
   formatDate,
 } from "@/lib/afip/afip-client"
+import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 import { TipoComprobante, TipoDocumento, TipoIVA, IVA_PORCENTAJES } from "@/lib/afip/types"
 
 export const dynamic = 'force-dynamic'
@@ -30,14 +30,6 @@ export async function POST(
       )
     }
 
-    // Verificar que AFIP está configurado
-    if (!isAfipConfigured()) {
-      return NextResponse.json(
-        { error: "AFIP SDK no está configurado. Configure las variables de entorno." },
-        { status: 400 }
-      )
-    }
-
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
@@ -55,6 +47,16 @@ export async function POST(
       return NextResponse.json(
         { error: "Factura no encontrada" },
         { status: 404 }
+      )
+    }
+
+    // Obtener configuración de AFIP para la agencia de la factura
+    const afipConfig = await getAfipConfigForAgency(supabase, invoice.agency_id)
+    
+    if (!afipConfig) {
+      return NextResponse.json(
+        { error: "AFIP no está configurado para esta agencia. Configure la integración en Configuración → Integraciones." },
+        { status: 400 }
       )
     }
 
@@ -118,8 +120,8 @@ export async function POST(
         : undefined,
     }
 
-    // Enviar a AFIP
-    const afipResponse = await createInvoice(afipRequest)
+    // Enviar a AFIP usando la configuración de la agencia
+    const afipResponse = await createInvoice(afipConfig, afipRequest)
 
     if (afipResponse.success && afipResponse.data?.CAE) {
       // Éxito: actualizar factura

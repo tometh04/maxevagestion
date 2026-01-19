@@ -181,16 +181,45 @@ async function testWhatsAppConnection(config: any): Promise<{ success: boolean; 
 }
 
 async function testAfipConnection(config: any): Promise<{ success: boolean; message: string; details?: any }> {
-  if (!config.cuit) {
-    return { success: false, message: "CUIT es requerido" }
+  if (!config.cuit || !config.api_key) {
+    return { success: false, message: "CUIT y API Key son requeridos" }
   }
   
-  // Para AFIP, solo validamos la configuración básica
-  // La conexión real se prueba con el SDK al momento de facturar
-  return { 
-    success: true, 
-    message: `Configuración válida para CUIT ${config.cuit}`,
-    details: { cuit: config.cuit, production: config.production || false }
+  try {
+    // Importar funciones de test de AFIP
+    const { testConnection } = await import("@/lib/afip/afip-client")
+    const { isAfipConfigValid } = await import("@/lib/afip/afip-config")
+    
+    // Validar configuración
+    if (!isAfipConfigValid(config)) {
+      return { 
+        success: false, 
+        message: "Configuración incompleta. Verifique CUIT, API Key, Punto de Venta y Ambiente." 
+      }
+    }
+    
+    // Probar conexión real con AFIP
+    const testResult = await testConnection({
+      api_key: config.api_key,
+      cuit: config.cuit,
+      point_of_sale: config.point_of_sale || 1,
+      environment: config.environment || 'sandbox',
+    })
+    
+    return {
+      success: testResult.success,
+      message: testResult.message,
+      details: {
+        cuit: config.cuit,
+        environment: testResult.environment,
+        point_of_sale: config.point_of_sale || 1,
+      }
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: error.message || "Error al probar conexión con AFIP",
+    }
   }
 }
 

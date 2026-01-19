@@ -1,6 +1,9 @@
 /**
  * Cliente HTTP para AFIP SDK API REST
  * Documentación: https://afipsdk.com/docs/api-reference/introduction/
+ * 
+ * REFACTORIZADO: Ahora acepta configuración por agencia/cliente
+ * en lugar de variables de entorno globales
  */
 
 import {
@@ -12,34 +15,39 @@ import {
   GetTaxpayerDataResponse,
   TipoComprobante,
 } from './types'
+import type { AfipConfig } from './afip-config'
 
-// Configuración del cliente
-const AFIP_SDK_BASE_URL = process.env.AFIP_SDK_BASE_URL || 'https://app.afipsdk.com/api/v1'
-const AFIP_SDK_API_KEY = process.env.AFIP_SDK_API_KEY || ''
-const AFIP_SDK_ENVIRONMENT = process.env.AFIP_SDK_ENVIRONMENT || 'sandbox' // 'sandbox' | 'production'
+// URL base por defecto (puede ser sobrescrita por config)
+const DEFAULT_AFIP_SDK_BASE_URL = 'https://app.afipsdk.com/api/v1'
 
-// Headers comunes para todas las requests
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'Authorization': `Bearer ${AFIP_SDK_API_KEY}`,
-})
+/**
+ * Headers comunes para todas las requests
+ */
+function getHeaders(config: AfipConfig) {
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${config.api_key}`,
+  }
+}
 
 /**
  * Hace una request a la API de AFIP SDK
  */
 async function afipRequest<T>(
+  config: AfipConfig,
   endpoint: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
   body?: Record<string, any>
 ): Promise<T> {
-  const url = `${AFIP_SDK_BASE_URL}${endpoint}`
+  const baseUrl = config.base_url || DEFAULT_AFIP_SDK_BASE_URL
+  const url = `${baseUrl}${endpoint}`
   
-  console.log(`[AFIP SDK] ${method} ${url}`)
+  console.log(`[AFIP SDK] ${method} ${url} (CUIT: ${config.cuit})`)
   
   try {
     const response = await fetch(url, {
       method,
-      headers: getHeaders(),
+      headers: getHeaders(config),
       body: body ? JSON.stringify(body) : undefined,
     })
 
@@ -59,42 +67,33 @@ async function afipRequest<T>(
 }
 
 /**
- * Obtiene el CUIT configurado para facturación
+ * Verifica si una configuración de AFIP está completa
  */
-export function getAfipCuit(): string {
-  return process.env.AFIP_CUIT || ''
-}
-
-/**
- * Obtiene el punto de venta configurado
- */
-export function getAfipPointOfSale(): number {
-  return parseInt(process.env.AFIP_POINT_OF_SALE || '1', 10)
-}
-
-/**
- * Verifica si la API de AFIP está configurada
- */
-export function isAfipConfigured(): boolean {
-  return !!AFIP_SDK_API_KEY && !!getAfipCuit()
+export function isAfipConfigured(config: Partial<AfipConfig>): boolean {
+  return !!(
+    config.api_key &&
+    config.cuit &&
+    config.point_of_sale &&
+    config.environment
+  )
 }
 
 /**
  * Obtiene el último número de comprobante
  */
 export async function getLastVoucherNumber(
+  config: AfipConfig,
   ptoVta: number,
   cbteTipo: TipoComprobante
 ): Promise<GetLastVoucherResponse> {
   try {
-    const cuit = getAfipCuit()
-    
     const response = await afipRequest<any>(
+      config,
       `/facturacion/ultimo-comprobante`,
       'POST',
       {
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit,
+        environment: config.environment,
+        cuit: config.cuit,
         pto_vta: ptoVta,
         cbte_tipo: cbteTipo,
       }
@@ -120,21 +119,21 @@ export async function getLastVoucherNumber(
  * Crea una factura electrónica
  */
 export async function createInvoice(
+  config: AfipConfig,
   request: CreateInvoiceRequest
 ): Promise<CreateInvoiceResponse> {
   try {
-    const cuit = getAfipCuit()
-    
     // Obtener el próximo número de comprobante
-    const lastVoucher = await getLastVoucherNumber(request.PtoVta, request.CbteTipo)
+    const lastVoucher = await getLastVoucherNumber(config, request.PtoVta, request.CbteTipo)
     const nextNumber = (lastVoucher.data?.CbteNro || 0) + 1
 
     const response = await afipRequest<any>(
+      config,
       `/facturacion/crear`,
       'POST',
       {
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit,
+        environment: config.environment,
+        cuit: config.cuit,
         pto_vta: request.PtoVta,
         cbte_tipo: request.CbteTipo,
         cbte_nro: nextNumber,
@@ -202,10 +201,12 @@ export async function createInvoice(
  * Consulta datos de un contribuyente por CUIT
  */
 export async function getTaxpayerData(
+  config: AfipConfig,
   cuit: number
 ): Promise<GetTaxpayerDataResponse> {
   try {
     const response = await afipRequest<any>(
+      config,
       `/padron/contribuyente/${cuit}`,
       'GET'
     )
@@ -234,7 +235,7 @@ export async function getTaxpayerData(
 /**
  * Obtiene los puntos de venta habilitados
  */
-export async function getPointsOfSale(): Promise<{
+export async function getPointsOfSale(config: AfipConfig): Promise<{
   success: boolean
   data?: Array<{
     numero: number
@@ -244,14 +245,13 @@ export async function getPointsOfSale(): Promise<{
   error?: string
 }> {
   try {
-    const cuit = getAfipCuit()
-    
     const response = await afipRequest<any>(
+      config,
       `/facturacion/puntos-venta`,
       'POST',
       {
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit,
+        environment: config.environment,
+        cuit: config.cuit,
       }
     )
 
@@ -270,49 +270,46 @@ export async function getPointsOfSale(): Promise<{
 /**
  * Verifica la conexión con AFIP
  */
-export async function testConnection(): Promise<{
+export async function testConnection(config: AfipConfig): Promise<{
   success: boolean
   message: string
   environment: string
   cuit: string
 }> {
   try {
-    if (!isAfipConfigured()) {
+    if (!isAfipConfigured(config)) {
       return {
         success: false,
-        message: 'AFIP SDK no está configurado. Verifique las variables de entorno.',
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit: '',
+        message: 'Configuración de AFIP incompleta. Verifique CUIT, API Key y Punto de Venta.',
+        environment: config.environment,
+        cuit: config.cuit || '',
       }
     }
-
-    const cuit = getAfipCuit()
-    const ptoVta = getAfipPointOfSale()
     
     // Intentar obtener el último comprobante como test
-    const result = await getLastVoucherNumber(ptoVta, 6) // Factura B
+    const result = await getLastVoucherNumber(config, config.point_of_sale, 6) // Factura B
 
     if (result.success) {
       return {
         success: true,
         message: `Conexión exitosa. Último comprobante: ${result.data?.CbteNro || 0}`,
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit,
+        environment: config.environment,
+        cuit: config.cuit,
       }
     } else {
       return {
         success: false,
         message: result.error || 'Error de conexión',
-        environment: AFIP_SDK_ENVIRONMENT,
-        cuit,
+        environment: config.environment,
+        cuit: config.cuit,
       }
     }
   } catch (error: any) {
     return {
       success: false,
       message: error.message || 'Error de conexión',
-      environment: AFIP_SDK_ENVIRONMENT,
-      cuit: getAfipCuit(),
+      environment: config.environment,
+      cuit: config.cuit || '',
     }
   }
 }

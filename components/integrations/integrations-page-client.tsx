@@ -86,9 +86,36 @@ export function IntegrationsPageClient() {
     sync_frequency: 'manual',
   })
 
+  // AFIP setup form state
+  const [afipSetupData, setAfipSetupData] = useState({
+    agency_id: '',
+    cuit: '',
+    clave_fiscal: '',
+    point_of_sale: 1,
+    environment: 'sandbox' as 'sandbox' | 'production',
+  })
+  const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [settingUpAfip, setSettingUpAfip] = useState(false)
+
   useEffect(() => {
     loadIntegrations()
+    loadAgencies()
   }, [])
+
+  async function loadAgencies() {
+    try {
+      const res = await fetch('/api/agencies')
+      if (res.ok) {
+        const data = await res.json()
+        setAgencies(data.agencies || [])
+        if (data.agencies && data.agencies.length > 0 && !afipSetupData.agency_id) {
+          setAfipSetupData({ ...afipSetupData, agency_id: data.agencies[0].id })
+        }
+      }
+    } catch (error) {
+      console.error('Error loading agencies:', error)
+    }
+  }
 
   useEffect(() => {
     if (selectedIntegration) {
@@ -125,6 +152,12 @@ export function IntegrationsPageClient() {
 
   async function createIntegration() {
     try {
+      // Si es AFIP, usar el endpoint de setup automático
+      if (formData.integration_type === 'afip') {
+        await setupAfipIntegration()
+        return
+      }
+
       const res = await fetch('/api/integrations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -138,6 +171,40 @@ export function IntegrationsPageClient() {
       loadIntegrations()
     } catch (error) {
       toast.error('Error al crear integración')
+    }
+  }
+
+  async function setupAfipIntegration() {
+    try {
+      setSettingUpAfip(true)
+      
+      if (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.clave_fiscal) {
+        toast.error('Complete todos los campos requeridos')
+        return
+      }
+
+      const res = await fetch('/api/integrations/afip/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(afipSetupData),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        toast.error(data.error || 'Error al configurar AFIP')
+        return
+      }
+
+      toast.success('AFIP configurado correctamente. Ya puedes comenzar a facturar.')
+      setShowNewDialog(false)
+      setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
+      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', clave_fiscal: '', point_of_sale: 1, environment: 'sandbox' })
+      loadIntegrations()
+    } catch (error: any) {
+      toast.error(error.message || 'Error al configurar AFIP')
+    } finally {
+      setSettingUpAfip(false)
     }
   }
 
@@ -248,78 +315,179 @@ export function IntegrationsPageClient() {
               <DialogContent className="max-w-md">
                 <DialogHeader>
                   <DialogTitle>Nueva Integración</DialogTitle>
-                  <DialogDescription>Configura una nueva conexión con un servicio externo</DialogDescription>
+                  <DialogDescription>
+                    {formData.integration_type === 'afip' 
+                      ? 'Configura AFIP automáticamente. Solo necesitas tu CUIT y Clave Fiscal.'
+                      : 'Configura una nueva conexión con un servicio externo'}
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
-                  <div>
-                    <Label>Nombre</Label>
-                    <Input 
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder="Mi integración"
-                    />
-                  </div>
-                  <div>
-                    <Label>Tipo</Label>
-                    <Select 
-                      value={formData.integration_type}
-                      onValueChange={(v) => setFormData({ ...formData, integration_type: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona un tipo" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {integrationTypes.map(type => (
-                          <SelectItem key={type.value} value={type.value}>
-                            <div className="flex items-center gap-2">
-                              <type.icon className="h-4 w-4" />
-                              {type.label}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Descripción (opcional)</Label>
-                    <Textarea 
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Describe esta integración..."
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <Label>Sincronización automática</Label>
-                    <Switch 
-                      checked={formData.sync_enabled}
-                      onCheckedChange={(v) => setFormData({ ...formData, sync_enabled: v })}
-                    />
-                  </div>
-                  {formData.sync_enabled && (
-                    <div>
-                      <Label>Frecuencia</Label>
-                      <Select 
-                        value={formData.sync_frequency}
-                        onValueChange={(v) => setFormData({ ...formData, sync_frequency: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="realtime">Tiempo real</SelectItem>
-                          <SelectItem value="hourly">Cada hora</SelectItem>
-                          <SelectItem value="daily">Diario</SelectItem>
-                          <SelectItem value="weekly">Semanal</SelectItem>
-                          <SelectItem value="manual">Manual</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {formData.integration_type === 'afip' ? (
+                    // Formulario especial para AFIP
+                    <>
+                      <div>
+                        <Label>Agencia *</Label>
+                        <Select 
+                          value={afipSetupData.agency_id}
+                          onValueChange={(v) => setAfipSetupData({ ...afipSetupData, agency_id: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona una agencia" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {agencies.map(agency => (
+                              <SelectItem key={agency.id} value={agency.id}>
+                                {agency.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>CUIT *</Label>
+                        <Input 
+                          type="text"
+                          value={afipSetupData.cuit}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, cuit: e.target.value })}
+                          placeholder="20-12345678-9"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Ingrese su CUIT sin guiones (ej: 20123456789)
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Clave Fiscal *</Label>
+                        <Input 
+                          type="password"
+                          value={afipSetupData.clave_fiscal}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, clave_fiscal: e.target.value })}
+                          placeholder="Tu clave fiscal de AFIP"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          La clave fiscal que usas para ingresar a AFIP
+                        </p>
+                      </div>
+                      <div>
+                        <Label>Punto de Venta *</Label>
+                        <Input 
+                          type="number"
+                          value={afipSetupData.point_of_sale}
+                          onChange={(e) => setAfipSetupData({ ...afipSetupData, point_of_sale: parseInt(e.target.value) || 1 })}
+                          placeholder="1"
+                          min="1"
+                        />
+                      </div>
+                      <div>
+                        <Label>Ambiente</Label>
+                        <Select 
+                          value={afipSetupData.environment}
+                          onValueChange={(v) => setAfipSetupData({ ...afipSetupData, environment: v as 'sandbox' | 'production' })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="sandbox">Sandbox (Pruebas)</SelectItem>
+                            <SelectItem value="production">Producción</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Use Sandbox para pruebas, Producción para facturar reales
+                        </p>
+                      </div>
+                      <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                          <strong>Importante:</strong> Asegúrese de haber autorizado el servicio de Facturación Electrónica en AFIP Clave Fiscal antes de continuar.
+                        </p>
+                      </div>
+                    </>
+                  ) : (
+                    // Formulario genérico para otras integraciones
+                    <>
+                      <div>
+                        <Label>Nombre</Label>
+                        <Input 
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="Mi integración"
+                        />
+                      </div>
+                      <div>
+                        <Label>Tipo</Label>
+                        <Select 
+                          value={formData.integration_type}
+                          onValueChange={(v) => setFormData({ ...formData, integration_type: v })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un tipo" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {integrationTypes.map(type => (
+                              <SelectItem key={type.value} value={type.value}>
+                                <div className="flex items-center gap-2">
+                                  <type.icon className="h-4 w-4" />
+                                  {type.label}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label>Descripción (opcional)</Label>
+                        <Textarea 
+                          value={formData.description}
+                          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                          placeholder="Describe esta integración..."
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <Label>Sincronización automática</Label>
+                        <Switch 
+                          checked={formData.sync_enabled}
+                          onCheckedChange={(v) => setFormData({ ...formData, sync_enabled: v })}
+                        />
+                      </div>
+                      {formData.sync_enabled && (
+                        <div>
+                          <Label>Frecuencia</Label>
+                          <Select 
+                            value={formData.sync_frequency}
+                            onValueChange={(v) => setFormData({ ...formData, sync_frequency: v })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="realtime">Tiempo real</SelectItem>
+                              <SelectItem value="hourly">Cada hora</SelectItem>
+                              <SelectItem value="daily">Diario</SelectItem>
+                              <SelectItem value="weekly">Semanal</SelectItem>
+                              <SelectItem value="manual">Manual</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowNewDialog(false)}>Cancelar</Button>
-                  <Button onClick={createIntegration} disabled={!formData.name || !formData.integration_type}>
-                    Crear
+                  <Button variant="outline" onClick={() => {
+                    setShowNewDialog(false)
+                    setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
+                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', clave_fiscal: '', point_of_sale: 1, environment: 'sandbox' })
+                  }}>
+                    Cancelar
+                  </Button>
+                  <Button 
+                    onClick={createIntegration} 
+                    disabled={
+                      formData.integration_type === 'afip'
+                        ? (!afipSetupData.agency_id || !afipSetupData.cuit || !afipSetupData.clave_fiscal || settingUpAfip)
+                        : (!formData.name || !formData.integration_type)
+                    }
+                  >
+                    {settingUpAfip ? 'Configurando...' : formData.integration_type === 'afip' ? 'Configurar AFIP' : 'Crear'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
