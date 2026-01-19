@@ -205,7 +205,7 @@ export function LeadsTable({
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    <Link href={`/sales/leads/${lead.id}`}>
+                    <Link href={`/sales/leads?leadId=${lead.id}`}>
                       <Button variant="ghost" size="sm">
                         Ver
                       </Button>

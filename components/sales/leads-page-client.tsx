@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { LeadsKanban } from "@/components/sales/leads-kanban"
 import { LeadsKanbanTrello } from "@/components/sales/leads-kanban-trello"
 import { LeadsTable } from "@/components/sales/leads-table"
@@ -70,6 +71,8 @@ export function LeadsPageClient({
   currentUserId,
   currentUserRole,
 }: LeadsPageClientProps) {
+  const searchParams = useSearchParams()
+  const router = useRouter()
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>(defaultAgencyId || agencies[0]?.id || "ALL")
@@ -78,7 +81,23 @@ export function LeadsPageClient({
   const [initialLoad, setInitialLoad] = useState(true)
   const [syncingTrello, setSyncingTrello] = useState(false)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
+  const [initialLeadId, setInitialLeadId] = useState<string | null>(null)
   const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
+
+  // Leer leadId de query params y abrir dialog automáticamente
+  useEffect(() => {
+    const leadId = searchParams.get("leadId")
+    if (leadId) {
+      setInitialLeadId(leadId)
+      // Limpiar el query param de la URL sin recargar
+      const newSearchParams = new URLSearchParams(searchParams.toString())
+      newSearchParams.delete("leadId")
+      const newUrl = newSearchParams.toString() 
+        ? `${window.location.pathname}?${newSearchParams.toString()}`
+        : window.location.pathname
+      router.replace(newUrl, { scroll: false })
+    }
+  }, [searchParams, router])
 
   // Inicializar Supabase client para Realtime
   useEffect(() => {
@@ -317,6 +336,7 @@ export function LeadsPageClient({
       onRefresh={handleRefresh}
       currentUserId={currentUserId}
       currentUserRole={currentUserRole}
+      initialLeadId={initialLeadId}
     />
   ) : (
     <LeadsKanban 
@@ -325,6 +345,7 @@ export function LeadsPageClient({
       sellers={sellers}
       operators={operators}
       onRefresh={handleRefresh}
+      initialLeadId={initialLeadId}
       currentUserId={currentUserId}
       currentUserRole={currentUserRole}
     />

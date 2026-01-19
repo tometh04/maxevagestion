@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -59,9 +59,10 @@ interface LeadsKanbanProps {
   onRefresh?: () => void
   currentUserId?: string
   currentUserRole?: string
+  initialLeadId?: string | null
 }
 
-export function LeadsKanban({ leads, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanProps) {
+export function LeadsKanban({ leads, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole, initialLeadId }: LeadsKanbanProps) {
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
 
@@ -107,6 +108,17 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  // Abrir dialog automáticamente si hay initialLeadId
+  useEffect(() => {
+    if (initialLeadId && leads.length > 0) {
+      const lead = leads.find(l => l.id === initialLeadId)
+      if (lead) {
+        setSelectedLead(lead)
+        setDialogOpen(true)
+      }
+    }
+  }, [initialLeadId, leads])
 
   const leadsByStatus = statusColumns.reduce((acc, col) => {
     acc[col.id] = leads.filter((lead) => lead.status === col.id)

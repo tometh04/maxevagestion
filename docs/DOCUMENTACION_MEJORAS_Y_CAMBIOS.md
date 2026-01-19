@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-18 (Actualizado con correcciones en Gastos Recurrentes: SelectItem, filtro por fecha, y respeto de fecha fin)
+**Última actualización:** 2025-01-19 (Posición Contable Mensual rehacida desde cero, eliminación de operaciones, correcciones de NaN y conexiones con deudores/pagos)
 
 ---
 
@@ -343,65 +343,257 @@ Se implementó un sistema completo de pago masivo a operadores que permite regis
 - Conversión de moneda: Se calcula `amount_usd` y `amount_ars_equivalent` según el TC proporcionado
 - Ledger movements: Se crean en la cuenta de origen (origen del pago) y en RESULTADO/COSTOS
 
----
+### 12. Eliminación de Operaciones
 
-### 11. Posición Contable Mensual - TC Mensual y Distribución de Ganancias
-
-**Fecha:** 2025-01-17
+**Fecha:** 2025-01-19
 
 **Descripción:**
-Se mejoró completamente la funcionalidad de Posición Contable Mensual agregando gestión de tipos de cambio mensuales y visualización detallada de distribución de ganancias del mes.
+Se implementó la funcionalidad completa para eliminar operaciones desde la tabla de operaciones, con confirmación y eliminación en cascada de todos los datos relacionados, excepto el cliente asociado.
 
-**Funcionalidades implementadas:**
+**Funcionalidades:**
+- Botón "Eliminar" en el dropdown de acciones de cada operación
+- Solo visible para usuarios con rol `ADMIN` o `SUPER_ADMIN`
+- Diálogo de confirmación que muestra claramente qué se eliminará:
+  - ✅ Todos los pagos y cobranzas
+  - ✅ Movimientos contables (libro mayor, caja)
+  - ✅ Pagos a operadores pendientes
+  - ✅ Alertas y documentos
+  - ✅ Comisiones calculadas
+  - ⚠️ **El cliente asociado NO se elimina** (se mantiene en la base de datos)
+- Eliminación en cascada de todos los datos relacionados
+- Toast de confirmación al eliminar exitosamente
+- Refresco automático de la tabla después de eliminar
 
-#### Tipos de Cambio Mensuales:
-- Nueva tabla `monthly_exchange_rates` para almacenar TC por mes/año
-- API para gestionar TC mensuales (GET/POST `/api/accounting/monthly-exchange-rates`)
-- Selector de TC en la interfaz:
-  - Input para ingresar TC manualmente (ej: 1500)
-  - Botón "Guardar" para guardar el TC del mes seleccionado
-  - Muestra el TC actual si ya existe para ese mes
-- El TC se usa para convertir distribución de ganancias a USD
+**Archivos Modificados:**
+- `components/operations/operations-table.tsx`
+  - Agregado import de `Trash2` icon y `AlertDialog` components
+  - Agregado estado para `deletingOperation`, `deleteDialogOpen`, `deleting`
+  - Agregado `handleDeleteClick` para abrir diálogo
+  - Agregado `handleDeleteConfirm` para ejecutar eliminación
+  - Agregado `DropdownMenuItem` con botón "Eliminar" (solo para ADMIN/SUPER_ADMIN)
+  - Agregado `AlertDialog` con confirmación detallada
 
-#### Distribución de Ganancias del Mes:
-- Nueva sección "Distribución de Ganancias del Mes" que muestra:
-  - **Comisiones**: Total de comisiones pagadas en el mes (ARS y USD)
-  - **Gastos Operativos**: Total de gastos recurrentes pagados en el mes (ARS y USD)
-  - **Participaciones Societarias**: Total de retiros de socios en el mes (ARS y USD)
-- Los cálculos se realizan automáticamente basándose en:
-  - Comisiones: Tabla `commissions` con `status='paid'` y fecha de pago en el mes
-  - Gastos operativos: `ledger_movements` de tipo EXPENSE vinculados a pagos recurrentes en el mes
-  - Participaciones: Tabla `partner_withdrawals` con fecha de retiro en el mes
-- Conversión a USD usando el TC mensual configurado (si existe)
+**API Utilizada:**
+- `DELETE /api/operations/[id]` - Ya existía y estaba correctamente implementada
+  - Elimina IVA (venta y compra)
+  - Elimina pagos y sus movimientos contables
+  - Elimina ledger_movements de la operación
+  - Elimina cash_movements de la operación
+  - Elimina operator_payments
+  - Elimina alertas
+  - Elimina comisiones (commission_records)
+  - Elimina documentos
+  - Revierte lead a IN_PROGRESS si existe
+  - Finalmente elimina la operación (cascadea operation_customers)
+  - **NO elimina el cliente** (solo elimina la relación en operation_customers)
 
-**Archivos creados:**
-- `supabase/migrations/087_create_monthly_exchange_rates.sql` - Tabla de TC mensuales
-- `app/api/accounting/monthly-exchange-rates/route.ts` - API de gestión de TC mensuales
-
-**Archivos modificados:**
-- `app/api/accounting/monthly-position/route.ts` - Agregado cálculo de distribución y obtención de TC mensual
-- `components/accounting/monthly-position-page-client.tsx` - Agregado selector de TC y sección de distribución
-
-**Migraciones de base de datos:**
-- `supabase/migrations/087_create_monthly_exchange_rates.sql`
-  - Tabla `monthly_exchange_rates` con campos: `year`, `month`, `usd_to_ars_rate`
-  - Constraint UNIQUE(year, month)
-  - Índice para búsquedas rápidas
-
-**Detalles técnicos:**
-- El TC mensual es opcional: si no existe, la distribución solo muestra ARS
-- Si existe TC mensual, se usa para convertir ARS a USD: `ars_amount / tc_monthly`
-- Los USD directos se suman a los USD convertidos
-- La distribución se calcula filtrando por mes/año en las fechas correspondientes:
-  - Comisiones: `paid_at` entre inicio y fin del mes
-  - Gastos operativos: `created_at` de `ledger_movements` entre inicio y fin del mes
-  - Participaciones: `withdrawal_date` entre inicio y fin del mes
+**Detalles Técnicos:**
+- La eliminación es **irreversible**
+- Se requiere confirmación explícita del usuario
+- El diálogo muestra lista detallada de qué se eliminará
+- El cliente asociado se mantiene intacto en la tabla `customers`
+- Solo se elimina la relación en `operation_customers` (cascade delete)
 
 **UI/UX:**
-- El selector de TC está en la sección de filtros (cuarta columna en grid)
-- La sección "Distribución de Ganancias" aparece después del "Resultado del Mes"
-- Cada categoría muestra monto en ARS y USD (si hay TC configurado)
-- Colores diferentes por categoría: Comisiones (azul), Gastos Operativos (naranja), Participaciones (púrpura)
+- Botón "Eliminar" aparece en rojo en el dropdown
+- Icono de basura (Trash2) para identificación visual
+- Diálogo modal con título, descripción detallada y lista de items
+- Botones: "Cancelar" (gris) y "Eliminar operación" (rojo)
+- Estado de carga durante eliminación ("Eliminando...")
+- Toast de éxito o error después de la operación
+
+---
+
+### 11. Posición Contable Mensual - REHECHA DESDE CERO (Balance General Profesional)
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se eliminó completamente la funcionalidad anterior de Posición Contable Mensual y se rehizo desde cero con una estructura contable profesional que incluye Balance General completo y Estado de Resultados del mes. La nueva implementación está completamente integrada con el resto del sistema (deudores por ventas, pagos a operadores, caja, etc.).
+
+**Motivación:**
+La versión anterior tenía múltiples problemas:
+- No traía correctamente las cuentas por cobrar (deudores)
+- No traía correctamente las cuentas por pagar (operadores)
+- El TC mensual no era independiente por mes
+- Los cálculos mostraban NaN y valores incorrectos
+- No estaba conectada con las fuentes de datos reales del sistema
+
+**Estructura Contable Implementada:**
+
+```
+ACTIVO (Lo que la empresa TIENE)
+├── Activo Corriente (< 1 año)
+│   ├── Caja y Bancos
+│   │   ├── Efectivo USD
+│   │   ├── Efectivo ARS
+│   │   ├── Bancos USD
+│   │   └── Bancos ARS
+│   └── Cuentas por Cobrar (deuda de clientes)
+└── Activo No Corriente (> 1 año)
+    ├── Bienes de Uso (0 - preparado para futuro)
+    └── Inversiones LP (0 - preparado para futuro)
+
+PASIVO (Lo que la empresa DEBE)
+├── Pasivo Corriente (< 1 año)
+│   ├── Cuentas por Pagar (deuda a operadores)
+│   └── Gastos a Pagar (recurrentes pendientes)
+└── Pasivo No Corriente (> 1 año)
+    └── Deudas LP (0 - preparado para futuro)
+
+PATRIMONIO NETO = ACTIVO - PASIVO
+└── Resultado del Ejercicio
+
+ESTADO DE RESULTADOS DEL MES
+├── Ingresos (cobros de clientes)
+├── (-) Costos (pagos a operadores)
+├── = Margen Bruto (%)
+├── (-) Gastos Operativos
+└── = RESULTADO DEL MES
+```
+
+**Funcionalidades Implementadas:**
+
+#### 1. Tipos de Cambio Mensuales (Independientes por Mes):
+- **Cada mes tiene su propio TC guardado** en tabla `monthly_exchange_rates`
+- Input editable en la interfaz para ingresar/actualizar el TC del mes seleccionado
+- Botón "Guardar" (💾) para persistir el TC del mes
+- Si no hay TC guardado para el mes, usa el TC más reciente del sistema como referencia
+- El TC se usa para convertir todos los valores ARS a USD en el balance
+- **IMPORTANTE:** El TC es independiente mes a mes (enero puede tener TC 1500, febrero 1600, etc.)
+
+#### 2. Balance General Completo:
+- **Caja y Bancos:**
+  - Calculado desde `financial_accounts` + `ledger_movements`
+  - Separa efectivo USD, efectivo ARS, bancos USD, bancos ARS
+  - Convierte ARS a USD usando el TC del mes
+- **Cuentas por Cobrar:**
+  - **CONECTADO con `/api/accounting/debts-sales`** (misma lógica)
+  - Obtiene operaciones con `operation_customers`
+  - Calcula deuda = `sale_amount_total` - `sum(payments)`
+  - Convierte ARS a USD usando TC histórico de la fecha de la operación
+  - Muestra cantidad de deudores y detalle (top 10)
+- **Cuentas por Pagar:**
+  - **CONECTADO con tabla `operator_payments`** (misma fuente que "Pagos a Operadores")
+  - Solo cuenta pagos con status `PENDING` o `OVERDUE`
+  - Calcula deuda = `amount` - `paid_amount`
+  - Convierte ARS a USD usando TC del mes
+  - Muestra cantidad de acreedores y detalle (top 10)
+- **Gastos a Pagar:**
+  - Gastos recurrentes con `next_due_date` <= fecha de corte
+  - Separa USD y ARS, convierte a USD
+
+#### 3. Estado de Resultados del Mes:
+- **Ingresos:** Suma de pagos de clientes (`payments` con `direction=INCOME`, `payer_type=CUSTOMER`, `status=PAID`) en el mes
+- **Costos:** Suma de pagos a operadores (`operator_payments` con `status=PAID` y `paid_at` en el mes)
+- **Gastos Operativos:** Suma de `ledger_movements` tipo `EXPENSE` sin `operation_id` en el mes
+- **Resultado del Mes:** `Ingresos - Costos - Gastos`
+- **Margen Bruto:** `(Ingresos - Costos) / Ingresos * 100`
+
+#### 4. Verificación Contable:
+- Muestra badge "Cuadrado" o "Descuadrado"
+- Verifica que `ACTIVO = PASIVO + PATRIMONIO NETO`
+- Tolerancia de 0.01 para diferencias por redondeo
+
+#### 5. Conversión de Moneda (USD ↔ ARS):
+- Por defecto muestra todo en USD
+- Selector de moneda permite cambiar a ARS
+- Al cambiar a ARS, muestra popup para ingresar TC personalizado
+- Convierte todos los valores usando el TC ingresado
+- El TC de referencia se muestra en los filtros
+
+#### 6. Filtros y Navegación:
+- Selector de período (mes/año) con calendario
+- Selector de agencia (filtra por `agency_id`)
+- Selector de moneda (USD/ARS)
+- Botón "Actualizar" para refrescar datos
+- Tabs: Balance General, Estado de Resultados, Detalle
+
+**Conexión Integral con el Sistema:**
+- ✅ **Cuentas por Cobrar** usa la misma lógica que "Deudores por Ventas" (`/api/accounting/debts-sales`)
+- ✅ **Cuentas por Pagar** usa la misma tabla que "Pagos a Operadores" (`operator_payments`)
+- ✅ **Caja y Bancos** usa `financial_accounts` + `ledger_movements` (misma fuente que resumen de caja)
+- ✅ **Estado de Resultados** usa `payments` y `operator_payments` (mismas fuentes que reportes)
+
+**Archivos Creados:**
+- `app/api/accounting/monthly-exchange-rates/route.ts` - API para GET/POST de TC mensuales
+- `supabase/migrations/087_create_monthly_exchange_rates.sql` - Tabla de TC mensuales
+
+**Archivos Modificados:**
+- `app/api/accounting/monthly-position/route.ts` - **REHECHO COMPLETAMENTE**
+  - Nueva lógica de cálculo de Balance General
+  - Conexión con `debts-sales` para cuentas por cobrar
+  - Conexión con `operator_payments` para cuentas por pagar
+  - Cálculo de Estado de Resultados del mes
+  - Manejo robusto de NaN y valores nulos
+  - Logs detallados para debugging
+- `components/accounting/monthly-position-page-client.tsx` - **REHECHO COMPLETAMENTE**
+  - Nueva UI con tabs (Balance General, Estado de Resultados, Detalle)
+  - Selector de TC mensual editable con botón guardar
+  - Conversión de moneda con popup
+  - KPIs visuales (Total Activo, Total Pasivo, Patrimonio Neto, Resultado del Mes)
+  - Tablas detalladas de deudores y acreedores
+  - Manejo de NaN en formateo de moneda
+
+**Migraciones de Base de Datos:**
+- `supabase/migrations/087_create_monthly_exchange_rates.sql`
+  ```sql
+  CREATE TABLE IF NOT EXISTS monthly_exchange_rates (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    year INTEGER NOT NULL,
+    month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
+    usd_to_ars_rate NUMERIC(18,4) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE(year, month)
+  );
+  ```
+
+**Detalles Técnicos Importantes:**
+
+1. **Cálculo de Cuentas por Cobrar:**
+   - Obtiene `operations` con `operation_customers`
+   - Obtiene `payments` de clientes (`direction=INCOME`, `payer_type=CUSTOMER`, `status=PAID`)
+   - Agrupa pagos por `operation_id`
+   - Convierte `sale_amount_total` a USD usando TC histórico de `departure_date` o `created_at`
+   - Calcula deuda: `ventaUSD - cobradoUSD`
+   - **Misma lógica que `/api/accounting/debts-sales`**
+
+2. **Cálculo de Cuentas por Pagar:**
+   - Obtiene `operator_payments` con status `PENDING` o `OVERDUE`
+   - Calcula pendiente: `amount - paid_amount`
+   - Convierte ARS a USD usando TC del mes
+   - **Misma fuente que "Pagos a Operadores"**
+
+3. **Manejo de NaN y Valores Nulos:**
+   - Validación de `amount_usd`, `exchange_rate`, `amount` antes de calcular
+   - Función `formatMoney` maneja `null`, `undefined` y `NaN`
+   - Redondeo a 2 decimales para evitar problemas de precisión
+   - Logs detallados en consola del servidor para debugging
+
+4. **TC Mensual:**
+   - Si existe TC para el mes seleccionado, se usa ese
+   - Si no existe, se usa el TC más reciente del sistema
+   - El TC se guarda con `upsert` (crea o actualiza)
+   - Cada mes puede tener un TC diferente
+
+**UI/UX:**
+- Header con título, fecha de corte y badge de verificación contable
+- Filtros en card superior: Período, Agencia, TC del Mes (editable), Moneda, Actualizar
+- 4 KPIs visuales: Total Activo (verde), Total Pasivo (rojo), Patrimonio Neto (azul), Resultado del Mes (púrpura)
+- Tabs para navegar: Balance General, Estado de Resultados, Detalle
+- Balance General muestra Activo y Pasivo+PN lado a lado
+- Estado de Resultados muestra ingresos, costos, gastos y resultado final
+- Detalle muestra tablas de deudores y acreedores con información completa
+
+**Errores Corregidos:**
+- ✅ Cuentas por Cobrar ahora muestra correctamente los deudores (conectado con debts-sales)
+- ✅ Cuentas por Pagar ahora muestra correctamente los acreedores (conectado con operator_payments)
+- ✅ NaN en cálculos eliminado (validaciones y manejo de null/undefined)
+- ✅ TC mensual ahora es independiente por mes (cada mes tiene su propio TC)
+- ✅ Conversión de moneda funciona correctamente con popup de TC
+
+---
 
 #### Error: SelectItem sin value en Gastos Recurrentes
 **Fecha:** 2025-01-17
@@ -522,6 +714,116 @@ Se mejoró completamente la funcionalidad de Posición Contable Mensual agregand
 - Al filtrar por "Marzo 2026": Aparece ✅ (si hay un vencimiento antes del 12/03)
 - Al filtrar por "Abril 2026": NO aparece ❌ (pasó la fecha de fin)
 - Al filtrar por "Mayo 2026": NO aparece ❌ (pasó la fecha de fin)
+
+---
+
+### 2025-01-19
+
+#### Error: Posición Contable Mensual no mostraba Cuentas por Cobrar (Deudores)
+**Fecha:** 2025-01-19
+
+**Problema:**
+- La Posición Contable Mensual mostraba "0 deudores" cuando sí había deudores por ventas
+- El cálculo de cuentas por cobrar no estaba conectado con la funcionalidad "Deudores por Ventas"
+- Los valores mostraban `NaN` en la interfaz
+
+**Solución:**
+- Rehecho completamente el cálculo de cuentas por cobrar para usar la misma lógica que `/api/accounting/debts-sales`
+- Obtiene operaciones con `operation_customers` y `customers`
+- Obtiene pagos de clientes (`payments` con `direction=INCOME`, `payer_type=CUSTOMER`, `status=PAID`)
+- Agrupa pagos por `operation_id` y calcula deuda correctamente
+- Convierte ARS a USD usando TC histórico de la fecha de la operación
+- Agregadas validaciones para evitar NaN (verifica `amount_usd`, `exchange_rate`, `amount` antes de calcular)
+- Función `formatMoney` ahora maneja `null`, `undefined` y `NaN` correctamente
+
+**Archivos modificados:**
+- `app/api/accounting/monthly-position/route.ts` - Rehecho cálculo de cuentas por cobrar
+- `components/accounting/monthly-position-page-client.tsx` - Agregado manejo de NaN en `formatMoney`
+
+**Detalles técnicos:**
+- Separadas las consultas: primero operaciones, luego pagos, luego clientes
+- Validación de `operation_id` antes de procesar pagos
+- Validación de `amount_usd`, `exchange_rate` y `amount` antes de calcular
+- Redondeo a 2 decimales para evitar problemas de precisión
+- Logs detallados en consola del servidor para debugging
+
+---
+
+#### Error: Posición Contable Mensual no mostraba Cuentas por Pagar (Acreedores)
+**Fecha:** 2025-01-19
+
+**Problema:**
+- La Posición Contable Mensual mostraba "0 acreedores" cuando sí había pagos pendientes a operadores
+- El cálculo de cuentas por pagar no estaba conectado con la funcionalidad "Pagos a Operadores"
+- Usaba la tabla `payments` en lugar de `operator_payments`
+
+**Solución:**
+- Rehecho completamente el cálculo de cuentas por pagar para usar la tabla `operator_payments`
+- Obtiene pagos con status `PENDING` o `OVERDUE`
+- Calcula deuda pendiente: `amount - paid_amount`
+- Convierte ARS a USD usando TC del mes
+- Filtra por agencia si está seleccionada
+- Agregadas validaciones para evitar NaN y valores inválidos
+
+**Archivos modificados:**
+- `app/api/accounting/monthly-position/route.ts` - Rehecho cálculo de cuentas por pagar
+
+**Detalles técnicos:**
+- Usa la misma fuente de datos que "Pagos a Operadores" (`operator_payments`)
+- Solo cuenta pagos pendientes (status `PENDING` o `OVERDUE`)
+- Respeta pagos parciales (`paid_amount`)
+- Filtra por `agency_id` si está seleccionada
+- Logs detallados para debugging
+
+---
+
+#### Error: TC Mensual no era independiente por mes
+**Fecha:** 2025-01-19
+
+**Problema:**
+- El TC mensual no se guardaba correctamente
+- No había forma de editar el TC de un mes específico
+- El TC se usaba globalmente en lugar de ser independiente por mes
+
+**Solución:**
+- Implementada tabla `monthly_exchange_rates` con constraint `UNIQUE(year, month)`
+- API `/api/accounting/monthly-exchange-rates` con GET (obtener TC del mes) y POST (guardar/actualizar TC)
+- Input editable en la interfaz con botón "Guardar" (💾)
+- El TC se guarda con `upsert` (crea si no existe, actualiza si existe)
+- Cada mes puede tener su propio TC independiente
+- Si no hay TC para el mes, usa el TC más reciente del sistema como referencia
+
+**Archivos creados:**
+- `app/api/accounting/monthly-exchange-rates/route.ts` - API completa de TC mensuales
+- `supabase/migrations/087_create_monthly_exchange_rates.sql` - Tabla de TC mensuales
+
+**Archivos modificados:**
+- `components/accounting/monthly-position-page-client.tsx` - Input editable con botón guardar
+- `app/api/accounting/monthly-position/route.ts` - Obtiene TC del mes o usa el más reciente
+
+**Detalles técnicos:**
+- El TC se guarda con `upsert` usando `onConflict: "year,month"`
+- El TC se obtiene con `maybeSingle()` para manejar casos donde no existe
+- El TC se muestra en el input si existe, o el TC más reciente como referencia
+- Badge verde indica si el TC está guardado para el mes seleccionado
+
+---
+
+#### Error: TypeScript - Block-scoped variable used before declaration
+**Fecha:** 2025-01-19
+
+**Problema:**
+- Error de compilación: `Block-scoped variable 'fetchOperations' used before its declaration`
+- `handleDeleteConfirm` usaba `fetchOperations` antes de que estuviera declarado
+- El deploy fallaba en Vercel
+
+**Solución:**
+- Reorganizado el orden de declaración de funciones
+- `fetchOperations` ahora se declara antes de `handleDeleteConfirm`
+- `handleDeleteClick` y `handleDeleteConfirm` se movieron después de `fetchOperations`
+
+**Archivos modificados:**
+- `components/operations/operations-table.tsx` - Reorganizado orden de funciones
 
 ---
 
@@ -735,10 +1037,11 @@ CREATE INDEX IF NOT EXISTS idx_operations_reservation_code_hotel
 
 ### Migración 087: Tipos de Cambio Mensuales
 **Archivo:** `supabase/migrations/087_create_monthly_exchange_rates.sql`
-**Fecha:** 2025-01-17
+**Fecha:** 2025-01-19
 
 ```sql
 -- Tabla para almacenar tipos de cambio mensuales
+-- Permite guardar un TC específico para cada mes/año
 CREATE TABLE IF NOT EXISTS monthly_exchange_rates (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   year INTEGER NOT NULL,
@@ -746,19 +1049,26 @@ CREATE TABLE IF NOT EXISTS monthly_exchange_rates (
   usd_to_ars_rate NUMERIC(18,4) NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   UNIQUE(year, month)
 );
 
 CREATE INDEX IF NOT EXISTS idx_monthly_exchange_rates_year_month 
-  ON monthly_exchange_rates(year, month);
+ON monthly_exchange_rates(year, month);
+
+COMMENT ON TABLE monthly_exchange_rates IS 'Tipos de cambio mensuales para la posición contable';
 ```
 
-**Nota:** La referencia usa `users(id)` en lugar de `auth.users(id)` para mantener consistencia con el resto del sistema.
+**Propósito:** 
+- Permite configurar un tipo de cambio USD/ARS específico para cada mes/año
+- Cada mes puede tener su propio TC independiente (ej: enero 1500, febrero 1600)
+- Usado para dolarizar balances y cálculos en la Posición Contable Mensual
+- Si no hay TC para un mes, se usa el TC más reciente del sistema como referencia
 
-**Propósito:** Permite configurar un tipo de cambio USD/ARS específico para cada mes, usado para dolarizar balances y distribuciones en la Posición Contable Mensual.
-
-**Nota:** La migración fue corregida para usar `users(id)` en lugar de `auth.users(id)` para mantener consistencia con el resto del sistema.
+**Notas importantes:**
+- **NO incluye campo `created_by`** - Se eliminó para evitar problemas de foreign key
+- Constraint `UNIQUE(year, month)` asegura un solo TC por mes/año
+- El TC se guarda con `upsert` (crea si no existe, actualiza si existe)
+- El TC es independiente mes a mes (no hay herencia entre meses)
 
 ### Migración 086: Categorías en Gastos Recurrentes
 **Archivo:** `supabase/migrations/086_add_category_id_to_recurring_payments.sql`
@@ -892,6 +1202,18 @@ COMMENT ON COLUMN customers.procedure_number IS
   - Campo exchange_rate obligatorio para ARS
   - Cálculo automático de amount_usd
   - Visualización de equivalente USD en tiempo real
+- [x] Posición Contable Mensual profesional - **COMPLETADO** (2025-01-19)
+  - Balance General completo (Activo, Pasivo, Patrimonio Neto)
+  - Estado de Resultados del mes
+  - TC mensual independiente por mes
+  - Conexión integral con deudores por ventas y pagos a operadores
+  - Conversión de moneda USD ↔ ARS
+  - Verificación contable (Activo = Pasivo + PN)
+- [x] Eliminación de operaciones - **COMPLETADO** (2025-01-19)
+  - Botón de eliminar en tabla de operaciones
+  - Confirmación con diálogo detallado
+  - Eliminación en cascada de todos los datos relacionados
+  - Cliente asociado se mantiene intacto
 
 ---
 

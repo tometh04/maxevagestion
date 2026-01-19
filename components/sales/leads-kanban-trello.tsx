@@ -67,9 +67,10 @@ interface LeadsKanbanTrelloProps {
   onRefresh?: () => void
   currentUserId?: string
   currentUserRole?: string
+  initialLeadId?: string | null
 }
 
-export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole }: LeadsKanbanTrelloProps) {
+export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole, initialLeadId }: LeadsKanbanTrelloProps) {
   const [lists, setLists] = useState<TrelloList[]>([])
   const [loading, setLoading] = useState(true)
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
@@ -146,6 +147,17 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
       setLoading(false)
     }
   }, [agencyId])
+
+  // Abrir dialog automáticamente si hay initialLeadId
+  useEffect(() => {
+    if (initialLeadId && leads.length > 0) {
+      const lead = leads.find(l => l.id === initialLeadId)
+      if (lead) {
+        setSelectedLead(lead)
+        setDialogOpen(true)
+      }
+    }
+  }, [initialLeadId, leads])
 
   // Agrupar leads por lista de Trello
   // CRÍTICO: Mostrar EXACTAMENTE las mismas listas que hay en Trello, con las cards en cada lista

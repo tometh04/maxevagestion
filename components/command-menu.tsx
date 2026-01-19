@@ -204,7 +204,15 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                   ? `/operations/${result.id}`
                   : result.type === "operator"
                     ? `/operators/${result.id}`
-                    : `/sales?lead=${result.id}`
+                    : `/sales/leads?leadId=${result.id}`
+
+              // Labels para el tipo
+              const typeLabels: Record<string, string> = {
+                customer: "Cliente",
+                operation: "Operación",
+                operator: "Operador",
+                lead: "Lead",
+              }
 
               return (
                 <CommandItem
@@ -212,10 +220,15 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                   onSelect={() => navigateTo(path)}
                 >
                   <Icon className="mr-2 h-4 w-4" />
-                  <div className="flex flex-col">
-                    <span>{result.title}</span>
+                  <div className="flex flex-col flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{result.title}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                        {typeLabels[result.type]}
+                      </span>
+                    </div>
                     {result.subtitle && (
-                      <span className="text-xs text-muted-foreground">{result.subtitle}</span>
+                      <span className="text-xs text-muted-foreground mt-0.5">{result.subtitle}</span>
                     )}
                   </div>
                 </CommandItem>
