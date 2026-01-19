@@ -16,8 +16,8 @@ export async function getAfipConfigForAgency(
 ): Promise<AfipConfig | null> {
   try {
     // Buscar integración de tipo 'afip' para esta agencia
-    const { data: integration, error } = await supabase
-      .from('integrations')
+    const { data: integration, error } = await (supabase
+      .from('integrations') as any)
       .select('*')
       .eq('agency_id', agencyId)
       .eq('integration_type', 'afip')
@@ -30,7 +30,7 @@ export async function getAfipConfigForAgency(
     }
 
     // Extraer configuración del campo JSONB
-    const config = integration.config as any
+    const config = (integration as any).config as any
 
     if (!config) {
       console.log(`[AFIP Helper] Integración sin configuración para agencia ${agencyId}`)
@@ -77,8 +77,8 @@ export async function saveAfipConfigForAgency(
 }> {
   try {
     // Buscar integración existente
-    const { data: existingIntegration } = await supabase
-      .from('integrations')
+    const { data: existingIntegration } = await (supabase
+      .from('integrations') as any)
       .select('id')
       .eq('agency_id', agencyId)
       .eq('integration_type', 'afip')
@@ -97,8 +97,8 @@ export async function saveAfipConfigForAgency(
 
     if (existingIntegration) {
       // Actualizar integración existente
-      const { data, error } = await supabase
-        .from('integrations')
+      const { data, error } = await (supabase
+        .from('integrations') as any)
         .update({
           config: configData,
           status: isAfipConfigValid(config) ? 'active' : 'inactive',
@@ -121,8 +121,8 @@ export async function saveAfipConfigForAgency(
       }
     } else {
       // Crear nueva integración
-      const { data, error } = await supabase
-        .from('integrations')
+      const { data, error } = await (supabase
+        .from('integrations') as any)
         .insert({
           agency_id: agencyId,
           integration_type: 'afip',
