@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     // Obtener filtros de query params
     const currencyFilter = searchParams.get("currency") // "ALL" | "USD" | "ARS"
     const customerIdFilter = searchParams.get("customerId") // ID de cliente
+    const sellerIdFilter = searchParams.get("sellerId") // ID de vendedor
     const dateFromFilter = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
 
@@ -53,7 +54,8 @@ export async function GET(request: Request) {
             sale_currency,
             currency,
             status,
-            departure_date
+            departure_date,
+            seller_id
           )
         )
       `)
@@ -108,6 +110,30 @@ export async function GET(request: Request) {
       }
     }
 
+    // Obtener nombres de vendedores para mostrar en la respuesta
+    const sellerIds = new Set<string>()
+    customers?.forEach((customer: any) => {
+      customer.operation_customers?.forEach((oc: any) => {
+        if (oc.operations?.seller_id) {
+          sellerIds.add(oc.operations.seller_id)
+        }
+      })
+    })
+    
+    const sellerNamesMap: Record<string, string> = {}
+    if (sellerIds.size > 0) {
+      const { data: sellers } = await supabase
+        .from("users")
+        .select("id, name")
+        .in("id", Array.from(sellerIds))
+      
+      if (sellers) {
+        sellers.forEach((seller: any) => {
+          sellerNamesMap[seller.id] = seller.name || "Sin nombre"
+        })
+      }
+    }
+
     // Calculate debt for each customer
     const debtors: Array<{
       customer: any
@@ -122,6 +148,8 @@ export async function GET(request: Request) {
         paid: number
         debt: number
         departure_date: string | null
+        seller_id: string | null
+        seller_name: string | null
       }>
     }> = []
 
@@ -141,6 +169,8 @@ export async function GET(request: Request) {
         paid: number
         debt: number
         departure_date: string | null
+        seller_id: string | null
+        seller_name: string | null
       }> = []
       let totalDebt = 0
       let currency = "ARS"
@@ -149,6 +179,11 @@ export async function GET(request: Request) {
       for (const oc of operations) {
         const operation = oc.operations
         if (!operation) continue
+
+        // Aplicar filtro de vendedor si existe
+        if (sellerIdFilter && sellerIdFilter !== "ALL" && operation.seller_id !== sellerIdFilter) {
+          continue
+        }
 
         const opId = operation.id
         const saleCurrency = operation.sale_currency || operation.currency || "USD"
@@ -186,6 +221,8 @@ export async function GET(request: Request) {
             paid: paidUsd, // En USD
             debt: debtUsd, // En USD
             departure_date: operation.departure_date,
+            seller_id: operation.seller_id || null,
+            seller_name: operation.seller_id ? (sellerNamesMap[operation.seller_id] || "Sin vendedor") : null,
           })
           totalDebt += debtUsd
         }

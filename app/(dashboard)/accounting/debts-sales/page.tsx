@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { DebtsSalesPageClient } from "@/components/accounting/debts-sales-page-client"
+import { createServerClient } from "@/lib/supabase/server"
 
 export default async function DebtsSalesPage() {
   const { user } = await getCurrentUser()
@@ -16,5 +17,19 @@ export default async function DebtsSalesPage() {
     )
   }
 
-  return <DebtsSalesPageClient />
+  const supabase = await createServerClient()
+
+  // Get sellers for filters
+  let sellersQuery = supabase
+    .from("users")
+    .select("id, name")
+    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+    .eq("is_active", true)
+  
+  if (user.role === "SELLER") {
+    sellersQuery = sellersQuery.eq("id", user.id)
+  }
+  const { data: sellers } = await sellersQuery
+
+  return <DebtsSalesPageClient sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))} />
 }

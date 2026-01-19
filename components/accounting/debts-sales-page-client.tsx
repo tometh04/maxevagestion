@@ -50,6 +50,8 @@ interface DebtorOperation {
   paid: number
   debt: number
   departure_date: string | null
+  seller_id: string | null
+  seller_name: string | null
 }
 
 interface Debtor {
@@ -67,7 +69,11 @@ interface Debtor {
   operationsWithDebt: DebtorOperation[]
 }
 
-export function DebtsSalesPageClient() {
+interface DebtsSalesPageClientProps {
+  sellers: Array<{ id: string; name: string }>
+}
+
+export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPageClientProps) {
   const [debtors, setDebtors] = useState<Debtor[]>([])
   const [allDebtors, setAllDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
@@ -75,6 +81,7 @@ export function DebtsSalesPageClient() {
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
   const [currencyFilter, setCurrencyFilter] = useState<string>("ALL")
   const [customerFilter, setCustomerFilter] = useState<string>("")
+  const [sellerFilter, setSellerFilter] = useState<string>("ALL")
   const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
   const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
 
@@ -88,6 +95,9 @@ export function DebtsSalesPageClient() {
       }
       if (customerFilter) {
         params.append("customerId", customerFilter)
+      }
+      if (sellerFilter !== "ALL") {
+        params.append("sellerId", sellerFilter)
       }
       if (dateFromFilter) {
         params.append("dateFrom", format(dateFromFilter, "yyyy-MM-dd"))
@@ -111,7 +121,7 @@ export function DebtsSalesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [currencyFilter, customerFilter, dateFromFilter, dateToFilter])
+  }, [currencyFilter, customerFilter, sellerFilter, dateFromFilter, dateToFilter])
 
   useEffect(() => {
     fetchDebtors()
@@ -175,6 +185,7 @@ export function DebtsSalesPageClient() {
           Cliente: customerName,
           "Código Operación": op.file_code || "-",
           Destino: op.destination,
+          Vendedor: op.seller_name || "Sin vendedor",
           "Fecha Salida": op.departure_date
             ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
             : "-",
@@ -301,7 +312,7 @@ export function DebtsSalesPageClient() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 items-end">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 items-end">
             {/* Filtro por Moneda */}
             <div className="space-y-1.5">
               <Label className="text-xs">Moneda</Label>
@@ -313,6 +324,24 @@ export function DebtsSalesPageClient() {
                   <SelectItem value="ALL">Todas</SelectItem>
                   <SelectItem value="USD">USD</SelectItem>
                   <SelectItem value="ARS">ARS</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro por Vendedor */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Vendedor</Label>
+              <Select value={sellerFilter} onValueChange={setSellerFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos</SelectItem>
+                  {initialSellers.map((seller) => (
+                    <SelectItem key={seller.id} value={seller.id}>
+                      {seller.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -359,12 +388,13 @@ export function DebtsSalesPageClient() {
             </div>
           </div>
           
-          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter) && (
+          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL") && (
             <div className="mt-4 flex justify-end">
               <Button
                 variant="outline"
                 onClick={() => {
                   setCurrencyFilter("ALL")
+                  setSellerFilter("ALL")
                   setCustomerFilter("")
                   setDateFromFilter(undefined)
                   setDateToFilter(undefined)
@@ -508,6 +538,7 @@ export function DebtsSalesPageClient() {
                             <TableRow>
                               <TableHead>Código</TableHead>
                               <TableHead>Destino</TableHead>
+                              <TableHead>Vendedor</TableHead>
                               <TableHead>Fecha Salida</TableHead>
                               <TableHead className="text-right">Total Venta</TableHead>
                               <TableHead className="text-right">Pagado</TableHead>
@@ -522,6 +553,11 @@ export function DebtsSalesPageClient() {
                                   {op.file_code || "-"}
                                 </TableCell>
                                 <TableCell>{op.destination}</TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {op.seller_name || "Sin vendedor"}
+                                  </Badge>
+                                </TableCell>
                                 <TableCell>
                                   {op.departure_date
                                     ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
