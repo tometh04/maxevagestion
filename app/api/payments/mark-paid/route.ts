@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
-    const { paymentId, datePaid, reference } = body
+    const { paymentId, datePaid, reference, financial_account_id } = body
 
     if (!paymentId || !datePaid) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 })
@@ -474,25 +474,76 @@ export async function POST(request: Request) {
     // ============================================
     // 3. REGISTRAR EN CUENTA DE CAJA SEGÚN MÉTODO DE PAGO
     // ============================================
-    // Determinar tipo de cuenta de caja según método de pago
-    let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
-    if (paymentData.method === "Efectivo") {
-      cashAccountType = "CASH"
-    } else if (paymentData.method === "Transferencia") {
-      cashAccountType = "BANK"
-    } else if (paymentData.method === "Mercado Pago" || paymentData.method === "MercadoPago" || paymentData.method === "MP") {
-      cashAccountType = "MP"
-    } else if (paymentData.method === "USD") {
-      cashAccountType = "USD"
-    }
+    // Si el método es "Transferencia" y se proporcionó financial_account_id, usar esa cuenta
+    let cashAccountId: string
+    if (paymentData.method === "Transferencia" && financial_account_id) {
+      // Validar que la cuenta existe y es del tipo correcto
+      const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
+        .select("id, name, type, currency, is_active")
+        .eq("id", financial_account_id)
+        .eq("is_active", true)
+        .single()
 
-    // Obtener o crear cuenta de caja
-    const cashAccountId = await getOrCreateDefaultAccount(
-      cashAccountType,
-      paymentData.currency as "ARS" | "USD",
-      user.id,
-      supabase
-    )
+      if (accountError || !account) {
+        return NextResponse.json(
+          { error: "La cuenta financiera seleccionada no existe o no está activa" },
+          { status: 400 }
+        )
+      }
+
+      // Validar que la cuenta sea bancaria (CHECKING o SAVINGS)
+      if (
+        account.type !== "CHECKING_ARS" &&
+        account.type !== "CHECKING_USD" &&
+        account.type !== "SAVINGS_ARS" &&
+        account.type !== "SAVINGS_USD"
+      ) {
+        return NextResponse.json(
+          { error: "La cuenta seleccionada debe ser una cuenta bancaria (corriente o ahorro)" },
+          { status: 400 }
+        )
+      }
+
+      // Validar que la moneda coincida
+      if (account.currency !== paymentData.currency) {
+        return NextResponse.json(
+          { error: `La cuenta seleccionada es en ${account.currency} pero el pago es en ${paymentData.currency}` },
+          { status: 400 }
+        )
+      }
+
+      cashAccountId = account.id
+      console.log(`💵 mark-paid: Usando cuenta específica seleccionada`, {
+        account_id: cashAccountId,
+        account_name: account.name,
+        account_type: account.type,
+        account_currency: account.currency,
+      })
+    } else {
+      // Para otros métodos o si no se proporcionó cuenta específica, usar cuenta por defecto
+      let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
+      if (paymentData.method === "Efectivo") {
+        cashAccountType = "CASH"
+      } else if (paymentData.method === "Transferencia") {
+        cashAccountType = "BANK"
+      } else if (paymentData.method === "Mercado Pago" || paymentData.method === "MercadoPago" || paymentData.method === "MP") {
+        cashAccountType = "MP"
+      } else if (paymentData.method === "USD") {
+        cashAccountType = "USD"
+      }
+
+      cashAccountId = await getOrCreateDefaultAccount(
+        cashAccountType,
+        paymentData.currency as "ARS" | "USD",
+        user.id,
+        supabase
+      )
+      console.log(`💵 mark-paid: Usando cuenta por defecto`, {
+        method: paymentData.method,
+        cashAccountType,
+        cashAccountId,
+      })
+    }
     console.log(`💵 mark-paid: Cuenta de caja seleccionada`, {
       paymentId,
       method: paymentData.method,

@@ -284,10 +284,36 @@ export function PaymentsTable({
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                 {payment.status !== "PAID" && (
                   <DropdownMenuItem
-                    onClick={() => {
+                    onClick={async () => {
                       setSelectedPayment(payment)
                       setDatePaid(new Date().toISOString().split("T")[0])
                       setReference(payment.reference || "")
+                      setFinancialAccountId("")
+                      
+                      // Si el método es "Transferencia", cargar cuentas financieras
+                      if (payment.method === "Transferencia") {
+                        try {
+                          const response = await fetch("/api/accounting/financial-accounts")
+                          if (response.ok) {
+                            const data = await response.json()
+                            const bankAccounts = (data.accounts || []).filter(
+                              (acc: any) =>
+                                acc.is_active !== false &&
+                                (acc.type === "CHECKING_ARS" ||
+                                  acc.type === "CHECKING_USD" ||
+                                  acc.type === "SAVINGS_ARS" ||
+                                  acc.type === "SAVINGS_USD") &&
+                                acc.currency === payment.currency
+                            )
+                            setFinancialAccounts(bankAccounts)
+                          }
+                        } catch (error) {
+                          console.error("Error fetching financial accounts:", error)
+                        }
+                      } else {
+                        setFinancialAccounts([])
+                      }
+                      
                       setDialogOpen(true)
                     }}
                   >
@@ -305,6 +331,13 @@ export function PaymentsTable({
 
   const handleConfirm = async () => {
     if (!selectedPayment || !datePaid) return
+
+    // Validar que si el método es "Transferencia", se haya seleccionado una cuenta
+    if (selectedPayment.method === "Transferencia" && !financialAccountId) {
+      alert("Debe seleccionar una cuenta receptiva para transferencias bancarias")
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
@@ -315,6 +348,7 @@ export function PaymentsTable({
           paymentId: selectedPayment.id,
           datePaid,
           reference: reference || null,
+          financial_account_id: financialAccountId || null,
         }),
       })
 
