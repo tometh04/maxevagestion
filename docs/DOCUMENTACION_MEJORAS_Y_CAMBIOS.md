@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Sistema de Pago Masivo a Operadores - Mejoras y desglose por operación)
+**Última actualización:** 2025-01-19 (Mejora de Alineación de Filtros y Reemplazo de Inputs de Fecha)
 
 ---
 
