@@ -17,6 +17,17 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
 import { DollarSign, TrendingUp, Package, Percent, Users, Building2 } from "lucide-react"
 
+// Función para formatear números completos con separadores de miles
+function formatNumber(value: number): string {
+  if (isNaN(value) || value === null || value === undefined) {
+    return "0"
+  }
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
 interface DashboardPageClientProps {
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
@@ -219,7 +230,7 @@ export function DashboardPageClient({
               <>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-lg font-bold lg:text-xl truncate">
-                    ${Math.round(kpis.totalSales / 1000)}K
+                    ${formatNumber(kpis.totalSales)}
                   </span>
                   <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
                 </div>
@@ -271,7 +282,7 @@ export function DashboardPageClient({
               <>
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-lg font-bold lg:text-xl truncate">
-                    ${Math.round(kpis.totalMargin / 1000)}K
+                    ${formatNumber(kpis.totalMargin)}
                   </span>
                   <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
                 </div>
@@ -321,7 +332,7 @@ export function DashboardPageClient({
             ) : (
               <>
                 <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${Math.round(kpis.pendingCustomerPayments / 1000)}K
+                  ${formatNumber(kpis.pendingCustomerPayments)}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Pendientes de clientes
@@ -344,7 +355,7 @@ export function DashboardPageClient({
             ) : (
               <>
                 <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${Math.round(kpis.pendingOperatorPayments / 1000)}K
+                  ${formatNumber(kpis.pendingOperatorPayments)}
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
                   Pendientes de operadores
