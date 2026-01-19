@@ -185,8 +185,12 @@ export async function PUT(request: Request) {
       .eq("agency_id", agencyIds[0])
       .single()
 
+    // Asegurar que los valores de integración contable siempre estén en true
     const updateData = {
       ...validatedData,
+      auto_create_ledger_entry: true,
+      auto_create_iva_entry: true,
+      auto_create_operator_payment: true,
       updated_by: user.id,
       updated_at: new Date().toISOString(),
     }

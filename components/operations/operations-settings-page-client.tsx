@@ -8,8 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Save, Loader2, ArrowRight } from "lucide-react"
+import { Save, Loader2 } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -19,20 +18,6 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-
-interface CustomStatus {
-  value: string
-  label: string
-  color: string
-  order?: number
-}
 
 interface AutoAlert {
   type: 'payment_due' | 'operator_payment' | 'upcoming_trip' | 'missing_doc'
@@ -43,7 +28,7 @@ interface AutoAlert {
 
 interface OperationSettings {
   id?: string
-  custom_statuses: CustomStatus[]
+  custom_statuses: any[]
   workflows: Record<string, any>
   auto_alerts: AutoAlert[]
   document_templates: any[]
@@ -63,26 +48,6 @@ interface OperationSettings {
   auto_create_operator_payment: boolean
 }
 
-const standardStatuses = [
-  { value: "RESERVED", label: "Reservado", color: "bg-blue-500" },
-  { value: "CONFIRMED", label: "Confirmado", color: "bg-green-500" },
-  { value: "CANCELLED", label: "Cancelado", color: "bg-red-500" },
-  { value: "TRAVELLING", label: "En viaje", color: "bg-orange-500" },
-  { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
-]
-
-const statusColors = [
-  "bg-gray-500",
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-yellow-500",
-  "bg-orange-500",
-  "bg-red-500",
-  "bg-purple-500",
-  "bg-pink-500",
-  "bg-indigo-500",
-  "bg-slate-500",
-]
 
 export function OperationsSettingsPageClient() {
   const { toast } = useToast()
@@ -140,12 +105,19 @@ export function OperationsSettingsPageClient() {
   const saveSettings = async () => {
     try {
       setSaving(true)
+      // Asegurar que los valores de integración contable siempre estén en true
+      const settingsToSave = {
+        ...settings,
+        auto_create_ledger_entry: true,
+        auto_create_iva_entry: true,
+        auto_create_operator_payment: true,
+      }
       const response = await fetch('/api/operations/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(settingsToSave),
       })
 
       if (!response.ok) {
@@ -169,33 +141,6 @@ export function OperationsSettingsPageClient() {
     }
   }
 
-  const addCustomStatus = () => {
-    setSettings({
-      ...settings,
-      custom_statuses: [
-        ...settings.custom_statuses,
-        {
-          value: `CUSTOM_${Date.now()}`,
-          label: "Nuevo Estado",
-          color: "bg-gray-500",
-          order: settings.custom_statuses.length,
-        },
-      ],
-    })
-  }
-
-  const removeCustomStatus = (index: number) => {
-    setSettings({
-      ...settings,
-      custom_statuses: settings.custom_statuses.filter((_, i) => i !== index),
-    })
-  }
-
-  const updateCustomStatus = (index: number, field: keyof CustomStatus, value: any) => {
-    const updated = [...settings.custom_statuses]
-    updated[index] = { ...updated[index], [field]: value }
-    setSettings({ ...settings, custom_statuses: updated })
-  }
 
   const updateAlert = (index: number, field: keyof AutoAlert, value: any) => {
     const updated = [...settings.auto_alerts]
@@ -229,7 +174,7 @@ export function OperationsSettingsPageClient() {
         <div>
           <h1 className="text-3xl font-bold">Configuración de Operaciones</h1>
           <p className="text-muted-foreground">
-            Personaliza estados, flujos de trabajo, alertas y más
+            Configura alertas y validaciones para operaciones
           </p>
         </div>
         <Button onClick={saveSettings} disabled={saving}>
@@ -247,140 +192,11 @@ export function OperationsSettingsPageClient() {
         </Button>
       </div>
 
-      <Tabs defaultValue="statuses" className="space-y-4">
+      <Tabs defaultValue="alerts" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="statuses">Estados</TabsTrigger>
-          <TabsTrigger value="workflows">Flujos de Trabajo</TabsTrigger>
           <TabsTrigger value="alerts">Alertas</TabsTrigger>
           <TabsTrigger value="validations">Validaciones</TabsTrigger>
-          <TabsTrigger value="integrations">Integraciones</TabsTrigger>
         </TabsList>
-
-        {/* Tab: Estados */}
-        <TabsContent value="statuses" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Estados Estándar</CardTitle>
-              <CardDescription>
-                Estados predefinidos del sistema (no se pueden modificar)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {standardStatuses.map((status) => (
-                  <Badge key={status.value} className={status.color}>
-                    {status.label}
-                  </Badge>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Estados Personalizados</CardTitle>
-                  <CardDescription>
-                    Agrega estados adicionales para tu flujo de trabajo
-                  </CardDescription>
-                </div>
-                <Button onClick={addCustomStatus} size="sm" variant="outline">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Agregar Estado
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {settings.custom_statuses.map((status, index) => (
-                <div key={index} className="flex items-center gap-4 p-4 border rounded-lg">
-                  <div className="flex-1 grid grid-cols-3 gap-4">
-                    <div>
-                      <Label>Valor (ID)</Label>
-                      <Input
-                        value={status.value}
-                        onChange={(e) => updateCustomStatus(index, 'value', e.target.value)}
-                        placeholder="CUSTOM_STATUS"
-                      />
-                    </div>
-                    <div>
-                      <Label>Etiqueta</Label>
-                      <Input
-                        value={status.label}
-                        onChange={(e) => updateCustomStatus(index, 'label', e.target.value)}
-                        placeholder="Nombre del Estado"
-                      />
-                    </div>
-                    <div>
-                      <Label>Color</Label>
-                      <Select
-                        value={status.color}
-                        onValueChange={(value) => updateCustomStatus(index, 'color', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {statusColors.map((color) => (
-                            <SelectItem key={color} value={color}>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-4 h-4 rounded ${color}`} />
-                                {color.replace('bg-', '')}
-                              </div>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeCustomStatus(index)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
-              {settings.custom_statuses.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-8">
-                  No hay estados personalizados. Haz clic en &quot;Agregar Estado&quot; para crear uno.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Estado por Defecto</CardTitle>
-              <CardDescription>
-                Estado que se asignará automáticamente a nuevas operaciones
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select
-                value={settings.default_status}
-                onValueChange={(value) => setSettings({ ...settings, default_status: value })}
-              >
-                <SelectTrigger className="w-[300px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {standardStatuses.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                  {settings.custom_statuses.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-        </TabsContent>
 
         {/* Tab: Alertas */}
         <TabsContent value="alerts" className="space-y-4">
@@ -422,65 +238,6 @@ export function OperationsSettingsPageClient() {
                   )}
                 </div>
               ))}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Configuración de Días</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Días antes de pago pendiente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Alertar cuando falten X días para el pago
-                  </p>
-                </div>
-                <Input
-                  type="number"
-                  className="w-32"
-                  value={settings.alert_payment_due_days}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    alert_payment_due_days: parseInt(e.target.value) || 30,
-                  })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Días antes de pago a operador</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Alertar cuando falten X días para pagar al operador
-                  </p>
-                </div>
-                <Input
-                  type="number"
-                  className="w-32"
-                  value={settings.alert_operator_payment_days}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    alert_operator_payment_days: parseInt(e.target.value) || 30,
-                  })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Días antes de viaje</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Alertar cuando falten X días para el viaje
-                  </p>
-                </div>
-                <Input
-                  type="number"
-                  className="w-32"
-                  value={settings.alert_upcoming_trip_days}
-                  onChange={(e) => setSettings({
-                    ...settings,
-                    alert_upcoming_trip_days: parseInt(e.target.value) || 7,
-                  })}
-                />
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -574,122 +331,6 @@ export function OperationsSettingsPageClient() {
           </Card>
         </TabsContent>
 
-        {/* Tab: Integraciones */}
-        <TabsContent value="integrations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Generación Automática</CardTitle>
-              <CardDescription>
-                Configura qué se genera automáticamente al crear operaciones
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Generar Cotización Automáticamente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Crear cotización PDF al confirmar operación
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.auto_generate_quotation}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    auto_generate_quotation: checked,
-                  })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Generar Factura Automáticamente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Crear factura al confirmar operación
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.auto_generate_invoice}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    auto_generate_invoice: checked,
-                  })}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Integración Contable</CardTitle>
-              <CardDescription>
-                Configura la integración automática con módulos contables
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Crear Asiento Contable Automáticamente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Generar movimiento en libro mayor al crear operación
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.auto_create_ledger_entry}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    auto_create_ledger_entry: checked,
-                  })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Crear Registro IVA Automáticamente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Generar registro IVA al crear operación
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.auto_create_iva_entry}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    auto_create_iva_entry: checked,
-                  })}
-                />
-              </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Crear Pago a Operador Automáticamente</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Generar registro de pago a operador al crear operación
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.auto_create_operator_payment}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    auto_create_operator_payment: checked,
-                  })}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab: Flujos de Trabajo */}
-        <TabsContent value="workflows" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Flujos de Trabajo</CardTitle>
-              <CardDescription>
-                Configura las transiciones de estado permitidas (próximamente)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-muted-foreground">
-                Esta funcionalidad estará disponible en una futura actualización.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
     </div>
   )
