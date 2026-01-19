@@ -26,7 +26,9 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { AlertTriangle } from "lucide-react"
+import { AlertTriangle, X } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -58,6 +60,12 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [payments, setPayments] = useState<any[]>([])
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
+  const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
+  const [dueDateFrom, setDueDateFrom] = useState<string>("")
+  const [dueDateTo, setDueDateTo] = useState<string>("")
+  const [amountMin, setAmountMin] = useState<string>("")
+  const [amountMax, setAmountMax] = useState<string>("")
+  const [operationSearch, setOperationSearch] = useState<string>("")
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
 
   useEffect(() => {
@@ -70,6 +78,24 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         }
         if (agencyFilter !== "ALL") {
           params.append("agencyId", agencyFilter)
+        }
+        if (operatorFilter !== "ALL") {
+          params.append("operatorId", operatorFilter)
+        }
+        if (dueDateFrom) {
+          params.append("dueDateFrom", dueDateFrom)
+        }
+        if (dueDateTo) {
+          params.append("dueDateTo", dueDateTo)
+        }
+        if (amountMin) {
+          params.append("amountMin", amountMin)
+        }
+        if (amountMax) {
+          params.append("amountMax", amountMax)
+        }
+        if (operationSearch.trim()) {
+          params.append("operationSearch", operationSearch.trim())
         }
 
         const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
@@ -85,7 +111,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     }
 
     fetchPayments()
-  }, [statusFilter, agencyFilter])
+  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, amountMin, amountMax, operationSearch])
 
   const overdueCount = payments.filter((p) => p.status === "OVERDUE").length
   const pendingCount = payments.filter((p) => p.status === "PENDING").length
@@ -235,8 +261,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex gap-4">
-            <div className="w-48">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            <div className="space-y-2">
               <Label>Agencia</Label>
               <Select value={agencyFilter} onValueChange={setAgencyFilter}>
                 <SelectTrigger>
@@ -252,7 +278,23 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 </SelectContent>
               </Select>
             </div>
-            <div className="w-48">
+            <div className="space-y-2">
+              <Label>Operador</Label>
+              <Select value={operatorFilter} onValueChange={setOperatorFilter}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Todos</SelectItem>
+                  {operators.map((operator) => (
+                    <SelectItem key={operator.id} value={operator.id}>
+                      {operator.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label>Estado</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger>
@@ -266,7 +308,73 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Rango de fechas (vencimiento)</Label>
+              <DateRangePicker
+                dateFrom={dueDateFrom}
+                dateTo={dueDateTo}
+                onChange={(from, to) => {
+                  setDueDateFrom(from)
+                  setDueDateTo(to)
+                }}
+                placeholder="Seleccionar rango"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Monto mínimo</Label>
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={amountMin}
+                onChange={(e) => setAmountMin(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Monto máximo</Label>
+              <Input
+                type="number"
+                placeholder="0.00"
+                value={amountMax}
+                onChange={(e) => setAmountMax(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Buscar operación</Label>
+              <Input
+                type="text"
+                placeholder="Código o destino"
+                value={operationSearch}
+                onChange={(e) => setOperationSearch(e.target.value)}
+              />
+            </div>
           </div>
+          {(agencyFilter !== "ALL" ||
+            operatorFilter !== "ALL" ||
+            statusFilter !== "ALL" ||
+            dueDateFrom ||
+            dueDateTo ||
+            amountMin ||
+            amountMax ||
+            operationSearch) && (
+            <div className="mt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAgencyFilter("ALL")
+                  setOperatorFilter("ALL")
+                  setStatusFilter("ALL")
+                  setDueDateFrom("")
+                  setDueDateTo("")
+                  setAmountMin("")
+                  setAmountMax("")
+                  setOperationSearch("")
+                }}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Limpiar filtros
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

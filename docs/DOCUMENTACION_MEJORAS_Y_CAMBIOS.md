@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Mejora de búsqueda global con badges de tipo y redirección correcta de leads)
+**Última actualización:** 2025-01-19 (Filtros avanzados para Cuentas por Pagar a Proveedores)
 
 ---
 
@@ -362,7 +362,142 @@ Se implementó un sistema completo de pago masivo a operadores que permite regis
 - Conversión de moneda: Se calcula `amount_usd` y `amount_ars_equivalent` según el TC proporcionado
 - Ledger movements: Se crean en la cuenta de origen (origen del pago) y en RESULTADO/COSTOS
 
-### 12. Eliminación de Operaciones
+### 12. Filtros Avanzados para Cuentas por Pagar a Proveedores
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementaron filtros avanzados en la página de "Cuentas por Pagar a Proveedores" (Pagos a Operadores) para permitir búsquedas y filtrado más específico de los pagos pendientes y realizados.
+
+**Funcionalidades Implementadas:**
+
+#### Filtros Disponibles:
+1. **Filtro por Operador:**
+   - Selector dropdown con lista de todos los operadores
+   - Opción "Todos" para mostrar todos los operadores
+   - Filtrado en tiempo real
+
+2. **Filtro por Fecha de Vencimiento:**
+   - Selector de rango de fechas usando `DateRangePicker`
+   - Permite filtrar pagos por fecha de vencimiento (`due_date`)
+   - Incluye presets rápidos (Hoy, Ayer, Esta semana, Este mes, etc.)
+   - Filtrado desde/hasta con validación de fechas
+
+3. **Filtro por Rango de Montos:**
+   - Campo "Monto mínimo" para filtrar pagos con monto mayor o igual
+   - Campo "Monto máximo" para filtrar pagos con monto menor o igual
+   - Validación numérica en frontend
+   - Filtrado en backend con conversión a número
+
+4. **Búsqueda de Operación:**
+   - Campo de texto para buscar por código de operación (`file_code`) o destino
+   - Búsqueda case-insensitive
+   - Búsqueda parcial (incluye texto en cualquier parte del código o destino)
+   - Filtrado en tiempo real mientras se escribe
+
+5. **Filtros Existentes (Mejorados):**
+   - **Agencia:** Selector dropdown (ya existía)
+   - **Estado:** Selector dropdown con opciones: Todos, Pendientes, Vencidos, Pagados (ya existía)
+
+#### UI/UX:
+- Grid responsive con 4 columnas en pantallas grandes
+- Botón "Limpiar filtros" que aparece cuando hay filtros activos
+- Los filtros se aplican automáticamente en tiempo real (no requiere botón "Aplicar")
+- Layout organizado y fácil de usar
+
+**Archivos Modificados:**
+- `components/accounting/operator-payments-page-client.tsx`
+  - Agregados estados para nuevos filtros: `operatorFilter`, `dueDateFrom`, `dueDateTo`, `amountMin`, `amountMax`, `operationSearch`
+  - Agregado `DateRangePicker` para filtro de fechas
+  - Agregados `Input` para monto mínimo, monto máximo y búsqueda de operación
+  - Agregado selector de operador
+  - Actualizado `useEffect` para incluir todos los filtros en la petición
+  - Agregado botón "Limpiar filtros" con lógica para resetear todos los filtros
+  - Grid responsive para mejor organización visual
+
+- `app/api/accounting/operator-payments/route.ts`
+  - Agregado soporte para parámetros: `operatorId`, `dueDateFrom`, `dueDateTo`, `amountMin`, `amountMax`, `operationSearch`
+  - Filtrado por fecha de vencimiento usando `.gte()` y `.lte()` en Supabase
+  - Filtrado por rango de montos en JavaScript (después de obtener datos)
+  - Búsqueda de operación con filtrado case-insensitive en código y destino
+  - Validación de valores numéricos para montos
+
+**Detalles Técnicos:**
+- Los filtros se combinan con lógica AND (todos deben cumplirse)
+- Filtrado de fechas: `dueDateFrom` usa `.gte()` y `dueDateTo` usa `.lte()` con hora 23:59:59 para incluir todo el día
+- Filtrado de montos: Se realiza en JavaScript después de obtener los datos para mayor flexibilidad
+- Búsqueda de operación: Se filtra en JavaScript usando `.includes()` en código y destino
+- El filtro de agencia se mantiene como estaba (filtrado en JavaScript después de obtener datos)
+
+**Mejoras de Rendimiento:**
+- Los filtros se aplican en tiempo real con `useEffect` que se ejecuta cuando cambia cualquier filtro
+- Debounce implícito por el ciclo de renderizado de React
+- Filtrado eficiente en backend para fechas y operador (índices de base de datos)
+- Filtrado en frontend para montos y búsqueda (más flexible)
+
+**Casos de Uso:**
+- Buscar todos los pagos vencidos de un operador específico en un rango de fechas
+- Encontrar pagos de alto monto pendientes
+- Buscar pagos relacionados con una operación específica por código o destino
+- Filtrar pagos por múltiples criterios simultáneamente
+
+**Nota:** Esta funcionalidad complementa la exportación a Excel implementada anteriormente, permitiendo filtrar los datos antes de exportarlos.
+
+### 12.1. Exportación a Excel para Cuentas por Pagar a Proveedores
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó la funcionalidad de exportación a Excel para la página de "Cuentas por Pagar a Proveedores" (Pagos a Operadores), permitiendo descargar un archivo Excel con dos hojas: un resumen por operador y el detalle completo de todos los pagos.
+
+**Funcionalidades:**
+- Botón "Exportar Excel" en la página principal
+- Genera archivo Excel con nombre: `cuentas-por-pagar-YYYY-MM-DD.xlsx`
+- Dos hojas en el archivo:
+  1. **"Resumen por Operador":**
+     - Operador
+     - Total a Pagar
+     - Moneda
+     - Pagado
+     - Pendiente
+     - Cantidad Pagos
+     - Vencidos
+  2. **"Detalle Pagos":**
+     - Código Operación
+     - Destino
+     - Operador
+     - Monto Total
+     - Moneda
+     - Monto Pagado
+     - Pendiente
+     - Fecha Vencimiento
+     - Estado
+     - Fecha Pago
+     - Parcial (Sí/No)
+
+**Archivos Modificados:**
+- `components/accounting/operator-payments-page-client.tsx`
+  - Agregado import de `XLSX` (biblioteca xlsx)
+  - Agregado import de icono `Download`
+  - Implementada función `handleExportExcel()` que:
+    - Agrupa pagos por operador para el resumen
+    - Calcula totales, pagados, pendientes y vencidos
+    - Genera dos hojas de Excel
+    - Descarga el archivo con nombre con fecha
+  - Agregado botón "Exportar Excel" en el header de la tabla
+  - Botón deshabilitado cuando no hay pagos disponibles
+
+**Detalles Técnicos:**
+- Usa la biblioteca `xlsx` para generar archivos Excel
+- El resumen agrupa pagos por `operator_id`
+- Calcula automáticamente montos pagados, pendientes y cantidad de vencidos
+- El detalle incluye toda la información relevante de cada pago
+- El nombre del archivo incluye la fecha actual en formato `YYYY-MM-DD`
+- Los filtros aplicados se respetan en la exportación (solo se exportan los pagos filtrados)
+
+**Nota:** Esta funcionalidad se implementó antes de los filtros avanzados, pero funciona perfectamente con ellos, exportando solo los pagos que cumplen con los filtros aplicados.
+
+### 13. Eliminación de Operaciones
 
 **Fecha:** 2025-01-19
 
