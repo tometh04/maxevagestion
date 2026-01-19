@@ -89,7 +89,6 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Clientes", url: "/customers" },
       { title: "Estadísticas", url: "/customers/statistics" },
-      { title: "Configuración", url: "/customers/settings" },
     ],
   },
   // CRM Ventas - Colapsable (renamed from "Ventas")

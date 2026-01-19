@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Filtros avanzados para Cuentas por Pagar a Proveedores)
+**Última actualización:** 2025-01-19 (Limpieza de configuraciones innecesarias)
 
 ---
 
@@ -555,6 +555,96 @@ Se implementó la funcionalidad completa para eliminar operaciones desde la tabl
 - Botones: "Cancelar" (gris) y "Eliminar operación" (rojo)
 - Estado de carga durante eliminación ("Eliminando...")
 - Toast de éxito o error después de la operación
+
+---
+
+### 14. Limpieza de Configuración de Operaciones
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se eliminaron completamente los tabs de configuración innecesarios en "Configuración de Operaciones" para simplificar el sistema y eliminar funcionalidades que no se utilizaban o no funcionaban correctamente.
+
+**Funcionalidades Eliminadas:**
+1. **Tab "Estados" (statuses):**
+   - Eliminada funcionalidad de estados personalizados
+   - Eliminadas funciones: `addCustomStatus`, `removeCustomStatus`, `updateCustomStatus`
+   - Eliminadas interfaces y constantes relacionadas (`CustomStatus`, `standardStatuses`, `statusColors`)
+   - Los estados estándar del sistema (RESERVED, CONFIRMED, CANCELLED, TRAVELLING, TRAVELLED) se mantienen pero no son configurables
+
+2. **Tab "Flujos de Trabajo" (workflows):**
+   - Eliminado tab completo
+   - La funcionalidad estaba marcada como "próximamente" y no se estaba utilizando
+
+3. **Tab "Integraciones":**
+   - Eliminado tab completo
+   - **IMPORTANTE:** Los valores de integración contable (`auto_create_ledger_entry`, `auto_create_iva_entry`, `auto_create_operator_payment`) ahora están **siempre activos** (no configurables)
+   - Estos valores se fuerzan a `true` tanto en frontend como en backend
+
+4. **Card duplicado de Alertas:**
+   - Eliminado el card "Configuración de Días" (el de abajo)
+   - Dejado solo el card "Alertas Automáticas" con switches funcionales
+
+**Tabs Restantes:**
+- **Alertas:** Configuración de alertas automáticas con switches para activar/desactivar cada tipo
+- **Validaciones:** Configuración de campos obligatorios al crear/editar operaciones
+
+**Archivos Modificados:**
+- `components/operations/operations-settings-page-client.tsx`
+  - Eliminados tabs "Estados", "Flujos de Trabajo" e "Integraciones"
+  - Eliminado card duplicado de alertas
+  - Eliminadas funciones y código relacionado con estados personalizados
+  - Actualizado `defaultTab` de `"statuses"` a `"alerts"`
+  - Actualizada descripción de la página
+  - Limpiados imports no utilizados
+  - Función `saveSettings` ahora fuerza valores de integración contable a `true`
+
+- `app/api/operations/settings/route.ts`
+  - Actualizado para forzar `auto_create_ledger_entry`, `auto_create_iva_entry` y `auto_create_operator_payment` a `true` al guardar
+
+**Detalles Técnicos:**
+- Los valores de integración contable se fuerzan a `true` en:
+  - Frontend: al guardar configuración (`saveSettings`)
+  - Backend: al actualizar configuración (`PUT /api/operations/settings`)
+- La configuración por defecto en la base de datos ya incluye estos valores en `true`
+- El sistema ahora es más simple y directo: solo alertas y validaciones son configurables
+
+**Nota:** La tabla `operation_settings` y sus campos se mantienen en la base de datos para compatibilidad, pero la UI ya no permite configurarlos.
+
+---
+
+### 15. Eliminación de Configuración de Clientes
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se eliminó completamente la página de "Configuración de Clientes" del sidebar y del sistema, dejando todos los valores con sus configuraciones predeterminadas. La funcionalidad de configuración no tenía sentido y no se estaba utilizando.
+
+**Funcionalidades Eliminadas:**
+- Página `/customers/settings` eliminada
+- Link "Configuración" eliminado del sidebar de "Base de Datos Clientes"
+- Componente `CustomersSettingsPageClient` eliminado
+
+**Valores Predeterminados Mantenidos:**
+El sistema seguirá usando los valores predeterminados para:
+- Validaciones: email y teléfono requeridos
+- Notificaciones: vacío (sin notificaciones automáticas)
+- Integraciones: auto_link con operaciones activado, auto_convert con leads desactivado
+- Auto asignación de leads: desactivado
+- Requerir documento: desactivado
+- Verificación de duplicados: activado (por email y teléfono)
+
+**Archivos Eliminados:**
+- `app/(dashboard)/customers/settings/page.tsx` - Página de configuración eliminada
+- `components/customers/customers-settings-page-client.tsx` - Componente eliminado
+
+**Archivos Modificados:**
+- `components/app-sidebar.tsx` - Eliminado link "Configuración" del submenú de clientes
+
+**Nota:**
+- La tabla `customer_settings` y la API `/api/customers/settings` se mantienen en la base de datos para compatibilidad
+- El hook `use-customer-settings.ts` seguirá funcionando con valores por defecto si no hay configuración guardada
+- Los valores predeterminados están hardcodeados en el código y no son configurables desde la UI
 
 ---
 
