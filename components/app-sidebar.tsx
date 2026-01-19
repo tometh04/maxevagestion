@@ -123,16 +123,16 @@ const allNavigation: NavItem[] = [
       // Contabilidad - Submenú con nivel 3
       {
         title: "Contabilidad",
-        url: "/accounting/ledger",
+        url: "/accounting/monthly-position",
         items: [
-          { title: "Libro Mayor", url: "/accounting/ledger" },
-          { title: "IVA", url: "/accounting/iva" },
-          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
           { title: "Posición Mensual", url: "/accounting/monthly-position" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
           { title: "Gastos Recurrentes", url: "/accounting/recurring-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
+          { title: "Libro Mayor", url: "/accounting/ledger" },
+          { title: "IVA", url: "/accounting/iva" },
+          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
         ],
       },
       // Items directos sin submenú
