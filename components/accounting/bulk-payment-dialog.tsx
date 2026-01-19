@@ -164,7 +164,7 @@ export function BulkPaymentDialog({
       try {
         const params = new URLSearchParams()
         params.append("operatorId", selectedOperatorId)
-        params.append("status", "PENDING")
+        // No filtrar por status aquí, traemos todos y filtramos después
         if (agencies.length > 0) {
           params.append("agencyId", agencies[0].id)
         }
@@ -175,14 +175,31 @@ export function BulkPaymentDialog({
         const data = await response.json()
         let payments = (data.payments || []) as OperatorPayment[]
 
+        console.log("[BulkPayment] Total pagos recibidos:", payments.length)
+        console.log("[BulkPayment] Primeros pagos:", payments.slice(0, 3).map(p => ({
+          id: p.id,
+          status: p.status,
+          currency: p.currency,
+          amount: p.amount,
+          paid_amount: p.paid_amount,
+          operator: p.operators?.name,
+        })))
+
+        // Filtrar por status: PENDING o OVERDUE (son los que tienen deuda pendiente)
+        payments = payments.filter(p => p.status === "PENDING" || p.status === "OVERDUE")
+        console.log("[BulkPayment] Pagos PENDING/OVERDUE:", payments.length)
+
         // Filtrar por moneda
         payments = payments.filter(p => p.currency === selectedCurrency)
+        console.log("[BulkPayment] Pagos en moneda", selectedCurrency, ":", payments.length)
 
-        // Solo pagos pendientes (con deuda)
+        // Solo pagos pendientes (con deuda real, no pagados completamente)
         payments = payments.filter(p => {
           const paidAmount = p.paid_amount || 0
-          return p.amount - paidAmount > 0
+          const remaining = p.amount - paidAmount
+          return remaining > 0
         })
+        console.log("[BulkPayment] Pagos con deuda pendiente:", payments.length)
 
         setPendingPayments(payments)
       } catch (error) {
@@ -464,7 +481,19 @@ export function BulkPaymentDialog({
                 <Alert>
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    No se encontraron deudas pendientes para el operador <strong>{selectedOperator?.name}</strong> en <strong>{selectedCurrency}</strong>
+                    <div className="space-y-2">
+                      <div>
+                        No se encontraron deudas pendientes para el operador <strong>{selectedOperator?.name}</strong> en <strong>{selectedCurrency}</strong>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Verifique que:
+                        <ul className="list-disc list-inside mt-1">
+                          <li>El operador tenga pagos con estado "Pendiente" o "Vencido"</li>
+                          <li>Los pagos estén en la moneda seleccionada ({selectedCurrency})</li>
+                          <li>Los pagos tengan deuda pendiente (no estén completamente pagados)</li>
+                        </ul>
+                      </div>
+                    </div>
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -492,10 +521,11 @@ export function BulkPaymentDialog({
                         const remaining = payment.amount - paidAmount
                         const isSelected = selectedPayments.has(payment.id)
                         const amountToPay = paymentAmounts[payment.id] || (isSelected ? remaining : 0)
-                        const isOverdue = new Date(payment.due_date) < new Date() && payment.status === "PENDING"
+                        const isOverdue = payment.status === "OVERDUE" || (new Date(payment.due_date) < new Date() && payment.status === "PENDING")
+                        const isPartial = paidAmount > 0
 
                         return (
-                          <TableRow key={payment.id}>
+                          <TableRow key={payment.id} className={isSelected ? "bg-muted/50" : ""}>
                             <TableCell>
                               <Checkbox
                                 checked={isSelected}
@@ -503,44 +533,71 @@ export function BulkPaymentDialog({
                               />
                             </TableCell>
                             <TableCell>
-                              <div className="font-mono text-xs font-medium">
-                                {payment.operations?.file_code || "-"}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {payment.operations?.destination || "-"}
+                              <div className="space-y-1">
+                                <div className="font-mono text-xs font-medium">
+                                  {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {payment.operations?.destination || "Sin destino"}
+                                </div>
+                                {isPartial && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    Parcial
+                                  </Badge>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell className="font-medium">
-                              {formatCurrency(payment.amount, payment.currency)}
+                              <div className="space-y-1">
+                                <div>{formatCurrency(payment.amount, payment.currency)}</div>
+                                <div className="text-xs text-muted-foreground">Total</div>
+                              </div>
                             </TableCell>
                             <TableCell className="text-muted-foreground">
-                              {formatCurrency(paidAmount, payment.currency)}
+                              <div className="space-y-1">
+                                <div>{formatCurrency(paidAmount, payment.currency)}</div>
+                                <div className="text-xs">Pagado</div>
+                              </div>
                             </TableCell>
-                            <TableCell className="font-medium">
-                              {formatCurrency(remaining, payment.currency)}
+                            <TableCell className="font-medium text-orange-600">
+                              <div className="space-y-1">
+                                <div>{formatCurrency(remaining, payment.currency)}</div>
+                                <div className="text-xs">Pendiente</div>
+                              </div>
                             </TableCell>
                             <TableCell>
-                              <div className="text-xs">
-                                {new Date(payment.due_date).toLocaleDateString("es-AR")}
+                              <div className="space-y-1">
+                                <div className="text-xs font-medium">
+                                  {new Date(payment.due_date).toLocaleDateString("es-AR", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric"
+                                  })}
+                                </div>
+                                {isOverdue && (
+                                  <Badge variant="destructive" className="text-xs">
+                                    Vencido
+                                  </Badge>
+                                )}
                               </div>
-                              {isOverdue && (
-                                <Badge variant="destructive" className="text-xs mt-1">
-                                  Vencido
-                                </Badge>
-                              )}
                             </TableCell>
                             <TableCell>
                               {isSelected ? (
-                                <Input
-                                  type="number"
-                                  step="0.01"
-                                  min="0"
-                                  max={remaining}
-                                  value={amountToPay}
-                                  onChange={(e) => handleAmountChange(payment.id, e.target.value)}
-                                  className="w-32"
-                                  placeholder="0.00"
-                                />
+                                <div className="space-y-1">
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    max={remaining}
+                                    value={amountToPay}
+                                    onChange={(e) => handleAmountChange(payment.id, e.target.value)}
+                                    className="w-32"
+                                    placeholder="0.00"
+                                  />
+                                  <div className="text-xs text-muted-foreground">
+                                    Máx: {formatCurrency(remaining, payment.currency)}
+                                  </div>
+                                </div>
                               ) : (
                                 <span className="text-muted-foreground text-sm">-</span>
                               )}
@@ -642,17 +699,53 @@ export function BulkPaymentDialog({
               </div>
 
               {/* Resumen */}
-              <div className="bg-muted p-4 rounded-lg space-y-2">
+              <div className="bg-muted p-4 rounded-lg space-y-3">
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Total de Deudas Seleccionadas:</span>
                   <span className="text-xl font-bold">
                     {formatCurrency(totalPaymentAmount, selectedCurrency)}
                   </span>
                 </div>
+                
+                {/* Desglose por operación */}
+                <div className="border-t pt-3 space-y-2">
+                  <div className="text-sm font-semibold mb-2">Desglose por Operación:</div>
+                  {Array.from(selectedPayments).map(paymentId => {
+                    const payment = pendingPayments.find(p => p.id === paymentId)
+                    if (!payment) return null
+                    const amountToPay = paymentAmounts[paymentId] || 0
+                    const paidAmount = payment.paid_amount || 0
+                    const remaining = payment.amount - paidAmount
+                    
+                    return (
+                      <div key={paymentId} className="flex justify-between items-center text-sm bg-background p-2 rounded">
+                        <div className="flex-1">
+                          <div className="font-medium">
+                            {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {payment.operations?.destination || "Sin destino"}
+                          </div>
+                        </div>
+                        <div className="text-right space-y-1">
+                          <div className="font-medium">
+                            {formatCurrency(amountToPay, payment.currency)}
+                          </div>
+                          {amountToPay < remaining && (
+                            <div className="text-xs text-muted-foreground">
+                              (Parcial: {((amountToPay / remaining) * 100).toFixed(0)}%)
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
                 {needsExchangeRate() && exchangeRate && (
-                  <div className="flex justify-between items-center text-sm text-muted-foreground">
+                  <div className="flex justify-between items-center text-sm text-muted-foreground border-t pt-3">
                     <span>Total a Pagar en {paymentCurrency}:</span>
-                    <span className="font-medium">
+                    <span className="font-medium text-base">
                       {paymentCurrency === "USD" 
                         ? formatCurrency(totalPaymentAmount / parseFloat(exchangeRate), "USD")
                         : formatCurrency(totalPaymentAmount * parseFloat(exchangeRate), "ARS")
@@ -660,7 +753,7 @@ export function BulkPaymentDialog({
                     </span>
                   </div>
                 )}
-                <div className="text-sm text-muted-foreground">
+                <div className="text-sm text-muted-foreground border-t pt-3">
                   {selectedPayments.size} deuda(s) seleccionada(s)
                 </div>
               </div>
