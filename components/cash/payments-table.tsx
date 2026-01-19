@@ -446,13 +446,44 @@ export function PaymentsTable({
                 onChange={(event) => setReference(event.target.value)}
               />
             </div>
+            
+            {/* Mostrar selector de cuenta solo si el método es "Transferencia" */}
+            {selectedPayment?.method === "Transferencia" && (
+              <div>
+                <Label>Cuenta Receptiva *</Label>
+                <Select value={financialAccountId} onValueChange={setFinancialAccountId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar cuenta bancaria" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {financialAccounts.map((account) => (
+                      <SelectItem key={account.id} value={account.id}>
+                        {account.name} ({account.currency})
+                        {account.current_balance !== undefined && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            - Balance: {account.current_balance.toLocaleString("es-AR", {
+                              style: "currency",
+                              currency: account.currency,
+                            })}
+                          </span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isSubmitting}>
+            <Button variant="outline" onClick={() => {
+              setDialogOpen(false)
+              setFinancialAccountId("")
+              setFinancialAccounts([])
+            }} disabled={isSubmitting}>
               Cancelar
             </Button>
-            <Button onClick={handleConfirm} disabled={isSubmitting || !datePaid}>
+            <Button onClick={handleConfirm} disabled={isSubmitting || !datePaid || (selectedPayment?.method === "Transferencia" && !financialAccountId)}>
               Confirmar
             </Button>
           </DialogFooter>
