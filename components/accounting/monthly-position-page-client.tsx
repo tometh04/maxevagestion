@@ -13,9 +13,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
-  CalendarIcon, RefreshCw, DollarSign, TrendingUp, TrendingDown, 
-  Wallet, Building2, Users, Truck, FileText, AlertCircle, CheckCircle2,
-  ArrowUpRight, ArrowDownRight
+  CalendarIcon, RefreshCw, DollarSign, TrendingUp, 
+  Wallet, Users, Truck, FileText, AlertCircle, CheckCircle2,
+  ArrowUpRight, ArrowDownRight, Save
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -30,7 +30,9 @@ interface Agency {
 interface BalanceData {
   fechaCorte: string
   agencyId: string
-  exchangeRate: number
+  monthlyTC: number | null
+  latestTC: number
+  tcUsado: number
   verificacionContable: boolean
   activo: {
     corriente: {
@@ -42,48 +44,35 @@ interface BalanceData {
         totalUSD: number
       }
       cuentasPorCobrar: {
-        totalVentas: number
-        totalCobrado: number
-        saldo: number
+        totalUSD: number
         cantidadDeudores: number
         detalle: any[]
       }
       total: number
     }
-    noCorriente: {
-      bienesDeUso: number
-      inversiones: number
-      total: number
-    }
+    noCorriente: { total: number }
     total: number
   }
   pasivo: {
     corriente: {
       cuentasPorPagar: {
-        totalCostos: number
-        totalPagado: number
-        saldo: number
+        totalUSD: number
         cantidadAcreedores: number
         detalle: any[]
       }
       gastosAPagar: {
         totalUSD: number
         totalARS: number
-        saldo: number
+        saldoUSD: number
         detalle: any[]
       }
       total: number
     }
-    noCorriente: {
-      deudasLargoPlazo: number
-      total: number
-    }
+    noCorriente: { total: number }
     total: number
   }
   patrimonioNeto: {
-    capital: number
-    resultadosAcumulados: number
-    resultadoDelEjercicio: number
+    resultadoEjercicio: number
     total: number
   }
   resultadoDelMes: {
@@ -109,11 +98,15 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
   const [data, setData] = useState<BalanceData | null>(null)
   const [loading, setLoading] = useState(true)
   const [datePickerOpen, setDatePickerOpen] = useState(false)
-
-  // Moneda y conversión
+  
+  // TC mensual editable
+  const [tcInput, setTcInput] = useState("")
+  const [savingTC, setSavingTC] = useState(false)
+  
+  // Moneda display
   const [currency, setCurrency] = useState<"USD" | "ARS">("USD")
   const [showCurrencyDialog, setShowCurrencyDialog] = useState(false)
-  const [customExchangeRate, setCustomExchangeRate] = useState("")
+  const [displayTC, setDisplayTC] = useState("")
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -127,11 +120,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
       if (response.ok) {
         const result = await response.json()
         setData(result)
-        setCustomExchangeRate(result.exchangeRate?.toString() || "1000")
+        // Setear el TC del mes si existe, sino el más reciente
+        setTcInput(result.monthlyTC?.toString() || result.latestTC?.toString() || "1000")
+        setDisplayTC(result.tcUsado?.toString() || "1000")
       } else {
+        const errorData = await response.json()
         toast({
           title: "Error",
-          description: "No se pudo cargar la posición contable",
+          description: errorData.error || "No se pudo cargar la posición contable",
           variant: "destructive",
         })
       }
@@ -146,6 +142,55 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
     fetchData()
   }, [fetchData])
 
+  const handleSaveTC = async () => {
+    const tcValue = parseFloat(tcInput)
+    if (isNaN(tcValue) || tcValue <= 0) {
+      toast({
+        title: "Error",
+        description: "El tipo de cambio debe ser un número mayor a 0",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setSavingTC(true)
+    try {
+      const response = await fetch("/api/accounting/monthly-exchange-rates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          year,
+          month,
+          usd_to_ars_rate: tcValue,
+        }),
+      })
+
+      if (response.ok) {
+        toast({
+          title: "Tipo de cambio guardado",
+          description: `TC para ${format(new Date(year, month - 1), "MMMM yyyy", { locale: es })}: ${tcValue}`,
+        })
+        // Refrescar datos con el nuevo TC
+        fetchData()
+      } else {
+        const errorData = await response.json()
+        toast({
+          title: "Error",
+          description: errorData.error || "No se pudo guardar",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Error al guardar el tipo de cambio",
+        variant: "destructive",
+      })
+    } finally {
+      setSavingTC(false)
+    }
+  }
+
   const selectedDate = new Date(year, month - 1, 1)
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -158,6 +203,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
 
   const handleCurrencyChange = (newCurrency: "USD" | "ARS") => {
     if (newCurrency === "ARS" && currency === "USD") {
+      setDisplayTC(tcInput || data?.tcUsado?.toString() || "1000")
       setShowCurrencyDialog(true)
     } else {
       setCurrency(newCurrency)
@@ -169,9 +215,9 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
     setShowCurrencyDialog(false)
   }
 
-  // Función para formatear moneda
+  // Formatear moneda
   const formatMoney = (amount: number): string => {
-    const rate = parseFloat(customExchangeRate) || data?.exchangeRate || 1000
+    const rate = parseFloat(displayTC) || data?.tcUsado || 1000
     const value = currency === "ARS" ? amount * rate : amount
     
     return new Intl.NumberFormat(currency === "ARS" ? "es-AR" : "en-US", {
@@ -181,7 +227,6 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
     }).format(value)
   }
 
-  // Formatear solo ARS
   const formatARS = (amount: number): string => {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -200,22 +245,20 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
             Balance General al {data?.fechaCorte ? format(new Date(data.fechaCorte + "T12:00:00"), "dd/MM/yyyy") : "..."}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={data?.verificacionContable ? "default" : "destructive"} className="gap-1">
-            {data?.verificacionContable ? (
-              <><CheckCircle2 className="h-3 w-3" /> Cuadrado</>
-            ) : (
-              <><AlertCircle className="h-3 w-3" /> Descuadrado</>
-            )}
-          </Badge>
-        </div>
+        <Badge variant={data?.verificacionContable ? "default" : "destructive"} className="gap-1 w-fit">
+          {data?.verificacionContable ? (
+            <><CheckCircle2 className="h-3 w-3" /> Cuadrado</>
+          ) : (
+            <><AlertCircle className="h-3 w-3" /> Descuadrado</>
+          )}
+        </Badge>
       </div>
 
       {/* Filtros */}
       <Card>
         <CardContent className="pt-6">
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
-            {/* Fecha */}
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-6">
+            {/* Período */}
             <div className="space-y-2">
               <Label>Período</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
@@ -249,7 +292,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                     <SelectValue placeholder="Todas" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ALL">Todas las agencias</SelectItem>
+                    <SelectItem value="ALL">Todas</SelectItem>
                     {agencies.map((a) => (
                       <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
@@ -258,27 +301,43 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
               </div>
             )}
 
-            {/* Moneda */}
+            {/* TC del Mes (Editable) */}
             <div className="space-y-2">
-              <Label>Moneda</Label>
+              <Label>TC del Mes (USD/ARS)</Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={tcInput}
+                  onChange={(e) => setTcInput(e.target.value)}
+                  placeholder="1000"
+                  className="flex-1"
+                />
+                <Button 
+                  size="icon" 
+                  onClick={handleSaveTC} 
+                  disabled={savingTC}
+                  title="Guardar TC para este mes"
+                >
+                  <Save className={cn("h-4 w-4", savingTC && "animate-spin")} />
+                </Button>
+              </div>
+              {data?.monthlyTC && (
+                <p className="text-xs text-green-600">✓ TC guardado para este mes</p>
+              )}
+            </div>
+
+            {/* Moneda Display */}
+            <div className="space-y-2">
+              <Label>Ver en</Label>
               <Select value={currency} onValueChange={(v) => handleCurrencyChange(v as "USD" | "ARS")}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">🇺🇸 Dólares (USD)</SelectItem>
-                  <SelectItem value="ARS">🇦🇷 Pesos (ARS)</SelectItem>
+                  <SelectItem value="USD">🇺🇸 USD</SelectItem>
+                  <SelectItem value="ARS">🇦🇷 ARS</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-
-            {/* TC Actual */}
-            <div className="space-y-2">
-              <Label>TC Referencia</Label>
-              <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted/50">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm">{data?.exchangeRate?.toLocaleString() || "-"}</span>
-              </div>
             </div>
 
             {/* Actualizar */}
@@ -315,7 +374,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{formatMoney(data.activo.total)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Lo que la empresa tiene</p>
+                <p className="text-xs text-muted-foreground mt-1">Lo que tenemos</p>
               </CardContent>
             </Card>
 
@@ -328,7 +387,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-red-600">{formatMoney(data.pasivo.total)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Lo que la empresa debe</p>
+                <p className="text-xs text-muted-foreground mt-1">Lo que debemos</p>
               </CardContent>
             </Card>
 
@@ -359,13 +418,13 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                   {formatMoney(data.resultadoDelMes.resultado)}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Margen bruto: {data.resultadoDelMes.margenBruto}%
+                  Margen: {data.resultadoDelMes.margenBruto}%
                 </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Tabs con detalle */}
+          {/* Tabs */}
           <Tabs defaultValue="balance" className="space-y-4">
             <TabsList className="grid w-full grid-cols-3 lg:w-auto lg:inline-grid">
               <TabsTrigger value="balance">Balance General</TabsTrigger>
@@ -376,14 +435,13 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
             {/* BALANCE GENERAL */}
             <TabsContent value="balance">
               <div className="grid gap-6 lg:grid-cols-2">
-            {/* ACTIVO */}
-            <Card>
+                {/* ACTIVO */}
+                <Card>
                   <CardHeader className="bg-green-50 dark:bg-green-950/30 rounded-t-lg">
                     <CardTitle className="text-green-700 dark:text-green-400">ACTIVO</CardTitle>
-                <CardDescription>Recursos y bienes de la empresa</CardDescription>
-              </CardHeader>
+                    <CardDescription>Lo que la empresa tiene</CardDescription>
+                  </CardHeader>
                   <CardContent className="pt-6 space-y-6">
-                    {/* Activo Corriente */}
                     <div className="space-y-3">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Activo Corriente
@@ -413,8 +471,8 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                           <div className="flex justify-between">
                             <span>• Bancos ARS</span>
                             <span>{formatARS(data.activo.corriente.cajaYBancos.bancosARS)}</span>
-                    </div>
-                  </div>
+                          </div>
+                        </div>
 
                         <div className="flex justify-between items-center pt-2">
                           <div className="flex items-center gap-2">
@@ -425,10 +483,10 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                             </Badge>
                           </div>
                           <span className="font-medium text-yellow-600">
-                            {formatMoney(data.activo.corriente.cuentasPorCobrar.saldo)}
+                            {formatMoney(data.activo.corriente.cuentasPorCobrar.totalUSD)}
                           </span>
-                  </div>
-                </div>
+                        </div>
+                      </div>
 
                       <div className="flex justify-between items-center pt-2 border-t">
                         <span className="font-medium">Subtotal Corriente</span>
@@ -436,43 +494,20 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </div>
                     </div>
 
-                    {/* Activo No Corriente */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                        Activo No Corriente
-                      </h4>
-                      <div className="space-y-2 pl-4 border-l-2 border-gray-200">
-                        <div className="flex justify-between items-center text-muted-foreground">
-                          <span>Bienes de Uso</span>
-                          <span>{formatMoney(0)}</span>
-                  </div>
-                        <div className="flex justify-between items-center text-muted-foreground">
-                          <span>Inversiones LP</span>
-                          <span>{formatMoney(0)}</span>
-                  </div>
-                </div>
-                      <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="font-medium">Subtotal No Corriente</span>
-                        <span className="font-bold">{formatMoney(data.activo.noCorriente.total)}</span>
-                      </div>
-                    </div>
-
-                    {/* Total Activo */}
                     <div className="flex justify-between items-center pt-4 border-t-2 border-green-500">
                       <span className="text-lg font-bold">TOTAL ACTIVO</span>
                       <span className="text-lg font-bold text-green-600">{formatMoney(data.activo.total)}</span>
-                </div>
-              </CardContent>
-            </Card>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                {/* PASIVO + PATRIMONIO */}
-            <Card>
+                {/* PASIVO + PN */}
+                <Card>
                   <CardHeader className="bg-red-50 dark:bg-red-950/30 rounded-t-lg">
                     <CardTitle className="text-red-700 dark:text-red-400">PASIVO + PATRIMONIO NETO</CardTitle>
-                <CardDescription>Obligaciones y capital</CardDescription>
-              </CardHeader>
+                    <CardDescription>Lo que la empresa debe y el capital</CardDescription>
+                  </CardHeader>
                   <CardContent className="pt-6 space-y-6">
-                    {/* Pasivo Corriente */}
                     <div className="space-y-3">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Pasivo Corriente
@@ -488,18 +523,18 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                             </Badge>
                           </div>
                           <span className="font-medium text-orange-600">
-                            {formatMoney(data.pasivo.corriente.cuentasPorPagar.saldo)}
-                        </span>
-                    </div>
+                            {formatMoney(data.pasivo.corriente.cuentasPorPagar.totalUSD)}
+                          </span>
+                        </div>
 
                         <div className="flex justify-between items-center pt-2">
                           <div className="flex items-center gap-2">
                             <FileText className="h-4 w-4 text-red-600" />
                             <span>Gastos a Pagar</span>
-                  </div>
-                          <span className="font-medium">{formatMoney(data.pasivo.corriente.gastosAPagar.saldo)}</span>
-                  </div>
-                </div>
+                          </div>
+                          <span className="font-medium">{formatMoney(data.pasivo.corriente.gastosAPagar.saldoUSD)}</span>
+                        </div>
+                      </div>
 
                       <div className="flex justify-between items-center pt-2 border-t">
                         <span className="font-medium">Subtotal Corriente</span>
@@ -507,30 +542,11 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </div>
                     </div>
 
-                    {/* Pasivo No Corriente */}
-                    <div className="space-y-3">
-                      <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
-                        Pasivo No Corriente
-                      </h4>
-                      <div className="space-y-2 pl-4 border-l-2 border-gray-200">
-                        <div className="flex justify-between items-center text-muted-foreground">
-                          <span>Deudas a Largo Plazo</span>
-                          <span>{formatMoney(0)}</span>
-                    </div>
-                  </div>
-                      <div className="flex justify-between items-center pt-2 border-t">
-                        <span className="font-medium">Subtotal No Corriente</span>
-                        <span className="font-bold">{formatMoney(data.pasivo.noCorriente.total)}</span>
-                  </div>
-                </div>
-
-                    {/* Total Pasivo */}
                     <div className="flex justify-between items-center pt-4 border-t-2 border-red-500">
                       <span className="text-lg font-bold">TOTAL PASIVO</span>
                       <span className="text-lg font-bold text-red-600">{formatMoney(data.pasivo.total)}</span>
                     </div>
 
-                    {/* Patrimonio Neto */}
                     <div className="space-y-3 pt-4">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Patrimonio Neto
@@ -538,42 +554,40 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       <div className="space-y-2 pl-4 border-l-2 border-blue-200">
                         <div className="flex justify-between items-center">
                           <span>Resultado del Ejercicio</span>
-                          <span className={cn("font-medium", data.patrimonioNeto.resultadoDelEjercicio >= 0 ? "text-green-600" : "text-red-600")}>
-                            {formatMoney(data.patrimonioNeto.resultadoDelEjercicio)}
+                          <span className={cn("font-medium", data.patrimonioNeto.resultadoEjercicio >= 0 ? "text-green-600" : "text-red-600")}>
+                            {formatMoney(data.patrimonioNeto.resultadoEjercicio)}
                           </span>
-                  </div>
-                </div>
+                        </div>
+                      </div>
                       <div className="flex justify-between items-center pt-2 border-t">
                         <span className="font-medium">Total Patrimonio Neto</span>
                         <span className="font-bold text-blue-600">{formatMoney(data.patrimonioNeto.total)}</span>
-                  </div>
-                </div>
+                      </div>
+                    </div>
 
-                    {/* Total Pasivo + PN */}
                     <div className="flex justify-between items-center pt-4 border-t-2 border-blue-500">
                       <span className="text-lg font-bold">TOTAL PASIVO + PN</span>
                       <span className="text-lg font-bold">{formatMoney(data.pasivo.total + data.patrimonioNeto.total)}</span>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
 
             {/* ESTADO DE RESULTADOS */}
             <TabsContent value="resultados">
-          <Card>
-            <CardHeader>
+              <Card>
+                <CardHeader>
                   <CardTitle>Estado de Resultados - {format(selectedDate, "MMMM yyyy", { locale: es })}</CardTitle>
                   <CardDescription>Ingresos, costos y gastos del período</CardDescription>
-            </CardHeader>
+                </CardHeader>
                 <CardContent>
                   <div className="space-y-6 max-w-2xl">
-                    {/* Ingresos */}
                     <div className="flex justify-between items-center py-3 border-b">
-              <div>
-                        <span className="font-medium text-lg">Ingresos (Cobros de Clientes)</span>
+                      <div>
+                        <span className="font-medium text-lg">Ingresos (Cobros)</span>
                         <p className="text-xs text-muted-foreground">
-                          USD: {formatMoney(data.resultadoDelMes.ingresos.usd)} | ARS: {formatARS(data.resultadoDelMes.ingresos.ars)}
+                          USD {formatMoney(data.resultadoDelMes.ingresos.usd)} | ARS {formatARS(data.resultadoDelMes.ingresos.ars)}
                         </p>
                       </div>
                       <span className="text-xl font-bold text-green-600">
@@ -581,20 +595,18 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </span>
                     </div>
 
-                    {/* Costos */}
                     <div className="flex justify-between items-center py-3 border-b">
                       <div>
                         <span className="font-medium text-lg">(-) Costos (Pagos a Operadores)</span>
                         <p className="text-xs text-muted-foreground">
-                          USD: {formatMoney(data.resultadoDelMes.costos.usd)} | ARS: {formatARS(data.resultadoDelMes.costos.ars)}
+                          USD {formatMoney(data.resultadoDelMes.costos.usd)} | ARS {formatARS(data.resultadoDelMes.costos.ars)}
                         </p>
-                  </div>
+                      </div>
                       <span className="text-xl font-bold text-orange-600">
                         ({formatMoney(data.resultadoDelMes.costos.total)})
                       </span>
-                </div>
+                    </div>
 
-                    {/* Margen Bruto */}
                     <div className="flex justify-between items-center py-3 bg-muted/50 px-4 rounded-lg">
                       <span className="font-semibold">= Margen Bruto</span>
                       <div className="text-right">
@@ -602,15 +614,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                           {formatMoney(data.resultadoDelMes.ingresos.total - data.resultadoDelMes.costos.total)}
                         </span>
                         <p className="text-xs text-muted-foreground">{data.resultadoDelMes.margenBruto}%</p>
-                </div>
-              </div>
+                      </div>
+                    </div>
 
-                    {/* Gastos */}
                     <div className="flex justify-between items-center py-3 border-b">
-              <div>
+                      <div>
                         <span className="font-medium text-lg">(-) Gastos Operativos</span>
                         <p className="text-xs text-muted-foreground">
-                          USD: {formatMoney(data.resultadoDelMes.gastos.usd)} | ARS: {formatARS(data.resultadoDelMes.gastos.ars)}
+                          USD {formatMoney(data.resultadoDelMes.gastos.usd)} | ARS {formatARS(data.resultadoDelMes.gastos.ars)}
                         </p>
                       </div>
                       <span className="text-xl font-bold text-red-600">
@@ -618,7 +629,6 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </span>
                     </div>
 
-                    {/* Resultado */}
                     <div className={cn(
                       "flex justify-between items-center py-4 px-4 rounded-lg",
                       data.resultadoDelMes.resultado >= 0 ? "bg-green-100 dark:bg-green-950" : "bg-red-100 dark:bg-red-950"
@@ -644,10 +654,10 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Users className="h-5 w-5 text-yellow-600" />
-                      Cuentas por Cobrar
+                      Cuentas por Cobrar (Deudores)
                     </CardTitle>
                     <CardDescription>
-                      Total: {formatMoney(data.activo.corriente.cuentasPorCobrar.saldo)} ({data.activo.corriente.cuentasPorCobrar.cantidadDeudores} clientes)
+                      {data.activo.corriente.cuentasPorCobrar.cantidadDeudores} clientes deben {formatMoney(data.activo.corriente.cuentasPorCobrar.totalUSD)}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -656,7 +666,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Operación</TableHead>
-                            <TableHead>Destino</TableHead>
+                            <TableHead>Cliente</TableHead>
                             <TableHead className="text-right">Deuda</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -664,7 +674,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                           {data.activo.corriente.cuentasPorCobrar.detalle.map((d, i) => (
                             <TableRow key={i}>
                               <TableCell className="font-medium">{d.operacion}</TableCell>
-                              <TableCell>{d.destino}</TableCell>
+                              <TableCell>{d.cliente}</TableCell>
                               <TableCell className="text-right text-yellow-600 font-medium">
                                 {formatMoney(d.deuda)}
                               </TableCell>
@@ -673,7 +683,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                         </TableBody>
                       </Table>
                     ) : (
-                      <p className="text-center text-muted-foreground py-4">No hay deudas pendientes</p>
+                      <p className="text-center text-muted-foreground py-4">No hay deudores</p>
                     )}
                   </CardContent>
                 </Card>
@@ -683,10 +693,10 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Truck className="h-5 w-5 text-orange-600" />
-                      Cuentas por Pagar
+                      Cuentas por Pagar (Acreedores)
                     </CardTitle>
                     <CardDescription>
-                      Total: {formatMoney(data.pasivo.corriente.cuentasPorPagar.saldo)} ({data.pasivo.corriente.cuentasPorPagar.cantidadAcreedores} operadores)
+                      {data.pasivo.corriente.cuentasPorPagar.cantidadAcreedores} pagos pendientes: {formatMoney(data.pasivo.corriente.cuentasPorPagar.totalUSD)}
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -695,7 +705,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                         <TableHeader>
                           <TableRow>
                             <TableHead>Operación</TableHead>
-                            <TableHead>Destino</TableHead>
+                            <TableHead>Operador</TableHead>
                             <TableHead className="text-right">Deuda</TableHead>
                           </TableRow>
                         </TableHeader>
@@ -703,9 +713,9 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                           {data.pasivo.corriente.cuentasPorPagar.detalle.map((d, i) => (
                             <TableRow key={i}>
                               <TableCell className="font-medium">{d.operacion}</TableCell>
-                              <TableCell>{d.destino}</TableCell>
+                              <TableCell>{d.operador}</TableCell>
                               <TableCell className="text-right text-orange-600 font-medium">
-                                {formatMoney(d.deuda)}
+                                {formatMoney(d.montoUSD)}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -734,20 +744,20 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
           <DialogHeader>
             <DialogTitle>Cambiar a Pesos Argentinos</DialogTitle>
             <DialogDescription>
-              Ingrese el tipo de cambio USD/ARS para convertir todos los valores.
+              Ingrese el tipo de cambio para convertir todos los valores.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <Label>Tipo de Cambio (1 USD = X ARS)</Label>
             <Input
               type="number"
-              value={customExchangeRate}
-              onChange={(e) => setCustomExchangeRate(e.target.value)}
+              value={displayTC}
+              onChange={(e) => setDisplayTC(e.target.value)}
               placeholder="Ej: 1000"
               className="mt-2"
             />
             <p className="text-xs text-muted-foreground mt-2">
-              TC de referencia del sistema: {data?.exchangeRate?.toLocaleString()}
+              TC del mes: {data?.monthlyTC || "No definido"} | TC sistema: {data?.latestTC}
             </p>
           </div>
           <DialogFooter>
