@@ -329,41 +329,52 @@ export function DebtsSalesPageClient() {
 
             {/* Filtro por Fecha Desde */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Fecha Desde</label>
-              <Input
-                type="date"
+              <Label>Fecha Desde</Label>
+              <DateInputWithCalendar
                 value={dateFromFilter}
-                onChange={(e) => setDateFromFilter(e.target.value)}
+                onChange={(date) => {
+                  setDateFromFilter(date)
+                  if (date && dateToFilter && dateToFilter < date) {
+                    setDateToFilter(undefined)
+                  }
+                }}
+                placeholder="dd/MM/yyyy"
               />
             </div>
 
             {/* Filtro por Fecha Hasta */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">Fecha Hasta</label>
-              <div className="flex gap-2">
-                <Input
-                  type="date"
-                  value={dateToFilter}
-                  onChange={(e) => setDateToFilter(e.target.value)}
-                />
-                {(dateFromFilter || dateToFilter || currencyFilter !== "ALL" || customerFilter) && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => {
-                      setCurrencyFilter("ALL")
-                      setCustomerFilter("")
-                      setDateFromFilter("")
-                      setDateToFilter("")
-                    }}
-                    title="Limpiar filtros"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
+              <Label>Fecha Hasta</Label>
+              <DateInputWithCalendar
+                value={dateToFilter}
+                onChange={(date) => {
+                  if (date && dateFromFilter && date < dateFromFilter) {
+                    return
+                  }
+                  setDateToFilter(date)
+                }}
+                placeholder="dd/MM/yyyy"
+                minDate={dateFromFilter}
+              />
             </div>
           </div>
+          
+          {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter) && (
+            <div className="mt-4 flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCurrencyFilter("ALL")
+                  setCustomerFilter("")
+                  setDateFromFilter(undefined)
+                  setDateToFilter(undefined)
+                }}
+                title="Limpiar filtros"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
