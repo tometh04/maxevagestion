@@ -488,7 +488,7 @@ export function BulkPaymentDialog({
                       <div className="text-xs text-muted-foreground">
                         Verifique que:
                         <ul className="list-disc list-inside mt-1">
-                          <li>El operador tenga pagos con estado "Pendiente" o "Vencido"</li>
+                          <li>El operador tenga pagos con estado &quot;Pendiente&quot; o &quot;Vencido&quot;</li>
                           <li>Los pagos estén en la moneda seleccionada ({selectedCurrency})</li>
                           <li>Los pagos tengan deuda pendiente (no estén completamente pagados)</li>
                         </ul>
