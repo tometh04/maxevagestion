@@ -147,6 +147,38 @@ export function OperationsTable({
     setEditDialogOpen(true)
   }, [agencies.length, loadDialogData])
 
+  const fetchOperations = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters.status !== "ALL") params.append("status", filters.status)
+      if (filters.sellerId !== "ALL") params.append("sellerId", filters.sellerId)
+      if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
+      if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
+      if (filters.dateTo) params.append("dateTo", filters.dateTo)
+      if (filters.paymentDateFrom) params.append("paymentDateFrom", filters.paymentDateFrom)
+      if (filters.paymentDateTo) params.append("paymentDateTo", filters.paymentDateTo)
+      if (filters.paymentDateType) params.append("paymentDateType", filters.paymentDateType)
+      
+      // Agregar parámetros de paginación
+      params.append("page", page.toString())
+      params.append("limit", limit.toString())
+
+      const response = await fetch(`/api/operations?${params.toString()}`)
+      if (response.ok) {
+        const data = await response.json()
+        setOperations(data.operations || [])
+        setTotal(data.total || 0)
+        setTotalPages(data.totalPages || 0)
+        setHasMore(data.hasMore || false)
+      }
+    } catch (error) {
+      console.error("Error fetching operations:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [filters, page, limit])
+
   const handleDeleteClick = useCallback((operation: Operation) => {
     setDeletingOperation(operation)
     setDeleteDialogOpen(true)
@@ -186,38 +218,6 @@ export function OperationsTable({
       setDeletingOperation(null)
     }
   }, [deletingOperation, toast, fetchOperations])
-
-  const fetchOperations = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (filters.status !== "ALL") params.append("status", filters.status)
-      if (filters.sellerId !== "ALL") params.append("sellerId", filters.sellerId)
-      if (filters.agencyId !== "ALL") params.append("agencyId", filters.agencyId)
-      if (filters.dateFrom) params.append("dateFrom", filters.dateFrom)
-      if (filters.dateTo) params.append("dateTo", filters.dateTo)
-      if (filters.paymentDateFrom) params.append("paymentDateFrom", filters.paymentDateFrom)
-      if (filters.paymentDateTo) params.append("paymentDateTo", filters.paymentDateTo)
-      if (filters.paymentDateType) params.append("paymentDateType", filters.paymentDateType)
-      
-      // Agregar parámetros de paginación
-      params.append("page", page.toString())
-      params.append("limit", limit.toString())
-
-      const response = await fetch(`/api/operations?${params.toString()}`)
-      if (response.ok) {
-        const data = await response.json()
-        setOperations(data.operations || [])
-        setTotal(data.total || 0)
-        setTotalPages(data.totalPages || 0)
-        setHasMore(data.hasMore || false)
-      }
-    } catch (error) {
-      console.error("Error fetching operations:", error)
-    } finally {
-      setLoading(false)
-    }
-  }, [filters, page, limit])
 
   useEffect(() => {
     fetchOperations()
