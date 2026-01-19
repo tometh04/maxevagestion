@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
-import { CreditCard } from "lucide-react"
+import { CreditCard, Download } from "lucide-react"
+import * as XLSX from "xlsx"
 import {
   Table,
   TableBody,
@@ -91,6 +92,100 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const totalPending = payments
     .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
     .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+
+  // Exportar a Excel
+  const handleExportExcel = () => {
+    const workbook = XLSX.utils.book_new()
+
+    // Agrupar pagos por operador para resumen
+    const operatorSummary: Record<string, {
+      operator: string
+      totalAmount: number
+      totalPaid: number
+      totalPending: number
+      currency: string
+      count: number
+      overdueCount: number
+    }> = {}
+
+    payments.forEach((payment) => {
+      const operatorName = payment.operators?.name || "Sin operador"
+      const operatorId = payment.operator_id || "unknown"
+      
+      if (!operatorSummary[operatorId]) {
+        operatorSummary[operatorId] = {
+          operator: operatorName,
+          totalAmount: 0,
+          totalPaid: 0,
+          totalPending: 0,
+          currency: payment.currency || "ARS",
+          count: 0,
+          overdueCount: 0,
+        }
+      }
+
+      const amount = parseFloat(payment.amount || "0") || 0
+      const paidAmount = parseFloat(payment.paid_amount || "0") || 0
+      const pendingAmount = amount - paidAmount
+
+      operatorSummary[operatorId].totalAmount += amount
+      operatorSummary[operatorId].totalPaid += paidAmount
+      operatorSummary[operatorId].totalPending += pendingAmount
+      operatorSummary[operatorId].count += 1
+
+      if (payment.status === "OVERDUE" || (payment.status === "PENDING" && new Date(payment.due_date) < new Date())) {
+        operatorSummary[operatorId].overdueCount += 1
+      }
+    })
+
+    // Hoja 1: Resumen por Operador
+    const summaryData = Object.values(operatorSummary).map((summary) => ({
+      Operador: summary.operator,
+      "Total a Pagar": summary.totalAmount,
+      Moneda: summary.currency,
+      "Pagado": summary.totalPaid,
+      "Pendiente": summary.totalPending,
+      "Cantidad Pagos": summary.count,
+      "Vencidos": summary.overdueCount,
+    }))
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Operador")
+
+    // Hoja 2: Detalle Completo
+    const detailData = payments.map((payment) => {
+      const amount = parseFloat(payment.amount || "0") || 0
+      const paidAmount = parseFloat(payment.paid_amount || "0") || 0
+      const pendingAmount = amount - paidAmount
+      const isOverdue = payment.status === "OVERDUE" || (payment.status === "PENDING" && new Date(payment.due_date) < new Date())
+      const displayStatus = isOverdue ? "Vencido" : statusLabels[payment.status] || payment.status
+
+      return {
+        "Código Operación": payment.operations?.file_code || "-",
+        Destino: payment.operations?.destination || "-",
+        Operador: payment.operators?.name || "-",
+        "Monto Total": amount,
+        Moneda: payment.currency || "ARS",
+        "Monto Pagado": paidAmount,
+        "Pendiente": pendingAmount,
+        "Fecha Vencimiento": payment.due_date
+          ? format(new Date(payment.due_date), "dd/MM/yyyy", { locale: es })
+          : "-",
+        Estado: displayStatus,
+        "Fecha Pago": payment.paid_at
+          ? format(new Date(payment.paid_at), "dd/MM/yyyy", { locale: es })
+          : "-",
+        "Parcial": paidAmount > 0 && paidAmount < amount ? "Sí" : "No",
+      }
+    })
+
+    const detailSheet = XLSX.utils.json_to_sheet(detailData)
+    XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Pagos")
+
+    // Guardar archivo
+    const fileName = `cuentas-por-pagar-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
 
   if (loading) {
     return (
@@ -183,10 +278,16 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               <CardTitle>Pagos a Operadores</CardTitle>
               <CardDescription>Cuentas a pagar a operadores</CardDescription>
             </div>
-            <Button onClick={() => setBulkPaymentOpen(true)}>
-              <CreditCard className="h-4 w-4 mr-2" />
-              Cargar Pago Masivo
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleExportExcel} disabled={payments.length === 0}>
+                <Download className="h-4 w-4 mr-2" />
+                Exportar Excel
+              </Button>
+              <Button onClick={() => setBulkPaymentOpen(true)}>
+                <CreditCard className="h-4 w-4 mr-2" />
+                Cargar Pago Masivo
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
