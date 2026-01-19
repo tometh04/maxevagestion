@@ -1,170 +1,187 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getAccountBalance } from "@/lib/accounting/ledger"
+import { getUserAgencyIds } from "@/lib/permissions-api"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
 
 /**
  * GET /api/analytics/pending-balances
- * Obtiene los balances reales de "Cuentas por Cobrar" y "Cuentas por Pagar"
+ * Obtiene los balances reales de "Deudores por Ventas" y "Deuda a Operadores"
+ * Usa la misma lógica que las páginas de /accounting/debts-sales y /accounting/operator-payments
  */
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+    const { searchParams } = new URL(request.url)
+    const agencyId = searchParams.get("agencyId") || "ALL"
 
     console.log("[PendingBalances] Iniciando cálculo de balances...")
 
-    // Obtener cuenta "Cuentas por Cobrar" (account_code: 1.1.03)
-    const { data: accountsReceivableChart, error: chartReceivableError } = await (supabase.from("chart_of_accounts") as any)
-      .select("id, account_code, account_name")
-      .eq("account_code", "1.1.03")
-      .eq("is_active", true)
-      .maybeSingle()
+    // Obtener agencias del usuario
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    if (chartReceivableError) {
-      console.error("[PendingBalances] Error obteniendo chart account 1.1.03:", chartReceivableError)
-    }
+    // ============================================
+    // 1. CALCULAR DEUDORES POR VENTAS (Cuentas por Cobrar)
+    // ============================================
+    // Misma lógica que /api/accounting/debts-sales
+    let accountsReceivableTotal = 0
 
-    let accountsReceivableBalance = 0
-    if (accountsReceivableChart) {
-      console.log(`[PendingBalances] Chart account encontrado: ${accountsReceivableChart.account_name} (${accountsReceivableChart.account_code})`)
-      
-      let accountsReceivableAccounts = await (supabase.from("financial_accounts") as any)
-        .select("id, name, currency")
-        .eq("chart_account_id", accountsReceivableChart.id)
-        .eq("is_active", true)
+    try {
+      // Obtener todas las operaciones con clientes
+      const { data: operations, error: operationsError } = await supabase
+        .from("operations")
+        .select(`
+          id,
+          sale_amount_total,
+          sale_currency,
+          currency,
+          departure_date,
+          created_at,
+          agency_id
+        `)
+        .in("agency_id", agencyIds)
 
-      let { data: accountsReceivableData, error: accountsReceivableError } = await accountsReceivableAccounts
-
-      if (accountsReceivableError) {
-        console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Cobrar:", accountsReceivableError)
-      }
-
-      // Si no existen cuentas financieras, crear una por defecto
-      if (!accountsReceivableData || accountsReceivableData.length === 0) {
-        console.log("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Cobrar, creando una...")
-        const { data: newAccount, error: createError } = await (supabase.from("financial_accounts") as any)
-          .insert({
-            name: "Cuentas por Cobrar",
-            type: "ASSETS",
-            currency: "ARS",
-            chart_account_id: accountsReceivableChart.id,
-            initial_balance: 0,
-            is_active: true,
-            created_by: user.id,
-          })
-          .select("id, name, currency")
-          .single()
-
-        if (createError) {
-          console.error("[PendingBalances] Error creando cuenta financiera Cuentas por Cobrar:", createError)
-        } else {
-          console.log(`[PendingBalances] Cuenta financiera creada: ${newAccount.name} (${newAccount.id})`)
-          accountsReceivableData = [newAccount]
+      if (operationsError) {
+        console.error("[PendingBalances] Error obteniendo operaciones:", operationsError)
+      } else if (operations && operations.length > 0) {
+        // Filtrar por agencia si se especifica
+        let filteredOperations = operations
+        if (agencyId && agencyId !== "ALL") {
+          filteredOperations = filteredOperations.filter((op: any) => op.agency_id === agencyId)
         }
-      }
 
-      if (accountsReceivableData && accountsReceivableData.length > 0) {
-        console.log(`[PendingBalances] Procesando ${accountsReceivableData.length} cuentas financieras de Cuentas por Cobrar`)
-        for (const account of accountsReceivableData) {
-          try {
-            const balance = await getAccountBalance(account.id, supabase)
-            console.log(`[PendingBalances] Cuenta ${account.name} (${account.currency}): balance=${balance}`)
-            accountsReceivableBalance += balance
-          } catch (error) {
-            console.error(`[PendingBalances] Error calculating balance for account ${account.id}:`, error)
+        // Obtener todos los pagos de clientes para estas operaciones
+        const operationIds = filteredOperations.map((op: any) => op.id)
+        if (operationIds.length > 0) {
+          const { data: payments } = await supabase
+            .from("payments")
+            .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+            .in("operation_id", operationIds)
+            .eq("direction", "INCOME")
+            .eq("payer_type", "CUSTOMER")
+            .eq("status", "PAID")
+
+          // Agrupar pagos por operación
+          const paymentsByOperation: Record<string, number> = {}
+          if (payments) {
+            payments.forEach((payment: any) => {
+              const opId = payment.operation_id
+              if (!paymentsByOperation[opId]) {
+                paymentsByOperation[opId] = 0
+              }
+              // Usar amount_usd si está disponible, sino calcularlo
+              let paidUsd = 0
+              if (payment.amount_usd != null) {
+                paidUsd = Number(payment.amount_usd)
+              } else if (payment.currency === "USD") {
+                paidUsd = Number(payment.amount) || 0
+              } else if (payment.currency === "ARS" && payment.exchange_rate) {
+                paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+              }
+              paymentsByOperation[opId] += paidUsd
+            })
+          }
+
+          // Obtener tasa de cambio más reciente como fallback
+          const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+          // Calcular deuda para cada operación
+          for (const operation of filteredOperations) {
+            const op = operation as any
+            const saleCurrency = op.sale_currency || op.currency || "USD"
+            const saleAmount = Number(op.sale_amount_total) || 0
+
+            // Convertir sale_amount_total a USD
+            let saleAmountUsd = saleAmount
+            if (saleCurrency === "ARS") {
+              const operationDate = op.departure_date || op.created_at
+              let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+              if (!exchangeRate) {
+                exchangeRate = latestExchangeRate
+              }
+              saleAmountUsd = saleAmount / exchangeRate
+            }
+
+            const paidUsd = paymentsByOperation[op.id] || 0
+            const debtUsd = Math.max(0, saleAmountUsd - paidUsd)
+            accountsReceivableTotal += debtUsd
           }
         }
       }
-    } else {
-      console.warn("[PendingBalances] No se encontró chart account 1.1.03 (Cuentas por Cobrar)")
+    } catch (error) {
+      console.error("[PendingBalances] Error calculando deudores por ventas:", error)
     }
 
-    // Obtener cuenta "Cuentas por Pagar" (account_code: 2.1.01)
-    const { data: accountsPayableChart, error: chartPayableError } = await (supabase.from("chart_of_accounts") as any)
-      .select("id, account_code, account_name")
-      .eq("account_code", "2.1.01")
-      .eq("is_active", true)
-      .maybeSingle()
+    // ============================================
+    // 2. CALCULAR DEUDA A OPERADORES (Cuentas por Pagar)
+    // ============================================
+    // Misma lógica que /api/accounting/operator-payments
+    let accountsPayableTotal = 0
 
-    if (chartPayableError) {
-      console.error("[PendingBalances] Error obteniendo chart account 2.1.01:", chartPayableError)
-    }
+    try {
+      // Obtener todos los pagos pendientes a operadores
+      const { data: operatorPayments, error: operatorPaymentsError } = await supabase
+        .from("operator_payments")
+        .select(`
+          id,
+          amount,
+          paid_amount,
+          currency,
+          status,
+          operations:operation_id (id, agency_id)
+        `)
+        .in("status", ["PENDING", "OVERDUE"])
 
-    let accountsPayableBalance = 0
-    if (accountsPayableChart) {
-      console.log(`[PendingBalances] Chart account encontrado: ${accountsPayableChart.account_name} (${accountsPayableChart.account_code})`)
-      
-      let accountsPayableAccounts = await (supabase.from("financial_accounts") as any)
-        .select("id, name, currency")
-        .eq("chart_account_id", accountsPayableChart.id)
-        .eq("is_active", true)
-
-      let { data: accountsPayableData, error: accountsPayableError } = await accountsPayableAccounts
-
-      if (accountsPayableError) {
-        console.error("[PendingBalances] Error obteniendo financial accounts para Cuentas por Pagar:", accountsPayableError)
-      }
-
-      // Si no existen cuentas financieras, crear una por defecto
-      if (!accountsPayableData || accountsPayableData.length === 0) {
-        console.log("[PendingBalances] No se encontraron cuentas financieras para Cuentas por Pagar, creando una...")
-        const { data: newAccount, error: createError } = await (supabase.from("financial_accounts") as any)
-          .insert({
-            name: "Cuentas por Pagar",
-            type: "ASSETS", // Usar ASSETS como tipo válido - el chart_account_id determina si es activo/pasivo
-            currency: "ARS",
-            chart_account_id: accountsPayableChart.id,
-            initial_balance: 0,
-            is_active: true,
-            created_by: user.id,
+      if (operatorPaymentsError) {
+        console.error("[PendingBalances] Error obteniendo pagos a operadores:", operatorPaymentsError)
+      } else if (operatorPayments && operatorPayments.length > 0) {
+        // Filtrar por agencia si se especifica
+        let filteredPayments = operatorPayments
+        if (agencyId && agencyId !== "ALL") {
+          filteredPayments = filteredPayments.filter((p: any) => {
+            const operation = p.operations
+            return operation && operation.agency_id === agencyId
           })
-          .select("id, name, currency")
-          .single()
-
-        if (createError) {
-          console.error("[PendingBalances] Error creando cuenta financiera Cuentas por Pagar:", createError)
-        } else {
-          console.log(`[PendingBalances] Cuenta financiera creada: ${newAccount.name} (${newAccount.id})`)
-          accountsPayableData = [newAccount]
         }
-      }
 
-      if (accountsPayableData && accountsPayableData.length > 0) {
-        console.log(`[PendingBalances] Procesando ${accountsPayableData.length} cuentas financieras de Cuentas por Pagar`)
-        for (const account of accountsPayableData) {
-          try {
-            const balance = await getAccountBalance(account.id, supabase)
-            console.log(`[PendingBalances] Cuenta ${account.name} (${account.currency}): balance=${balance}`)
-            accountsPayableBalance += balance
-          } catch (error) {
-            console.error(`[PendingBalances] Error calculating balance for account ${account.id}:`, error)
+        // Obtener tasa de cambio más reciente como fallback
+        const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
+        // Calcular deuda pendiente en USD
+        for (const payment of filteredPayments) {
+          const p = payment as any
+          const amount = Number(p.amount) || 0
+          const paidAmount = Number(p.paid_amount) || 0
+          const pendingAmount = amount - paidAmount
+
+          if (pendingAmount > 0) {
+            const currency = p.currency || "USD"
+            let pendingUsd = 0
+
+            if (currency === "USD") {
+              pendingUsd = pendingAmount
+            } else if (currency === "ARS") {
+              // Convertir ARS a USD usando tasa de cambio más reciente
+              pendingUsd = pendingAmount / latestExchangeRate
+            }
+
+            accountsPayableTotal += pendingUsd
           }
         }
       }
-    } else {
-      console.warn("[PendingBalances] No se encontró chart account 2.1.01 (Cuentas por Pagar)")
+    } catch (error) {
+      console.error("[PendingBalances] Error calculando deuda a operadores:", error)
     }
 
-    console.log(`[PendingBalances] Balance final - Cuentas por Cobrar: ${accountsReceivableBalance}, Cuentas por Pagar: ${accountsPayableBalance}`)
+    console.log(`[PendingBalances] Balance final - Deudores por Ventas: ${accountsReceivableTotal} USD, Deuda a Operadores: ${accountsPayableTotal} USD`)
 
-    // Para ACTIVOS (Cuentas por Cobrar): el balance positivo significa que nos deben
-    // Para PASIVOS (Cuentas por Pagar): el balance positivo significa que debemos
-    // Si el balance es negativo, significa que se pagó más de lo debido (no es un pendiente)
     return NextResponse.json({
-      accountsReceivable: Math.max(0, accountsReceivableBalance), // Solo valores positivos (lo que nos deben)
-      accountsPayable: Math.max(0, accountsPayableBalance), // Solo valores positivos (lo que debemos)
-      debug: {
-        accountsReceivableRaw: accountsReceivableBalance,
-        accountsPayableRaw: accountsPayableBalance,
-        chartAccountsFound: {
-          receivable: !!accountsReceivableChart,
-          payable: !!accountsPayableChart,
-        },
-      },
+      accountsReceivable: Math.max(0, accountsReceivableTotal), // Solo valores positivos
+      accountsPayable: Math.max(0, accountsPayableTotal), // Solo valores positivos
     })
   } catch (error: any) {
     console.error("[PendingBalances] Error in GET /api/analytics/pending-balances:", error)
@@ -175,4 +192,3 @@ export async function GET(request: Request) {
     }, { status: 500 })
   }
 }
-

@@ -124,13 +124,18 @@ export function DashboardPageClient({
         next: { revalidate: 30 } // Cache por 30 segundos
       }
       
+      // Agregar agencyId al endpoint de pending-balances si está seleccionado
+      const pendingBalancesParams = filters.agencyId && filters.agencyId !== "ALL" 
+        ? `?agencyId=${filters.agencyId}` 
+        : ""
+      
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, pendingBalancesRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/pending-balances`, fetchOptions),
+        fetch(`/api/analytics/pending-balances${pendingBalancesParams}`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
