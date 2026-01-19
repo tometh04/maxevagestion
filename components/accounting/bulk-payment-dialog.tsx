@@ -223,6 +223,19 @@ export function BulkPaymentDialog({
     }
   }, [selectedCurrency])
 
+  // Actualizar moneda de pago automáticamente cuando se selecciona una cuenta financiera
+  // Si la cuenta tiene moneda diferente a la de las deudas, se actualiza paymentCurrency
+  useEffect(() => {
+    if (paymentAccountId && selectedCurrency) {
+      const selectedAccount = financialAccounts.find(acc => acc.id === paymentAccountId)
+      if (selectedAccount && selectedAccount.currency !== selectedCurrency) {
+        // La cuenta tiene moneda diferente a la de las deudas
+        // Actualizar paymentCurrency a la moneda de la cuenta
+        setPaymentCurrency(selectedAccount.currency)
+      }
+    }
+  }, [paymentAccountId, financialAccounts, selectedCurrency])
+
   // Inicializar montos a pagar con el pendiente cuando se selecciona
   useEffect(() => {
     const amounts: Record<string, number> = {}
@@ -284,7 +297,18 @@ export function BulkPaymentDialog({
 
   // Verificar si necesita tipo de cambio
   const needsExchangeRate = () => {
-    // Solo necesita TC si la moneda de pago es diferente a la moneda de las deudas
+    // Necesita TC si:
+    // 1. La moneda de pago es diferente a la moneda de las deudas, O
+    // 2. La cuenta seleccionada tiene moneda diferente a la moneda de las deudas
+    if (!selectedCurrency || !paymentAccountId) return false
+    
+    const selectedAccount = financialAccounts.find(acc => acc.id === paymentAccountId)
+    if (selectedAccount) {
+      // Si la cuenta tiene moneda diferente a la de las deudas, necesita TC
+      return selectedAccount.currency !== selectedCurrency
+    }
+    
+    // Fallback: comparar paymentCurrency con selectedCurrency
     return paymentCurrency !== selectedCurrency
   }
 
