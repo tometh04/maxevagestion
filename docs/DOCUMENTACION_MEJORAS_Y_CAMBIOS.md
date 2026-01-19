@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Reorganización del sidebar y eliminación de Notas)
+**Última actualización:** 2025-01-19 (Corrección de KPIs de deudores y deuda en dashboard)
 
 ---
 
@@ -697,6 +697,82 @@ Se reorganizó completamente la sección "Recursos" del sidebar, moviendo funcio
 - La tabla `notes` y sus tablas relacionadas (`note_comments`, `note_attachments`) se mantienen en la base de datos para compatibilidad
 - La migración `068_create_notes.sql` NO se eliminó (las migraciones son históricas)
 - No se cambió ninguna funcionalidad, solo se reorganizó la estructura del sidebar
+
+---
+
+### 17. Corrección de KPIs de Deudores y Deuda en Dashboard
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se corrigieron los textos y el cálculo de los KPIs de "Deudores por Ventas" y "Deuda a Operadores" en el dashboard principal. Los KPIs ahora muestran los valores correctos usando la misma lógica que las páginas dedicadas.
+
+**Problema Identificado:**
+- Los cards mostraban "$0K" en ambos KPIs
+- El endpoint `/api/analytics/pending-balances` calculaba desde las cuentas financieras del plan de cuentas, no desde las fuentes de datos reales
+- Los textos no eran claros ("Pendientes Clientes" y "Por cobrar de clientes" eran confusos)
+
+**Solución Implementada:**
+
+1. **Corrección de Textos:**
+   - **Card de Deudores:**
+     - Título: "Pendientes Clientes" → "Deudores por Ventas"
+     - Descripción: "Por cobrar de clientes" → "Pendientes de clientes"
+   - **Card de Deuda:**
+     - Título: "Pendientes Operadores" → "Deuda a Operadores"
+     - Descripción: "Por pagar a operadores" → "Pendientes de operadores"
+
+2. **Reescritura Completa del Endpoint `/api/analytics/pending-balances`:**
+   - **Deudores por Ventas (accountsReceivable):**
+     - Usa la misma lógica que `/api/accounting/debts-sales`
+     - Obtiene todas las operaciones con sus clientes
+     - Obtiene pagos de clientes (INCOME, CUSTOMER, PAID)
+     - Calcula deuda = `sale_amount_total - sum(pagos_recibidos)`
+     - Convierte ARS a USD usando tasas de cambio históricas de la fecha de la operación
+     - Suma todas las deudas en USD
+   - **Deuda a Operadores (accountsPayable):**
+     - Usa la misma lógica que `/api/accounting/operator-payments`
+     - Obtiene `operator_payments` con status `PENDING` o `OVERDUE`
+     - Calcula pendiente = `amount - paid_amount`
+     - Convierte ARS a USD usando tasa de cambio más reciente
+     - Suma todos los pendientes en USD
+   - Soporta filtro de agencia (si se especifica `agencyId` en query params)
+
+3. **Actualización del Dashboard:**
+   - Pasa el filtro de agencia al endpoint de pending-balances cuando está seleccionado
+   - Los KPIs ahora respetan el filtro de agencia del dashboard
+
+**Archivos Modificados:**
+- `components/dashboard/dashboard-page-client.tsx`
+  - Corregidos textos de los cards (títulos y descripciones)
+  - Agregado paso de `agencyId` al endpoint de pending-balances
+- `app/api/analytics/pending-balances/route.ts`
+  - **REESCRITO COMPLETAMENTE**
+  - Nueva lógica para calcular deudores por ventas desde operaciones y pagos
+  - Nueva lógica para calcular deuda a operadores desde `operator_payments`
+  - Conversión correcta de ARS a USD usando tasas de cambio históricas
+  - Soporte para filtro de agencia
+
+**Detalles Técnicos:**
+- **Cálculo de Deudores por Ventas:**
+  - Obtiene operaciones con `agency_id` en las agencias del usuario
+  - Filtra por agencia si se especifica en query params
+  - Obtiene pagos de clientes para esas operaciones
+  - Convierte `sale_amount_total` a USD usando TC histórico de `departure_date` o `created_at`
+  - Calcula deuda: `saleAmountUsd - paidUsd`
+  - Suma todas las deudas en USD
+- **Cálculo de Deuda a Operadores:**
+  - Obtiene `operator_payments` con status `PENDING` o `OVERDUE`
+  - Filtra por agencia si se especifica (a través de `operations.agency_id`)
+  - Calcula pendiente: `amount - paid_amount`
+  - Convierte ARS a USD usando TC más reciente
+  - Suma todos los pendientes en USD
+- Ambos cálculos retornan valores en USD para consistencia
+
+**Resultado:**
+- Los KPIs ahora muestran los valores correctos en USD
+- Los valores coinciden con los mostrados en las páginas de "Deudores por Ventas" y "Pagos a Operadores"
+- Los textos son más claros y descriptivos
 
 ---
 
