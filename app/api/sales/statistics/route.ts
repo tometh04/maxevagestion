@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { subMonths, startOfMonth, endOfMonth, format } from "date-fns"
+import { subMonths, startOfMonth, endOfMonth, format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -15,12 +16,21 @@ export async function GET(request: Request) {
 
     // Parámetros de filtro
     const agencyId = searchParams.get("agencyId")
-    const months = parseInt(searchParams.get("months") || "12")
+    const dateFrom = searchParams.get("dateFrom")
+    const dateTo = searchParams.get("dateTo")
+
+    // Si no hay fechas, usar últimos 12 meses por defecto
+    const now = new Date()
+    const defaultFrom = startOfMonth(subMonths(now, 11))
+    const defaultTo = endOfMonth(now)
+    
+    const filterFrom = dateFrom ? parseISO(dateFrom) : defaultFrom
+    const filterTo = dateTo ? parseISO(dateTo) : defaultTo
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query de leads - simplificada
+    // Query de leads
     let leadsQuery = (supabase.from("leads") as any)
       .select(`
         id,
@@ -34,6 +44,8 @@ export async function GET(request: Request) {
         deposit_amount,
         agency_id
       `)
+      .gte("created_at", filterFrom.toISOString())
+      .lte("created_at", filterTo.toISOString())
 
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
@@ -49,7 +61,22 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
-    const now = new Date()
+    // Obtener vendedores
+    const sellerIds = Array.from(new Set((leads || []).map((lead: any) => lead.assigned_seller_id).filter(Boolean)))
+    let sellersMap: Record<string, string> = {}
+    
+    if (sellerIds.length > 0) {
+      const { data: sellers } = await supabase
+        .from("users")
+        .select("id, full_name")
+        .in("id", sellerIds)
+      
+      if (sellers) {
+        sellers.forEach((s: any) => {
+          sellersMap[s.id] = s.full_name || "Sin asignar"
+        })
+      }
+    }
 
     // Pipeline de ventas (por estado)
     const pipeline: Record<string, { status: string, label: string, count: number, value: number }> = {
@@ -83,24 +110,28 @@ export async function GET(request: Request) {
       lostLeads: number
     }> = {}
 
-    // Inicializar meses
-    for (let i = 0; i < months; i++) {
-      const date = subMonths(now, months - 1 - i)
-      const key = format(date, "yyyy-MM")
+    // Inicializar meses en el rango
+    let currentDate = startOfMonth(filterFrom)
+    while (currentDate <= filterTo) {
+      const key = format(currentDate, "yyyy-MM")
       monthlyStats[key] = {
         month: key,
-        monthName: format(date, "MMM yy", { locale: es }),
+        monthName: format(currentDate, "MMM yy", { locale: es }),
         newLeads: 0,
         wonLeads: 0,
         lostLeads: 0,
       }
+      currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
     }
+
+    // Obtener tasa de cambio más reciente para depósitos en ARS
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
 
     // Procesar leads
     let totalLeads = 0
     let totalWon = 0
     let totalLost = 0
-    let totalDeposits = 0
+    let totalDepositsUsd = 0
 
     for (const lead of leads || []) {
       totalLeads++
@@ -109,8 +140,10 @@ export async function GET(request: Request) {
       if (pipeline[lead.status]) {
         pipeline[lead.status].count++
         if (lead.has_deposit && lead.deposit_amount) {
-          pipeline[lead.status].value += parseFloat(lead.deposit_amount) || 0
-          totalDeposits += parseFloat(lead.deposit_amount) || 0
+          const depositAmount = parseFloat(lead.deposit_amount) || 0
+          // Asumir que los depósitos están en ARS por defecto (puede necesitar ajuste según tu sistema)
+          totalDepositsUsd += depositAmount / latestExchangeRate
+          pipeline[lead.status].value += depositAmount / latestExchangeRate
         }
       }
 
@@ -126,7 +159,7 @@ export async function GET(request: Request) {
       }
 
       // Por región
-      const region = lead.region || "OTROS"
+      const region = lead.region || lead.destination || "OTROS"
       if (!byRegion[region]) {
         byRegion[region] = { region, count: 0, won: 0 }
       }
@@ -138,7 +171,7 @@ export async function GET(request: Request) {
         if (!bySeller[lead.assigned_seller_id]) {
           bySeller[lead.assigned_seller_id] = {
             id: lead.assigned_seller_id,
-            name: 'Vendedor',
+            name: sellersMap[lead.assigned_seller_id] || 'Sin asignar',
             leads: 0,
             won: 0,
             conversionRate: 0,
@@ -194,6 +227,9 @@ export async function GET(request: Request) {
     const thisMonth = format(now, "yyyy-MM")
     const newThisMonth = monthlyStats[thisMonth]?.newLeads || 0
 
+    // Conversión de meses a array ordenado
+    const monthlyTrend = Object.values(monthlyStats).sort((a, b) => a.month.localeCompare(b.month))
+
     return NextResponse.json({
       overview: {
         totalLeads,
@@ -201,7 +237,7 @@ export async function GET(request: Request) {
         wonLeads: totalWon,
         lostLeads: totalLost,
         conversionRate: Math.round(overallConversionRate * 10) / 10,
-        totalDeposits,
+        totalDeposits: Math.round(totalDepositsUsd * 100) / 100,
         newThisMonth,
       },
       pipeline: Object.values(pipeline),
@@ -211,12 +247,16 @@ export async function GET(request: Request) {
         bySeller: topSellers,
       },
       trends: {
-        monthly: Object.values(monthlyStats),
+        monthly: monthlyTrend,
       },
       rankings: {
         topSellers,
         topSources,
       },
+      filters: {
+        dateFrom: format(filterFrom, "yyyy-MM-dd"),
+        dateTo: format(filterTo, "yyyy-MM-dd"),
+      }
     })
   } catch (error: any) {
     console.error("Error in GET /api/sales/statistics:", error)

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { subMonths, startOfMonth, endOfMonth, format } from "date-fns"
+import { subMonths, startOfMonth, endOfMonth, format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -15,7 +16,16 @@ export async function GET(request: Request) {
 
     // Parámetros de filtro
     const agencyId = searchParams.get("agencyId")
-    const months = parseInt(searchParams.get("months") || "12")
+    const dateFrom = searchParams.get("dateFrom")
+    const dateTo = searchParams.get("dateTo")
+
+    // Si no hay fechas, usar últimos 12 meses por defecto
+    const now = new Date()
+    const defaultFrom = startOfMonth(subMonths(now, 11))
+    const defaultTo = endOfMonth(now)
+    
+    const filterFrom = dateFrom ? parseISO(dateFrom) : defaultFrom
+    const filterTo = dateTo ? parseISO(dateTo) : defaultTo
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -36,11 +46,16 @@ export async function GET(request: Request) {
             id,
             status,
             sale_amount_total,
+            sale_currency,
+            currency,
             departure_date,
+            created_at,
             agency_id
           )
         )
       `)
+      .gte("created_at", filterFrom.toISOString())
+      .lte("created_at", filterTo.toISOString())
 
     const { data: customers, error: customersError } = await customersQuery
 
@@ -63,17 +78,21 @@ export async function GET(request: Request) {
       )
     })
 
+    // Obtener tasa de cambio más reciente como fallback
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+
     // Estadísticas generales
     const totalCustomers = filteredCustomers.length
     
     // Clientes nuevos por mes
     const newCustomersByMonth: Record<string, number> = {}
-    const now = new Date()
     
-    for (let i = 0; i < months; i++) {
-      const date = subMonths(now, months - 1 - i)
-      const key = format(date, "yyyy-MM")
+    // Inicializar meses en el rango
+    let currentDate = startOfMonth(filterFrom)
+    while (currentDate <= filterTo) {
+      const key = format(currentDate, "yyyy-MM")
       newCustomersByMonth[key] = 0
+      currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
     }
 
     filteredCustomers.forEach((customer: any) => {
@@ -85,32 +104,47 @@ export async function GET(request: Request) {
     })
 
     // Convertir a array para gráficos
-    const newCustomersTrend = Object.entries(newCustomersByMonth).map(([key, count]) => {
-      const [year, month] = key.split("-")
-      return {
-        month: key,
-        monthName: format(new Date(parseInt(year), parseInt(month) - 1, 1), "MMM yy", { locale: es }),
-        count,
-      }
-    })
+    const newCustomersTrend = Object.entries(newCustomersByMonth)
+      .map(([key, count]) => {
+        const [year, month] = key.split("-")
+        return {
+          month: key,
+          monthName: format(new Date(parseInt(year), parseInt(month) - 1, 1), "MMM yy", { locale: es }),
+          count,
+        }
+      })
+      .sort((a, b) => a.month.localeCompare(b.month))
 
     // Clientes activos vs inactivos (6 meses sin actividad = inactivo)
     const sixMonthsAgo = subMonths(now, 6)
     let activeCustomers = 0
     let inactiveCustomers = 0
 
-    // Estadísticas por cliente
-    const customerStats = filteredCustomers.map((customer: any) => {
+    // Estadísticas por cliente (todo en USD)
+    const customerStats = await Promise.all(filteredCustomers.map(async (customer: any) => {
       const operations = (customer.operation_customers || [])
         .map((oc: any) => oc.operations)
-        .filter((op: any) => op && ["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op.status))
+        .filter((op: any) => op && ["CONFIRMED", "TRAVELLED", "RESERVED"].includes(op.status))
 
-      const totalSpent = operations.reduce((sum: number, op: any) => 
-        sum + (parseFloat(op.sale_amount_total) || 0), 0
-      )
+      let totalSpentUsd = 0
+      for (const op of operations) {
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+        const saleAmount = parseFloat(op.sale_amount_total) || 0
+        
+        if (saleCurrency === "ARS") {
+          const operationDate = op.departure_date || op.created_at
+          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
+          if (!exchangeRate) {
+            exchangeRate = latestExchangeRate
+          }
+          totalSpentUsd += saleAmount / exchangeRate
+        } else {
+          totalSpentUsd += saleAmount
+        }
+      }
 
       const totalOperations = operations.length
-      const avgTicket = totalOperations > 0 ? totalSpent / totalOperations : 0
+      const avgTicketUsd = totalOperations > 0 ? totalSpentUsd / totalOperations : 0
 
       const lastOperationDate = operations.length > 0
         ? operations
@@ -124,21 +158,21 @@ export async function GET(request: Request) {
 
       return {
         id: customer.id,
-        name: `${customer.first_name} ${customer.last_name}`,
+        name: `${customer.first_name} ${customer.last_name}`.trim() || "Sin nombre",
         email: customer.email,
         phone: customer.phone,
         totalOperations,
-        totalSpent,
-        avgTicket,
+        totalSpentUsd,
+        avgTicketUsd,
         lastOperationDate: lastOperationDate?.toISOString() || null,
         isActive,
       }
-    })
+    }))
 
     // Top 10 clientes por gasto
     const topBySpending = [...customerStats]
-      .filter(c => c.totalSpent > 0)
-      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .filter(c => c.totalSpentUsd > 0)
+      .sort((a, b) => b.totalSpentUsd - a.totalSpentUsd)
       .slice(0, 10)
 
     // Top 10 clientes por frecuencia
@@ -147,24 +181,24 @@ export async function GET(request: Request) {
       .sort((a, b) => b.totalOperations - a.totalOperations)
       .slice(0, 10)
 
-    // Clientes por rango de gasto
+    // Clientes por rango de gasto (en USD)
     const spendingRanges = [
-      { range: "$0 - $500k", min: 0, max: 500000, count: 0 },
-      { range: "$500k - $1M", min: 500000, max: 1000000, count: 0 },
-      { range: "$1M - $2M", min: 1000000, max: 2000000, count: 0 },
-      { range: "$2M - $5M", min: 2000000, max: 5000000, count: 0 },
-      { range: "+$5M", min: 5000000, max: Infinity, count: 0 },
+      { range: "$0 - $500", min: 0, max: 500, count: 0 },
+      { range: "$500 - $1K", min: 500, max: 1000, count: 0 },
+      { range: "$1K - $2K", min: 1000, max: 2000, count: 0 },
+      { range: "$2K - $5K", min: 2000, max: 5000, count: 0 },
+      { range: "+$5K", min: 5000, max: Infinity, count: 0 },
     ]
 
     customerStats.forEach(c => {
-      const range = spendingRanges.find(r => c.totalSpent >= r.min && c.totalSpent < r.max)
+      const range = spendingRanges.find(r => c.totalSpentUsd >= r.min && c.totalSpentUsd < r.max)
       if (range) range.count++
     })
 
     // Calcular totales
-    const totalSpentAll = customerStats.reduce((sum, c) => sum + c.totalSpent, 0)
+    const totalSpentAllUsd = customerStats.reduce((sum, c) => sum + c.totalSpentUsd, 0)
     const totalOperationsAll = customerStats.reduce((sum, c) => sum + c.totalOperations, 0)
-    const avgSpentPerCustomer = totalCustomers > 0 ? totalSpentAll / totalCustomers : 0
+    const avgSpentPerCustomer = totalCustomers > 0 ? totalSpentAllUsd / totalCustomers : 0
     const avgOperationsPerCustomer = totalCustomers > 0 ? totalOperationsAll / totalCustomers : 0
 
     // Clientes nuevos este mes
@@ -187,8 +221,8 @@ export async function GET(request: Request) {
         inactiveCustomers,
         newThisMonth,
         growthPercentage: Math.round(growthPercentage * 10) / 10,
-        totalSpent: totalSpentAll,
-        avgSpentPerCustomer: Math.round(avgSpentPerCustomer),
+        totalSpent: Math.round(totalSpentAllUsd * 100) / 100,
+        avgSpentPerCustomer: Math.round(avgSpentPerCustomer * 100) / 100,
         avgOperationsPerCustomer: Math.round(avgOperationsPerCustomer * 10) / 10,
       },
       trends: {
@@ -205,6 +239,10 @@ export async function GET(request: Request) {
         topBySpending,
         topByFrequency,
       },
+      filters: {
+        dateFrom: format(filterFrom, "yyyy-MM-dd"),
+        dateTo: format(filterTo, "yyyy-MM-dd"),
+      }
     })
   } catch (error: any) {
     console.error("Error in GET /api/customers/statistics:", error)

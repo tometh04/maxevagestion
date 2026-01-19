@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Users, TrendingUp, TrendingDown, DollarSign, Activity, UserCheck, UserX, Download } from "lucide-react"
+import { Loader2, Users, TrendingUp, TrendingDown, DollarSign, UserCheck, UserX } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -15,13 +14,6 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -45,6 +37,8 @@ import {
   Line,
   Legend,
 } from "recharts"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { format, subMonths, startOfMonth, endOfMonth } from "date-fns"
 
 interface CustomerStatistics {
   overview: {
@@ -88,14 +82,33 @@ interface CustomerStatistics {
       totalSpent: number
     }>
   }
+  filters: {
+    dateFrom: string
+    dateTo: string
+  }
 }
 
-const COLORS = ['#10b981', '#ef4444', '#f59e0b', '#3b82f6', '#8b5cf6', '#ec4899']
+const COLORS = {
+  active: '#10b981',
+  inactive: '#ef4444',
+  new: '#3b82f6',
+}
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-AR', {
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(1)}M`
+  }
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(1)}K`
+  }
+  return `$${value.toFixed(0)}`
+}
+
+const formatFullCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'ARS',
+    currency: 'USD',
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value)
 }
@@ -104,17 +117,45 @@ export function CustomersStatisticsPageClient() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<CustomerStatistics | null>(null)
-  const [months, setMonths] = useState("12")
+  
+  // Filtros de fecha
+  const now = new Date()
+  const defaultFrom = format(startOfMonth(subMonths(now, 11)), "yyyy-MM-dd")
+  const defaultTo = format(endOfMonth(now), "yyyy-MM-dd")
+  
+  const [dateFrom, setDateFrom] = useState(defaultFrom)
+  const [dateTo, setDateTo] = useState(defaultTo)
 
   useEffect(() => {
-    loadStatistics()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [months])
+    // Solo cargar si hay ambas fechas
+    if (dateFrom && dateTo) {
+      loadStatistics()
+    }
+  }, [])
 
   const loadStatistics = async () => {
+    // Validar que ambas fechas estén seleccionadas
+    if (!dateFrom || !dateTo) {
+      return
+    }
+
+    // Validar que la fecha de fin sea después de la de inicio
+    if (new Date(dateTo) < new Date(dateFrom)) {
+      toast({
+        title: "Rango inválido",
+        description: "La fecha de fin debe ser posterior a la fecha de inicio",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       setLoading(true)
-      const response = await fetch(`/api/customers/statistics?months=${months}`)
+      const params = new URLSearchParams()
+      params.append("dateFrom", dateFrom)
+      params.append("dateTo", dateTo)
+      
+      const response = await fetch(`/api/customers/statistics?${params.toString()}`)
       
       if (!response.ok) {
         throw new Error('Error al cargar estadísticas')
@@ -134,26 +175,48 @@ export function CustomersStatisticsPageClient() {
     }
   }
 
+  const handleDateRangeChange = (from: string, to: string) => {
+    setDateFrom(from)
+    setDateTo(to)
+    // Solo actualizar cuando ambas fechas estén seleccionadas
+    if (from && to) {
+      // Validar que la fecha de fin sea después de la de inicio
+      if (new Date(to) < new Date(from)) {
+        toast({
+          title: "Rango inválido",
+          description: "La fecha de fin debe ser posterior a la fecha de inicio",
+          variant: "destructive",
+        })
+        return
+      }
+      // Usar un pequeño delay para asegurar que el estado se actualice
+      setTimeout(() => {
+        loadStatistics()
+      }, 100)
+    }
+  }
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (!stats) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">No se encontraron estadísticas</p>
+      <div className="flex items-center justify-center min-h-[300px]">
+        <p className="text-sm text-muted-foreground">No se encontraron estadísticas</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Breadcrumb */}
       <Breadcrumb>
-        <BreadcrumbList>
+        <BreadcrumbList className="text-xs">
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
               <Link href="/customers">Clientes</Link>
@@ -164,139 +227,111 @@ export function CustomersStatisticsPageClient() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center justify-between">
+      {/* Header con filtros */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Estadísticas de Clientes</h1>
-          <p className="text-muted-foreground">
-            Análisis y métricas de tu cartera de clientes
+          <h1 className="text-xl font-semibold">Estadísticas</h1>
+          <p className="text-xs text-muted-foreground">
+            Métricas de clientes en USD
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Select value={months} onValueChange={setMonths}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">Últimos 3 meses</SelectItem>
-              <SelectItem value="6">Últimos 6 meses</SelectItem>
-              <SelectItem value="12">Últimos 12 meses</SelectItem>
-              <SelectItem value="24">Últimos 24 meses</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
-          </Button>
+        <div className="flex items-center gap-2">
+          <DateRangePicker
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={handleDateRangeChange}
+            placeholder="Seleccionar rango de fechas"
+          />
         </div>
       </div>
 
-      {/* Cards de resumen */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Clientes</CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.totalCustomers.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.overview.newThisMonth} nuevos este mes
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Crecimiento</CardTitle>
-            {stats.overview.growthPercentage >= 0 ? (
-              <TrendingUp className="h-4 w-4 text-green-500" />
-            ) : (
-              <TrendingDown className="h-4 w-4 text-red-500" />
-            )}
-          </CardHeader>
-          <CardContent>
-            <div className={`text-2xl font-bold ${stats.overview.growthPercentage >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {stats.overview.growthPercentage >= 0 ? '+' : ''}{stats.overview.growthPercentage}%
+      {/* KPIs compactos */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
+              <Users className="h-3.5 w-3.5 text-blue-600" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              vs. mes anterior
-            </p>
-          </CardContent>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
+              <p className="text-base font-semibold">{stats.overview.totalCustomers.toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground">{stats.overview.newThisMonth} nuevos</p>
+            </div>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Gasto Promedio</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.overview.avgSpentPerCustomer)}</div>
-            <p className="text-xs text-muted-foreground">
-              por cliente
-            </p>
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded ${stats.overview.growthPercentage >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+              {stats.overview.growthPercentage >= 0 ? (
+                <TrendingUp className={`h-3.5 w-3.5 ${stats.overview.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+              ) : (
+                <TrendingDown className="h-3.5 w-3.5 text-red-600" />
+              )}
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Crecimiento</p>
+              <p className={`text-base font-semibold ${stats.overview.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {stats.overview.growthPercentage >= 0 ? '+' : ''}{stats.overview.growthPercentage}%
+              </p>
+            </div>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Operaciones Prom.</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.avgOperationsPerCustomer}</div>
-            <p className="text-xs text-muted-foreground">
-              viajes por cliente
-            </p>
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Gasto Total</p>
+              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalSpent)}</p>
+              <p className="text-[10px] text-muted-foreground">Prom: {formatFullCurrency(stats.overview.avgSpentPerCustomer)}</p>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
+              <Users className="h-3.5 w-3.5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ops Prom.</p>
+              <p className="text-base font-semibold text-purple-600">{stats.overview.avgOperationsPerCustomer.toFixed(1)}</p>
+              <p className="text-[10px] text-muted-foreground">viajes por cliente</p>
+            </div>
+          </div>
         </Card>
       </div>
 
       {/* Gráficos */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Tendencia de nuevos clientes */}
-        <Card className="col-span-2">
-          <CardHeader>
-            <CardTitle>Nuevos Clientes por Mes</CardTitle>
-            <CardDescription>Evolución del crecimiento de la cartera</CardDescription>
+      <div className="grid md:grid-cols-3 gap-3">
+        {/* Nuevos clientes por mes */}
+        <Card className="md:col-span-2">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Nuevos Clientes por Mes</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="px-4 pb-4">
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={stats.trends.newCustomersByMonth}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="monthName" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line 
-                    type="monotone" 
-                    dataKey="count" 
-                    name="Nuevos clientes"
-                    stroke="#10b981" 
-                    strokeWidth={2}
-                    dot={{ fill: '#10b981' }}
+                <BarChart data={stats.trends.newCustomersByMonth} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    dataKey="monthName" 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={{ stroke: '#e5e7eb' }}
                   />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Distribución por gasto */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribución por Gasto</CardTitle>
-            <CardDescription>Clientes agrupados por rango de gasto total</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.distributions.spendingRanges} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="range" type="category" width={100} />
-                  <Tooltip />
-                  <Bar dataKey="count" name="Clientes" fill="#3b82f6" />
+                  <YAxis 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ fontSize: 11 }}
+                  />
+                  <Bar dataKey="count" name="Nuevos" fill={COLORS.new} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -305,40 +340,47 @@ export function CustomersStatisticsPageClient() {
 
         {/* Activos vs Inactivos */}
         <Card>
-          <CardHeader>
-            <CardTitle>Estado de Actividad</CardTitle>
-            <CardDescription>Clientes activos vs inactivos (últimos 6 meses)</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Estado</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="px-4 pb-4">
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={stats.distributions.activeVsInactive}
+                    data={stats.distributions.activeVsInactive.filter(d => d.value > 0)}
                     cx="50%"
                     cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={100}
-                    fill="#8884d8"
+                    innerRadius={40}
+                    outerRadius={70}
+                    paddingAngle={2}
                     dataKey="value"
                   >
                     {stats.distributions.activeVsInactive.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={entry.name === "Activos" ? COLORS.active : COLORS.inactive} 
+                      />
                     ))}
                   </Pie>
-                  <Tooltip />
+                  <Tooltip 
+                    contentStyle={{ fontSize: 11 }}
+                  />
+                  <Legend 
+                    wrapperStyle={{ fontSize: 10 }}
+                    formatter={(value) => <span className="text-xs">{value}</span>}
+                  />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="flex justify-center gap-4 mt-4">
-              <div className="flex items-center gap-2">
-                <UserCheck className="h-4 w-4 text-green-500" />
-                <span className="text-sm">Activos: {stats.overview.activeCustomers}</span>
+            <div className="flex justify-center gap-3 mt-2 text-xs">
+              <div className="flex items-center gap-1">
+                <UserCheck className="h-3 w-3 text-green-600" />
+                <span>{stats.overview.activeCustomers} activos</span>
               </div>
-              <div className="flex items-center gap-2">
-                <UserX className="h-4 w-4 text-red-500" />
-                <span className="text-sm">Inactivos: {stats.overview.inactiveCustomers}</span>
+              <div className="flex items-center gap-1">
+                <UserX className="h-3 w-3 text-red-600" />
+                <span>{stats.overview.inactiveCustomers} inactivos</span>
               </div>
             </div>
           </CardContent>
@@ -346,40 +388,45 @@ export function CustomersStatisticsPageClient() {
       </div>
 
       {/* Rankings */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid md:grid-cols-2 gap-3">
         {/* Top por gasto */}
         <Card>
-          <CardHeader>
-            <CardTitle>Top 10 por Gasto</CardTitle>
-            <CardDescription>Clientes con mayor facturación total</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Top por Gasto</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Gasto Total</TableHead>
-                  <TableHead className="text-right">Viajes</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-[10px] h-7 px-2">#</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2">Cliente</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Gasto</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Viajes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.rankings.topBySpending.map((customer, index) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <Badge variant={index < 3 ? "default" : "outline"}>
+                {stats.rankings.topBySpending.slice(0, 8).map((customer, index) => (
+                  <TableRow key={customer.id} className="hover:bg-muted/50">
+                    <TableCell className="text-xs py-1.5 px-2">
+                      <Badge variant={index < 3 ? "default" : "outline"} className="h-5 w-5 p-0 justify-center text-[10px]">
                         {index + 1}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(customer.totalSpent)}</TableCell>
-                    <TableCell className="text-right">{customer.totalOperations}</TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 font-medium truncate max-w-[120px]">
+                      {customer.name}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {formatCurrency(customer.totalSpent)}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {customer.totalOperations}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {stats.rankings.topBySpending.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No hay datos disponibles
+                    <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                      Sin datos de clientes
                     </TableCell>
                   </TableRow>
                 )}
@@ -390,37 +437,42 @@ export function CustomersStatisticsPageClient() {
 
         {/* Top por frecuencia */}
         <Card>
-          <CardHeader>
-            <CardTitle>Top 10 por Frecuencia</CardTitle>
-            <CardDescription>Clientes con más viajes realizados</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Top por Frecuencia</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Cliente</TableHead>
-                  <TableHead className="text-right">Viajes</TableHead>
-                  <TableHead className="text-right">Gasto Total</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-[10px] h-7 px-2">#</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2">Cliente</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Viajes</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Gasto</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.rankings.topByFrequency.map((customer, index) => (
-                  <TableRow key={customer.id}>
-                    <TableCell>
-                      <Badge variant={index < 3 ? "default" : "outline"}>
+                {stats.rankings.topByFrequency.slice(0, 8).map((customer, index) => (
+                  <TableRow key={customer.id} className="hover:bg-muted/50">
+                    <TableCell className="text-xs py-1.5 px-2">
+                      <Badge variant={index < 3 ? "default" : "outline"} className="h-5 w-5 p-0 justify-center text-[10px]">
                         {index + 1}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell className="text-right">{customer.totalOperations}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(customer.totalSpent)}</TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 font-medium truncate max-w-[120px]">
+                      {customer.name}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {customer.totalOperations}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {formatCurrency(customer.totalSpent)}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {stats.rankings.topByFrequency.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No hay datos disponibles
+                    <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                      Sin datos de clientes
                     </TableCell>
                   </TableRow>
                 )}
@@ -428,6 +480,12 @@ export function CustomersStatisticsPageClient() {
             </Table>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Info adicional */}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
+        <span>{stats.overview.activeCustomers} activos • {stats.overview.inactiveCustomers} inactivos</span>
+        <span>Total gastado: {formatFullCurrency(stats.overview.totalSpent)}</span>
       </div>
     </div>
   )
