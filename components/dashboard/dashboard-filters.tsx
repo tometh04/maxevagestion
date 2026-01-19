@@ -65,35 +65,30 @@ export function DashboardFilters({
 
   return (
     <div className="rounded-lg border bg-card p-3 shadow-sm sm:p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-        <div className="space-y-2">
-          <Label>Rango de fechas</Label>
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateFrom)}
-                onChange={(date) => {
-                  setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateTo)}
-                onChange={(date) => {
-                  setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={parseDate(filters.dateFrom)}
-              />
-            </div>
-          </div>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Desde</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateFrom)}
+            onChange={(date) => {
+              setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
+            }}
+            placeholder="dd/MM/yyyy"
+          />
         </div>
-        <div className="space-y-2">
-          <Label>Agencia</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Hasta</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateTo)}
+            onChange={(date) => {
+              setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
+            }}
+            placeholder="dd/MM/yyyy"
+            minDate={parseDate(filters.dateFrom)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Agencia</Label>
           <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Todas" />
@@ -108,8 +103,8 @@ export function DashboardFilters({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label>Vendedor</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Vendedor</Label>
           <Select value={filters.sellerId} onValueChange={(newValue) => handleChange("sellerId", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Todos" />

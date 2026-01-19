@@ -116,9 +116,9 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
   return (
     <Card>
       <CardContent className="pt-4 sm:pt-6">
-        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          <div className="space-y-2">
-            <Label htmlFor="status">Estado</Label>
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 items-end">
+          <div className="space-y-1.5">
+            <Label className="text-xs" htmlFor="status">Estado</Label>
             <Select value={status} onValueChange={setStatus}>
               <SelectTrigger id="status">
                 <SelectValue placeholder="Seleccionar estado" />
@@ -133,8 +133,8 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="seller">Vendedor</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs" htmlFor="seller">Vendedor</Label>
             <Select value={sellerId} onValueChange={setSellerId}>
               <SelectTrigger id="seller">
                 <SelectValue placeholder="Seleccionar vendedor" />
@@ -150,8 +150,8 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="agency">Agencia</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs" htmlFor="agency">Agencia</Label>
             <Select value={agencyId} onValueChange={setAgencyId}>
               <SelectTrigger id="agency">
                 <SelectValue placeholder="Seleccionar agencia" />
@@ -167,87 +167,79 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
             </Select>
           </div>
 
-          <div className="space-y-2">
-            <Label>Rango de fechas (viaje)</Label>
-            <div className="flex items-center gap-2">
-              <div className="space-y-1.5 flex-1">
-                <Label className="text-xs">Desde</Label>
-                <DateInputWithCalendar
-                  value={dateFrom}
-                  onChange={(date) => {
-                    setDateFrom(date)
-                    if (date && dateTo && dateTo < date) {
-                      setDateTo(undefined)
-                    }
-                  }}
-                  placeholder="dd/MM/yyyy"
-                />
-              </div>
-              <div className="space-y-1.5 flex-1">
-                <Label className="text-xs">Hasta</Label>
-                <DateInputWithCalendar
-                  value={dateTo}
-                  onChange={(date) => {
-                    if (date && dateFrom && date < dateFrom) {
-                      return
-                    }
-                    setDateTo(date)
-                  }}
-                  placeholder="dd/MM/yyyy"
-                  minDate={dateFrom}
-                />
-              </div>
-            </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Viaje Desde</Label>
+            <DateInputWithCalendar
+              value={dateFrom}
+              onChange={(date) => {
+                setDateFrom(date)
+                if (date && dateTo && dateTo < date) {
+                  setDateTo(undefined)
+                }
+              }}
+              placeholder="dd/MM/yyyy"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Viaje Hasta</Label>
+            <DateInputWithCalendar
+              value={dateTo}
+              onChange={(date) => {
+                if (date && dateFrom && date < dateFrom) {
+                  return
+                }
+                setDateTo(date)
+              }}
+              placeholder="dd/MM/yyyy"
+              minDate={dateFrom}
+            />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="paymentDateType">Filtrar por fecha de</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs" htmlFor="paymentDateType">Fecha de</Label>
             <Select value={paymentDateType} onValueChange={setPaymentDateType}>
               <SelectTrigger id="paymentDateType">
                 <SelectValue placeholder="Ninguno" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="NONE">Ninguno</SelectItem>
-                <SelectItem value="COBRO">Cobro (fecha de pago recibido)</SelectItem>
-                <SelectItem value="PAGO">Pago a operador (fecha de pago realizado)</SelectItem>
-                <SelectItem value="VENCIMIENTO">Vencimiento (fecha de vencimiento)</SelectItem>
+                <SelectItem value="COBRO">Cobro</SelectItem>
+                <SelectItem value="PAGO">Pago</SelectItem>
+                <SelectItem value="VENCIMIENTO">Vencimiento</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {paymentDateType && (
-            <div className="space-y-2">
-              <Label>Rango de fechas ({paymentDateType === "COBRO" ? "cobro" : paymentDateType === "PAGO" ? "pago" : "vencimiento"})</Label>
-              <div className="flex items-center gap-2">
-                <div className="space-y-1.5 flex-1">
-                  <Label className="text-xs">Desde</Label>
-                  <DateInputWithCalendar
-                    value={paymentDateFrom}
-                    onChange={(date) => {
-                      setPaymentDateFrom(date)
-                      if (date && paymentDateTo && paymentDateTo < date) {
-                        setPaymentDateTo(undefined)
-                      }
-                    }}
-                    placeholder="dd/MM/yyyy"
-                  />
-                </div>
-                <div className="space-y-1.5 flex-1">
-                  <Label className="text-xs">Hasta</Label>
-                  <DateInputWithCalendar
-                    value={paymentDateTo}
-                    onChange={(date) => {
-                      if (date && paymentDateFrom && date < paymentDateFrom) {
-                        return
-                      }
-                      setPaymentDateTo(date)
-                    }}
-                    placeholder="dd/MM/yyyy"
-                    minDate={paymentDateFrom}
-                  />
-                </div>
+          {paymentDateType && paymentDateType !== "NONE" && (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-xs">{paymentDateType === "COBRO" ? "Cobro Desde" : paymentDateType === "PAGO" ? "Pago Desde" : "Venc. Desde"}</Label>
+                <DateInputWithCalendar
+                  value={paymentDateFrom}
+                  onChange={(date) => {
+                    setPaymentDateFrom(date)
+                    if (date && paymentDateTo && paymentDateTo < date) {
+                      setPaymentDateTo(undefined)
+                    }
+                  }}
+                  placeholder="dd/MM/yyyy"
+                />
               </div>
-            </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">{paymentDateType === "COBRO" ? "Cobro Hasta" : paymentDateType === "PAGO" ? "Pago Hasta" : "Venc. Hasta"}</Label>
+                <DateInputWithCalendar
+                  value={paymentDateTo}
+                  onChange={(date) => {
+                    if (date && paymentDateFrom && date < paymentDateFrom) {
+                      return
+                    }
+                    setPaymentDateTo(date)
+                  }}
+                  placeholder="dd/MM/yyyy"
+                  minDate={paymentDateFrom}
+                />
+              </div>
+            </>
           )}
         </div>
 

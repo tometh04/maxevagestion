@@ -301,10 +301,10 @@ export function DebtsSalesPageClient() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 items-end">
             {/* Filtro por Moneda */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Moneda</label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Moneda</Label>
               <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas" />
@@ -318,8 +318,8 @@ export function DebtsSalesPageClient() {
             </div>
 
             {/* Filtro por Cliente (búsqueda por nombre) */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Cliente</label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Cliente</Label>
               <Input
                 placeholder="Buscar por nombre..."
                 value={customerFilter}
@@ -328,8 +328,8 @@ export function DebtsSalesPageClient() {
             </div>
 
             {/* Filtro por Fecha Desde */}
-            <div className="space-y-2">
-              <Label>Fecha Desde</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desde</Label>
               <DateInputWithCalendar
                 value={dateFromFilter}
                 onChange={(date) => {
@@ -343,8 +343,8 @@ export function DebtsSalesPageClient() {
             </div>
 
             {/* Filtro por Fecha Hasta */}
-            <div className="space-y-2">
-              <Label>Fecha Hasta</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hasta</Label>
               <DateInputWithCalendar
                 value={dateToFilter}
                 onChange={(date) => {

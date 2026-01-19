@@ -69,43 +69,38 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-        <div className="space-y-2">
-          <Label>Rango de fechas</Label>
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateFrom)}
-                onChange={(date) => {
-                  const dateString = formatDate(date)
-                  setFilters((prev) => ({ 
-                    ...prev, 
-                    dateFrom: dateString,
-                    dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
-                  }))
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateTo)}
-                onChange={(date) => {
-                  if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
-                    return
-                  }
-                  setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={parseDate(filters.dateFrom)}
-              />
-            </div>
-          </div>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-5 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Desde</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateFrom)}
+            onChange={(date) => {
+              const dateString = formatDate(date)
+              setFilters((prev) => ({ 
+                ...prev, 
+                dateFrom: dateString,
+                dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
+              }))
+            }}
+            placeholder="dd/MM/yyyy"
+          />
         </div>
-        <div className="space-y-2">
-          <Label>Agencia</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Hasta</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateTo)}
+            onChange={(date) => {
+              if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
+                return
+              }
+              setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
+            }}
+            placeholder="dd/MM/yyyy"
+            minDate={parseDate(filters.dateFrom)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Agencia</Label>
           <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Todas" />
@@ -120,8 +115,8 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label>Moneda</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Moneda</Label>
           <Select value={filters.currency} onValueChange={(newValue) => handleChange("currency", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar" />

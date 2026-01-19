@@ -52,41 +52,36 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
 
   return (
     <div className="space-y-4 rounded-lg border p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
-        <div>
-          <Label>Rango de fechas</Label>
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={dateFrom}
-                onChange={(date) => {
-                  setDateFrom(date)
-                  if (date && dateTo && dateTo < date) {
-                    setDateTo(undefined)
-                  }
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={dateTo}
-                onChange={(date) => {
-                  if (date && dateFrom && date < dateFrom) {
-                    return
-                  }
-                  setDateTo(date)
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={dateFrom}
-              />
-            </div>
-          </div>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-6 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Desde</Label>
+          <DateInputWithCalendar
+            value={dateFrom}
+            onChange={(date) => {
+              setDateFrom(date)
+              if (date && dateTo && dateTo < date) {
+                setDateTo(undefined)
+              }
+            }}
+            placeholder="dd/MM/yyyy"
+          />
         </div>
-        <div>
-          <Label>Agencia</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Hasta</Label>
+          <DateInputWithCalendar
+            value={dateTo}
+            onChange={(date) => {
+              if (date && dateFrom && date < dateFrom) {
+                return
+              }
+              setDateTo(date)
+            }}
+            placeholder="dd/MM/yyyy"
+            minDate={dateFrom}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Agencia</Label>
           <Select value={agencyId} onValueChange={setAgencyId}>
             <SelectTrigger>
               <SelectValue />
@@ -101,8 +96,8 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             </SelectContent>
           </Select>
         </div>
-        <div>
-          <Label>Tipo</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Tipo</Label>
           <Select value={type} onValueChange={setType}>
             <SelectTrigger>
               <SelectValue />
@@ -118,8 +113,8 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             </SelectContent>
           </Select>
         </div>
-        <div>
-          <Label>Moneda</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Moneda</Label>
           <Select value={currency} onValueChange={setCurrency}>
             <SelectTrigger>
               <SelectValue />

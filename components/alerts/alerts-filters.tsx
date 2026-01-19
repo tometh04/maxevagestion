@@ -80,9 +80,9 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
 
   return (
     <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        <div className="space-y-2">
-          <Label>Tipo</Label>
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Tipo</Label>
           <Select value={filters.type} onValueChange={(newValue) => handleChange("type", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar" />
@@ -97,8 +97,8 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label>Estado</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Estado</Label>
           <Select value={filters.status} onValueChange={(newValue) => handleChange("status", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Seleccionar" />
@@ -113,43 +113,38 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
           </Select>
         </div>
 
-        <div className="space-y-2">
-          <Label>Rango de fechas</Label>
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateFrom)}
-                onChange={(date) => {
-                  const dateString = formatDate(date)
-                  setFilters((prev) => ({ 
-                    ...prev, 
-                    dateFrom: dateString,
-                    dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
-                  }))
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={parseDate(filters.dateTo)}
-                onChange={(date) => {
-                  if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
-                    return
-                  }
-                  setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={parseDate(filters.dateFrom)}
-              />
-            </div>
-          </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Desde</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateFrom)}
+            onChange={(date) => {
+              const dateString = formatDate(date)
+              setFilters((prev) => ({ 
+                ...prev, 
+                dateFrom: dateString,
+                dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
+              }))
+            }}
+            placeholder="dd/MM/yyyy"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Hasta</Label>
+          <DateInputWithCalendar
+            value={parseDate(filters.dateTo)}
+            onChange={(date) => {
+              if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
+                return
+              }
+              setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
+            }}
+            placeholder="dd/MM/yyyy"
+            minDate={parseDate(filters.dateFrom)}
+          />
         </div>
 
-        <div className="space-y-2">
-          <Label>Agencia</Label>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Agencia</Label>
           <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
             <SelectTrigger>
               <SelectValue placeholder="Todas" />
