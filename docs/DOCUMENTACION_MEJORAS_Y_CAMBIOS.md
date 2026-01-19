@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Posición Contable Mensual rehacida desde cero, eliminación de operaciones, correcciones de NaN y conexiones con deudores/pagos)
+**Última actualización:** 2025-01-19 (Mejora de búsqueda global con badges de tipo y redirección correcta de leads)
 
 ---
 
@@ -21,7 +21,7 @@ Este documento registra todas las mejoras, nuevas funcionalidades, correcciones 
 
 ### 1. Búsqueda Global (Command Menu / Lupa)
 
-**Fecha:** 2025-01-17
+**Fecha:** 2025-01-17 (Mejorado 2025-01-19)
 
 **Descripción:**
 Se implementó una funcionalidad de búsqueda global accesible desde cualquier página de la aplicación mediante:
@@ -38,12 +38,26 @@ Se implementó una funcionalidad de búsqueda global accesible desde cualquier p
 - Navegación rápida a resultados
 - Navegación rápida a secciones principales
 - Acciones rápidas (Nueva Operación, Nuevo Cliente, Nuevo Lead)
+- **Badges de tipo** en cada resultado (Cliente, Operación, Operador, Lead)
+- **Redirección automática** de `/sales?lead=` a `/sales/leads?leadId=`
+
+**Mejoras implementadas (2025-01-19):**
+- Agregados badges visuales que indican el tipo de cada resultado
+- Corrección de ruta para leads: ahora navega a `/sales/leads?leadId=` en lugar de `/sales?lead=`
+- Creación de página `/sales/page.tsx` que redirige automáticamente rutas antiguas
+- El dialog de lead se abre automáticamente cuando se navega con `leadId` en query params
+- Limpieza automática de query params después de abrir el dialog
 
 **Archivos modificados:**
-- `components/command-menu.tsx` - Componente principal de búsqueda
+- `components/command-menu.tsx` - Componente principal de búsqueda (agregados badges de tipo)
 - `components/site-header.tsx` - Agregado botón de búsqueda
 - `app/api/search/route.ts` - Endpoint de búsqueda
 - `components/ui/command.tsx` - Componente base (deshabilitado filtrado interno)
+- `app/(dashboard)/sales/page.tsx` - **NUEVA** - Página de redirección
+- `components/sales/leads-page-client.tsx` - Manejo de `leadId` en query params
+- `components/sales/leads-kanban.tsx` - Apertura automática de dialog con `initialLeadId`
+- `components/sales/leads-kanban-trello.tsx` - Apertura automática de dialog con `initialLeadId`
+- `components/sales/leads-table.tsx` - Link corregido a usar query params
 
 **Detalles técnicos:**
 - Uso de `cmdk` para el Command Palette
@@ -51,12 +65,17 @@ Se implementó una funcionalidad de búsqueda global accesible desde cualquier p
 - Filtrado deshabilitado en `cmdk` (`shouldFilter={false}`) para permitir búsqueda personalizada
 - Reset de estado cuando el dialog se cierra para mantener estado limpio
 - Manejo de estado controlado/no controlado para flexibilidad
+- Badges de tipo con colores distintivos para mejor UX
+- Redirección server-side desde `/sales?lead=` para compatibilidad con URLs antiguas
+- `useSearchParams` y `useRouter` para manejo de query params en client components
 
 **Errores corregidos:**
 - ✅ Reset de estado al abrir dialog interfería con la escritura
 - ✅ Filtrado interno de `cmdk` ocultaba resultados de API
 - ✅ Instancia duplicada de CommandMenu causaba conflictos
 - ✅ Timing de búsqueda no funcionaba en primera apertura
+- ✅ **404 al hacer click en leads** - Redirección corregida
+- ✅ **Falta de identificación de tipo** - Badges agregados
 
 ---
 
@@ -824,6 +843,84 @@ ESTADO DE RESULTADOS DEL MES
 
 **Archivos modificados:**
 - `components/operations/operations-table.tsx` - Reorganizado orden de funciones
+
+---
+
+#### Error: 404 al hacer click en leads desde búsqueda global
+**Fecha:** 2025-01-19
+
+**Problema:**
+- Al buscar un lead y hacer click, la aplicación navegaba a `/sales?lead=...` que retornaba 404
+- Los resultados de búsqueda no mostraban claramente el tipo (Cliente, Operación, Lead, etc.)
+- El usuario no sabía qué tipo de resultado estaba abriendo
+
+**Solución:**
+1. **Corrección de ruta:**
+   - Cambiada ruta de `/sales?lead=${id}` a `/sales/leads?leadId=${id}`
+   - Creada página `/app/(dashboard)/sales/page.tsx` que redirige automáticamente rutas antiguas
+   - Corregido link en `leads-table.tsx` de `/sales/leads/${id}` a `/sales/leads?leadId=${id}`
+
+2. **Badges de tipo:**
+   - Agregados badges visuales en cada resultado de búsqueda
+   - Cada badge muestra: "Cliente", "Operación", "Operador", "Lead"
+   - Badges con estilo `bg-muted text-muted-foreground` para distinguir visualmente
+
+3. **Apertura automática de dialog:**
+   - `LeadsPageClient` lee `leadId` de query params
+   - Pasa `initialLeadId` a ambos kanbans (normal y Trello)
+   - Los kanbans abren automáticamente el `LeadDetailDialog` cuando encuentran el lead
+   - La URL se limpia automáticamente (se quita `leadId` de query params)
+
+**Archivos creados:**
+- `app/(dashboard)/sales/page.tsx` - Página de redirección para rutas antiguas
+
+**Archivos modificados:**
+- `components/command-menu.tsx` - Agregados badges de tipo, corregida ruta
+- `components/sales/leads-page-client.tsx` - Manejo de `leadId` en query params
+- `components/sales/leads-kanban.tsx` - Soporte para `initialLeadId` prop
+- `components/sales/leads-kanban-trello.tsx` - Soporte para `initialLeadId` prop
+- `components/sales/leads-table.tsx` - Link corregido a usar query params
+
+**Detalles técnicos:**
+- La página `/sales` es un server component que usa `redirect()` de Next.js
+- Lee `searchParams.lead` y redirige a `/sales/leads?leadId=...`
+- Si no hay `lead`, redirige a `/sales/leads`
+- Los kanbans usan `useEffect` para abrir el dialog cuando `initialLeadId` está disponible y los leads están cargados
+- El `router.replace()` limpia la URL sin recargar la página
+
+---
+
+#### Corrección: Warnings de Accesibilidad en DialogContent
+**Fecha:** 2025-01-19
+
+**Problema:**
+- Los warnings sobre `DialogContent` faltando `DialogTitle` o `DialogDescription` son warnings de **accesibilidad de Radix UI**
+- Estos warnings aparecían en desarrollo local (no en producción de Vercel)
+- Afectaban la accesibilidad para usuarios con screen readers
+
+**Solución Implementada:**
+Se corrigieron todos los diálogos que faltaban `DialogTitle` o `DialogDescription`:
+
+1. **`quick-whatsapp-button.tsx`:**
+   - Agregado `DialogDescription` al diálogo de mensaje personalizado
+
+2. **`partner-accounts-client.tsx`:**
+   - Agregado `DialogDescription` al diálogo "Agregar Socio"
+   - Agregado `DialogDescription` al diálogo "Registrar Retiro de Socio"
+
+3. **`command.tsx`:**
+   - Agregado `DialogHeader`, `DialogTitle` y `DialogDescription` ocultos con clase `sr-only` (screen reader only)
+   - Esto mejora la accesibilidad sin afectar el diseño visual del Command Palette
+
+**Archivos modificados:**
+- `components/whatsapp/quick-whatsapp-button.tsx` - Agregado DialogDescription
+- `components/accounting/partner-accounts-client.tsx` - Agregado DialogDescription a ambos diálogos
+- `components/ui/command.tsx` - Agregado DialogHeader/DialogTitle/DialogDescription ocultos
+
+**Detalles técnicos:**
+- La clase `sr-only` oculta visualmente los elementos pero los mantiene accesibles para screen readers
+- Todos los diálogos ahora cumplen con los estándares de accesibilidad de Radix UI
+- Los warnings de desarrollo deberían desaparecer al ejecutar la aplicación localmente
 
 ---
 

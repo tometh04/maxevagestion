@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -209,6 +210,9 @@ export function QuickWhatsAppButton({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Enviar WhatsApp a {customerName}</DialogTitle>
+            <DialogDescription>
+              Escribe un mensaje personalizado para enviar por WhatsApp
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-4">
             <div className="space-y-2">

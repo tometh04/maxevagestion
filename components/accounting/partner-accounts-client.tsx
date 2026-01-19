@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -302,6 +303,9 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Agregar Socio</DialogTitle>
+                  <DialogDescription>
+                    Crea un nuevo socio para registrar retiros y movimientos
+                  </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4">
                   <div>
@@ -344,6 +348,9 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Registrar Retiro de Socio</DialogTitle>
+                <DialogDescription>
+                  Registra un retiro de fondos realizado por el socio seleccionado
+                </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
