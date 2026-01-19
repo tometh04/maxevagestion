@@ -37,7 +37,8 @@ import {
   Line,
   Legend,
 } from "recharts"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { Label } from "@/components/ui/label"
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns"
 
 interface SalesStatistics {
