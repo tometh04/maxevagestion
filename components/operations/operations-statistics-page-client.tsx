@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plane, TrendingUp, DollarSign, Target, Calendar, BarChart3, Download, Percent } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Loader2, TrendingUp, DollarSign, Users, MapPin, RefreshCw } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -15,13 +17,6 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   Table,
   TableBody,
@@ -41,38 +36,20 @@ import {
   PieChart,
   Pie,
   Cell,
-  LineChart,
-  Line,
   Legend,
-  AreaChart,
-  Area,
 } from "recharts"
+import { format, subMonths, startOfMonth, endOfMonth } from "date-fns"
 
 interface OperationStatistics {
   overview: {
     totalOperations: number
     confirmedOperations: number
-    pendingOperations: number
-    cancelledOperations: number
     totalSales: number
     totalMargin: number
+    totalCollected: number
+    totalDebt: number
     avgMarginPercentage: number
     avgTicket: number
-    conversionRate: number
-  }
-  distributions: {
-    byStatus: Array<{
-      status: string
-      label: string
-      count: number
-    }>
-    byDestination: Array<{
-      destination: string
-      count: number
-      totalSales: number
-      totalMargin: number
-      avgMargin: number
-    }>
   }
   trends: {
     monthly: Array<{
@@ -81,6 +58,7 @@ interface OperationStatistics {
       count: number
       sales: number
       margin: number
+      collected: number
     }>
   }
   rankings: {
@@ -99,42 +77,63 @@ interface OperationStatistics {
       margin: number
     }>
   }
+  filters: {
+    dateFrom: string
+    dateTo: string
+  }
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  PRE_RESERVATION: '#94a3b8',
-  RESERVED: '#3b82f6',
-  CONFIRMED: '#10b981',
-  CANCELLED: '#ef4444',
-  TRAVELLED: '#8b5cf6',
-  CLOSED: '#64748b',
-}
-
-const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
 const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-AR', {
+  if (value >= 1000000) {
+    return `$${(value / 1000000).toFixed(1)}M`
+  }
+  if (value >= 1000) {
+    return `$${(value / 1000).toFixed(1)}K`
+  }
+  return `$${value.toFixed(0)}`
+}
+
+const formatFullCurrency = (value: number) => {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
-    currency: 'ARS',
+    currency: 'USD',
+    minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value)
+}
+
+const COLORS = {
+  sales: '#3b82f6',
+  margin: '#10b981',
+  collected: '#22c55e',
+  debt: '#ef4444',
 }
 
 export function OperationsStatisticsPageClient() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<OperationStatistics | null>(null)
-  const [months, setMonths] = useState("12")
+  
+  // Filtros de fecha
+  const now = new Date()
+  const defaultFrom = format(startOfMonth(subMonths(now, 11)), "yyyy-MM-dd")
+  const defaultTo = format(endOfMonth(now), "yyyy-MM-dd")
+  
+  const [dateFrom, setDateFrom] = useState(defaultFrom)
+  const [dateTo, setDateTo] = useState(defaultTo)
 
   useEffect(() => {
     loadStatistics()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [months])
+  }, [])
 
   const loadStatistics = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/operations/statistics?months=${months}`)
+      const params = new URLSearchParams()
+      if (dateFrom) params.append("dateFrom", dateFrom)
+      if (dateTo) params.append("dateTo", dateTo)
+      
+      const response = await fetch(`/api/operations/statistics?${params.toString()}`)
       
       if (!response.ok) {
         throw new Error('Error al cargar estadísticas')
@@ -154,26 +153,37 @@ export function OperationsStatisticsPageClient() {
     }
   }
 
+  const handleFilter = () => {
+    loadStatistics()
+  }
+
+  // Datos para gráfico de torta (Cobrado vs Deuda)
+  const paymentDistribution = stats ? [
+    { name: 'Cobrado', value: stats.overview.totalCollected, color: COLORS.collected },
+    { name: 'Pendiente', value: stats.overview.totalDebt, color: COLORS.debt },
+  ].filter(d => d.value > 0) : []
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin" />
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     )
   }
 
   if (!stats) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <p className="text-muted-foreground">No se encontraron estadísticas</p>
+      <div className="flex items-center justify-center min-h-[300px]">
+        <p className="text-sm text-muted-foreground">No se encontraron estadísticas</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
+      {/* Breadcrumb */}
       <Breadcrumb>
-        <BreadcrumbList>
+        <BreadcrumbList className="text-xs">
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
               <Link href="/operations">Operaciones</Link>
@@ -184,235 +194,218 @@ export function OperationsStatisticsPageClient() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex items-center justify-between">
+      {/* Header con filtros */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">Estadísticas de Operaciones</h1>
-          <p className="text-muted-foreground">
-            Análisis de rendimiento y métricas de operaciones
+          <h1 className="text-xl font-semibold">Estadísticas</h1>
+          <p className="text-xs text-muted-foreground">
+            Métricas de operaciones en USD
           </p>
         </div>
-        <div className="flex items-center gap-4">
-          <Select value={months} onValueChange={setMonths}>
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Período" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">Últimos 3 meses</SelectItem>
-              <SelectItem value="6">Últimos 6 meses</SelectItem>
-              <SelectItem value="12">Últimos 12 meses</SelectItem>
-              <SelectItem value="24">Últimos 24 meses</SelectItem>
-            </SelectContent>
-          </Select>
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Exportar
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs whitespace-nowrap">Desde</Label>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="h-8 text-xs w-32"
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Label className="text-xs whitespace-nowrap">Hasta</Label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="h-8 text-xs w-32"
+            />
+          </div>
+          <Button size="sm" variant="outline" onClick={handleFilter} className="h-8">
+            <RefreshCw className="h-3 w-3" />
           </Button>
         </div>
       </div>
 
-      {/* Cards de resumen */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Operaciones</CardTitle>
-            <Plane className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.totalOperations.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.overview.confirmedOperations} confirmadas
-            </p>
-          </CardContent>
+      {/* KPIs compactos */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
+              <p className="text-base font-semibold">{formatFullCurrency(stats.overview.totalSales)}</p>
+            </div>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Ventas Totales</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(stats.overview.totalSales)}</div>
-            <p className="text-xs text-muted-foreground">
-              Ticket promedio: {formatCurrency(stats.overview.avgTicket)}
-            </p>
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-green-100 dark:bg-green-900/30">
+              <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
+              <p className="text-base font-semibold text-green-600">{formatFullCurrency(stats.overview.totalMargin)}</p>
+              <p className="text-[10px] text-muted-foreground">{stats.overview.avgMarginPercentage}%</p>
+            </div>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Margen Total</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{formatCurrency(stats.overview.totalMargin)}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.overview.avgMarginPercentage}% margen promedio
-            </p>
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Cobrado</p>
+              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalCollected)}</p>
+            </div>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tasa de Conversión</CardTitle>
-            <Percent className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.overview.conversionRate}%</div>
-            <p className="text-xs text-muted-foreground">
-              {stats.overview.pendingOperations} pendientes
-            </p>
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-red-100 dark:bg-red-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pendiente</p>
+              <p className="text-base font-semibold text-red-600">{formatFullCurrency(stats.overview.totalDebt)}</p>
+            </div>
+          </div>
         </Card>
       </div>
 
       {/* Gráficos */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid md:grid-cols-3 gap-3">
         {/* Tendencia mensual */}
-        <Card className="col-span-2">
-          <CardHeader>
-            <CardTitle>Tendencia Mensual</CardTitle>
-            <CardDescription>Evolución de ventas y margen por mes</CardDescription>
+        <Card className="md:col-span-2">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Ventas por Mes</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
+          <CardContent className="px-4 pb-4">
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.trends.monthly}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="monthName" />
-                  <YAxis yAxisId="left" tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
-                  <YAxis yAxisId="right" orientation="right" />
+                <BarChart data={stats.trends.monthly} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis 
+                    dataKey="monthName" 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis 
+                    tick={{ fontSize: 10 }} 
+                    tickLine={false}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                    tickFormatter={(value) => formatCurrency(value)}
+                  />
                   <Tooltip 
                     formatter={(value: number, name: string) => [
-                      name === 'count' ? value : formatCurrency(value),
-                      name === 'sales' ? 'Ventas' : name === 'margin' ? 'Margen' : 'Operaciones'
+                      formatFullCurrency(value),
+                      name === 'sales' ? 'Ventas' : name === 'margin' ? 'Margen' : 'Cobrado'
                     ]}
+                    contentStyle={{ fontSize: 11 }}
                   />
-                  <Legend />
-                  <Area 
-                    yAxisId="left"
-                    type="monotone" 
-                    dataKey="sales" 
-                    name="Ventas"
-                    stroke="#3b82f6" 
-                    fill="#3b82f6"
-                    fillOpacity={0.3}
-                  />
-                  <Area 
-                    yAxisId="left"
-                    type="monotone" 
-                    dataKey="margin" 
-                    name="Margen"
-                    stroke="#10b981" 
-                    fill="#10b981"
-                    fillOpacity={0.3}
-                  />
-                  <Line 
-                    yAxisId="right"
-                    type="monotone" 
-                    dataKey="count" 
-                    name="Operaciones"
-                    stroke="#8b5cf6" 
-                    strokeWidth={2}
-                    dot={{ fill: '#8b5cf6' }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Distribución por estado */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Por Estado</CardTitle>
-            <CardDescription>Distribución de operaciones por estado</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={stats.distributions.byStatus.filter(s => s.count > 0)}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ label, percent }) => `${label}: ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={100}
-                    fill="#8884d8"
-                    dataKey="count"
-                  >
-                    {stats.distributions.byStatus.map((entry) => (
-                      <Cell key={`cell-${entry.status}`} fill={STATUS_COLORS[entry.status] || '#94a3b8'} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Top destinos */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Destinos</CardTitle>
-            <CardDescription>Destinos con mayor facturación</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.rankings.topDestinations.slice(0, 6)} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`} />
-                  <YAxis dataKey="destination" type="category" width={100} />
-                  <Tooltip formatter={(value: number) => formatCurrency(value)} />
-                  <Bar dataKey="totalSales" name="Ventas" fill="#3b82f6" />
+                  <Bar dataKey="sales" name="Ventas" fill={COLORS.sales} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="margin" name="Margen" fill={COLORS.margin} radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Cobrado vs Pendiente */}
+        <Card>
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-sm font-medium">Cobranza</CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="h-[200px]">
+              {paymentDistribution.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={paymentDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={40}
+                      outerRadius={70}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {paymentDistribution.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => formatFullCurrency(value)}
+                      contentStyle={{ fontSize: 11 }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ fontSize: 10 }}
+                      formatter={(value) => <span className="text-xs">{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full flex items-center justify-center text-xs text-muted-foreground">
+                  Sin datos
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
       </div>
 
       {/* Rankings */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Top destinos detallado */}
+      <div className="grid md:grid-cols-2 gap-3">
+        {/* Top Destinos */}
         <Card>
-          <CardHeader>
-            <CardTitle>Destinos Más Rentables</CardTitle>
-            <CardDescription>Top 10 destinos por ventas y margen</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Top Destinos</CardTitle>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Destino</TableHead>
-                  <TableHead className="text-right">Ventas</TableHead>
-                  <TableHead className="text-right">Margen %</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-[10px] h-7 px-2">#</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2">Destino</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Ventas</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Margen</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.rankings.topDestinations.slice(0, 10).map((dest, index) => (
-                  <TableRow key={dest.destination}>
-                    <TableCell>
-                      <Badge variant={index < 3 ? "default" : "outline"}>
+                {stats.rankings.topDestinations.slice(0, 8).map((dest, index) => (
+                  <TableRow key={dest.destination} className="hover:bg-muted/50">
+                    <TableCell className="text-xs py-1.5 px-2">
+                      <Badge variant={index < 3 ? "default" : "outline"} className="h-5 w-5 p-0 justify-center text-[10px]">
                         {index + 1}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{dest.destination}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(dest.totalSales)}</TableCell>
-                    <TableCell className="text-right">
-                      <Badge variant={dest.avgMargin >= 15 ? "default" : dest.avgMargin >= 10 ? "secondary" : "outline"}>
-                        {dest.avgMargin.toFixed(1)}%
-                      </Badge>
+                    <TableCell className="text-xs py-1.5 px-2 font-medium truncate max-w-[120px]">
+                      {dest.destination}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {formatCurrency(dest.totalSales)}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right">
+                      <span className={dest.avgMargin >= 15 ? "text-green-600" : dest.avgMargin >= 10 ? "text-amber-600" : "text-muted-foreground"}>
+                        {dest.avgMargin.toFixed(0)}%
+                      </span>
                     </TableCell>
                   </TableRow>
                 ))}
                 {stats.rankings.topDestinations.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No hay datos disponibles
+                    <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                      Sin datos de destinos
                     </TableCell>
                   </TableRow>
                 )}
@@ -421,39 +414,47 @@ export function OperationsStatisticsPageClient() {
           </CardContent>
         </Card>
 
-        {/* Top vendedores */}
+        {/* Top Vendedores */}
         <Card>
-          <CardHeader>
-            <CardTitle>Top Vendedores</CardTitle>
-            <CardDescription>Mejores vendedores por facturación</CardDescription>
+          <CardHeader className="py-3 px-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Top Vendedores</CardTitle>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-4 pb-4">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>Vendedor</TableHead>
-                  <TableHead className="text-right">Ventas</TableHead>
-                  <TableHead className="text-right">Ops</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="text-[10px] h-7 px-2">#</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2">Vendedor</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Ventas</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Ops</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stats.rankings.topSellers.map((seller, index) => (
-                  <TableRow key={seller.id}>
-                    <TableCell>
-                      <Badge variant={index < 3 ? "default" : "outline"}>
+                  <TableRow key={seller.id} className="hover:bg-muted/50">
+                    <TableCell className="text-xs py-1.5 px-2">
+                      <Badge variant={index < 3 ? "default" : "outline"} className="h-5 w-5 p-0 justify-center text-[10px]">
                         {index + 1}
                       </Badge>
                     </TableCell>
-                    <TableCell className="font-medium">{seller.name}</TableCell>
-                    <TableCell className="text-right">{formatCurrency(seller.sales)}</TableCell>
-                    <TableCell className="text-right">{seller.count}</TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 font-medium truncate max-w-[120px]">
+                      {seller.name}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {formatCurrency(seller.sales)}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
+                      {seller.count}
+                    </TableCell>
                   </TableRow>
                 ))}
                 {stats.rankings.topSellers.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={4} className="text-center text-muted-foreground">
-                      No hay datos disponibles
+                    <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                      Sin datos de vendedores
                     </TableCell>
                   </TableRow>
                 )}
@@ -461,6 +462,12 @@ export function OperationsStatisticsPageClient() {
             </Table>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Info adicional */}
+      <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
+        <span>{stats.overview.totalOperations} operaciones • {stats.overview.confirmedOperations} confirmadas</span>
+        <span>Ticket promedio: {formatFullCurrency(stats.overview.avgTicket)}</span>
       </div>
     </div>
   )
