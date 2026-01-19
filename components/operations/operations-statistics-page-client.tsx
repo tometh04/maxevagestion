@@ -114,32 +114,21 @@ export function OperationsStatisticsPageClient() {
   
   // Filtros de fecha
   const now = new Date()
-  const defaultFrom = format(startOfMonth(subMonths(now, 11)), "yyyy-MM-dd")
-  const defaultTo = format(endOfMonth(now), "yyyy-MM-dd")
+  const defaultFrom = startOfMonth(subMonths(now, 11))
+  const defaultTo = endOfMonth(now)
   
-  const [dateFrom, setDateFrom] = useState(defaultFrom)
-  const [dateTo, setDateTo] = useState(defaultTo)
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(defaultFrom)
+  const [dateTo, setDateTo] = useState<Date | undefined>(defaultTo)
 
-  useEffect(() => {
-    // Solo cargar si hay ambas fechas
-    if (dateFrom && dateTo) {
-      loadStatistics()
-    }
-  }, [])
 
   const loadStatistics = async () => {
     // Validar que ambas fechas estén seleccionadas
     if (!dateFrom || !dateTo) {
-      toast({
-        title: "Fechas requeridas",
-        description: "Debes seleccionar una fecha de inicio y una fecha de fin",
-        variant: "destructive",
-      })
       return
     }
 
     // Validar que la fecha de fin sea después de la de inicio
-    if (new Date(dateTo) < new Date(dateFrom)) {
+    if (dateTo < dateFrom) {
       toast({
         title: "Rango inválido",
         description: "La fecha de fin debe ser posterior a la fecha de inicio",
@@ -151,8 +140,8 @@ export function OperationsStatisticsPageClient() {
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      params.append("dateFrom", dateFrom)
-      params.append("dateTo", dateTo)
+      params.append("dateFrom", format(dateFrom, "yyyy-MM-dd"))
+      params.append("dateTo", format(dateTo, "yyyy-MM-dd"))
       
       const response = await fetch(`/api/operations/statistics?${params.toString()}`)
       
@@ -174,25 +163,35 @@ export function OperationsStatisticsPageClient() {
     }
   }
 
-  const handleDateRangeChange = (from: string, to: string) => {
-    setDateFrom(from)
-    setDateTo(to)
-    // Solo actualizar cuando ambas fechas estén seleccionadas
-    if (from && to) {
-      // Validar que la fecha de fin sea después de la de inicio
-      if (new Date(to) < new Date(from)) {
-        toast({
-          title: "Rango inválido",
-          description: "La fecha de fin debe ser posterior a la fecha de inicio",
-          variant: "destructive",
-        })
-        return
-      }
-      // Usar un pequeño delay para asegurar que el estado se actualice
-      setTimeout(() => {
+  // Cargar cuando ambas fechas están seleccionadas
+  useEffect(() => {
+    if (dateFrom && dateTo && dateTo >= dateFrom) {
+      const timeoutId = setTimeout(() => {
         loadStatistics()
-      }, 100)
+      }, 500)
+      return () => clearTimeout(timeoutId)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo])
+
+  const handleDateFromChange = (date: Date | undefined) => {
+    setDateFrom(date)
+    // Si la fecha de fin es anterior a la nueva fecha de inicio, resetear
+    if (date && dateTo && dateTo < date) {
+      setDateTo(undefined)
+    }
+  }
+
+  const handleDateToChange = (date: Date | undefined) => {
+    if (date && dateFrom && date < dateFrom) {
+      toast({
+        title: "Rango inválido",
+        description: "La fecha de fin debe ser posterior a la fecha de inicio",
+        variant: "destructive",
+      })
+      return
+    }
+    setDateTo(date)
   }
 
   // Datos para gráfico de torta (Cobrado vs Deuda)
@@ -241,12 +240,25 @@ export function OperationsStatisticsPageClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <DateRangePicker
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onChange={handleDateRangeChange}
-            placeholder="Seleccionar rango de fechas"
-          />
+          <div className="flex items-center gap-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desde</Label>
+              <DateInputWithCalendar
+                value={dateFrom}
+                onChange={handleDateFromChange}
+                placeholder="dd/MM/yyyy"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hasta</Label>
+              <DateInputWithCalendar
+                value={dateTo}
+                onChange={handleDateToChange}
+                placeholder="dd/MM/yyyy"
+                minDate={dateFrom}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
