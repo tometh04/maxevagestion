@@ -28,7 +28,8 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -61,8 +62,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
-  const [dueDateFrom, setDueDateFrom] = useState<string>("")
-  const [dueDateTo, setDueDateTo] = useState<string>("")
+  const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined)
+  const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined)
   
   // Estados para inputs (valores que el usuario tipea)
   const [amountMinInput, setAmountMinInput] = useState<string>("")
@@ -147,12 +148,12 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         if (operatorFilter !== "ALL") {
           params.append("operatorId", operatorFilter)
         }
-        if (dueDateFrom) {
-          params.append("dueDateFrom", dueDateFrom)
-        }
-        if (dueDateTo) {
-          params.append("dueDateTo", dueDateTo)
-        }
+      if (dueDateFrom) {
+        params.append("dueDateFrom", format(dueDateFrom, "yyyy-MM-dd"))
+      }
+      if (dueDateTo) {
+        params.append("dueDateTo", format(dueDateTo, "yyyy-MM-dd"))
+      }
         if (amountMin) {
           params.append("amountMin", amountMin)
         }
@@ -375,15 +376,35 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             </div>
             <div className="space-y-2">
               <Label>Rango de fechas (vencimiento)</Label>
-              <DateRangePicker
-                dateFrom={dueDateFrom}
-                dateTo={dueDateTo}
-                onChange={(from, to) => {
-                  setDueDateFrom(from)
-                  setDueDateTo(to)
-                }}
-                placeholder="Seleccionar rango"
-              />
+              <div className="flex items-center gap-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Desde</Label>
+                  <DateInputWithCalendar
+                    value={dueDateFrom}
+                    onChange={(date) => {
+                      setDueDateFrom(date)
+                      if (date && dueDateTo && dueDateTo < date) {
+                        setDueDateTo(undefined)
+                      }
+                    }}
+                    placeholder="dd/MM/yyyy"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Hasta</Label>
+                  <DateInputWithCalendar
+                    value={dueDateTo}
+                    onChange={(date) => {
+                      if (date && dueDateFrom && date < dueDateFrom) {
+                        return
+                      }
+                      setDueDateTo(date)
+                    }}
+                    placeholder="dd/MM/yyyy"
+                    minDate={dueDateFrom}
+                  />
+                </div>
+              </div>
             </div>
             <div className="space-y-2">
               <Label>Monto mínimo</Label>
@@ -416,8 +437,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
             statusFilter !== "ALL" ||
-            dueDateFrom ||
-            dueDateTo ||
+            dueDateFrom !== undefined ||
+            dueDateTo !== undefined ||
             amountMin ||
             amountMax ||
             operationSearch) && (
@@ -428,8 +449,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   setAgencyFilter("ALL")
                   setOperatorFilter("ALL")
                   setStatusFilter("ALL")
-                  setDueDateFrom("")
-                  setDueDateTo("")
+                  setDueDateFrom(undefined)
+                  setDueDateTo(undefined)
                   setAmountMinInput("")
                   setAmountMaxInput("")
                   setOperationSearchInput("")

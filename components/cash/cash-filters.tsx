@@ -10,7 +10,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
 
 export interface CashFiltersState {
   dateFrom: string
@@ -46,6 +47,21 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   const handleChange = (field: keyof CashFiltersState, newValue: string) => {
     setFilters((prev) => ({ ...prev, [field]: newValue }))
   }
+  
+  // Helper para convertir string a Date
+  const parseDate = (dateString: string): Date | undefined => {
+    if (!dateString) return undefined
+    try {
+      return parseISO(dateString)
+    } catch {
+      return undefined
+    }
+  }
+  
+  // Helper para convertir Date a string
+  const formatDate = (date: Date | undefined): string => {
+    return date ? format(date, "yyyy-MM-dd") : ""
+  }
 
   const handleReset = () => {
     setFilters(defaultValue)
@@ -56,14 +72,37 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
         <div className="space-y-2">
           <Label>Rango de fechas</Label>
-          <DateRangePicker
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
-            onChange={(dateFrom, dateTo) => {
-              setFilters((prev) => ({ ...prev, dateFrom, dateTo }))
-            }}
-            placeholder="Seleccionar rango"
-          />
+          <div className="flex items-center gap-2">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Desde</Label>
+              <DateInputWithCalendar
+                value={parseDate(filters.dateFrom)}
+                onChange={(date) => {
+                  const dateString = formatDate(date)
+                  setFilters((prev) => ({ 
+                    ...prev, 
+                    dateFrom: dateString,
+                    dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
+                  }))
+                }}
+                placeholder="dd/MM/yyyy"
+              />
+            </div>
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Hasta</Label>
+              <DateInputWithCalendar
+                value={parseDate(filters.dateTo)}
+                onChange={(date) => {
+                  if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
+                    return
+                  }
+                  setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
+                }}
+                placeholder="dd/MM/yyyy"
+                minDate={parseDate(filters.dateFrom)}
+              />
+            </div>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Agencia</Label>

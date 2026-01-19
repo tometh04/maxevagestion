@@ -12,12 +12,9 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
-import { CalendarIcon, RotateCcw } from "lucide-react"
-import { cn } from "@/lib/utils"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
+import { RotateCcw } from "lucide-react"
 
 export interface ReportsFiltersState {
   dateFrom: string
@@ -43,8 +40,6 @@ export function ReportsFilters({
   onReset,
 }: ReportsFiltersProps) {
   const [filters, setFilters] = useState<ReportsFiltersState>(defaultFilters)
-  const [dateFromOpen, setDateFromOpen] = useState(false)
-  const [dateToOpen, setDateToOpen] = useState(false)
 
   const handleFilterChange = (key: keyof ReportsFiltersState, value: string) => {
     const newFilters = { ...filters, [key]: value }
@@ -52,11 +47,41 @@ export function ReportsFilters({
     onFiltersChange(newFilters)
   }
 
-  const handleDateChange = (key: "dateFrom" | "dateTo", date: Date | undefined) => {
-    if (date) {
-      const dateString = format(date, "yyyy-MM-dd")
-      handleFilterChange(key, dateString)
+  // Helper para convertir string a Date
+  const parseDate = (dateString: string): Date | undefined => {
+    if (!dateString) return undefined
+    try {
+      return parseISO(dateString)
+    } catch {
+      return undefined
     }
+  }
+  
+  // Helper para convertir Date a string
+  const formatDate = (date: Date | undefined): string => {
+    return date ? format(date, "yyyy-MM-dd") : ""
+  }
+
+  const handleDateFromChange = (date: Date | undefined) => {
+    const dateString = formatDate(date)
+    setFilters((prev) => ({ 
+      ...prev, 
+      dateFrom: dateString,
+      dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
+    }))
+    handleFilterChange("dateFrom", dateString)
+    if (date && parseDate(filters.dateTo) && parseDate(filters.dateTo)! < date) {
+      handleFilterChange("dateTo", "")
+    }
+  }
+
+  const handleDateToChange = (date: Date | undefined) => {
+    if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
+      return
+    }
+    const dateString = formatDate(date)
+    setFilters((prev) => ({ ...prev, dateTo: dateString }))
+    handleFilterChange("dateTo", dateString)
   }
 
   const handleReset = () => {
@@ -73,35 +98,11 @@ export function ReportsFilters({
             <Label htmlFor="dateFrom" className="text-xs sm:text-sm">
               Desde
             </Label>
-            <Popover open={dateFromOpen} onOpenChange={setDateFromOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !filters.dateFrom && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.dateFrom ? (
-                    format(new Date(filters.dateFrom), "dd/MM/yyyy", { locale: es })
-                  ) : (
-                    <span className="text-xs sm:text-sm">Seleccionar fecha</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={filters.dateFrom ? new Date(filters.dateFrom) : undefined}
-                  onSelect={(date) => {
-                    handleDateChange("dateFrom", date)
-                    setDateFromOpen(false)
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <DateInputWithCalendar
+              value={parseDate(filters.dateFrom)}
+              onChange={handleDateFromChange}
+              placeholder="dd/MM/yyyy"
+            />
           </div>
 
           {/* Date To */}
@@ -109,35 +110,12 @@ export function ReportsFilters({
             <Label htmlFor="dateTo" className="text-xs sm:text-sm">
               Hasta
             </Label>
-            <Popover open={dateToOpen} onOpenChange={setDateToOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !filters.dateTo && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {filters.dateTo ? (
-                    format(new Date(filters.dateTo), "dd/MM/yyyy", { locale: es })
-                  ) : (
-                    <span className="text-xs sm:text-sm">Seleccionar fecha</span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={filters.dateTo ? new Date(filters.dateTo) : undefined}
-                  onSelect={(date) => {
-                    handleDateChange("dateTo", date)
-                    setDateToOpen(false)
-                  }}
-                  initialFocus
-                />
-              </PopoverContent>
-            </Popover>
+            <DateInputWithCalendar
+              value={parseDate(filters.dateTo)}
+              onChange={handleDateToChange}
+              placeholder="dd/MM/yyyy"
+              minDate={parseDate(filters.dateFrom)}
+            />
           </div>
 
           {/* Agency */}

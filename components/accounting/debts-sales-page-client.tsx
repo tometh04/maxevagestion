@@ -36,8 +36,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Download, Filter, X } from "lucide-react"
 import * as XLSX from "xlsx"
+import { format, parseISO } from "date-fns"
 
 interface DebtorOperation {
   id: string
@@ -73,8 +76,8 @@ export function DebtsSalesPageClient() {
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
   const [currencyFilter, setCurrencyFilter] = useState<string>("ALL")
   const [customerFilter, setCustomerFilter] = useState<string>("")
-  const [dateFromFilter, setDateFromFilter] = useState<string>("")
-  const [dateToFilter, setDateToFilter] = useState<string>("")
+  const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
+  const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
 
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
@@ -88,10 +91,10 @@ export function DebtsSalesPageClient() {
         params.append("customerId", customerFilter)
       }
       if (dateFromFilter) {
-        params.append("dateFrom", dateFromFilter)
+        params.append("dateFrom", format(dateFromFilter, "yyyy-MM-dd"))
       }
       if (dateToFilter) {
-        params.append("dateTo", dateToFilter)
+        params.append("dateTo", format(dateToFilter, "yyyy-MM-dd"))
       }
 
       const response = await fetch(`/api/accounting/debts-sales?${params.toString()}`)

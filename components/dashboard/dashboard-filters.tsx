@@ -10,13 +10,24 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
 
 export interface DashboardFiltersState {
   dateFrom: string
   dateTo: string
   agencyId: string
   sellerId: string
+}
+
+// Helper para convertir string a Date
+const parseDate = (dateString: string): Date | undefined => {
+  if (!dateString) return undefined
+  try {
+    return parseISO(dateString)
+  } catch {
+    return undefined
+  }
 }
 
 interface DashboardFiltersProps {
@@ -57,14 +68,29 @@ export function DashboardFilters({
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
         <div className="space-y-2">
           <Label>Rango de fechas</Label>
-          <DateRangePicker
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
-            onChange={(dateFrom, dateTo) => {
-              setFilters((prev) => ({ ...prev, dateFrom, dateTo }))
-            }}
-            placeholder="Seleccionar rango"
-          />
+          <div className="flex items-center gap-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Desde</Label>
+              <DateInputWithCalendar
+                value={parseDate(filters.dateFrom)}
+                onChange={(date) => {
+                  setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
+                }}
+                placeholder="dd/MM/yyyy"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Hasta</Label>
+              <DateInputWithCalendar
+                value={parseDate(filters.dateTo)}
+                onChange={(date) => {
+                  setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
+                }}
+                placeholder="dd/MM/yyyy"
+                minDate={parseDate(filters.dateFrom)}
+              />
+            </div>
+          </div>
         </div>
         <div className="space-y-2">
           <Label>Agencia</Label>

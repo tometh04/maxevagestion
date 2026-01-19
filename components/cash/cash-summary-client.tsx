@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { Label } from "@/components/ui/label"
 import { formatCurrency } from "@/lib/currency"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
 import {
@@ -11,7 +12,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 
 interface CashSummaryClientProps {
@@ -44,8 +45,20 @@ const chartConfig = {
 } satisfies ChartConfig
 
 export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: CashSummaryClientProps) {
-  const [dateFrom, setDateFrom] = useState(defaultDateFrom)
-  const [dateTo, setDateTo] = useState(defaultDateTo)
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(() => {
+    try {
+      return defaultDateFrom ? parseISO(defaultDateFrom) : undefined
+    } catch {
+      return undefined
+    }
+  })
+  const [dateTo, setDateTo] = useState<Date | undefined>(() => {
+    try {
+      return defaultDateTo ? parseISO(defaultDateTo) : undefined
+    } catch {
+      return undefined
+    }
+  })
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,8 +74,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       }
 
       // Obtener evolución diaria de la caja
+      if (!dateFrom || !dateTo) return
       const dailyResponse = await fetch(
-        `/api/cash/daily-balance?dateFrom=${dateFrom}&dateTo=${dateTo}`
+        `/api/cash/daily-balance?dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
       )
       if (dailyResponse.ok) {
         const dailyData = await dailyResponse.json()
@@ -133,16 +147,36 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="space-y-2 flex-1">
-            <label className="text-sm font-medium">Rango de fechas</label>
-            <DateRangePicker
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onChange={(from, to) => {
-                setDateFrom(from)
-                setDateTo(to)
-              }}
-              placeholder="Seleccionar rango"
-            />
+            <Label className="text-sm font-medium">Rango de fechas</Label>
+            <div className="flex items-center gap-2">
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-xs">Desde</Label>
+                <DateInputWithCalendar
+                  value={dateFrom}
+                  onChange={(date) => {
+                    setDateFrom(date)
+                    if (date && dateTo && dateTo < date) {
+                      setDateTo(undefined)
+                    }
+                  }}
+                  placeholder="dd/MM/yyyy"
+                />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-xs">Hasta</Label>
+                <DateInputWithCalendar
+                  value={dateTo}
+                  onChange={(date) => {
+                    if (date && dateFrom && date < dateFrom) {
+                      return
+                    }
+                    setDateTo(date)
+                  }}
+                  placeholder="dd/MM/yyyy"
+                  minDate={dateFrom}
+                />
+              </div>
+            </div>
           </div>
           <div className="ml-4">
             <button

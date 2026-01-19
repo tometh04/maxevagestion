@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { X } from "lucide-react"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
 
 const standardStatusOptions = [
   { value: "ALL", label: "Todos los estados" },
@@ -43,10 +44,25 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
   const [status, setStatus] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
-  const [paymentDateFrom, setPaymentDateFrom] = useState("")
-  const [paymentDateTo, setPaymentDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [paymentDateFrom, setPaymentDateFrom] = useState<Date | undefined>(undefined)
+  const [paymentDateTo, setPaymentDateTo] = useState<Date | undefined>(undefined)
+  
+  // Helper para convertir Date a string
+  const formatDateString = (date: Date | undefined): string => {
+    return date ? format(date, "yyyy-MM-dd") : ""
+  }
+  
+  // Helper para parsear string a Date
+  const parseDateString = (dateString: string): Date | undefined => {
+    if (!dateString) return undefined
+    try {
+      return parseISO(dateString)
+    } catch {
+      return undefined
+    }
+  }
   const [paymentDateType, setPaymentDateType] = useState("")
 
   // Combinar estados estándar con personalizados
@@ -60,10 +76,10 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
       status,
       sellerId,
       agencyId,
-      dateFrom,
-      dateTo,
-      paymentDateFrom: paymentDateType ? paymentDateFrom : undefined,
-      paymentDateTo: paymentDateType ? paymentDateTo : undefined,
+      dateFrom: formatDateString(dateFrom),
+      dateTo: formatDateString(dateTo),
+      paymentDateFrom: paymentDateType ? formatDateString(paymentDateFrom) : undefined,
+      paymentDateTo: paymentDateType ? formatDateString(paymentDateTo) : undefined,
       paymentDateType: paymentDateType || undefined,
     })
   }
@@ -72,10 +88,10 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     setStatus("ALL")
     setSellerId("ALL")
     setAgencyId("ALL")
-    setDateFrom("")
-    setDateTo("")
-    setPaymentDateFrom("")
-    setPaymentDateTo("")
+    setDateFrom(undefined)
+    setDateTo(undefined)
+    setPaymentDateFrom(undefined)
+    setPaymentDateTo(undefined)
     setPaymentDateType("")
     onFilterChange({
       status: "ALL",
@@ -93,9 +109,9 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
     status !== "ALL" ||
     sellerId !== "ALL" ||
     agencyId !== "ALL" ||
-    dateFrom !== "" ||
-    dateTo !== "" ||
-    (paymentDateType !== "" && (paymentDateFrom !== "" || paymentDateTo !== ""))
+    dateFrom !== undefined ||
+    dateTo !== undefined ||
+    (paymentDateType !== "" && (paymentDateFrom !== undefined || paymentDateTo !== undefined))
 
   return (
     <Card>
@@ -153,15 +169,35 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
 
           <div className="space-y-2">
             <Label>Rango de fechas (viaje)</Label>
-            <DateRangePicker
-              dateFrom={dateFrom}
-              dateTo={dateTo}
-              onChange={(from, to) => {
-                setDateFrom(from)
-                setDateTo(to)
-              }}
-              placeholder="Seleccionar rango"
-            />
+            <div className="flex items-center gap-2">
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-xs">Desde</Label>
+                <DateInputWithCalendar
+                  value={dateFrom}
+                  onChange={(date) => {
+                    setDateFrom(date)
+                    if (date && dateTo && dateTo < date) {
+                      setDateTo(undefined)
+                    }
+                  }}
+                  placeholder="dd/MM/yyyy"
+                />
+              </div>
+              <div className="space-y-1.5 flex-1">
+                <Label className="text-xs">Hasta</Label>
+                <DateInputWithCalendar
+                  value={dateTo}
+                  onChange={(date) => {
+                    if (date && dateFrom && date < dateFrom) {
+                      return
+                    }
+                    setDateTo(date)
+                  }}
+                  placeholder="dd/MM/yyyy"
+                  minDate={dateFrom}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -182,15 +218,35 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
           {paymentDateType && (
             <div className="space-y-2">
               <Label>Rango de fechas ({paymentDateType === "COBRO" ? "cobro" : paymentDateType === "PAGO" ? "pago" : "vencimiento"})</Label>
-              <DateRangePicker
-                dateFrom={paymentDateFrom}
-                dateTo={paymentDateTo}
-                onChange={(from, to) => {
-                  setPaymentDateFrom(from)
-                  setPaymentDateTo(to)
-                }}
-                placeholder="Seleccionar rango"
-              />
+              <div className="flex items-center gap-2">
+                <div className="space-y-1.5 flex-1">
+                  <Label className="text-xs">Desde</Label>
+                  <DateInputWithCalendar
+                    value={paymentDateFrom}
+                    onChange={(date) => {
+                      setPaymentDateFrom(date)
+                      if (date && paymentDateTo && paymentDateTo < date) {
+                        setPaymentDateTo(undefined)
+                      }
+                    }}
+                    placeholder="dd/MM/yyyy"
+                  />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <Label className="text-xs">Hasta</Label>
+                  <DateInputWithCalendar
+                    value={paymentDateTo}
+                    onChange={(date) => {
+                      if (date && paymentDateFrom && date < paymentDateFrom) {
+                        return
+                      }
+                      setPaymentDateTo(date)
+                    }}
+                    placeholder="dd/MM/yyyy"
+                    minDate={paymentDateFrom}
+                  />
+                </div>
+              </div>
             </div>
           )}
         </div>

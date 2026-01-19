@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { DateRangePicker } from "@/components/ui/date-range-picker"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO } from "date-fns"
 
 interface LedgerFiltersProps {
   agencies: Array<{ id: string; name: string }>
@@ -24,16 +25,16 @@ interface LedgerFiltersProps {
 }
 
 export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps) {
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [type, setType] = useState("ALL")
   const [currency, setCurrency] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
 
   const handleApply = () => {
     onFiltersChange({
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      dateFrom: dateFrom ? format(dateFrom, "yyyy-MM-dd") : undefined,
+      dateTo: dateTo ? format(dateTo, "yyyy-MM-dd") : undefined,
       type: type !== "ALL" ? type : undefined,
       currency: currency !== "ALL" ? currency : undefined,
       agencyId: agencyId !== "ALL" ? agencyId : undefined,
@@ -41,8 +42,8 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   }
 
   const handleReset = () => {
-    setDateFrom("")
-    setDateTo("")
+    setDateFrom(undefined)
+    setDateTo(undefined)
     setType("ALL")
     setCurrency("ALL")
     setAgencyId("ALL")
@@ -54,15 +55,35 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
         <div>
           <Label>Rango de fechas</Label>
-          <DateRangePicker
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onChange={(from, to) => {
-              setDateFrom(from)
-              setDateTo(to)
-            }}
-            placeholder="Seleccionar rango"
-          />
+          <div className="flex items-center gap-2">
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Desde</Label>
+              <DateInputWithCalendar
+                value={dateFrom}
+                onChange={(date) => {
+                  setDateFrom(date)
+                  if (date && dateTo && dateTo < date) {
+                    setDateTo(undefined)
+                  }
+                }}
+                placeholder="dd/MM/yyyy"
+              />
+            </div>
+            <div className="space-y-1.5 flex-1">
+              <Label className="text-xs">Hasta</Label>
+              <DateInputWithCalendar
+                value={dateTo}
+                onChange={(date) => {
+                  if (date && dateFrom && date < dateFrom) {
+                    return
+                  }
+                  setDateTo(date)
+                }}
+                placeholder="dd/MM/yyyy"
+                minDate={dateFrom}
+              />
+            </div>
+          </div>
         </div>
         <div>
           <Label>Agencia</Label>

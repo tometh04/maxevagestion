@@ -200,9 +200,12 @@ export async function GET(request: Request) {
         if (lead.status === "WON") bySeller[lead.assigned_seller_id].won++
       }
 
-      // Por mes
+      // Por período (día o mes)
       if (lead.created_at) {
-        const monthKey = format(new Date(lead.created_at), "yyyy-MM")
+        const createdAt = new Date(lead.created_at)
+        const monthKey = groupByDays 
+          ? format(createdAt, "yyyy-MM-dd")
+          : format(createdAt, "yyyy-MM")
         if (monthlyStats[monthKey]) {
           monthlyStats[monthKey].newLeads++
           if (lead.status === "WON") monthlyStats[monthKey].wonLeads++
