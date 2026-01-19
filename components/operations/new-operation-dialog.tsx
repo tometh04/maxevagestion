@@ -162,7 +162,7 @@ interface LeadData {
 interface NewOperationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess: () => void
+  onSuccess: (operationId?: string) => void // Ahora puede recibir el ID de la operación creada
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
@@ -468,11 +468,16 @@ export function NewOperationDialog({
         return
       }
 
+      const data = await response.json()
+      const operationId = data.operation?.id
+
       toast({
         title: lead ? "Lead convertido a operación" : "Operación creada",
         description: lead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
       })
-      onSuccess()
+      
+      // Pasar el ID de la operación al callback
+      onSuccess(operationId)
       onOpenChange(false)
       form.reset()
       setOperatorList([])

@@ -1,5 +1,6 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { NewOperationDialog } from "@/components/operations/new-operation-dialog"
 
 interface LeadData {
@@ -27,6 +28,7 @@ interface ConvertLeadDialogProps {
 /**
  * Componente que envuelve NewOperationDialog para convertir un lead a operación.
  * Usa exactamente el mismo formulario completo con todas las features (OCR, múltiples operadores, etc.).
+ * Redirige automáticamente a la operación creada después de la conversión.
  */
 export function ConvertLeadDialog({
   lead,
@@ -37,11 +39,23 @@ export function ConvertLeadDialog({
   onOpenChange,
   onSuccess,
 }: ConvertLeadDialogProps) {
+  const router = useRouter()
+
+  const handleSuccess = (operationId?: string) => {
+    // Llamar al callback original
+    onSuccess()
+    
+    // Si hay un ID de operación, redirigir a la página de la operación
+    if (operationId) {
+      router.push(`/operations/${operationId}`)
+    }
+  }
+
   return (
     <NewOperationDialog
       open={open}
       onOpenChange={onOpenChange}
-      onSuccess={onSuccess}
+      onSuccess={handleSuccess}
       agencies={agencies}
       sellers={sellers}
       operators={operators}
