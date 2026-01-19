@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { subMonths, startOfMonth, endOfMonth, format, parseISO } from "date-fns"
+import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
@@ -84,33 +84,63 @@ export async function GET(request: Request) {
     // Estadísticas generales
     const totalCustomers = filteredCustomers.length
     
-    // Clientes nuevos por mes
-    const newCustomersByMonth: Record<string, number> = {}
+    // Determinar si agrupar por días o meses (si el rango es <= 31 días, agrupar por días)
+    const daysRange = differenceInDays(endOfDay(filterTo), startOfDay(filterFrom))
+    const groupByDays = daysRange <= 31
     
-    // Inicializar meses en el rango
-    let currentDate = startOfMonth(filterFrom)
-    while (currentDate <= filterTo) {
-      const key = format(currentDate, "yyyy-MM")
-      newCustomersByMonth[key] = 0
-      currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
+    // Clientes nuevos por período (día o mes)
+    const newCustomersByPeriod: Record<string, number> = {}
+    
+    if (groupByDays) {
+      // Inicializar días en el rango
+      const days = eachDayOfInterval({ start: startOfDay(filterFrom), end: endOfDay(filterTo) })
+      days.forEach(day => {
+        const key = format(day, "yyyy-MM-dd")
+        newCustomersByPeriod[key] = 0
+      })
+
+      filteredCustomers.forEach((customer: any) => {
+        const createdAt = new Date(customer.created_at)
+        const key = format(createdAt, "yyyy-MM-dd")
+        if (newCustomersByPeriod[key] !== undefined) {
+          newCustomersByPeriod[key]++
+        }
+      })
+    } else {
+      // Inicializar meses en el rango
+      let currentDate = startOfMonth(filterFrom)
+      while (currentDate <= filterTo) {
+        const key = format(currentDate, "yyyy-MM")
+        newCustomersByPeriod[key] = 0
+        currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
+      }
+
+      filteredCustomers.forEach((customer: any) => {
+        const createdAt = new Date(customer.created_at)
+        const key = format(createdAt, "yyyy-MM")
+        if (newCustomersByPeriod[key] !== undefined) {
+          newCustomersByPeriod[key]++
+        }
+      })
     }
 
-    filteredCustomers.forEach((customer: any) => {
-      const createdAt = new Date(customer.created_at)
-      const key = format(createdAt, "yyyy-MM")
-      if (newCustomersByMonth[key] !== undefined) {
-        newCustomersByMonth[key]++
-      }
-    })
-
     // Convertir a array para gráficos
-    const newCustomersTrend = Object.entries(newCustomersByMonth)
+    const newCustomersTrend = Object.entries(newCustomersByPeriod)
       .map(([key, count]) => {
-        const [year, month] = key.split("-")
-        return {
-          month: key,
-          monthName: format(new Date(parseInt(year), parseInt(month) - 1, 1), "MMM yy", { locale: es }),
-          count,
+        if (groupByDays) {
+          const date = parseISO(key)
+          return {
+            month: key,
+            monthName: format(date, "dd/MM", { locale: es }),
+            count,
+          }
+        } else {
+          const [year, month] = key.split("-")
+          return {
+            month: key,
+            monthName: format(new Date(parseInt(year), parseInt(month) - 1, 1), "MMM yy", { locale: es }),
+            count,
+          }
         }
       })
       .sort((a, b) => a.month.localeCompare(b.month))

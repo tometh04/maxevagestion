@@ -317,10 +317,15 @@ export function OperationsStatisticsPageClient() {
 
       {/* Gráficos */}
       <div className="grid md:grid-cols-3 gap-3">
-        {/* Tendencia mensual */}
+        {/* Tendencia por período */}
         <Card className="md:col-span-2">
           <CardHeader className="py-3 px-4">
-            <CardTitle className="text-sm font-medium">Ventas por Mes</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {dateFrom && dateTo && (() => {
+                const days = Math.ceil((dateTo.getTime() - dateFrom.getTime()) / (1000 * 60 * 60 * 24))
+                return days <= 31 ? "Ventas por Día" : "Ventas por Mes"
+              })()}
+            </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
             <div className="h-[200px]">

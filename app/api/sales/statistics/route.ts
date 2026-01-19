@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { subMonths, startOfMonth, endOfMonth, format, parseISO } from "date-fns"
+import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
@@ -101,7 +101,11 @@ export async function GET(request: Request) {
     // Por vendedor
     const bySeller: Record<string, { id: string, name: string, leads: number, won: number, conversionRate: number }> = {}
 
-    // Por mes
+    // Determinar si agrupar por días o meses (si el rango es <= 31 días, agrupar por días)
+    const daysRange = differenceInDays(endOfDay(filterTo), startOfDay(filterFrom))
+    const groupByDays = daysRange <= 31
+
+    // Por período (día o mes)
     const monthlyStats: Record<string, {
       month: string
       monthName: string
@@ -110,18 +114,33 @@ export async function GET(request: Request) {
       lostLeads: number
     }> = {}
 
-    // Inicializar meses en el rango
-    let currentDate = startOfMonth(filterFrom)
-    while (currentDate <= filterTo) {
-      const key = format(currentDate, "yyyy-MM")
-      monthlyStats[key] = {
-        month: key,
-        monthName: format(currentDate, "MMM yy", { locale: es }),
-        newLeads: 0,
-        wonLeads: 0,
-        lostLeads: 0,
+    if (groupByDays) {
+      // Inicializar días en el rango
+      const days = eachDayOfInterval({ start: startOfDay(filterFrom), end: endOfDay(filterTo) })
+      days.forEach(day => {
+        const key = format(day, "yyyy-MM-dd")
+        monthlyStats[key] = {
+          month: key,
+          monthName: format(day, "dd/MM", { locale: es }),
+          newLeads: 0,
+          wonLeads: 0,
+          lostLeads: 0,
+        }
+      })
+    } else {
+      // Inicializar meses en el rango
+      let currentDate = startOfMonth(filterFrom)
+      while (currentDate <= filterTo) {
+        const key = format(currentDate, "yyyy-MM")
+        monthlyStats[key] = {
+          month: key,
+          monthName: format(currentDate, "MMM yy", { locale: es }),
+          newLeads: 0,
+          wonLeads: 0,
+          lostLeads: 0,
+        }
+        currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
       }
-      currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
     }
 
     // Obtener tasa de cambio más reciente para depósitos en ARS

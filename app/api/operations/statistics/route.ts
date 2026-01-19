@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { format, parseISO, startOfMonth, endOfMonth, subMonths } from "date-fns"
+import { format, parseISO, startOfMonth, endOfMonth, subMonths, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
@@ -133,7 +133,11 @@ export async function GET(request: Request) {
       avgMargin: number
     }> = {}
 
-    // Estadísticas por mes
+    // Determinar si agrupar por días o meses (si el rango es <= 31 días, agrupar por días)
+    const daysRange = differenceInDays(endOfDay(filterTo), startOfDay(filterFrom))
+    const groupByDays = daysRange <= 31
+
+    // Estadísticas por período (día o mes)
     const monthlyStats: Record<string, {
       month: string
       monthName: string
@@ -143,19 +147,35 @@ export async function GET(request: Request) {
       collected: number
     }> = {}
 
-    // Inicializar meses en el rango
-    let currentDate = startOfMonth(filterFrom)
-    while (currentDate <= filterTo) {
-      const key = format(currentDate, "yyyy-MM")
-      monthlyStats[key] = {
-        month: key,
-        monthName: format(currentDate, "MMM yy", { locale: es }),
-        count: 0,
-        sales: 0,
-        margin: 0,
-        collected: 0,
+    if (groupByDays) {
+      // Inicializar días en el rango
+      const days = eachDayOfInterval({ start: startOfDay(filterFrom), end: endOfDay(filterTo) })
+      days.forEach(day => {
+        const key = format(day, "yyyy-MM-dd")
+        monthlyStats[key] = {
+          month: key,
+          monthName: format(day, "dd/MM", { locale: es }),
+          count: 0,
+          sales: 0,
+          margin: 0,
+          collected: 0,
+        }
+      })
+    } else {
+      // Inicializar meses en el rango
+      let currentDate = startOfMonth(filterFrom)
+      while (currentDate <= filterTo) {
+        const key = format(currentDate, "yyyy-MM")
+        monthlyStats[key] = {
+          month: key,
+          monthName: format(currentDate, "MMM yy", { locale: es }),
+          count: 0,
+          sales: 0,
+          margin: 0,
+          collected: 0,
+        }
+        currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
       }
-      currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
     }
 
     // Estadísticas por vendedor
@@ -214,9 +234,12 @@ export async function GET(request: Request) {
         destinationStats[dest].totalSales += saleAmountUsd
         destinationStats[dest].totalMargin += marginAmountUsd
 
-        // Por mes
+        // Por período (día o mes)
         if (op.departure_date) {
-          const monthKey = format(new Date(op.departure_date), "yyyy-MM")
+          const opDate = new Date(op.departure_date)
+          const monthKey = groupByDays 
+            ? format(opDate, "yyyy-MM-dd")
+            : format(opDate, "yyyy-MM")
           if (monthlyStats[monthKey]) {
             monthlyStats[monthKey].count++
             monthlyStats[monthKey].sales += saleAmountUsd
