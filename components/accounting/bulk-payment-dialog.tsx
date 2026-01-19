@@ -164,11 +164,10 @@ export function BulkPaymentDialog({
       try {
         const params = new URLSearchParams()
         params.append("operatorId", selectedOperatorId)
-        // No filtrar por status aquí, traemos todos y filtramos después
-        if (agencies.length > 0) {
-          params.append("agencyId", agencies[0].id)
-        }
+        // NO filtrar por agencia para el pago masivo - mostrar TODAS las deudas del operador
+        // El usuario verá todas las deudas pendientes del operador en todas las agencias
 
+        console.log("[BulkPayment] Fetching payments for operator:", selectedOperatorId)
         const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
         if (!response.ok) throw new Error("Error al obtener pagos")
 
