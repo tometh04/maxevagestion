@@ -100,6 +100,65 @@ const operationTypeOptions = [
   { value: "MIXED", label: "Mixto" },
 ]
 
+// Estados de leads que NO son destinos
+const leadStatusKeywords = [
+  "presupuesto", "enviado", "nuevo", "contactado", "calificado",
+  "negociacion", "negociación", "ganado", "perdido", "pendiente",
+  "seguimiento", "cerrado", "cancelado", "won", "lost", "new",
+  "contacted", "qualified", "negotiation", "closed"
+]
+
+// Función para limpiar destino de lead (si no es un destino válido)
+function cleanDestination(destination: string): string {
+  if (!destination) return ""
+  
+  const destLower = destination.toLowerCase().trim()
+  
+  // Verificar si es un estado de lead
+  for (const status of leadStatusKeywords) {
+    if (destLower.includes(status)) {
+      return ""
+    }
+  }
+  
+  // Si parece un usuario de Instagram, email o algo raro, ignorar
+  const invalidPatterns = [
+    /^@/, // Instagram handle
+    /@.*\.com$/, // Email
+    /^[a-z0-9_]+$/, // Solo letras minúsculas y guiones bajos (username)
+    /^\d+$/, // Solo números
+  ]
+  
+  for (const pattern of invalidPatterns) {
+    if (pattern.test(destLower)) {
+      return ""
+    }
+  }
+  
+  // Si es muy corto o muy largo, probablemente no es un destino
+  if (destination.length < 3 || destination.length > 50) {
+    return ""
+  }
+  
+  // Si contiene números o caracteres raros, limpiar
+  if (/\d/.test(destination) || /[^a-záéíóúüñ\s]/i.test(destination)) {
+    return ""
+  }
+  
+  return destination
+}
+
+interface LeadData {
+  id: string
+  contact_name?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+  destination?: string | null
+  agency_id?: string | null
+  assigned_seller_id?: string | null
+  notes?: string | null
+}
+
 interface NewOperationDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -109,6 +168,7 @@ interface NewOperationDialogProps {
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
+  lead?: LeadData // Prop opcional para convertir lead a operación
 }
 
 export function NewOperationDialog({
@@ -120,6 +180,7 @@ export function NewOperationDialog({
   operators,
   defaultAgencyId,
   defaultSellerId,
+  lead,
 }: NewOperationDialogProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -202,17 +263,25 @@ export function NewOperationDialog({
     return standard
   }, [settings])
 
+  // Limpiar destino del lead si existe
+  const cleanedDestination = React.useMemo(() => {
+    if (lead?.destination) {
+      return cleanDestination(lead.destination)
+    }
+    return ""
+  }, [lead?.destination])
+
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema),
     defaultValues: {
-      agency_id: defaultAgencyId || "",
-      seller_id: defaultSellerId || "",
+      agency_id: lead?.agency_id || defaultAgencyId || agencies[0]?.id || "",
+      seller_id: lead?.assigned_seller_id || defaultSellerId || "",
       operator_id: null,
       seller_secondary_id: null,
       type: "PACKAGE",
       customer_id: null,
-      origin: "",
-      destination: "",
+      origin: "Rosario", // Por defecto Rosario
+      destination: cleanedDestination,
       departure_date: undefined,
       return_date: undefined,
       adults: 2,
@@ -229,6 +298,36 @@ export function NewOperationDialog({
       operators: [],
     },
   })
+
+  // Actualizar formulario cuando el lead cambia o el dialog se abre
+  useEffect(() => {
+    if (open && lead) {
+      form.reset({
+        agency_id: lead.agency_id || defaultAgencyId || agencies[0]?.id || "",
+        seller_id: lead.assigned_seller_id || defaultSellerId || "",
+        operator_id: null,
+        seller_secondary_id: null,
+        type: "PACKAGE",
+        customer_id: null,
+        origin: "Rosario",
+        destination: cleanedDestination,
+        departure_date: undefined,
+        return_date: undefined,
+        adults: 2,
+        children: 0,
+        infants: 0,
+        status: settings?.default_status || "RESERVED",
+        sale_amount_total: 0,
+        operator_cost: 0,
+        currency: "USD",
+        sale_currency: "USD",
+        operator_cost_currency: "USD",
+        reservation_code_air: null,
+        reservation_code_hotel: null,
+        operators: [],
+      })
+    }
+  }, [open, lead, cleanedDestination, defaultAgencyId, defaultSellerId, agencies, settings?.default_status, form])
 
   // Actualizar estado por defecto cuando se carga la configuración
   useEffect(() => {
@@ -334,6 +433,8 @@ export function NewOperationDialog({
       // Si se usan múltiples operadores, enviar el array; si no, usar formato antiguo
       const requestBody: any = {
         ...values,
+        // Incluir lead_id si hay un lead
+        ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
         operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
@@ -368,8 +469,8 @@ export function NewOperationDialog({
       }
 
       toast({
-        title: "Operación creada",
-        description: "La operación se ha creado correctamente",
+        title: lead ? "Lead convertido a operación" : "Operación creada",
+        description: lead ? "El lead se ha convertido a operación correctamente" : "La operación se ha creado correctamente",
       })
       onSuccess()
       onOpenChange(false)
@@ -425,8 +526,12 @@ export function NewOperationDialog({
           onPointerDownOutside={(e) => e.preventDefault()}
         >
         <DialogHeader>
-          <DialogTitle>Nueva Operación</DialogTitle>
-          <DialogDescription>Crear una nueva operación manualmente</DialogDescription>
+          <DialogTitle>{lead ? "Convertir Lead a Operación" : "Nueva Operación"}</DialogTitle>
+          <DialogDescription>
+            {lead 
+              ? "Completa los datos para convertir este lead en una operación. Todos los campos están disponibles, incluyendo OCR para crear cliente." 
+              : "Crear una nueva operación manualmente"}
+          </DialogDescription>
         </DialogHeader>
 
         {/* Mostrar error del API */}
@@ -1145,7 +1250,7 @@ export function NewOperationDialog({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? "Creando..." : "Crear Operación"}
+                {isLoading ? (lead ? "Convirtiendo..." : "Creando...") : (lead ? "Convertir Lead" : "Crear Operación")}
               </Button>
             </DialogFooter>
           </form>
