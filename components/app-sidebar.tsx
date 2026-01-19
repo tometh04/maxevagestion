@@ -144,23 +144,14 @@ const allNavigation: NavItem[] = [
   // Recursos - Colapsable
   {
     title: "Recursos",
-    url: "/resources/notes",
+    url: "/reports",
     icon: BookOpen,
     items: [
-      { title: "Notas", url: "/resources/notes" },
-      { title: "Calendario", url: "/calendar" },
-      { title: "Templates", url: "/resources/templates" },
-    ],
-  },
-  // Documentos - Colapsable
-  {
-    title: "Documentos",
-    url: "/reports",
-    icon: FileText,
-    items: [
       { title: "Reportes", url: "/reports", module: "reports" as const },
-      { title: "Mensajes", url: "/messages" },
       { title: "Alertas", url: "/alerts", module: "alerts" as const },
+      { title: "Calendario", url: "/calendar" },
+      { title: "Mensajes", url: "/messages" },
+      { title: "Templates", url: "/resources/templates" },
     ],
   },
   // Agencia - Colapsable

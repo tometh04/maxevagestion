@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Limpieza de configuraciones innecesarias)
+**Última actualización:** 2025-01-19 (Reorganización del sidebar y eliminación de Notas)
 
 ---
 
@@ -645,6 +645,58 @@ El sistema seguirá usando los valores predeterminados para:
 - La tabla `customer_settings` y la API `/api/customers/settings` se mantienen en la base de datos para compatibilidad
 - El hook `use-customer-settings.ts` seguirá funcionando con valores por defecto si no hay configuración guardada
 - Los valores predeterminados están hardcodeados en el código y no son configurables desde la UI
+
+---
+
+### 16. Reorganización del Sidebar y Eliminación de Notas
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se reorganizó completamente la sección "Recursos" del sidebar, moviendo funcionalidades desde "Documentos" y eliminando completamente la funcionalidad de "Notas" del sistema.
+
+**Cambios Realizados:**
+
+1. **Eliminación de sección "Documentos":**
+   - Sección "Documentos" eliminada completamente del sidebar
+   - Sus items fueron movidos a "Recursos"
+
+2. **Reorganización de "Recursos":**
+   - Nueva estructura con el siguiente orden:
+     1. Reportes
+     2. Alertas
+     3. Calendario
+     4. Mensajes
+     5. Templates
+   - URL principal cambiada de `/resources/notes` a `/reports`
+
+3. **Eliminación completa de "Notas":**
+   - Página `/resources/notes` eliminada
+   - Componente `NotesPageClient` eliminado
+   - APIs eliminadas:
+     - `GET/POST /api/notes`
+     - `GET/PUT/DELETE /api/notes/[id]`
+     - `GET/POST /api/notes/[id]/comments`
+   - Link "Notas" eliminado del sidebar
+
+**Archivos Eliminados:**
+- `app/(dashboard)/resources/notes/page.tsx` - Página de notas
+- `components/notes/notes-page-client.tsx` - Componente de notas
+- `app/api/notes/route.ts` - API principal de notas
+- `app/api/notes/[id]/route.ts` - API de nota individual
+- `app/api/notes/[id]/comments/route.ts` - API de comentarios
+
+**Archivos Modificados:**
+- `components/app-sidebar.tsx`
+  - Eliminada sección "Documentos"
+  - Reorganizada sección "Recursos" con nuevo orden
+  - Cambiada URL principal de Recursos a `/reports`
+  - Eliminado link "Notas"
+
+**Nota:**
+- La tabla `notes` y sus tablas relacionadas (`note_comments`, `note_attachments`) se mantienen en la base de datos para compatibilidad
+- La migración `068_create_notes.sql` NO se eliminó (las migraciones son históricas)
+- No se cambió ninguna funcionalidad, solo se reorganizó la estructura del sidebar
 
 ---
 
