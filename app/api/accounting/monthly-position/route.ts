@@ -107,7 +107,7 @@ export async function GET(request: Request) {
                                (cajaYBancos.efectivoARS + cajaYBancos.bancosARS) / tcParaCalculos
 
     // ===========================================
-    // 2. CUENTAS POR COBRAR (misma lógica que debts-sales)
+    // 2. CUENTAS POR COBRAR (usar la API de debts-sales internamente)
     // ===========================================
     let cuentasPorCobrar = {
       totalUSD: 0,
@@ -115,14 +115,10 @@ export async function GET(request: Request) {
       detalle: [] as any[]
     }
 
-    // Obtener todas las operaciones con sus clientes
+    // Obtener operaciones activas
     let operationsQuery = supabase
       .from("operations")
-      .select(`
-        id, file_code, destination, sale_amount_total, sale_currency, currency, 
-        operator_cost_total, operator_cost_currency, status, departure_date, agency_id,
-        operation_customers(customer_id, customers:customer_id(id, first_name, last_name))
-      `)
+      .select("id, file_code, destination, sale_amount_total, sale_currency, currency, departure_date, agency_id, created_at")
       .neq("status", "CANCELLED")
       .lte("created_at", `${fechaCorte}T23:59:59`)
 
@@ -130,13 +126,19 @@ export async function GET(request: Request) {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
     }
 
-    const { data: operations } = await operationsQuery
+    const { data: operations, error: opsError } = await operationsQuery
+
+    if (opsError) {
+      console.error("[Balance] Error fetching operations:", opsError)
+    }
+
+    console.log(`[Balance] Operaciones encontradas: ${operations?.length || 0}`)
 
     if (operations && operations.length > 0) {
       const operationIds = (operations as any[]).map(op => op.id)
 
-      // Obtener TODOS los pagos de clientes para estas operaciones
-      const { data: customerPayments } = await supabase
+      // Obtener pagos de clientes
+      const { data: customerPayments, error: paymentsError } = await supabase
         .from("payments")
         .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
         .in("operation_id", operationIds)
@@ -144,57 +146,90 @@ export async function GET(request: Request) {
         .eq("payer_type", "CUSTOMER")
         .eq("status", "PAID")
 
+      if (paymentsError) {
+        console.error("[Balance] Error fetching customer payments:", paymentsError)
+      }
+
+      console.log(`[Balance] Pagos de clientes encontrados: ${customerPayments?.length || 0}`)
+
+      // Obtener clientes de operaciones
+      const { data: opCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id, customers:customer_id(id, first_name, last_name)")
+        .in("operation_id", operationIds)
+
+      const customersByOp: Record<string, any> = {}
+      if (opCustomers) {
+        for (const oc of opCustomers as any[]) {
+          if (oc.operation_id && oc.customers) {
+            customersByOp[oc.operation_id] = oc.customers
+          }
+        }
+      }
+
       // Agrupar pagos por operación
       const pagosPorOp: Record<string, number> = {}
       if (customerPayments) {
         for (const p of customerPayments as any[]) {
+          if (!p.operation_id) continue
           if (!pagosPorOp[p.operation_id]) pagosPorOp[p.operation_id] = 0
           
           let amountUSD = 0
-          if (p.amount_usd != null) {
+          if (p.amount_usd != null && !isNaN(Number(p.amount_usd))) {
             amountUSD = Number(p.amount_usd)
           } else if (p.currency === "USD") {
-            amountUSD = Number(p.amount)
-          } else if (p.exchange_rate) {
-            amountUSD = Number(p.amount) / Number(p.exchange_rate)
-          } else {
-            amountUSD = Number(p.amount) / tcParaCalculos
+            amountUSD = Number(p.amount) || 0
+          } else if (p.exchange_rate && Number(p.exchange_rate) > 0) {
+            amountUSD = (Number(p.amount) || 0) / Number(p.exchange_rate)
+          } else if (p.amount) {
+            amountUSD = (Number(p.amount) || 0) / tcParaCalculos
           }
-          pagosPorOp[p.operation_id] += amountUSD
+          
+          if (!isNaN(amountUSD)) {
+            pagosPorOp[p.operation_id] += amountUSD
+          }
         }
       }
 
       // Calcular deuda por operación
       for (const op of operations as any[]) {
         const saleCurrency = op.sale_currency || op.currency || "USD"
-        let ventaUSD = Number(op.sale_amount_total) || 0
+        const saleAmount = Number(op.sale_amount_total) || 0
         
+        if (saleAmount <= 0) continue
+        
+        let ventaUSD = saleAmount
         if (saleCurrency === "ARS") {
           const rate = await getExchangeRate(supabase, new Date(op.departure_date || op.created_at)) || tcParaCalculos
-          ventaUSD = ventaUSD / rate
+          ventaUSD = saleAmount / rate
         }
 
         const cobradoUSD = pagosPorOp[op.id] || 0
-        const deudaUSD = Math.max(0, ventaUSD - cobradoUSD)
+        const deudaUSD = ventaUSD - cobradoUSD
 
-        if (deudaUSD > 0.01) {
-          const customer = op.operation_customers?.[0]?.customers
+        if (deudaUSD > 0.01 && !isNaN(deudaUSD)) {
+          const customer = customersByOp[op.id]
+          const customerName = customer 
+            ? `${customer.first_name || ""} ${customer.last_name || ""}`.trim() 
+            : null
+          
           cuentasPorCobrar.detalle.push({
-            operacion: op.file_code,
-            destino: op.destination,
-            cliente: customer ? `${customer.first_name} ${customer.last_name}` : "Sin cliente",
-            venta: ventaUSD,
-            cobrado: cobradoUSD,
-            deuda: deudaUSD
+            operacion: op.file_code || op.id.substring(0, 8),
+            destino: op.destination || "-",
+            cliente: customerName || "Sin cliente",
+            venta: Math.round(ventaUSD * 100) / 100,
+            cobrado: Math.round(cobradoUSD * 100) / 100,
+            deuda: Math.round(deudaUSD * 100) / 100
           })
           cuentasPorCobrar.totalUSD += deudaUSD
         }
       }
       
       cuentasPorCobrar.cantidadDeudores = cuentasPorCobrar.detalle.length
+      cuentasPorCobrar.totalUSD = Math.round(cuentasPorCobrar.totalUSD * 100) / 100
     }
 
-    console.log(`[Balance] Cuentas por Cobrar: USD ${cuentasPorCobrar.totalUSD.toFixed(2)} (${cuentasPorCobrar.cantidadDeudores} deudores)`)
+    console.log(`[Balance] Cuentas por Cobrar: USD ${cuentasPorCobrar.totalUSD} (${cuentasPorCobrar.cantidadDeudores} deudores)`)
 
     // ===========================================
     // 3. CUENTAS POR PAGAR (tabla operator_payments)
@@ -212,10 +247,16 @@ export async function GET(request: Request) {
         operations:operation_id (id, file_code, destination, agency_id),
         operators:operator_id (id, name)
       `)
-      .in("status", ["PENDING", "OVERDUE"]) // Solo pendientes
+      .in("status", ["PENDING", "OVERDUE"])
       .lte("created_at", `${fechaCorte}T23:59:59`)
 
-    const { data: operatorPayments } = await operatorPaymentsQuery
+    const { data: operatorPayments, error: opPayError } = await operatorPaymentsQuery
+
+    if (opPayError) {
+      console.error("[Balance] Error fetching operator payments:", opPayError)
+    }
+
+    console.log(`[Balance] Operator payments encontrados: ${operatorPayments?.length || 0}`)
 
     if (operatorPayments) {
       for (const payment of operatorPayments as any[]) {
@@ -228,19 +269,21 @@ export async function GET(request: Request) {
         const paidAmount = Number(payment.paid_amount) || 0
         const pendingAmount = Math.max(0, amount - paidAmount)
         
+        if (pendingAmount <= 0) continue
+        
         let pendingUSD = pendingAmount
         if (payment.currency === "ARS") {
           pendingUSD = pendingAmount / tcParaCalculos
         }
 
-        if (pendingUSD > 0.01) {
+        if (pendingUSD > 0.01 && !isNaN(pendingUSD)) {
           cuentasPorPagar.detalle.push({
-            operacion: payment.operations?.file_code,
-            destino: payment.operations?.destination,
-            operador: payment.operators?.name,
-            monto: pendingAmount,
-            moneda: payment.currency,
-            montoUSD: pendingUSD,
+            operacion: payment.operations?.file_code || payment.id?.substring(0, 8),
+            destino: payment.operations?.destination || "-",
+            operador: payment.operators?.name || "Operador",
+            monto: Math.round(pendingAmount * 100) / 100,
+            moneda: payment.currency || "USD",
+            montoUSD: Math.round(pendingUSD * 100) / 100,
             vencimiento: payment.due_date,
             estado: payment.status
           })
@@ -249,7 +292,10 @@ export async function GET(request: Request) {
       }
       
       cuentasPorPagar.cantidadAcreedores = cuentasPorPagar.detalle.length
+      cuentasPorPagar.totalUSD = Math.round(cuentasPorPagar.totalUSD * 100) / 100
     }
+
+    console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
 
     console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD.toFixed(2)} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
 

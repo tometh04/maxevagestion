@@ -215,10 +215,11 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
     setShowCurrencyDialog(false)
   }
 
-  // Formatear moneda
-  const formatMoney = (amount: number): string => {
+  // Formatear moneda (con manejo de NaN)
+  const formatMoney = (amount: number | null | undefined): string => {
+    const safeAmount = typeof amount === "number" && !isNaN(amount) ? amount : 0
     const rate = parseFloat(displayTC) || data?.tcUsado || 1000
-    const value = currency === "ARS" ? amount * rate : amount
+    const value = currency === "ARS" ? safeAmount * rate : safeAmount
     
     return new Intl.NumberFormat(currency === "ARS" ? "es-AR" : "en-US", {
       style: "currency",
@@ -227,12 +228,13 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
     }).format(value)
   }
 
-  const formatARS = (amount: number): string => {
+  const formatARS = (amount: number | null | undefined): string => {
+    const safeAmount = typeof amount === "number" && !isNaN(amount) ? amount : 0
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
       currency: "ARS",
       minimumFractionDigits: 2,
-    }).format(amount)
+    }).format(safeAmount)
   }
 
   return (
