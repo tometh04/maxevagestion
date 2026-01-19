@@ -129,7 +129,6 @@ const allNavigation: NavItem[] = [
           { title: "Libro Mayor", url: "/accounting/ledger" },
           { title: "IVA", url: "/accounting/iva" },
           { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
-          { title: "Posición Mensual", url: "/accounting/monthly-position" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
           { title: "Gastos Recurrentes", url: "/accounting/recurring-payments" },
