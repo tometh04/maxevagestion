@@ -177,54 +177,20 @@ export function OperationsStatisticsPageClient() {
   const handleDateRangeChange = (from: string, to: string) => {
     setDateFrom(from)
     setDateTo(to)
-    // Auto-cargar cuando se seleccionan ambas fechas
-    // Usar un pequeño delay para asegurar que el estado se actualice
+    // Solo actualizar cuando ambas fechas estén seleccionadas
     if (from && to) {
-      setTimeout(async () => {
-        // Validar que ambas fechas estén seleccionadas
-        if (!from || !to) {
-          toast({
-            title: "Fechas requeridas",
-            description: "Debes seleccionar una fecha de inicio y una fecha de fin",
-            variant: "destructive",
-          })
-          return
-        }
-
-        // Validar que la fecha de fin sea después de la de inicio
-        if (new Date(to) < new Date(from)) {
-          toast({
-            title: "Rango inválido",
-            description: "La fecha de fin debe ser posterior a la fecha de inicio",
-            variant: "destructive",
-          })
-          return
-        }
-
-        try {
-          setLoading(true)
-          const params = new URLSearchParams()
-          params.append("dateFrom", from)
-          params.append("dateTo", to)
-          
-          const response = await fetch(`/api/operations/statistics?${params.toString()}`)
-          
-          if (!response.ok) {
-            throw new Error('Error al cargar estadísticas')
-          }
-
-          const data = await response.json()
-          setStats(data)
-        } catch (error: any) {
-          console.error('Error loading statistics:', error)
-          toast({
-            title: "Error",
-            description: error.message || "No se pudieron cargar las estadísticas",
-            variant: "destructive",
-          })
-        } finally {
-          setLoading(false)
-        }
+      // Validar que la fecha de fin sea después de la de inicio
+      if (new Date(to) < new Date(from)) {
+        toast({
+          title: "Rango inválido",
+          description: "La fecha de fin debe ser posterior a la fecha de inicio",
+          variant: "destructive",
+        })
+        return
+      }
+      // Usar un pequeño delay para asegurar que el estado se actualice
+      setTimeout(() => {
+        loadStatistics()
       }, 100)
     }
   }
