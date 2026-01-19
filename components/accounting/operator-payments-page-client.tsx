@@ -326,9 +326,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           <CardTitle>Filtros</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Agencia</Label>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 items-end">
+            <div className="space-y-1.5">
+              <Label className="text-xs">Agencia</Label>
               <Select value={agencyFilter} onValueChange={setAgencyFilter}>
                 <SelectTrigger>
                   <SelectValue />
@@ -343,8 +343,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Operador</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Operador</Label>
               <Select value={operatorFilter} onValueChange={setOperatorFilter}>
                 <SelectTrigger>
                   <SelectValue />
@@ -359,8 +359,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Estado</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Estado</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger>
                   <SelectValue />
@@ -373,40 +373,35 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label>Rango de fechas (vencimiento)</Label>
-              <div className="flex items-center gap-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Desde</Label>
-                  <DateInputWithCalendar
-                    value={dueDateFrom}
-                    onChange={(date) => {
-                      setDueDateFrom(date)
-                      if (date && dueDateTo && dueDateTo < date) {
-                        setDueDateTo(undefined)
-                      }
-                    }}
-                    placeholder="dd/MM/yyyy"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Hasta</Label>
-                  <DateInputWithCalendar
-                    value={dueDateTo}
-                    onChange={(date) => {
-                      if (date && dueDateFrom && date < dueDateFrom) {
-                        return
-                      }
-                      setDueDateTo(date)
-                    }}
-                    placeholder="dd/MM/yyyy"
-                    minDate={dueDateFrom}
-                  />
-                </div>
-              </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Venc. Desde</Label>
+              <DateInputWithCalendar
+                value={dueDateFrom}
+                onChange={(date) => {
+                  setDueDateFrom(date)
+                  if (date && dueDateTo && dueDateTo < date) {
+                    setDueDateTo(undefined)
+                  }
+                }}
+                placeholder="dd/MM/yyyy"
+              />
             </div>
-            <div className="space-y-2">
-              <Label>Monto mínimo</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Venc. Hasta</Label>
+              <DateInputWithCalendar
+                value={dueDateTo}
+                onChange={(date) => {
+                  if (date && dueDateFrom && date < dueDateFrom) {
+                    return
+                  }
+                  setDueDateTo(date)
+                }}
+                placeholder="dd/MM/yyyy"
+                minDate={dueDateFrom}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Monto mín.</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -414,8 +409,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 onChange={(e) => setAmountMinInput(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Monto máximo</Label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Monto máx.</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -423,8 +418,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 onChange={(e) => setAmountMaxInput(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label>Buscar operación</Label>
+            <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
+              <Label className="text-xs">Buscar operación</Label>
               <Input
                 type="text"
                 placeholder="Código o destino"
