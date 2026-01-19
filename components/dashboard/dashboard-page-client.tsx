@@ -306,7 +306,7 @@ export function DashboardPageClient({
         <Card className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
             <CardTitle className="text-xs font-medium text-muted-foreground">
-              Pendientes Clientes
+              Deudores por Ventas
             </CardTitle>
             <Users className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
@@ -319,7 +319,7 @@ export function DashboardPageClient({
                   ${Math.round(kpis.pendingCustomerPayments / 1000)}K
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Por cobrar de clientes
+                  Pendientes de clientes
                 </p>
               </>
             )}
@@ -329,7 +329,7 @@ export function DashboardPageClient({
         <Card className="overflow-hidden">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
             <CardTitle className="text-xs font-medium text-muted-foreground">
-              Pendientes Operadores
+              Deuda a Operadores
             </CardTitle>
             <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
@@ -342,7 +342,7 @@ export function DashboardPageClient({
                   ${Math.round(kpis.pendingOperatorPayments / 1000)}K
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Por pagar a operadores
+                  Pendientes de operadores
                 </p>
               </>
             )}
