@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Formato de números completos en KPIs del dashboard)
+**Última actualización:** 2025-01-19 (Sistema de Pago Masivo a Operadores - Mejoras y desglose por operación)
 
 ---
 
@@ -319,39 +319,79 @@ Se renombró la funcionalidad "Pagos Recurrentes" a "Gastos Recurrentes" y se im
 
 ### 10. Sistema de Pago Masivo a Operadores
 
-**Fecha:** 2025-01-17
+**Fecha:** 2025-01-17 (Mejorado 2025-01-19)
 
 **Descripción:**
-Se implementó un sistema completo de pago masivo a operadores que permite registrar múltiples pagos en una sola transacción, con soporte para pagos parciales y conversión de moneda.
+Se implementó un sistema completo de pago masivo a operadores que permite registrar múltiples pagos en una sola transacción, con soporte para pagos parciales, conversión de moneda y desglose detallado por operación.
 
-**Funcionalidades:**
-- Dialog de pago masivo con filtros:
-  - Filtro por operador
-  - Filtro por moneda (ARS/USD/Todas)
-  - Filtro por fecha de viaje (preparado)
-  - Selección múltiple con checkboxes
-  - Monto editable por operación (pagos parciales)
-- Conversor de moneda:
-  - Campo TC manual cuando hay mezcla de monedas
-  - Conversión automática ARS/USD y USD/ARS
-  - Validación de TC requerido
-- API de pago masivo:
-  - Actualiza `paid_amount` en `operator_payments`
-  - Cambia status a PAID si `paid_amount >= amount`
-  - Crea `ledger_movements` en cuenta origen y RESULTADO
-  - Soporta conversión de moneda en pagos
-- UI mejorada:
-  - Botón "Cargar Pago Masivo" en página principal
-  - Badge "Parcial" para pagos parciales
-  - Muestra monto pagado en tabla
+**Flujo de Uso (4 Pasos):**
+
+#### Paso 1: Seleccionar Operador
+- Selector dropdown con lista de todos los operadores disponibles
+- Muestra confirmación visual cuando se selecciona un operador
+- Mensaje: "✓ Operador seleccionado: [Nombre]"
+
+#### Paso 2: Seleccionar Moneda
+- Opciones: USD o ARS
+- El sistema filtrará las deudas por la moneda seleccionada
+- Muestra confirmación visual de la moneda elegida
+
+#### Paso 3: Seleccionar Deudas a Pagar
+- **Tabla de deudas pendientes** que muestra:
+  - Operación (código y destino)
+  - Monto Total
+  - Monto Pagado (si hay pagos parciales previos)
+  - Monto Pendiente
+  - Fecha de Vencimiento
+  - Monto a Pagar (editable)
+- **Selección múltiple** con checkboxes individuales y "Seleccionar todos"
+- **Montos editables** para pagos parciales (no puede superar el pendiente)
+- **Badges visuales:**
+  - 🟡 "Parcial" - si ya tiene pagos anteriores
+  - 🔴 "Vencido" - si la fecha de vencimiento pasó
+- **Mensaje cuando no hay deudas** con instrucciones de verificación
+
+#### Paso 4: Información del Pago
+- **Cuenta Financiera de Origen** - de dónde sale el dinero
+- **Moneda del Pago** - puede diferir de la moneda de la deuda
+- **Tipo de Cambio** - obligatorio si las monedas difieren
+- **Número de Comprobante** - referencia de transferencia/recibo
+- **Fecha de Pago**
+- **Notas** (opcional)
+- **Resumen del pago:**
+  - Total de deudas seleccionadas
+  - **Desglose por operación** (código, destino, monto a pagar, % si es parcial)
+  - Total a pagar en moneda destino (si hay conversión)
+  - Cantidad de deudas seleccionadas
+
+**Funcionalidades Técnicas:**
+- **Sin filtro de agencia:** El pago masivo muestra TODAS las deudas del operador sin importar la agencia, permitiendo pagar deudas de múltiples agencias en una sola transacción
+- **Pagos parciales:** Permite pagar una parte de la deuda, actualizando `paid_amount`
+- **Conversión de moneda:** Soporta pagar en ARS una deuda en USD y viceversa
+- **Validaciones completas:**
+  - Operador requerido
+  - Moneda requerida
+  - Al menos una deuda seleccionada
+  - Cuenta financiera requerida
+  - Tipo de cambio requerido si las monedas difieren
+  - Número de comprobante requerido
+
+**API de Pago Masivo (`POST /api/accounting/operator-payments/bulk`):**
+- Recibe array de pagos con `payment_id` y `amount`
+- Actualiza `paid_amount` en `operator_payments`
+- Cambia status a `PAID` si `paid_amount >= amount`
+- Crea `ledger_movements` en cuenta origen (EXPENSE) y RESULTADO/COSTOS
+- Soporta conversión de moneda en pagos
+- Retorna cantidad de pagos procesados exitosamente
 
 **Archivos creados:**
-- `components/accounting/bulk-payment-dialog.tsx` - Dialog completo de pago masivo
+- `components/accounting/bulk-payment-dialog.tsx` - Dialog completo de pago masivo con flujo de 4 pasos
 - `app/api/accounting/operator-payments/bulk/route.ts` - API de pago masivo
 
 **Archivos modificados:**
 - `app/(dashboard)/accounting/operator-payments/page.tsx` - Carga de operadores y cuentas
-- `components/accounting/operator-payments-page-client.tsx` - Botón y badges
+- `components/accounting/operator-payments-page-client.tsx` - Botón "Cargar Pago Masivo" y badges
+- `app/api/accounting/operator-payments/route.ts` - Logging mejorado para debug
 - `lib/supabase/types.ts` - Tipos TypeScript actualizados con `paid_amount`
 
 **Migraciones de base de datos:**
@@ -361,6 +401,22 @@ Se implementó un sistema completo de pago masivo a operadores que permite regis
 - Pagos parciales: `paid_amount` se actualiza y `status` cambia a PAID solo si `paid_amount >= amount`
 - Conversión de moneda: Se calcula `amount_usd` y `amount_ars_equivalent` según el TC proporcionado
 - Ledger movements: Se crean en la cuenta de origen (origen del pago) y en RESULTADO/COSTOS
+- **Logging de debug:** Logs detallados en consola del navegador (`[BulkPayment]`) y servidor (`[OperatorPayments API]`) para troubleshooting
+
+**UI/UX:**
+- Flujo guiado paso a paso con confirmaciones visuales
+- Badges de estado (Parcial, Vencido) para fácil identificación
+- Desglose por operación en el resumen antes de confirmar
+- Porcentaje de pago parcial mostrado cuando aplica
+- Montos formateados con separadores de miles
+- Estados de carga y validaciones en tiempo real
+
+**Troubleshooting:**
+Si no aparecen deudas para un operador:
+1. Verificar que el operador tenga pagos con status `PENDING` o `OVERDUE`
+2. Verificar que los pagos estén en la moneda seleccionada
+3. Verificar que los pagos tengan deuda pendiente (`amount - paid_amount > 0`)
+4. Revisar logs en consola: `[BulkPayment]` (frontend) y `[OperatorPayments API]` (backend)
 
 ### 12. Filtros Avanzados para Cuentas por Pagar a Proveedores
 
@@ -1286,6 +1342,44 @@ Se corrigieron todos los diálogos que faltaban `DialogTitle` o `DialogDescripti
 - La clase `sr-only` oculta visualmente los elementos pero los mantiene accesibles para screen readers
 - Todos los diálogos ahora cumplen con los estándares de accesibilidad de Radix UI
 - Los warnings de desarrollo deberían desaparecer al ejecutar la aplicación localmente
+
+---
+
+#### Error: Pago Masivo no mostraba deudas pendientes del operador
+**Fecha:** 2025-01-19
+
+**Problema:**
+- Al seleccionar un operador (ej: "Delfos Tour Op") y moneda en el dialog de Pago Masivo, el sistema mostraba "No se encontraron deudas pendientes"
+- Los logs mostraban: `[BulkPayment] Total pagos recibidos: 0`
+- El operador SÍ tenía deudas pendientes visibles en la tabla principal
+
+**Causa raíz:**
+- El componente `bulk-payment-dialog.tsx` estaba filtrando por la primera agencia del usuario (`agencies[0].id`)
+- Si las deudas del operador estaban en una agencia diferente, no aparecían
+- No había suficiente logging para diagnosticar el problema
+
+**Solución:**
+1. **Eliminado filtro de agencia** en el fetch de deudas del pago masivo
+   - Ahora muestra TODAS las deudas del operador sin importar la agencia
+   - Permite pagar deudas de múltiples agencias en una sola transacción
+
+2. **Agregado logging detallado:**
+   - Frontend (`[BulkPayment]`): logs de operador seleccionado, pagos recibidos, filtros aplicados
+   - Backend (`[OperatorPayments API]`): logs de parámetros recibidos, pagos encontrados en DB
+
+3. **Mejoras en UI:**
+   - Mensaje de error más detallado con lista de verificación
+   - Desglose por operación en el resumen del pago
+   - Badges de "Parcial" y "Vencido" para identificar deudas fácilmente
+
+**Archivos modificados:**
+- `components/accounting/bulk-payment-dialog.tsx` - Removido filtro de agencia, mejorado UI y logging
+- `app/api/accounting/operator-payments/route.ts` - Agregado logging detallado para debug
+
+**Lecciones aprendidas:**
+- Los filtros de agencia deben ser opcionales en operaciones de pago masivo
+- El logging es crucial para diagnosticar problemas de datos
+- Los mensajes de error deben incluir instrucciones de verificación
 
 ---
 
