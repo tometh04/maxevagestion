@@ -98,12 +98,11 @@ export function DestinationsPieChart({ data }: DestinationsPieChartProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Distribución de Ventas</CardTitle>
-        <CardDescription>Top 5 destinos por ventas</CardDescription>
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm font-medium">Distribución de Ventas</CardTitle>
       </CardHeader>
-      <CardContent className="overflow-hidden">
-        <ChartContainer config={chartConfig} className="h-[250px] w-full sm:h-[300px]">
+      <CardContent className="px-4 pb-4 overflow-hidden">
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
           <PieChart>
             <ChartTooltip
               cursor={false}

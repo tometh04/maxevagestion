@@ -75,12 +75,11 @@ export function CashflowChart({ data }: CashflowChartProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Flujo de Caja</CardTitle>
-        <CardDescription>Ingresos, egresos y flujo neto en el tiempo</CardDescription>
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm font-medium">Flujo de Caja</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[250px] w-full sm:h-[300px]">
+      <CardContent className="px-4 pb-4">
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
           <LineChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} />
             <XAxis

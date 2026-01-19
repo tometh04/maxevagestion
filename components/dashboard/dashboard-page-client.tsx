@@ -194,8 +194,8 @@ export function DashboardPageClient({
     <div className="flex-1 space-y-4 pt-4 md:pt-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h2>
-          <p className="text-sm text-muted-foreground sm:text-base">
+          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <p className="text-xs text-muted-foreground">
             Vista general del negocio
           </p>
         </div>

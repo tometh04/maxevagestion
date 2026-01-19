@@ -96,12 +96,11 @@ export function RegionsRadarChart({ data }: RegionsRadarChartProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Ventas por Región</CardTitle>
-        <CardDescription>Distribución de ventas por región geográfica</CardDescription>
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm font-medium">Ventas por Región</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[250px] w-full sm:h-[300px]">
+      <CardContent className="px-4 pb-4">
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
           <RadarChart data={chartData}>
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
             <PolarAngleAxis dataKey="region" />

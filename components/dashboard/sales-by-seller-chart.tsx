@@ -61,12 +61,11 @@ export function SalesBySellerChart({ data }: SalesBySellerChartProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Ventas por Vendedor</CardTitle>
-        <CardDescription>Desglose de ventas y margen por vendedor</CardDescription>
+      <CardHeader className="py-3 px-4">
+        <CardTitle className="text-sm font-medium">Ventas por Vendedor</CardTitle>
       </CardHeader>
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[250px] w-full sm:h-[300px]">
+      <CardContent className="px-4 pb-4">
+        <ChartContainer config={chartConfig} className="h-[200px] w-full">
           <BarChart accessibilityLayer data={chartData}>
             <CartesianGrid vertical={false} />
             <XAxis
