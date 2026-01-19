@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -63,11 +63,76 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
   const [dueDateFrom, setDueDateFrom] = useState<string>("")
   const [dueDateTo, setDueDateTo] = useState<string>("")
+  
+  // Estados para inputs (valores que el usuario tipea)
+  const [amountMinInput, setAmountMinInput] = useState<string>("")
+  const [amountMaxInput, setAmountMaxInput] = useState<string>("")
+  const [operationSearchInput, setOperationSearchInput] = useState<string>("")
+  
+  // Estados para filtros aplicados (valores que se usan en el fetch)
   const [amountMin, setAmountMin] = useState<string>("")
   const [amountMax, setAmountMax] = useState<string>("")
   const [operationSearch, setOperationSearch] = useState<string>("")
+  
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
+  
+  // Refs para los timeouts de debounce
+  const amountMinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const amountMaxTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const operationSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Debounce para amountMin
+  useEffect(() => {
+    if (amountMinTimeoutRef.current) {
+      clearTimeout(amountMinTimeoutRef.current)
+    }
+    
+    amountMinTimeoutRef.current = setTimeout(() => {
+      setAmountMin(amountMinInput)
+    }, 500) // Espera 500ms después de que el usuario deje de escribir
+    
+    return () => {
+      if (amountMinTimeoutRef.current) {
+        clearTimeout(amountMinTimeoutRef.current)
+      }
+    }
+  }, [amountMinInput])
+
+  // Debounce para amountMax
+  useEffect(() => {
+    if (amountMaxTimeoutRef.current) {
+      clearTimeout(amountMaxTimeoutRef.current)
+    }
+    
+    amountMaxTimeoutRef.current = setTimeout(() => {
+      setAmountMax(amountMaxInput)
+    }, 500) // Espera 500ms después de que el usuario deje de escribir
+    
+    return () => {
+      if (amountMaxTimeoutRef.current) {
+        clearTimeout(amountMaxTimeoutRef.current)
+      }
+    }
+  }, [amountMaxInput])
+
+  // Debounce para operationSearch
+  useEffect(() => {
+    if (operationSearchTimeoutRef.current) {
+      clearTimeout(operationSearchTimeoutRef.current)
+    }
+    
+    operationSearchTimeoutRef.current = setTimeout(() => {
+      setOperationSearch(operationSearchInput)
+    }, 500) // Espera 500ms después de que el usuario deje de escribir
+    
+    return () => {
+      if (operationSearchTimeoutRef.current) {
+        clearTimeout(operationSearchTimeoutRef.current)
+      }
+    }
+  }, [operationSearchInput])
+
+  // Fetch de pagos (se ejecuta cuando cambian los filtros aplicados)
   useEffect(() => {
     async function fetchPayments() {
       setLoading(true)
@@ -325,8 +390,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               <Input
                 type="number"
                 placeholder="0.00"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
+                value={amountMinInput}
+                onChange={(e) => setAmountMinInput(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -334,8 +399,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               <Input
                 type="number"
                 placeholder="0.00"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
+                value={amountMaxInput}
+                onChange={(e) => setAmountMaxInput(e.target.value)}
               />
             </div>
             <div className="space-y-2">
@@ -343,8 +408,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               <Input
                 type="text"
                 placeholder="Código o destino"
-                value={operationSearch}
-                onChange={(e) => setOperationSearch(e.target.value)}
+                value={operationSearchInput}
+                onChange={(e) => setOperationSearchInput(e.target.value)}
               />
             </div>
           </div>
@@ -365,6 +430,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   setStatusFilter("ALL")
                   setDueDateFrom("")
                   setDueDateTo("")
+                  setAmountMinInput("")
+                  setAmountMaxInput("")
+                  setOperationSearchInput("")
                   setAmountMin("")
                   setAmountMax("")
                   setOperationSearch("")
