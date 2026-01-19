@@ -1383,6 +1383,103 @@ Se corrigieron todos los diálogos que faltaban `DialogTitle` o `DialogDescripti
 
 ---
 
+### 18. Mejora de Alineación de Filtros en Todo el Sistema
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se realizó una refactorización completa de todos los componentes de filtros en el sistema para lograr una alineación consistente, diseño compacto y uniformidad visual. Todos los filtros ahora están en 1-2 líneas máximo y perfectamente alineados.
+
+**Problema Identificado:**
+- Los filtros tenían estructuras inconsistentes (algunos con divs flex internos para fechas, otros sin ellos)
+- Los campos no estaban alineados verticalmente
+- Los labels tenían tamaños diferentes
+- Los separadores innecesarios causaban problemas visuales
+- Los campos de fecha ocupaban demasiado espacio vertical
+
+**Solución Implementada:**
+
+1. **Separación de Campos de Fecha:**
+   - Los campos "Desde" y "Hasta" ahora están en columnas individuales del grid
+   - Se eliminaron todos los divs flex internos que causaban desalineación
+   - Cada campo de fecha es una columna independiente
+
+2. **Alineación Consistente:**
+   - Todos los grids ahora usan `items-end` para alinear campos por la parte inferior
+   - Esto asegura que todos los inputs estén al mismo nivel visual
+   - Los labels están alineados, no solo los inputs
+
+3. **Labels Unificados:**
+   - Todos los labels usan `text-xs` para diseño compacto
+   - Espaciado consistente con `space-y-1.5` en lugar de `space-y-2`
+   - Labels más cortos donde sea posible (ej: "Venc. Desde" en lugar de "Rango de fechas (vencimiento)")
+
+4. **Grids Optimizados:**
+   - Grids configurados para 1-2 líneas máximo según tamaño de pantalla
+   - Uso de breakpoints responsive: `grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8`
+   - Campos largos usan `col-span-2` cuando es necesario
+
+**Archivos Modificados:**
+- `components/dashboard/dashboard-filters.tsx` - Dashboard filters
+- `components/accounting/debts-sales-page-client.tsx` - Deudores por Ventas filters
+- `components/accounting/operator-payments-page-client.tsx` - Pagos a Operadores filters
+- `components/operations/operations-filters.tsx` - Filtros de Operaciones
+- `components/accounting/ledger-filters.tsx` - Libro Mayor filters
+- `components/cash/cash-filters.tsx` - Caja filters
+- `components/alerts/alerts-filters.tsx` - Alertas filters
+- `components/reports/reports-filters.tsx` - Reportes filters
+
+**Resultado:**
+- ✅ Todos los filtros están perfectamente alineados
+- ✅ Diseño compacto y uniforme en todo el sistema
+- ✅ Campos de fecha no ocupan más espacio vertical que otros campos
+- ✅ Mejor aprovechamiento del espacio horizontal
+- ✅ UX consistente en todas las páginas
+
+---
+
+### 19. Reemplazo Completo de Inputs type="date" por DateInputWithCalendar
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se reemplazaron todos los inputs nativos `type="date"` por el componente personalizado `DateInputWithCalendar` en todo el sistema para consistencia visual y mejor UX.
+
+**Problema Identificado:**
+- Algunos componentes aún usaban `Input type="date"` que causaba inconsistencias visuales
+- Los inputs nativos tienen diferentes estilos según el navegador
+- El componente `DateInputWithCalendar` ya estaba implementado pero no se usaba en todos lados
+- Errores de TypeScript: `Date | undefined` no compatible con `string` en inputs nativos
+
+**Solución Implementada:**
+
+1. **Reemplazo en Debts Sales:**
+   - Eliminados `Input type="date"` para filtros de fecha
+   - Reemplazados por `DateInputWithCalendar` con validación de rango
+   - Estado actualizado de `string` a `Date | undefined`
+
+2. **Corrección de Estructura HTML:**
+   - Eliminados divs anidados incorrectos
+   - Botón "Limpiar filtros" correctamente posicionado
+   - Actualizado onClick para usar `undefined` en lugar de `""`
+
+**Archivos Modificados:**
+- `components/accounting/debts-sales-page-client.tsx` - Reemplazados inputs de fecha
+
+**Detalles Técnicos:**
+- Estado de fechas cambiado de `string` a `Date | undefined`
+- Validación de rango: "Hasta" no puede ser menor que "Desde"
+- Placeholder unificado: "dd/MM/yyyy"
+- Botón de limpiar actualizado para resetear a `undefined`
+
+**Resultado:**
+- ✅ Consistencia visual en todo el sistema
+- ✅ Mejor UX con calendario integrado
+- ✅ Validación de rangos de fechas
+- ✅ Sin errores de TypeScript
+
+---
+
 ## Correcciones Recientes
 
 ### 2025-01-17
