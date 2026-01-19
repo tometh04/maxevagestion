@@ -4,10 +4,8 @@ import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Loader2, TrendingUp, DollarSign, Users, MapPin, RefreshCw } from "lucide-react"
+import { Loader2, TrendingUp, DollarSign, Users, MapPin } from "lucide-react"
+import { DateRangePicker } from "@/components/ui/date-range-picker"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -123,15 +121,38 @@ export function OperationsStatisticsPageClient() {
   const [dateTo, setDateTo] = useState(defaultTo)
 
   useEffect(() => {
-    loadStatistics()
+    // Solo cargar si hay ambas fechas
+    if (dateFrom && dateTo) {
+      loadStatistics()
+    }
   }, [])
 
   const loadStatistics = async () => {
+    // Validar que ambas fechas estén seleccionadas
+    if (!dateFrom || !dateTo) {
+      toast({
+        title: "Fechas requeridas",
+        description: "Debes seleccionar una fecha de inicio y una fecha de fin",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validar que la fecha de fin sea después de la de inicio
+    if (new Date(dateTo) < new Date(dateFrom)) {
+      toast({
+        title: "Rango inválido",
+        description: "La fecha de fin debe ser posterior a la fecha de inicio",
+        variant: "destructive",
+      })
+      return
+    }
+
     try {
       setLoading(true)
       const params = new URLSearchParams()
-      if (dateFrom) params.append("dateFrom", dateFrom)
-      if (dateTo) params.append("dateTo", dateTo)
+      params.append("dateFrom", dateFrom)
+      params.append("dateTo", dateTo)
       
       const response = await fetch(`/api/operations/statistics?${params.toString()}`)
       
@@ -153,8 +174,59 @@ export function OperationsStatisticsPageClient() {
     }
   }
 
-  const handleFilter = () => {
-    loadStatistics()
+  const handleDateRangeChange = (from: string, to: string) => {
+    setDateFrom(from)
+    setDateTo(to)
+    // Auto-cargar cuando se seleccionan ambas fechas
+    // Usar un pequeño delay para asegurar que el estado se actualice
+    if (from && to) {
+      setTimeout(async () => {
+        // Validar que ambas fechas estén seleccionadas
+        if (!from || !to) {
+          toast({
+            title: "Fechas requeridas",
+            description: "Debes seleccionar una fecha de inicio y una fecha de fin",
+            variant: "destructive",
+          })
+          return
+        }
+
+        // Validar que la fecha de fin sea después de la de inicio
+        if (new Date(to) < new Date(from)) {
+          toast({
+            title: "Rango inválido",
+            description: "La fecha de fin debe ser posterior a la fecha de inicio",
+            variant: "destructive",
+          })
+          return
+        }
+
+        try {
+          setLoading(true)
+          const params = new URLSearchParams()
+          params.append("dateFrom", from)
+          params.append("dateTo", to)
+          
+          const response = await fetch(`/api/operations/statistics?${params.toString()}`)
+          
+          if (!response.ok) {
+            throw new Error('Error al cargar estadísticas')
+          }
+
+          const data = await response.json()
+          setStats(data)
+        } catch (error: any) {
+          console.error('Error loading statistics:', error)
+          toast({
+            title: "Error",
+            description: error.message || "No se pudieron cargar las estadísticas",
+            variant: "destructive",
+          })
+        } finally {
+          setLoading(false)
+        }
+      }, 100)
+    }
   }
 
   // Datos para gráfico de torta (Cobrado vs Deuda)
@@ -203,27 +275,12 @@ export function OperationsStatisticsPageClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs whitespace-nowrap">Desde</Label>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="h-8 text-xs w-32"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs whitespace-nowrap">Hasta</Label>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="h-8 text-xs w-32"
-            />
-          </div>
-          <Button size="sm" variant="outline" onClick={handleFilter} className="h-8">
-            <RefreshCw className="h-3 w-3" />
-          </Button>
+          <DateRangePicker
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={handleDateRangeChange}
+            placeholder="Seleccionar rango de fechas"
+          />
         </div>
       </div>
 
