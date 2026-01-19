@@ -94,23 +94,25 @@ const COLORS = {
   new: '#3b82f6',
 }
 
-const formatCurrency = (value: number) => {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`
+const formatCurrency = (value: number | null | undefined) => {
+  const numValue = value ?? 0
+  if (numValue >= 1000000) {
+    return `$${(numValue / 1000000).toFixed(1)}M`
   }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(1)}K`
+  if (numValue >= 1000) {
+    return `$${(numValue / 1000).toFixed(1)}K`
   }
-  return `$${value.toFixed(0)}`
+  return `$${numValue.toFixed(0)}`
 }
 
-const formatFullCurrency = (value: number) => {
+const formatFullCurrency = (value: number | null | undefined) => {
+  const numValue = value ?? 0
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value)
+  }).format(numValue)
 }
 
 export function CustomersStatisticsPageClient() {
@@ -254,25 +256,25 @@ export function CustomersStatisticsPageClient() {
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
-              <p className="text-base font-semibold">{stats.overview.totalCustomers.toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground">{stats.overview.newThisMonth} nuevos</p>
+              <p className="text-base font-semibold">{(stats.overview.totalCustomers ?? 0).toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground">{stats.overview.newThisMonth ?? 0} nuevos</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded ${stats.overview.growthPercentage >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-              {stats.overview.growthPercentage >= 0 ? (
-                <TrendingUp className={`h-3.5 w-3.5 ${stats.overview.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+            <div className={`p-1.5 rounded ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+              {(stats.overview.growthPercentage ?? 0) >= 0 ? (
+                <TrendingUp className={`h-3.5 w-3.5 ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`} />
               ) : (
                 <TrendingDown className="h-3.5 w-3.5 text-red-600" />
               )}
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Crecimiento</p>
-              <p className={`text-base font-semibold ${stats.overview.growthPercentage >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {stats.overview.growthPercentage >= 0 ? '+' : ''}{stats.overview.growthPercentage}%
+              <p className={`text-base font-semibold ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {(stats.overview.growthPercentage ?? 0) >= 0 ? '+' : ''}{stats.overview.growthPercentage ?? 0}%
               </p>
             </div>
           </div>
@@ -298,7 +300,7 @@ export function CustomersStatisticsPageClient() {
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ops Prom.</p>
-              <p className="text-base font-semibold text-purple-600">{stats.overview.avgOperationsPerCustomer.toFixed(1)}</p>
+              <p className="text-base font-semibold text-purple-600">{(stats.overview.avgOperationsPerCustomer ?? 0).toFixed(1)}</p>
               <p className="text-[10px] text-muted-foreground">viajes por cliente</p>
             </div>
           </div>
@@ -376,11 +378,11 @@ export function CustomersStatisticsPageClient() {
             <div className="flex justify-center gap-3 mt-2 text-xs">
               <div className="flex items-center gap-1">
                 <UserCheck className="h-3 w-3 text-green-600" />
-                <span>{stats.overview.activeCustomers} activos</span>
+                <span>{stats.overview.activeCustomers ?? 0} activos</span>
               </div>
               <div className="flex items-center gap-1">
                 <UserX className="h-3 w-3 text-red-600" />
-                <span>{stats.overview.inactiveCustomers} inactivos</span>
+                <span>{stats.overview.inactiveCustomers ?? 0} inactivos</span>
               </div>
             </div>
           </CardContent>
@@ -416,10 +418,10 @@ export function CustomersStatisticsPageClient() {
                       {customer.name}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {formatCurrency(customer.totalSpent)}
+                      {formatCurrency(customer.totalSpent ?? 0)}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {customer.totalOperations}
+                      {customer.totalOperations ?? 0}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -462,10 +464,10 @@ export function CustomersStatisticsPageClient() {
                       {customer.name}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {customer.totalOperations}
+                      {customer.totalOperations ?? 0}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {formatCurrency(customer.totalSpent)}
+                      {formatCurrency(customer.totalSpent ?? 0)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -484,8 +486,8 @@ export function CustomersStatisticsPageClient() {
 
       {/* Info adicional */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
-        <span>{stats.overview.activeCustomers} activos • {stats.overview.inactiveCustomers} inactivos</span>
-        <span>Total gastado: {formatFullCurrency(stats.overview.totalSpent)}</span>
+        <span>{(stats.overview.activeCustomers ?? 0)} activos • {(stats.overview.inactiveCustomers ?? 0)} inactivos</span>
+        <span>Total gastado: {formatFullCurrency(stats.overview.totalSpent ?? 0)}</span>
       </div>
     </div>
   )
