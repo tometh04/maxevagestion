@@ -233,11 +233,11 @@ export async function GET(request: Request) {
 
     // Clientes nuevos este mes
     const thisMonth = format(now, "yyyy-MM")
-    const newThisMonth = newCustomersByMonth[thisMonth] || 0
+    const newThisMonth = newCustomersByPeriod[thisMonth] || 0
 
     // Clientes nuevos mes anterior
     const lastMonth = format(subMonths(now, 1), "yyyy-MM")
-    const newLastMonth = newCustomersByMonth[lastMonth] || 0
+    const newLastMonth = newCustomersByPeriod[lastMonth] || 0
 
     // Crecimiento porcentual
     const growthPercentage = newLastMonth > 0 

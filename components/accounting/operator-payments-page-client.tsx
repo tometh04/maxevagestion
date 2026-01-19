@@ -24,12 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { format } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { format, parseISO } from "date-fns"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
