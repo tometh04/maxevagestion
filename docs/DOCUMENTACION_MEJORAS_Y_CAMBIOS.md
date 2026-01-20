@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Conversión de Moneda en Facturación AFIP y Mejoras en Formulario de Factura)
+**Última actualización:** 2025-01-19 (Ordenamiento de Cuentas por Saldo en Caja)
 
 ---
 
@@ -2746,6 +2746,98 @@ Se mejoró el formulario de facturación para filtrar operaciones por cliente se
 - ✅ Ahorro de tiempo: no hay que buscar y tipear montos manualmente
 - ✅ Flexibilidad: todos los items son editables
 - ✅ Soporte completo para múltiples operadores por operación
+
+---
+
+### 37. Selector de Punto de Venta por Agencia en Facturación
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó un sistema completo para seleccionar puntos de venta por agencia en el formulario de facturación, permitiendo crear facturas sin operación asociada y agregar clientes nuevos desde el formulario.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Nuevo Endpoint: `/api/invoices/points-of-sale`
+- Obtiene puntos de venta habilitados por agencia desde AFIP
+- Filtra solo puntos de venta no bloqueados
+- Retorna agencias con sus puntos de venta configurados
+- Se obtienen automáticamente desde AFIP usando el CUIT configurado
+
+#### 2. Selector de Punto de Venta por Agencia:
+- Selector agrupa puntos de venta por agencia
+- Al seleccionar un punto de venta, se determina automáticamente la agencia
+- Muestra todos los puntos de venta habilitados (número y tipo)
+- Texto descriptivo mostrando la agencia seleccionada
+
+#### 3. Botón para Crear Nuevo Cliente:
+- Botón "Nuevo" junto al selector de cliente
+- Abre el diálogo de creación de cliente (`NewCustomerDialog`)
+- Al crear, selecciona automáticamente el nuevo cliente en el formulario
+- Agrega el cliente a la lista sin recargar la página
+
+#### 4. Operación Opcional:
+- El campo de operación ahora está claramente marcado como "Opcional"
+- Permite crear facturas sin operación asociada (facturas externas)
+- Mejora la flexibilidad del sistema de facturación
+
+#### 5. API Actualizado:
+- El schema ahora requiere `agency_id` y `pto_vta` en el body
+- La agencia se determina del punto de venta seleccionado
+- Valida que la agencia pertenezca al usuario
+- Soporta `operation_id` y `customer_id` como opcionales (null)
+
+**Archivos Creados:**
+- `app/api/invoices/points-of-sale/route.ts` - Endpoint para obtener puntos de venta por agencia
+
+**Archivos Modificados:**
+- `app/api/invoices/route.ts` - Schema y lógica actualizados para usar `agency_id` y `pto_vta` del body
+- `app/(dashboard)/operations/billing/new/page.tsx` - UI con selector de punto de venta, botón para crear cliente, y operación opcional
+
+**Detalles Técnicos:**
+- Los puntos de venta se obtienen dinámicamente desde AFIP usando `getPointsOfSale()`
+- El sistema obtiene automáticamente TODOS los puntos de venta habilitados para el CUIT configurado
+- No hay límite en la cantidad de puntos de venta que se pueden usar
+- El selector muestra los puntos de venta agrupados por agencia para mejor organización
+
+**Resultado:**
+- ✅ Los usuarios pueden seleccionar cualquier punto de venta habilitado en AFIP
+- ✅ La agencia se determina automáticamente del punto de venta seleccionado
+- ✅ Permite crear facturas sin operación asociada (facturas externas)
+- ✅ Mejor UX: botón para crear cliente directamente desde el formulario de facturación
+- ✅ Flexibilidad: soporta múltiples puntos de venta por agencia sin configuración manual
+
+---
+
+### 38. Ordenamiento de Cuentas por Saldo en Caja USD y ARS
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó un ordenamiento automático de cuentas financieras por saldo descendente en los tabs "Caja USD" y "Caja ARS", para que las cuentas con mayor saldo aparezcan primero y las cuentas con saldo 0 o negativo queden al final.
+
+**Funcionalidades Implementadas:**
+- Ordenamiento automático por saldo descendente (`current_balance`)
+- Cuentas con mayor saldo aparecen primero
+- Cuentas con saldo 0 o negativo aparecen al final
+- Aplica tanto para "Caja USD" como "Caja ARS"
+
+**Archivos Modificados:**
+- `components/cash/cash-summary-client.tsx`
+  - Agregado `.sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))` a `usdAccounts`
+  - Agregado `.sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))` a `arsAccounts`
+
+**Detalles Técnicos:**
+- El ordenamiento se aplica usando `useMemo` para optimizar rendimiento
+- Se ordena por `current_balance` en orden descendente (mayor a menor)
+- Maneja casos donde `current_balance` puede ser `null` o `undefined` (usa 0 por defecto)
+- El ordenamiento se actualiza automáticamente cuando cambian las cuentas
+
+**Resultado:**
+- ✅ Mejor visualización: cuentas con más fondos aparecen primero
+- ✅ Identificación rápida de cuentas activas con saldo
+- ✅ Cuentas inactivas o sin saldo quedan al final
+- ✅ Mejora la experiencia de usuario al revisar el estado de las cuentas
 
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services
