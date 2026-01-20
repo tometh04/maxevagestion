@@ -25,6 +25,7 @@ import { es } from "date-fns/locale"
 import { Plus, RefreshCw, AlertCircle, Filter } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
+import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
@@ -73,6 +74,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [yearFilter, setYearFilter] = useState<string>("")
   const [newDialogOpen, setNewDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
+  const [payingExpense, setPayingExpense] = useState<any | null>(null)
+  const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [tableError, setTableError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
@@ -642,13 +645,26 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingPayment(payment)}
-                        >
-                          Editar
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                              setPayingExpense(payment)
+                              setPayDialogOpen(true)
+                            }}
+                            disabled={!payment.is_active}
+                          >
+                            Pagar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingPayment(payment)}
+                          >
+                            Editar
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -772,6 +788,16 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           payment={editingPayment}
         />
       )}
+
+      <PayRecurringExpenseDialog
+        expense={payingExpense}
+        open={payDialogOpen}
+        onOpenChange={(open) => {
+          setPayDialogOpen(open)
+          if (!open) setPayingExpense(null)
+        }}
+        onSuccess={fetchData}
+      />
     </div>
   )
 }
