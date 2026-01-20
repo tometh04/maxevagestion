@@ -21,6 +21,7 @@ interface Partner {
   id: string
   partner_name: string
   profit_percentage: number | null
+  is_active?: boolean
 }
 
 interface DistributeProfitsDialogProps {
