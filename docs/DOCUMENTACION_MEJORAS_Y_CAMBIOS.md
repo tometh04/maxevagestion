@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Distribución de Ganancias a Socios y Tracking de Deudas)
+**Última actualización:** 2025-01-19 (Conversión de Moneda en Facturación AFIP y Mejoras en Formulario de Factura)
 
 ---
 
@@ -2598,6 +2598,154 @@ Se implementó un sistema completo para distribuir ganancias mensuales entre soc
 - ✅ Build exitoso en Vercel sin errores
 
 ---
+
+### 35. Conversión de Moneda USD a ARS en Facturación AFIP
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó la funcionalidad completa para facturar en pesos argentinos operaciones que están en dólares, cumpliendo con la normativa AFIP/ARCA para conversión de moneda en facturación electrónica.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Detección Automática de Moneda de Operación:
+- Al seleccionar una operación en el formulario de factura, el sistema detecta automáticamente su moneda
+- Si la operación está en USD, se muestra un panel especial con opciones de conversión
+- El sistema carga automáticamente el tipo de cambio del día hábil anterior (según normativa AFIP/ARCA)
+
+#### 2. Selector de Moneda de Facturación:
+- **Pesos Argentinos (ARS)**: Convierte automáticamente desde USD usando tipo de cambio
+- **Dólares (USD)**: Factura directamente en dólares sin conversión
+- El selector solo aparece cuando la operación está en USD
+
+#### 3. Gestión de Tipo de Cambio:
+- Carga automática del TC del día hábil anterior desde `/api/exchange-rates?date=[fecha]`
+- Fallback al TC más reciente si no hay TC del día anterior
+- Campo editable para permitir usar un TC diferente si es necesario
+- Validación que el TC sea mayor a 1 cuando se factura en ARS
+
+#### 4. Conversión Automática de Precios:
+- Los precios de los items se convierten automáticamente al cambiar la moneda de facturación
+- Si se edita el tipo de cambio, los precios se recalculan automáticamente
+- Muestra el monto original en USD y el equivalente en ARS para referencia
+
+#### 5. Cumplimiento Normativo:
+- La factura se envía a AFIP con `MonId: 'PES'` y `MonCotiz: [tipo_cambio]`
+- Cumple con la normativa AFIP/ARCA (Resolución General 5616/2024)
+- Usa el tipo de cambio vendedor del Banco Nación al cierre del día hábil anterior
+
+**Archivos Creados:**
+- `app/api/exchange-rates/route.ts` - API para obtener TC por fecha específica
+- `app/api/exchange-rates/latest/route.ts` - API para obtener TC más reciente
+
+**Archivos Modificados:**
+- `app/(dashboard)/operations/billing/new/page.tsx`
+  - Agregada detección de moneda de operación
+  - Agregado panel de conversión de moneda con selector y campo de TC
+  - Implementada conversión automática de precios
+  - Agregada validación de TC al guardar factura
+- `app/api/invoices/[id]/authorize/route.ts`
+  - Ya estaba correcto: usa `MonId` y `MonCotiz` de la factura al enviar a AFIP
+- `docs/GUIA_AFIP_SDK.md`
+  - Agregada sección explicando la conversión de moneda y normativa AFIP
+
+**Detalles Técnicos:**
+- Si operación en USD → factura en ARS: `monto_ARS = monto_USD * TC`
+- Si operación en ARS → factura en ARS: Sin conversión (`TC = 1`)
+- El TC se obtiene del día hábil anterior a la fecha de emisión
+- Todos los montos de items se convierten automáticamente
+- El `exchangeRate` se guarda en la factura como `cotizacion`
+
+**Resultado:**
+- ✅ Los usuarios pueden facturar en pesos argentinos operaciones en dólares
+- ✅ Cumplimiento con normativa AFIP/ARCA
+- ✅ Conversión automática de montos con validación de TC
+- ✅ Mejor UX con panel informativo y campos editables
+- ✅ Trazabilidad del tipo de cambio usado en cada factura
+
+---
+
+### 36. Filtrado de Operaciones por Cliente y Auto-completado de Montos en Facturación
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se mejoró el formulario de facturación para filtrar operaciones por cliente seleccionado y auto-completar automáticamente los montos de venta y costo del operador al seleccionar una operación.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Filtrado de Operaciones por Cliente:
+- **Antes:** El selector mostraba todas las operaciones sin filtrar
+- **Ahora:** Al seleccionar un cliente, el selector muestra solo las operaciones de ese cliente
+- El selector de operaciones se deshabilita hasta que se seleccione un cliente
+- Muestra mensaje indicando cuántas operaciones tiene el cliente
+- Si el cliente no tiene operaciones, muestra mensaje informativo
+
+#### 2. Auto-completado de Items al Seleccionar Operación:
+- **Item de Venta:** Se crea automáticamente con:
+  - Descripción: "Servicios turísticos - [Destino] ([Código])"
+  - Precio: Monto de venta (`sale_amount_total`)
+  - Cantidad: 1
+  - IVA: 21%
+- **Item de Costo del Operador:** Se crea automáticamente si existe (opcional):
+  - Descripción: "Costo de operador - [Código]"
+  - Precio: Suma de todos los operadores (de `operation_operators` o `operator_cost`)
+  - Cantidad: 1
+  - IVA: 21%
+
+#### 3. Soporte para Múltiples Operadores:
+- **Formato Nuevo:** Suma todos los costos de `operation_operators`
+- **Formato Antiguo:** Usa `operator_cost` si no hay `operation_operators`
+- Calcula correctamente la moneda del costo del operador
+- Convierte automáticamente según la moneda de facturación
+
+#### 4. Conversión Automática de Montos:
+- Los montos de venta y costo se convierten automáticamente al cambiar la moneda de facturación
+- Respetan el tipo de cambio configurado
+- Ambos items son editables (el usuario puede modificar montos, eliminar items, etc.)
+
+**Archivos Modificados:**
+- `app/(dashboard)/operations/billing/new/page.tsx`
+  - Agregado estado `filteredOperations` para operaciones filtradas por cliente
+  - Modificado `handleCustomerChange` para cargar operaciones del cliente usando `/api/customers/[id]/operations`
+  - Mejorado `handleOperationChange` para auto-completar items con venta y costo
+  - Agregada lógica para calcular costo total desde `operation_operators` o `operator_cost`
+  - Mejorado selector de operaciones con mensajes informativos
+  - Implementada conversión automática de montos de venta y costo
+- `app/api/operations/[id]/route.ts`
+  - Agregado `operation_operators` al select para incluir costos de operadores
+
+**Flujo de Uso:**
+1. **Seleccionar Cliente:**
+   - El usuario selecciona un cliente del dropdown
+   - El sistema carga automáticamente las operaciones de ese cliente
+   - El selector de operaciones se habilita mostrando solo las operaciones del cliente
+
+2. **Seleccionar Operación:**
+   - El usuario selecciona una operación del cliente
+   - El sistema auto-completa automáticamente:
+     - Item de venta con monto de venta de la operación
+     - Item de costo con suma de costos de operadores (si existe)
+   - Si la operación está en USD, muestra panel de conversión de moneda
+
+3. **Editar Items:**
+   - El usuario puede modificar los montos, descripciones, cantidades
+   - Puede eliminar items si no los necesita
+   - Puede agregar items adicionales manualmente
+
+**Detalles Técnicos:**
+- Las operaciones se cargan usando `/api/customers/[id]/operations`
+- Se obtienen detalles completos de cada operación para calcular montos
+- Se soporta formato nuevo (`operation_operators` array) y antiguo (`operator_cost` único)
+- La conversión de moneda funciona para ambos items (venta y costo)
+- Los items auto-completados son editables desde el inicio
+
+**Resultado:**
+- ✅ Mejor UX: solo muestra operaciones relevantes del cliente seleccionado
+- ✅ Auto-completado inteligente: trae montos de venta y costo automáticamente
+- ✅ Ahorro de tiempo: no hay que buscar y tipear montos manualmente
+- ✅ Flexibilidad: todos los items son editables
+- ✅ Soporte completo para múltiples operadores por operación
 
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services
