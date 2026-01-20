@@ -2591,6 +2591,12 @@ Se implementó un sistema completo para distribuir ganancias mensuales entre soc
 - ✅ Las deudas de socios aparecen correctamente en Posición Mensual como activo
 - ✅ Mejor control y trazabilidad de distribución de ganancias
 
+**Correcciones de Build:**
+- ✅ Corregido error TypeScript: agregado `is_active?: boolean` a interfaz `Partner` en `distribute-profits-dialog.tsx`
+- ✅ Corregido warning React Hook: convertido `loadPartners` a `useCallback` con dependencias correctas
+- ✅ Escapadas comillas dobles en mensajes de error usando `&quot;`
+- ✅ Build exitoso en Vercel sin errores
+
 ---
 
 **Mantenido por:** AI Assistant
