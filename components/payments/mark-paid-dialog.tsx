@@ -51,6 +51,15 @@ interface Payment {
   date_due: string
 }
 
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
+}
+
 interface MarkPaidDialogProps {
   payment: Payment | null
   open: boolean
