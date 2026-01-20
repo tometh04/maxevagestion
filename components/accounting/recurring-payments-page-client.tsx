@@ -40,7 +40,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -718,7 +718,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
                     <YAxis />
-                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
                     <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -739,7 +739,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
                     <YAxis />
-                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
                     <Legend />
                     {categories.map((cat, index) => (
                       <Line
@@ -791,7 +791,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                         )
                       })}
                     </Pie>
-                    <Tooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
                   </PieChart>
                 </ResponsiveContainer>
               </div>
