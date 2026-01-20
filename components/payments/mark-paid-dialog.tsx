@@ -313,7 +313,7 @@ export function MarkPaidDialog({
                     </FormControl>
                     <p className="text-xs text-muted-foreground">
                       {field.value && payment && payment.amount 
-                        ? `Equivale a ${operationCurrency} ${(payment.amount / parseFloat(field.value)).toFixed(2)}`
+                        ? `Equivale a ${operationCurrency} ${(payment.amount / Number(field.value)).toFixed(2)}`
                         : `La operación está en ${operationCurrency}, el pago en ${payment.currency}. Ingrese el tipo de cambio.`
                       }
                     </p>
