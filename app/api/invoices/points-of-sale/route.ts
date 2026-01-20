@@ -26,9 +26,13 @@ export async function GET(request: Request) {
       .select("id, name")
       .in("id", agencyIds)
 
+    if (!agencies || agencies.length === 0) {
+      return NextResponse.json({ pointsOfSale: [] })
+    }
+
     // Obtener puntos de venta para cada agencia con AFIP configurado
     const pointsOfSaleByAgency = await Promise.all(
-      (agencies || []).map(async (agency) => {
+      agencies.map(async (agency: any) => {
         const afipConfig = await getAfipConfigForAgency(supabase, agency.id)
         
         if (!afipConfig) {
