@@ -141,6 +141,28 @@ Cada cliente puede configurar su propia integración AFIP desde la interfaz, ing
 
 Agrega los items a facturar con descripción, cantidad, precio unitario e IVA.
 
+#### **Sección 4: Moneda y Tipo de Cambio (si aplica)**
+
+**⚠️ IMPORTANTE:** Si la operación asociada está en **dólares (USD)** pero quieres facturar en **pesos argentinos (ARS)**, el sistema automáticamente:
+
+1. **Detecta la moneda de la operación** al seleccionarla
+2. **Muestra un panel especial** con opciones de moneda de facturación:
+   - **Pesos Argentinos (ARS)**: Convierte automáticamente desde USD usando tipo de cambio
+   - **Dólares (USD)**: Factura directamente en dólares
+3. **Carga automáticamente el tipo de cambio** del día hábil anterior (según normativa AFIP/ARCA)
+4. **Convierte los precios** de los items automáticamente
+5. **Permite editar el tipo de cambio** si necesitas usar uno diferente
+
+**Normativa AFIP/ARCA:**
+- Cuando se factura en pesos una operación pactada en dólares, se debe usar el **tipo de cambio vendedor del Banco Nación** al cierre del día hábil anterior a la emisión
+- El sistema intenta obtener este TC automáticamente, pero puedes editarlo si es necesario
+- La factura se emitirá con `MonId: 'PES'` y `MonCotiz: [tipo_cambio]` para cumplir con la normativa
+
+**Ejemplo:**
+- Operación en USD: $1,000 USD
+- Tipo de cambio: 1,500 ARS/USD
+- Factura en ARS: $1,500,000 ARS (con cotización 1,500)
+
 ### 3.4. Guardar Factura (Borrador)
 
 1. Revisa todos los datos

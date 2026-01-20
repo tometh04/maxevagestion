@@ -40,6 +40,8 @@ interface Operation {
   file_code: string
   destination: string
   total_cost?: number
+  sale_currency?: "ARS" | "USD"
+  sale_amount_total?: number
 }
 
 interface InvoiceItem {
@@ -79,11 +81,19 @@ export default function NewInvoicePage() {
     receptor_doc_nro: '',
     fecha_servicio_desde: new Date().toISOString().split('T')[0],
     fecha_servicio_hasta: new Date().toISOString().split('T')[0],
+    moneda: 'PES' as 'PES' | 'DOL',
+    cotizacion: 1,
   })
   
   const [items, setItems] = useState<InvoiceItem[]>([
     { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
   ])
+  
+  // Estado para operación seleccionada y conversión
+  const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null)
+  const [invoiceCurrency, setInvoiceCurrency] = useState<'PES' | 'DOL'>('PES')
+  const [exchangeRate, setExchangeRate] = useState<number>(1)
+  const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
 
   useEffect(() => {
     loadData()
@@ -126,23 +136,160 @@ export default function NewInvoicePage() {
     }
   }
 
-  const handleOperationChange = (operationId: string) => {
+  const handleOperationChange = async (operationId: string) => {
     const operation = operations.find(o => o.id === operationId)
     if (operation) {
+      // Obtener datos completos de la operación
+      try {
+        const opRes = await fetch(`/api/operations/${operationId}`)
+        if (opRes.ok) {
+          const opData = await opRes.json()
+          const fullOperation = opData.operation
+          
+          setSelectedOperation(fullOperation)
+          
+          // Si la operación está en USD, cargar tipo de cambio
+          if (fullOperation.sale_currency === 'USD') {
+            setLoadingExchangeRate(true)
+            try {
+              // Obtener tipo de cambio del día hábil anterior (según normativa AFIP)
+              const today = new Date()
+              const yesterday = new Date(today)
+              yesterday.setDate(yesterday.getDate() - 1)
+              
+              // Intentar obtener TC del día hábil anterior
+              const tcRes = await fetch(`/api/exchange-rates?date=${yesterday.toISOString().split('T')[0]}`)
+              if (tcRes.ok) {
+                const tcData = await tcRes.json()
+                if (tcData.rate) {
+                  setExchangeRate(parseFloat(tcData.rate))
+                } else {
+                  // Si no hay TC del día anterior, obtener el más reciente
+                  const latestRes = await fetch('/api/exchange-rates/latest')
+                  if (latestRes.ok) {
+                    const latestData = await latestRes.json()
+                    if (latestData.rate) {
+                      setExchangeRate(parseFloat(latestData.rate))
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              console.error('Error loading exchange rate:', error)
+            } finally {
+              setLoadingExchangeRate(false)
+            }
+            
+            // Por defecto, facturar en ARS cuando la operación está en USD
+            setInvoiceCurrency('PES')
+            setFormData({
+              ...formData,
+              operation_id: operationId,
+              moneda: 'PES',
+            })
+          } else {
+            // Operación en ARS, facturar en ARS
+            setSelectedOperation(fullOperation)
+            setInvoiceCurrency('PES')
+            setFormData({
+              ...formData,
+              operation_id: operationId,
+              moneda: 'PES',
+              cotizacion: 1,
+            })
+          }
+          
+          // Auto-completar item con información de la operación
+          // Usar useEffect para actualizar items después de que se actualice invoiceCurrency
+          const precioOriginalUSD = fullOperation.sale_amount_total || 0
+          const precioEnARS = fullOperation.sale_currency === 'USD' 
+            ? precioOriginalUSD * exchangeRate 
+            : precioOriginalUSD
+            
+          if (items.length === 1 && !items[0].descripcion) {
+            setItems([{
+              descripcion: `Servicios turísticos - ${fullOperation.destination} (${fullOperation.file_code})`,
+              cantidad: 1,
+              precio_unitario: invoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD,
+              iva_porcentaje: 21,
+            }])
+          }
+        }
+      } catch (error) {
+        console.error('Error loading operation details:', error)
+        // Fallback: usar datos básicos
+        setSelectedOperation(operation)
+        setFormData({
+          ...formData,
+          operation_id: operationId,
+        })
+      }
+    } else {
+      setSelectedOperation(null)
       setFormData({
         ...formData,
-        operation_id: operationId,
+        operation_id: '',
       })
-      
-      // Auto-completar item con información de la operación
-      if (items.length === 1 && !items[0].descripcion) {
-        setItems([{
-          descripcion: `Servicios turísticos - ${operation.destination} (${operation.file_code})`,
-          cantidad: 1,
-          precio_unitario: operation.total_cost || 0,
-          iva_porcentaje: 21,
-        }])
-      }
+    }
+  }
+  
+  // Manejar cambio de moneda de facturación
+  const handleInvoiceCurrencyChange = (currency: 'PES' | 'DOL') => {
+    const oldCurrency = invoiceCurrency
+    setInvoiceCurrency(currency)
+    setFormData({
+      ...formData,
+      moneda: currency === 'PES' ? 'PES' : 'DOL',
+      cotizacion: currency === 'PES' && selectedOperation?.sale_currency === 'USD' 
+        ? exchangeRate 
+        : 1,
+    })
+    
+    // Si cambia la moneda y hay items, convertir precios
+    if (selectedOperation && items.length > 0 && selectedOperation.sale_currency === 'USD') {
+      const newItems = items.map(item => {
+        let nuevoPrecio = item.precio_unitario
+        
+        // Si estaba en ARS y ahora va a USD, convertir ARS -> USD
+        if (oldCurrency === 'PES' && currency === 'DOL') {
+          nuevoPrecio = item.precio_unitario / exchangeRate
+        }
+        // Si estaba en USD y ahora va a ARS, convertir USD -> ARS
+        else if (oldCurrency === 'DOL' && currency === 'PES') {
+          nuevoPrecio = item.precio_unitario * exchangeRate
+        }
+        // Si la operación está en ARS, no hacer conversión
+        // (aunque esto no debería pasar si selectedOperation.sale_currency === 'USD')
+        
+        return {
+          ...item,
+          precio_unitario: nuevoPrecio,
+        }
+      })
+      setItems(newItems)
+    }
+  }
+  
+  // Manejar cambio de tipo de cambio
+  const handleExchangeRateChange = (rate: number) => {
+    const oldRate = exchangeRate
+    setExchangeRate(rate)
+    setFormData({
+      ...formData,
+      cotizacion: rate,
+    })
+    
+    // Reconvertir items si la operación está en USD y se factura en ARS
+    if (selectedOperation?.sale_currency === 'USD' && invoiceCurrency === 'PES' && items.length > 0) {
+      const newItems = items.map(item => {
+        // Convertir desde ARS actual a USD, luego a ARS con nuevo TC
+        const precioUSD = item.precio_unitario / oldRate
+        return {
+          ...item,
+          precio_unitario: precioUSD * rate,
+        }
+      })
+      setItems(newItems)
     }
   }
 
@@ -204,11 +351,25 @@ export default function NewInvoicePage() {
 
       setSaving(true)
       
+      // Validar tipo de cambio si se factura en ARS desde operación en USD
+      if (selectedOperation?.sale_currency === 'USD' && invoiceCurrency === 'PES' && exchangeRate <= 1) {
+        toast({
+          title: "Error",
+          description: "El tipo de cambio debe ser mayor a 1 para convertir USD a ARS",
+          variant: "destructive",
+        })
+        return
+      }
+      
       const response = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
+          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD' 
+            ? exchangeRate 
+            : 1,
           items: items.map(item => {
             const itemTotals = calculateItemTotal(item)
             return {
@@ -412,6 +573,73 @@ export default function NewInvoicePage() {
                   />
                 </div>
               </div>
+              
+              {/* Moneda y Tipo de Cambio - Solo si hay operación en USD */}
+              {selectedOperation?.sale_currency === 'USD' && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                      ⚠️ Operación en USD - Configuración de Facturación
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label>Moneda de Facturación *</Label>
+                      <Select 
+                        value={invoiceCurrency} 
+                        onValueChange={(v) => handleInvoiceCurrencyChange(v as 'PES' | 'DOL')}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PES">Pesos Argentinos (ARS)</SelectItem>
+                          <SelectItem value="DOL">Dólares (USD)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {invoiceCurrency === 'PES' 
+                          ? 'La factura se emitirá en pesos, convirtiendo desde USD'
+                          : 'La factura se emitirá en dólares'}
+                      </p>
+                    </div>
+                    
+                    {invoiceCurrency === 'PES' && (
+                      <div>
+                        <Label>
+                          Tipo de Cambio USD/ARS *
+                          {loadingExchangeRate && (
+                            <Loader2 className="h-3 w-3 inline ml-2 animate-spin" />
+                          )}
+                        </Label>
+                        <Input
+                          type="number"
+                          value={exchangeRate}
+                          onChange={(e) => handleExchangeRateChange(parseFloat(e.target.value) || 1)}
+                          min={1}
+                          step={0.01}
+                          placeholder="Ej: 1500"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          TC del día hábil anterior (según normativa AFIP)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {invoiceCurrency === 'PES' && selectedOperation.sale_amount_total && (
+                    <div className="text-xs text-muted-foreground">
+                      <p>
+                        <strong>Monto original:</strong> USD {selectedOperation.sale_amount_total.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </p>
+                      <p>
+                        <strong>Equivalente en ARS:</strong> ARS {(selectedOperation.sale_amount_total * exchangeRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
