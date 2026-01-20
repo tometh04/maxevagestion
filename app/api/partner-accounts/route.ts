@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { partner_name, user_id, notes } = body
+    const { partner_name, user_id, notes, profit_percentage } = body
 
     if (!partner_name || !partner_name.trim()) {
       return NextResponse.json({ error: "El nombre del socio es requerido" }, { status: 400 })
@@ -106,12 +106,19 @@ export async function POST(request: Request) {
 
     console.log("[PartnerAccounts API] Creating partner:", { partner_name: cleanedName, user_id, notes })
 
+    // Validar porcentaje si se proporciona
+    let profitPercentage = profit_percentage ? parseFloat(profit_percentage) : 0
+    if (profitPercentage < 0 || profitPercentage > 100) {
+      return NextResponse.json({ error: "El porcentaje debe estar entre 0 y 100" }, { status: 400 })
+    }
+
     const { data: partner, error } = await (supabase
       .from("partner_accounts") as any)
       .insert({
         partner_name: cleanedName,
         user_id: user_id || null,
         notes: notes?.trim() || null,
+        profit_percentage: profitPercentage,
         is_active: true,
       })
       .select()

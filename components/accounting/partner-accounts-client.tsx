@@ -43,6 +43,7 @@ interface Partner {
   user_id: string | null
   is_active: boolean
   notes: string | null
+  profit_percentage: number | null
   created_at: string
   users?: { id: string; name: string; email: string } | null
   total_withdrawn_ars: number
@@ -83,6 +84,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   // Form states
   const [partnerName, setPartnerName] = useState("")
   const [partnerNotes, setPartnerNotes] = useState("")
+  const [partnerProfitPercentage, setPartnerProfitPercentage] = useState("")
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
   const [withdrawalAmount, setWithdrawalAmount] = useState("")
   const [withdrawalCurrency, setWithdrawalCurrency] = useState("USD")
@@ -171,6 +173,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
         body: JSON.stringify({
           partner_name: partnerName.trim(),
           notes: partnerNotes.trim() || null,
+          profit_percentage: partnerProfitPercentage ? parseFloat(partnerProfitPercentage) : 0,
         }),
       })
 
@@ -186,6 +189,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       setNewPartnerOpen(false)
       setPartnerName("")
       setPartnerNotes("")
+      setPartnerProfitPercentage("")
       fetchPartners()
     } catch (error: any) {
       console.error("Error in handleCreatePartner:", error)
@@ -329,6 +333,21 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                       onChange={(e) => setPartnerName(e.target.value)}
                       placeholder="Ej: Maxi"
                     />
+                  </div>
+                  <div>
+                    <Label>Porcentaje de Ganancias (%)</Label>
+                    <Input
+                      type="number"
+                      value={partnerProfitPercentage}
+                      onChange={(e) => setPartnerProfitPercentage(e.target.value)}
+                      placeholder="0.00"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Porcentaje que recibe este socio de las ganancias mensuales (0-100)
+                    </p>
                   </div>
                   <div>
                     <Label>Notas (opcional)</Label>
@@ -601,6 +620,14 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                     )}
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {partner.profit_percentage !== null && partner.profit_percentage > 0 && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">% Ganancias:</span>
+                        <Badge variant="outline" className="font-semibold">
+                          {partner.profit_percentage.toFixed(2)}%
+                        </Badge>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">Retiros ARS:</span>
                       <span className="font-semibold">

@@ -15,12 +15,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   CalendarIcon, RefreshCw, DollarSign, TrendingUp, 
   Wallet, Users, Truck, FileText, AlertCircle, CheckCircle2,
-  ArrowUpRight, ArrowDownRight, Save
+  ArrowUpRight, ArrowDownRight, Save, Share2
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { useToast } from "@/hooks/use-toast"
+import { DistributeProfitsDialog } from "./distribute-profits-dialog"
 
 interface Agency {
   id: string
@@ -107,6 +108,9 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
   const [currency, setCurrency] = useState<"USD" | "ARS">("USD")
   const [showCurrencyDialog, setShowCurrencyDialog] = useState(false)
   const [displayTC, setDisplayTC] = useState("")
+  
+  // Dialog de distribuir ganancias
+  const [showDistributeDialog, setShowDistributeDialog] = useState(false)
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -422,6 +426,17 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                 <p className="text-xs text-muted-foreground mt-1">
                   Margen: {data.resultadoDelMes.margenBruto}%
                 </p>
+                {data.resultadoDelMes.resultado > 0 && ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => setShowDistributeDialog(true)}
+                  >
+                    <Share2 className="h-3 w-3 mr-2" />
+                    Distribuir a Socios
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -772,6 +787,22 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog de distribuir ganancias */}
+      {data && data.resultadoDelMes.resultado > 0 && (
+        <DistributeProfitsDialog
+          open={showDistributeDialog}
+          onOpenChange={setShowDistributeDialog}
+          year={year}
+          month={month}
+          profitAmount={data.resultadoDelMes.resultado}
+          exchangeRate={data.tcUsado}
+          onSuccess={() => {
+            // Opcional: refrescar datos después de distribuir
+            // fetchData()
+          }}
+        />
+      )}
     </div>
   )
 }

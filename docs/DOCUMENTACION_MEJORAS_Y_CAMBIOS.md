@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Conversor de Moneda en Deudores por Ventas y Ajuste de Resumen de Caja)
+**Última actualización:** 2025-01-19 (Distribución de Ganancias a Socios y Tracking de Deudas)
 
 ---
 

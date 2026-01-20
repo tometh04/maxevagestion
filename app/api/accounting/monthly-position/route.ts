@@ -232,6 +232,118 @@ export async function GET(request: Request) {
     console.log(`[Balance] Cuentas por Cobrar: USD ${cuentasPorCobrar.totalUSD} (${cuentasPorCobrar.cantidadDeudores} deudores)`)
 
     // ===========================================
+    // 2.5. CUENTAS POR COBRAR - SOCIOS (deuda de socios cuando gastaron más de lo asignado)
+    // ===========================================
+    let cuentasPorCobrarSocios = {
+      totalUSD: 0,
+      cantidadDeudores: 0,
+      detalle: [] as any[]
+    }
+
+    // Obtener asignaciones de ganancias hasta la fecha de corte
+    const { data: allocations, error: allocationsError } = await (supabase.from("partner_profit_allocations") as any)
+      .select(`
+        partner_id,
+        profit_amount,
+        currency,
+        exchange_rate,
+        year,
+        month,
+        partner:partner_id(id, partner_name)
+      `)
+      .lte("created_at", `${fechaCorte}T23:59:59`)
+
+    // Obtener retiros de socios hasta la fecha de corte
+    const { data: withdrawals, error: withdrawalsError } = await (supabase.from("partner_withdrawals") as any)
+      .select(`
+        partner_id,
+        amount,
+        currency,
+        exchange_rate,
+        withdrawal_date,
+        partner:partner_id(id, partner_name)
+      `)
+      .lte("withdrawal_date", fechaCorte)
+
+    if (!allocationsError && !withdrawalsError && allocations && withdrawals) {
+      // Agrupar asignaciones por socio
+      const allocationsByPartner: Record<string, number> = {}
+      const partnerNames: Record<string, string> = {}
+
+      for (const alloc of allocations as any[]) {
+        const partnerId = alloc.partner_id
+        if (!partnerNames[partnerId]) {
+          partnerNames[partnerId] = alloc.partner?.partner_name || "Socio"
+        }
+
+        let amountUSD = Number(alloc.profit_amount) || 0
+        if (alloc.currency === "ARS" && alloc.exchange_rate) {
+          amountUSD = amountUSD / Number(alloc.exchange_rate)
+        }
+
+        allocationsByPartner[partnerId] = (allocationsByPartner[partnerId] || 0) + amountUSD
+      }
+
+      // Agrupar retiros por socio y convertir a USD
+      const withdrawalsByPartner: Record<string, number> = {}
+      for (const withdrawal of withdrawals as any[]) {
+        const partnerId = withdrawal.partner_id
+        if (!partnerNames[partnerId]) {
+          partnerNames[partnerId] = withdrawal.partner?.partner_name || "Socio"
+        }
+
+        let amountUSD = Number(withdrawal.amount) || 0
+        if (withdrawal.currency === "ARS") {
+          if (withdrawal.exchange_rate) {
+            amountUSD = amountUSD / Number(withdrawal.exchange_rate)
+          } else {
+            amountUSD = amountUSD / tcParaCalculos
+          }
+        }
+
+        withdrawalsByPartner[partnerId] = (withdrawalsByPartner[partnerId] || 0) + amountUSD
+      }
+
+      // Calcular deuda: si retiró más de lo asignado, es deuda activa
+      for (const partnerId in withdrawalsByPartner) {
+        const totalAllocated = allocationsByPartner[partnerId] || 0
+        const totalWithdrawn = withdrawalsByPartner[partnerId] || 0
+        const debt = totalWithdrawn - totalAllocated
+
+        // Si el socio gastó más de lo asignado, aparece como deudor
+        if (debt > 0.01) {
+          cuentasPorCobrarSocios.detalle.push({
+            socio: partnerNames[partnerId] || "Socio",
+            asignado: Math.round(totalAllocated * 100) / 100,
+            retirado: Math.round(totalWithdrawn * 100) / 100,
+            deuda: Math.round(debt * 100) / 100
+          })
+          cuentasPorCobrarSocios.totalUSD += debt
+        }
+      }
+
+      cuentasPorCobrarSocios.cantidadDeudores = cuentasPorCobrarSocios.detalle.length
+      cuentasPorCobrarSocios.totalUSD = Math.round(cuentasPorCobrarSocios.totalUSD * 100) / 100
+
+      // Sumar a cuentas por cobrar totales
+      cuentasPorCobrar.totalUSD += cuentasPorCobrarSocios.totalUSD
+      cuentasPorCobrar.cantidadDeudores += cuentasPorCobrarSocios.cantidadDeudores
+      cuentasPorCobrar.detalle = cuentasPorCobrar.detalle.concat(
+        cuentasPorCobrarSocios.detalle.map((d: any) => ({
+          operacion: "-",
+          destino: "-",
+          cliente: d.socio,
+          venta: d.asignado,
+          cobrado: d.retirado,
+          deuda: d.deuda,
+          tipo: "Socio"
+        }))
+      )
+    }
+
+    console.log(`[Balance] Cuentas por Cobrar - Socios: USD ${cuentasPorCobrarSocios.totalUSD} (${cuentasPorCobrarSocios.cantidadDeudores} deudores)`)
+
+    // ===========================================
     // 3. CUENTAS POR PAGAR (tabla operator_payments)
     // ===========================================
     let cuentasPorPagar = {
@@ -441,7 +553,12 @@ export async function GET(request: Request) {
           cuentasPorCobrar: {
             totalUSD: round(cuentasPorCobrar.totalUSD),
             cantidadDeudores: cuentasPorCobrar.cantidadDeudores,
-            detalle: cuentasPorCobrar.detalle.slice(0, 10)
+            detalle: cuentasPorCobrar.detalle.slice(0, 10),
+            socios: {
+              totalUSD: round(cuentasPorCobrarSocios.totalUSD),
+              cantidadDeudores: cuentasPorCobrarSocios.cantidadDeudores,
+              detalle: cuentasPorCobrarSocios.detalle
+            }
           },
           total: round(activoCorriente)
         },
