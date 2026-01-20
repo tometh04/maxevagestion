@@ -191,19 +191,18 @@ export function DashboardPageClient({
   }, [filters.dateFrom, filters.dateTo, filters.agencyId, filters.sellerId])
 
   return (
-    <div className="flex-1 space-y-4 pt-4 md:pt-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <h1 className="text-xl font-semibold">Dashboard</h1>
           <p className="text-xs text-muted-foreground">
             Vista general del negocio
           </p>
         </div>
-        <div className="flex items-center space-x-2">
-          <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
-            Actualizar
-          </Button>
-        </div>
+        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
+          Actualizar
+        </Button>
       </div>
 
       <DashboardFilters
@@ -214,155 +213,74 @@ export function DashboardPageClient({
         onChange={setFilters}
       />
 
-      {/* KPIs */}
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Ventas Totales
-            </CardTitle>
-            <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-lg font-bold lg:text-xl truncate">
-                    ${formatNumber(kpis.totalSales)}
-                  </span>
-                  <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {kpis.operationsCount} ops • vs anterior
-                </p>
-              </>
-            )}
-          </CardContent>
+      {/* KPIs compactos - estilo estadísticas de clientes */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
+              <p className="text-base font-semibold">${formatNumber(kpis.totalSales)}</p>
+              {loading ? (
+                <Skeleton className="h-3 w-16 mt-0.5" />
+              ) : (
+                <p className="text-[10px] text-muted-foreground">{kpis.operationsCount} ops</p>
+              )}
+            </div>
+          </div>
         </Card>
 
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total Operaciones
-            </CardTitle>
-            <Package className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-lg font-bold lg:text-xl">
-                    {kpis.operationsCount}
-                  </span>
-                  <ComparisonBadge current={kpis.operationsCount} previous={previousKpis.operationsCount} />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  vs período anterior
-                </p>
-              </>
-            )}
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
+              <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
+              <p className="text-base font-semibold text-emerald-600">${formatNumber(kpis.totalMargin)}</p>
+              {loading ? (
+                <Skeleton className="h-3 w-16 mt-0.5" />
+              ) : (
+                <p className="text-[10px] text-muted-foreground">{kpis.avgMarginPercent.toFixed(1)}% promedio</p>
+              )}
+            </div>
+          </div>
         </Card>
 
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Margen Total
-            </CardTitle>
-            <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-lg font-bold lg:text-xl truncate">
-                    ${formatNumber(kpis.totalMargin)}
-                  </span>
-                  <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {kpis.avgMarginPercent.toFixed(1)}% promedio
-                </p>
-              </>
-            )}
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-amber-100 dark:bg-amber-900/30">
+              <Users className="h-3.5 w-3.5 text-amber-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deudores</p>
+              <p className="text-base font-semibold text-amber-600">${formatNumber(kpis.pendingCustomerPayments)}</p>
+              {loading ? (
+                <Skeleton className="h-3 w-20 mt-0.5" />
+              ) : (
+                <p className="text-[10px] text-muted-foreground">Por ventas</p>
+              )}
+            </div>
+          </div>
         </Card>
 
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Margen Promedio
-            </CardTitle>
-            <Percent className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-16" />
-            ) : (
-              <>
-                <div className="text-lg font-bold lg:text-xl">
-                  {kpis.avgMarginPercent.toFixed(1)}%
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Margen promedio
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-3 grid-cols-2">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Deudores por Ventas
-            </CardTitle>
-            <Users className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${formatNumber(kpis.pendingCustomerPayments)}
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Pendientes de clientes
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-3">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Deuda a Operadores
-            </CardTitle>
-            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="px-3 pb-3 pt-0">
-            {loading ? (
-              <Skeleton className="h-7 w-24" />
-            ) : (
-              <>
-                <div className="text-lg font-bold lg:text-xl truncate text-amber-600">
-                  ${formatNumber(kpis.pendingOperatorPayments)}
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Pendientes de operadores
-                </p>
-              </>
-            )}
-          </CardContent>
+        <Card className="p-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
+              <Building2 className="h-3.5 w-3.5 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deuda</p>
+              <p className="text-base font-semibold text-purple-600">${formatNumber(kpis.pendingOperatorPayments)}</p>
+              {loading ? (
+                <Skeleton className="h-3 w-20 mt-0.5" />
+              ) : (
+                <p className="text-[10px] text-muted-foreground">A operadores</p>
+              )}
+            </div>
+          </div>
         </Card>
       </div>
 
@@ -370,32 +288,24 @@ export function DashboardPageClient({
       <BirthdaysTodayCard />
 
       {/* Alertas, Próximos Viajes y Top Vendedores */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-3">
         <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
       </div>
 
       {/* Charts */}
-      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
-        <Card>
-          <SalesBySellerChart data={sellersData} />
-        </Card>
-        <Card>
-          <DestinationsChart data={destinationsData} />
-        </Card>
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
+        <SalesBySellerChart data={sellersData} />
+        <DestinationsChart data={destinationsData} />
       </div>
 
-      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="md:col-span-1 lg:col-span-1">
-          <DestinationsPieChart data={destinationsAllData} />
-        </Card>
-        <Card className="md:col-span-1 lg:col-span-1">
-          <RegionsRadarChart data={destinationsAllData} />
-        </Card>
-        <Card className="md:col-span-2 lg:col-span-2">
+      <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
+        <DestinationsPieChart data={destinationsAllData} />
+        <RegionsRadarChart data={destinationsAllData} />
+        <div className="md:col-span-2 lg:col-span-2">
           <CashflowChart data={cashflowData} />
-        </Card>
+        </div>
       </div>
     </div>
   )
