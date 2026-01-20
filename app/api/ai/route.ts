@@ -3,112 +3,443 @@ import { getCurrentUser } from "@/lib/auth"
 import OpenAI from "openai"
 import { createServerClient } from "@/lib/supabase/server"
 
-// Esquema REAL de la base de datos
+// Esquema COMPLETO de la base de datos - ACTUALIZADO 2025-01-19
 const DATABASE_SCHEMA = `
-## ESQUEMA DE BASE DE DATOS - MAXEVA GESTION
+## ESQUEMA COMPLETO DE BASE DE DATOS - MAXEVA GESTION
 
-### users (Usuarios)
-- id, name, email, role ('SUPER_ADMIN','ADMIN','SELLER','VIEWER'), is_active
+### 📊 TABLAS PRINCIPALES
 
-### agencies (Agencias)  
-- id, name, city
+#### users (Usuarios)
+- id, name, email, role ('SUPER_ADMIN','ADMIN','SELLER','VIEWER','CONTABLE'), is_active
+- auth_id, created_at, updated_at
 
-### operators (Operadores/Proveedores)
+#### agencies (Agencias)
+- id, name, city, timezone, created_at, updated_at
+
+#### user_agencies (Relación Usuarios-Agencias)
+- id, user_id, agency_id, created_at
+
+#### operators (Operadores/Proveedores)
 - id, name, contact_name, contact_email, contact_phone, credit_limit
+- created_at, updated_at
 
-### customers (Clientes)
-- id, first_name, last_name, phone, email, document_type, document_number, date_of_birth
+#### customers (Clientes)
+- id, first_name, last_name, phone, email, document_type, document_number
+- date_of_birth, nationality, procedure_number, instagram_handle
+- created_at, updated_at
 
-### leads (Consultas)
-- id, agency_id, source, status ('NEW','IN_PROGRESS','QUOTED','WON','LOST'), region, destination
-- contact_name, contact_phone, contact_email, assigned_seller_id, travel_date, return_date, created_at
+#### leads (Consultas)
+- id, agency_id, source ('Instagram','WhatsApp','Meta Ads','Other')
+- status ('NEW','IN_PROGRESS','QUOTED','WON','LOST')
+- region ('ARGENTINA','CARIBE','BRASIL','EUROPA','EEUU','OTROS','CRUCEROS')
+- destination, contact_name, contact_phone, contact_email, contact_instagram
+- assigned_seller_id, external_id, trello_url, notes
+- created_at, updated_at
 
-### operations (Operaciones/Ventas) ⭐
-- id, file_code, agency_id, seller_id, operator_id, customer_id
-- type, origin, destination, departure_date, return_date, checkin_date, checkout_date
+#### operations (Operaciones/Ventas) ⭐ TABLA PRINCIPAL
+- id, file_code, agency_id, seller_id, operator_id, lead_id
+- type ('FLIGHT','HOTEL','PACKAGE','CRUISE','TRANSFER','MIXED')
+- origin, destination, departure_date, return_date
 - adults, children, infants
 - status ('PRE_RESERVATION','RESERVED','CONFIRMED','CANCELLED','TRAVELLED','CLOSED')
-- sale_amount_total (venta), sale_currency
-- operator_cost (costo), margin_amount (ganancia)
-- commission_amount, created_at
+- sale_amount_total (venta total), sale_currency ('ARS','USD')
+- operator_cost (costo total), operator_cost_currency ('ARS','USD')
+- margin_amount (ganancia), margin_percentage (margen %)
+- reservation_code_air, reservation_code_hotel (códigos de reserva)
+- created_at, updated_at
 
-### payments (Pagos)
-- id, operation_id, payer_type ('CUSTOMER','OPERATOR'), direction ('INCOME','EXPENSE')
-- method, amount, currency
+#### operation_customers (Relación Operaciones-Clientes)
+- id, operation_id, customer_id, role ('MAIN','COMPANION')
+
+#### operation_operators (Relación Operaciones-Operadores) - Múltiples operadores por operación
+- id, operation_id, operator_id, cost, cost_currency ('ARS','USD'), notes
+- created_at, updated_at
+- UNIQUE(operation_id, operator_id)
+
+#### payments (Pagos) - Pagos de clientes y a operadores
+- id, operation_id, payer_type ('CUSTOMER','OPERATOR')
+- direction ('INCOME'=cobranza, 'EXPENSE'=pago), method ('CASH','BANK','MP','USD','OTHER')
+- amount (monto original), currency ('ARS','USD')
+- exchange_rate (tipo de cambio usado), amount_usd (equivalente en USD)
 - date_due (fecha vencimiento), date_paid (fecha pago)
-- status ('PENDING','PAID','OVERDUE'), reference, created_at
+- status ('PENDING','PAID','OVERDUE'), reference, financial_account_id
+- created_at, updated_at
 
-### cash_boxes (Cajas)
-- id, name, currency ('ARS','USD'), initial_balance, current_balance, is_active
+#### financial_accounts (Cuentas Financieras) - Caja, Bancos, Mercado Pago
+- id, name, type ('CASH','BANK','MP','USD'), currency ('ARS','USD')
+- initial_balance (saldo inicial), current_balance (saldo actual calculado)
+- chart_account_id (relación con plan de cuentas), is_active
+- created_at, created_by, notes
 
-### cash_movements (Movimientos de caja)
-- id, cash_box_id, type ('INCOME','EXPENSE'), amount, currency, description, payment_id, created_at
+#### ledger_movements (Movimientos Contables) - CORAZÓN CONTABLE ⭐
+- id, operation_id, lead_id, type ('INCOME','EXPENSE','FX_GAIN','FX_LOSS','COMMISSION','OPERATOR_PAYMENT')
+- concept, notes, currency ('ARS','USD')
+- amount_original (monto en moneda original)
+- exchange_rate (tasa usada), amount_ars_equivalent (siempre en ARS)
+- method ('CASH','BANK','MP','USD','OTHER')
+- account_id (FK a financial_accounts), chart_account_id (FK a chart_of_accounts)
+- seller_id, operator_id, receipt_number
+- created_at, created_by
 
-### quotations (Cotizaciones)
-- id, lead_id, status ('DRAFT','SENT','APPROVED','REJECTED','CONVERTED'), total_amount, currency
+#### operator_payments (Pagos a Operadores) - Cuentas por Pagar
+- id, operation_id, operator_id, amount, currency ('ARS','USD')
+- due_date (fecha vencimiento), paid_amount (monto pagado parcialmente)
+- status ('PENDING','PAID','OVERDUE')
+- ledger_movement_id (FK a ledger_movements cuando se paga)
+- notes, created_at, updated_at
 
-### NOTAS IMPORTANTES:
-- Fechas: usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc.
-- En payments la fecha de vencimiento es "date_due" (NO "due_date")
-- Balance caja = initial_balance + ingresos - egresos
-- Margen = sale_amount_total - operator_cost
+#### recurring_payments (Gastos Recurrentes)
+- id, operator_id, amount, currency ('ARS','USD')
+- frequency ('WEEKLY','BIWEEKLY','MONTHLY','QUARTERLY','YEARLY')
+- start_date, end_date (opcional), next_due_date, last_generated_date
+- category_id (FK a recurring_payment_categories), is_active
+- description, notes, created_at, updated_at, created_by
+
+#### recurring_payment_categories (Categorías de Gastos Recurrentes)
+- id, name, description, color, is_active, created_at, updated_at
+
+#### chart_of_accounts (Plan de Cuentas Contable)
+- id, account_code (ej: '1.1.01'), account_name
+- category ('ACTIVO','PASIVO','PATRIMONIO_NETO','RESULTADO')
+- subcategory ('CORRIENTE','NO_CORRIENTE','INGRESOS','COSTOS','GASTOS')
+- account_type ('CAJA','BANCO','CUENTAS_POR_COBRAR','VENTAS', etc.)
+- level, parent_id, is_movement_account, is_active, display_order
+- description, created_at, updated_at, created_by
+
+#### exchange_rates (Tasas de Cambio Históricas)
+- id, rate_date, from_currency ('USD'), to_currency ('ARS')
+- rate (cuántos ARS por 1 USD), source, notes
+- created_at, created_by, updated_at
+- UNIQUE(rate_date, from_currency, to_currency)
+
+#### monthly_exchange_rates (Tipos de Cambio Mensuales)
+- id, year, month (1-12), usd_to_ars_rate
+- created_at, updated_at
+- UNIQUE(year, month)
+
+#### invoices (Facturas AFIP)
+- id, agency_id, operation_id, customer_id
+- cbte_tipo (1=Fact A, 6=Fact B, 11=Fact C), pto_vta, cbte_nro
+- cae, cae_fch_vto
+- receptor_doc_tipo, receptor_doc_nro, receptor_nombre, receptor_domicilio, receptor_condicion_iva
+- imp_neto, imp_iva, imp_total, imp_tot_conc, imp_op_ex, imp_trib
+- moneda ('PES','DOL'), cotizacion
+- concepto (1=Productos, 2=Servicios, 3=Ambos)
+- fch_serv_desde, fch_serv_hasta, fecha_emision, fecha_vto_pago
+- status ('draft','pending','sent','authorized','rejected','cancelled')
+- afip_response (JSONB), pdf_url, notes
+- created_at, updated_at, created_by
+
+#### invoice_items (Items de Factura)
+- id, invoice_id, descripcion, cantidad, precio_unitario, subtotal
+- iva_id, iva_porcentaje, iva_importe, total, orden
+- created_at
+
+#### iva_sales (IVA de Ventas)
+- id, operation_id, sale_amount_total, net_amount, iva_amount
+- currency ('ARS','USD'), sale_date
+- created_at, updated_at
+
+#### iva_purchases (IVA de Compras)
+- id, operation_id, operator_id, operator_cost_total, net_amount, iva_amount
+- currency ('ARS','USD'), purchase_date
+- created_at, updated_at
+
+#### partner_accounts (Cuentas de Socios)
+- id, partner_name, user_id, profit_percentage (0-100%), is_active
+- notes, created_at, updated_at
+
+#### partner_withdrawals (Retiros de Socios)
+- id, partner_id, amount, currency ('ARS','USD'), withdrawal_date
+- account_id (FK a financial_accounts), exchange_rate
+- ledger_movement_id, description, created_by, created_at
+
+#### partner_profit_allocations (Asignaciones de Ganancias a Socios)
+- id, partner_id, year, month, profit_amount, currency ('ARS','USD')
+- exchange_rate, status ('ALLOCATED','WITHDRAWN'), monthly_position_id
+- created_by, created_at, updated_at
+- UNIQUE(partner_id, year, month)
+
+#### commission_records (Registros de Comisiones)
+- id, operation_id, seller_id, agency_id
+- amount, status ('PENDING','PAID'), date_calculated, date_paid
+- created_at, updated_at
+
+#### alerts (Alertas)
+- id, operation_id, customer_id, user_id
+- type ('PAYMENT_DUE','OPERATOR_DUE','UPCOMING_TRIP','MISSING_DOC','GENERIC')
+- description, date_due, status ('PENDING','DONE','IGNORED')
+- created_at, updated_at
+
+#### documents (Documentos)
+- id, operation_id, customer_id, type ('PASSPORT','DNI','VOUCHER','INVOICE','PAYMENT_PROOF','OTHER')
+- file_url, uploaded_by_user_id, uploaded_at
+
+### 📊 RELACIONES IMPORTANTES
+
+1. **operations** -> operation_customers -> customers (una operación puede tener múltiples clientes)
+2. **operations** -> operation_operators -> operators (una operación puede tener múltiples operadores)
+3. **operations** -> payments (pagos de clientes y a operadores)
+4. **operations** -> operator_payments (pagos pendientes a operadores)
+5. **operations** -> ledger_movements (todos los movimientos contables)
+6. **financial_accounts** -> ledger_movements (movimientos por cuenta)
+7. **partner_accounts** -> partner_withdrawals -> ledger_movements (retiros de socios)
+8. **recurring_payments** -> recurring_payment_categories (categorización)
+
+### 💰 CÁLCULOS Y MÉTRICAS CLAVE
+
+#### Balance de Cuentas Financieras:
+\`\`\`sql
+SELECT fa.id, fa.name, fa.type, fa.currency, fa.initial_balance,
+  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as ingresos,
+  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as egresos,
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+FROM financial_accounts fa
+LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
+WHERE fa.is_active = true
+GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.initial_balance
+\`\`\`
+
+#### Deudores por Ventas (Cuentas por Cobrar):
+\`\`\`sql
+SELECT o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency,
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as pagado_usd,
+  (o.sale_amount_total / COALESCE(er.rate, 1)) - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as deuda_usd
+FROM operations o
+LEFT JOIN payments p ON p.operation_id = o.id
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+WHERE o.status NOT IN ('CANCELLED')
+GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency, er.rate
+HAVING (o.sale_amount_total / COALESCE(er.rate, 1)) - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) > 0
+\`\`\`
+
+#### Deuda a Operadores (Cuentas por Pagar):
+\`\`\`sql
+SELECT op.id, op.operation_id, op.operator_id, op.amount, op.currency, op.due_date,
+  op.paid_amount, (op.amount - op.paid_amount) as pendiente, op.status
+FROM operator_payments op
+WHERE op.status IN ('PENDING', 'OVERDUE')
+AND (op.amount - op.paid_amount) > 0
+ORDER BY op.due_date ASC
+\`\`\`
+
+#### Ventas del Mes (en USD):
+\`\`\`sql
+SELECT 
+  COUNT(*) as cantidad,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / er.rate END) as total_usd,
+  SUM(o.margin_amount / COALESCE(er.rate, 1)) as margen_usd
+FROM operations o
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+AND o.status NOT IN ('CANCELLED')
+\`\`\`
+
+#### Posición Contable Mensual (Activo = Pasivo + Patrimonio Neto):
+\`\`\`sql
+-- ACTIVO CORRIENTE
+SELECT SUM(COALESCE(lm.amount_ars_equivalent, 0)) as activo_corriente
+FROM ledger_movements lm
+JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
+WHERE coa.category = 'ACTIVO' AND coa.subcategory = 'CORRIENTE'
+AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+
+-- PASIVO CORRIENTE
+SELECT SUM(COALESCE(lm.amount_ars_equivalent, 0)) as pasivo_corriente
+FROM ledger_movements lm
+JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
+WHERE coa.category = 'PASIVO' AND coa.subcategory = 'CORRIENTE'
+AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+
+-- RESULTADO DEL MES (Ingresos - Costos - Gastos)
+SELECT 
+  SUM(CASE WHEN coa.subcategory = 'INGRESOS' THEN lm.amount_ars_equivalent ELSE 0 END) as ingresos,
+  SUM(CASE WHEN coa.subcategory = 'COSTOS' THEN lm.amount_ars_equivalent ELSE 0 END) as costos,
+  SUM(CASE WHEN coa.subcategory = 'GASTOS' THEN lm.amount_ars_equivalent ELSE 0 END) as gastos
+FROM ledger_movements lm
+JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
+WHERE coa.category = 'RESULTADO'
+AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+\`\`\`
+
+### ⚠️ NOTAS CRÍTICAS
+
+1. **Monedas:** Siempre convertir a USD usando exchange_rates. Si operation.sale_currency = 'USD', usar directamente. Si es 'ARS', dividir por exchange_rate.
+2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. Para fechas de operaciones usar departure_date o created_at según corresponda.
+3. **Payments:** La columna es date_due (NO due_date). Usar amount_usd para cálculos en USD.
+4. **Ledger Movements:** amount_ars_equivalent SIEMPRE está en ARS. Para USD, usar amount_original con exchange_rate.
+5. **Operator Payments:** Usar (amount - paid_amount) para calcular pendiente. Status puede ser 'PENDING', 'PAID', 'OVERDUE'.
+6. **Financial Accounts:** Balance = initial_balance + SUM(ledger_movements.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
+7. **Margen:** margin_amount = sale_amount_total - operator_cost. margin_percentage = (margin_amount / sale_amount_total) * 100.
+8. **Múltiples Operadores:** Si una operación tiene operation_operators, sumar todos los costos para obtener el costo total.
+9. **Partner Accounts:** Los retiros aparecen en ledger_movements tipo EXPENSE. Las asignaciones están en partner_profit_allocations.
+10. **Monthly Exchange Rates:** Cada mes/año tiene su propio TC. Si no hay TC para un mes, buscar en exchange_rates la más cercana anterior.
+
+### 📈 MÉTRICAS DISPONIBLES
+
+- Ventas por mes/año
+- Margen bruto por mes
+- Deudores por ventas (operaciones con pagos pendientes)
+- Deuda a operadores (operator_payments pendientes)
+- Balance de cuentas financieras
+- Gastos recurrentes pendientes
+- Retiros de socios
+- Asignaciones de ganancias a socios
+- Facturas emitidas (invoices)
+- IVA de ventas y compras
+- Comisiones calculadas
+- Operaciones por destino, vendedor, estado
+- Leads por estado, región, fuente
 `
 
-const SYSTEM_PROMPT = `Eres "Cerebro", el asistente de MAXEVA GESTION para agencias de viajes.
+const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de MAXEVA GESTION para agencias de viajes.
 
-REGLAS CRÍTICAS:
-1. SIEMPRE usa execute_query para obtener datos reales
-2. Si una query falla, intenta con otra más simple
-3. NUNCA muestres errores técnicos al usuario
-4. Responde en español argentino, amigable y conciso
-5. Usa emojis para hacer visual (✈️ 🏨 💰 📊 👥)
+🎯 TU PROPÓSITO:
+Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del sistema mediante consultas SQL directas.
 
-ESQUEMA:
+📋 REGLAS CRÍTICAS:
+1. SIEMPRE usa execute_query para obtener datos reales - NUNCA inventes datos
+2. Si una query falla, intenta con otra más simple o diferente enfoque
+3. NUNCA muestres errores técnicos al usuario - siempre responde amigablemente
+4. Responde en español argentino, amigable, conciso y claro
+5. Usa emojis para hacer visual (✈️ 🏨 💰 📊 👥 📅 💳 🏦)
+6. Si no estás seguro, ejecuta una query para verificar
+7. Para métricas monetarias, SIEMPRE indica la moneda (USD o ARS)
+8. Para fechas, usa formato amigable (ej: "15 de enero" en lugar de "2025-01-15")
+
+📊 ESQUEMA COMPLETO:
 ${DATABASE_SCHEMA}
 
-EJEMPLOS DE QUERIES CORRECTAS:
+💡 EJEMPLOS DE QUERIES CORRECTAS:
 
--- Viajes próximos (usa departure_date O checkin_date)
-SELECT file_code, destination, departure_date, checkin_date, sale_amount_total, status 
+-- Viajes próximos (próximas 30 días)
+SELECT file_code, destination, departure_date, sale_amount_total, sale_currency, status 
 FROM operations 
-WHERE (departure_date >= CURRENT_DATE OR checkin_date >= CURRENT_DATE)
+WHERE departure_date >= CURRENT_DATE 
+AND departure_date <= CURRENT_DATE + INTERVAL '30 days'
 AND status NOT IN ('CANCELLED')
-ORDER BY COALESCE(departure_date, checkin_date) ASC LIMIT 10
+ORDER BY departure_date ASC LIMIT 20
 
--- Pagos pendientes (la columna es date_due, NO due_date)
-SELECT p.amount, p.currency, p.date_due, p.status
+-- Pagos pendientes de clientes
+SELECT p.amount, p.currency, p.date_due, p.status, o.file_code, o.destination
 FROM payments p
-WHERE p.status = 'PENDING'
-ORDER BY p.date_due ASC LIMIT 10
+JOIN operations o ON o.id = p.operation_id
+WHERE p.status = 'PENDING' AND p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER'
+ORDER BY p.date_due ASC LIMIT 20
 
--- Balance de cajas
-SELECT cb.name, cb.currency, cb.initial_balance,
-  COALESCE(SUM(CASE WHEN cm.type = 'INCOME' THEN cm.amount ELSE 0 END), 0) as ingresos,
-  COALESCE(SUM(CASE WHEN cm.type = 'EXPENSE' THEN cm.amount ELSE 0 END), 0) as egresos
-FROM cash_boxes cb
-LEFT JOIN cash_movements cm ON cm.cash_box_id = cb.id
-WHERE cb.is_active = true
-GROUP BY cb.id, cb.name, cb.currency, cb.initial_balance
+-- Deudores por ventas (TOP 10)
+SELECT o.file_code, o.destination, 
+  o.sale_amount_total as venta_total,
+  o.sale_currency,
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as pagado_usd,
+  (o.sale_amount_total / COALESCE((SELECT rate FROM exchange_rates WHERE rate_date <= o.departure_date::date AND from_currency = 'USD' AND to_currency = 'ARS' ORDER BY rate_date DESC LIMIT 1), 1)) - 
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as deuda_usd
+FROM operations o
+LEFT JOIN payments p ON p.operation_id = o.id
+WHERE o.status NOT IN ('CANCELLED')
+GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency, o.departure_date
+HAVING (o.sale_amount_total / COALESCE((SELECT rate FROM exchange_rates WHERE rate_date <= o.departure_date::date AND from_currency = 'USD' AND to_currency = 'ARS' ORDER BY rate_date DESC LIMIT 1), 1)) - 
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) > 0
+ORDER BY deuda_usd DESC LIMIT 10
 
--- Ventas del mes
-SELECT COUNT(*) as cantidad, COALESCE(SUM(sale_amount_total), 0) as total
-FROM operations
-WHERE created_at >= date_trunc('month', CURRENT_DATE) AND status NOT IN ('CANCELLED')
+-- Deuda a operadores (TOP 10)
+SELECT opr.name as operador, 
+  COUNT(op.id) as cantidad_pagos,
+  SUM(op.amount - op.paid_amount) as total_pendiente,
+  op.currency,
+  MIN(op.due_date) as proximo_vencimiento
+FROM operator_payments op
+JOIN operators opr ON opr.id = op.operator_id
+WHERE op.status IN ('PENDING', 'OVERDUE')
+AND (op.amount - op.paid_amount) > 0
+GROUP BY opr.name, op.currency
+ORDER BY total_pendiente DESC LIMIT 10
 
--- Leads por estado
-SELECT status, COUNT(*) as cantidad FROM leads
-WHERE created_at >= date_trunc('month', CURRENT_DATE) GROUP BY status
+-- Balance de todas las cuentas financieras
+SELECT fa.name, fa.type, fa.currency, fa.initial_balance,
+  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as ingresos,
+  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as egresos,
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+FROM financial_accounts fa
+LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
+WHERE fa.is_active = true
+GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.initial_balance
+ORDER BY fa.currency, balance_actual DESC
 
--- Total operaciones
-SELECT COUNT(*) as total FROM operations WHERE status NOT IN ('CANCELLED')
+-- Ventas del mes actual (en USD)
+SELECT 
+  COUNT(*) as cantidad_operaciones,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, 1) END) as total_margen_usd
+FROM operations o
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+AND o.status NOT IN ('CANCELLED')
 
--- Total clientes
-SELECT COUNT(*) as total FROM customers
+-- Gastos recurrentes pendientes
+SELECT rp.description, rp.amount, rp.currency, rp.next_due_date, opr.name as proveedor
+FROM recurring_payments rp
+JOIN operators opr ON opr.id = rp.operator_id
+WHERE rp.is_active = true
+AND rp.next_due_date <= CURRENT_DATE + INTERVAL '30 days'
+ORDER BY rp.next_due_date ASC
 
-SI UNA QUERY FALLA:
-- Intenta con una versión más simple
+-- Operaciones por vendedor (este mes)
+SELECT u.name as vendedor, COUNT(o.id) as cantidad, 
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd
+FROM operations o
+JOIN users u ON u.id = o.seller_id
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND to_currency = 'ARS'
+WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+AND o.status NOT IN ('CANCELLED')
+GROUP BY u.name
+ORDER BY total_ventas_usd DESC
+
+-- Top destinos (este mes)
+SELECT destination, COUNT(*) as cantidad,
+  SUM(CASE WHEN sale_currency = 'USD' THEN sale_amount_total ELSE sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd
+FROM operations o
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND to_currency = 'ARS'
+WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+AND o.status NOT IN ('CANCELLED')
+GROUP BY destination
+ORDER BY total_ventas_usd DESC LIMIT 10
+
+-- Facturas emitidas (este mes)
+SELECT COUNT(*) as cantidad, SUM(imp_total) as total_facturado, status
+FROM invoices
+WHERE fecha_emision >= date_trunc('month', CURRENT_DATE)
+GROUP BY status
+
+-- Retiros de socios (este mes)
+SELECT pa.partner_name, SUM(pw.amount) as total_retirado, pw.currency
+FROM partner_withdrawals pw
+JOIN partner_accounts pa ON pa.id = pw.partner_id
+WHERE pw.withdrawal_date >= date_trunc('month', CURRENT_DATE)
+GROUP BY pa.partner_name, pw.currency
+ORDER BY total_retirado DESC
+
+-- Asignaciones de ganancias a socios (este mes)
+SELECT pa.partner_name, ppa.profit_amount, ppa.currency, ppa.status
+FROM partner_profit_allocations ppa
+JOIN partner_accounts pa ON pa.id = ppa.partner_id
+WHERE ppa.year = EXTRACT(YEAR FROM CURRENT_DATE)
+AND ppa.month = EXTRACT(MONTH FROM CURRENT_DATE)
+ORDER BY ppa.profit_amount DESC
+
+🔍 SI UNA QUERY FALLA:
+- Intenta con una versión más simple (menos JOINs, sin subqueries complejas)
 - Si sigue fallando, responde: "No pude obtener esa información en este momento. ¿Puedo ayudarte con algo más?"
-- NUNCA muestres el error técnico
+- NUNCA muestres el error técnico completo al usuario
+- Siempre ofrece ayuda alternativa o pregunta si necesita otra información
+
+💬 TONO Y ESTILO:
+- Usa español argentino natural
+- Sé amigable pero profesional
+- Explica números grandes en formato legible (ej: "$125,000" en lugar de "$125000")
+- Para fechas, usa formato amigable (ej: "15 de enero de 2025")
+- Si hay muchos resultados, muestra solo los primeros y menciona el total
+- Usa emojis para hacer las respuestas más visuales y amigables
 `
 
 // Ejecutar consulta SQL de forma segura
@@ -165,19 +496,25 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
 
     const today = new Date().toISOString().split('T')[0]
-    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email}`
+    const userContext = `Fecha: ${today} | Usuario: ${user.name || user.email} | Rol: ${user.role}`
 
     const tools: OpenAI.Chat.Completions.ChatCompletionTool[] = [
       {
         type: "function",
         function: {
           name: "execute_query",
-          description: "Ejecuta una consulta SQL SELECT para obtener datos del sistema.",
+          description: "Ejecuta una consulta SQL SELECT para obtener datos reales del sistema. Usa esto SIEMPRE para responder preguntas sobre datos, métricas, operaciones, clientes, pagos, etc.",
           parameters: {
             type: "object",
             properties: {
-              query: { type: "string", description: "Consulta SQL SELECT" },
-              description: { type: "string", description: "Qué información busca" }
+              query: { 
+                type: "string", 
+                description: "Consulta SQL SELECT válida. IMPORTANTE: Usa los nombres exactos de columnas del esquema. Para fechas usa CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. Para convertir ARS a USD, divide por exchange_rate." 
+              },
+              description: { 
+                type: "string", 
+                description: "Descripción clara de qué información busca esta query (ej: 'Obtener ventas del mes actual', 'Calcular deudores por ventas', etc.)" 
+              }
             },
             required: ["query", "description"]
           }
@@ -196,13 +533,13 @@ export async function POST(request: Request) {
       tools,
       tool_choice: "auto",
       temperature: 0.3,
-      max_tokens: 1500
+      max_tokens: 2000
     })
 
     let assistantMessage = response.choices[0].message
     let finalResponse = assistantMessage.content || ""
     let iterations = 0
-    const maxIterations = 3
+    const maxIterations = 5 // Aumentado a 5 para permitir más queries en secuencia
 
     while (assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0 && iterations < maxIterations) {
       iterations++
@@ -221,27 +558,28 @@ export async function POST(request: Request) {
                 content: JSON.stringify({
                   success: true,
                   data: result.data,
-                  count: result.data?.length || 0
+                  count: result.data?.length || 0,
+                  description: args.description
                 })
               })
             } else {
-              // Query falló - decirle al AI que intente otra
+              // Query falló - dar feedback específico
               toolResults.push({
                 role: "tool",
                 tool_call_id: toolCall.id,
                 content: JSON.stringify({
                   success: false,
-                  message: "La consulta falló. Intenta con una query más simple o responde que no pudiste obtener la información."
+                  message: `La consulta falló: ${result.error}. Intenta con una query más simple. Si es sobre fechas, usa CURRENT_DATE. Si es sobre monedas, verifica los nombres de columnas (sale_currency, currency, etc.). Si es sobre relaciones, verifica que las tablas y columnas existan.`
                 })
               })
             }
-          } catch {
+          } catch (err: any) {
             toolResults.push({
               role: "tool",
               tool_call_id: toolCall.id,
               content: JSON.stringify({
                 success: false,
-                message: "Error al procesar. Intenta otra forma o responde amablemente que no pudiste obtener la información."
+                message: `Error al procesar: ${err.message}. Intenta otra forma o responde amablemente que no pudiste obtener la información.`
               })
             })
           }
@@ -257,7 +595,7 @@ export async function POST(request: Request) {
         tools,
         tool_choice: "auto",
         temperature: 0.3,
-        max_tokens: 1500
+        max_tokens: 2000
       })
 
       assistantMessage = response.choices[0].message

@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Ordenamiento de Cuentas por Saldo en Caja)
+**Última actualización:** 2025-01-19 (Actualización Completa de Cerebro - Esquema de Base de Datos)
 
 ---
 
@@ -2841,3 +2841,117 @@ Se implementó un ordenamiento automático de cuentas financieras por saldo desc
 
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services
+
+---
+
+### 39. Actualización Completa de Cerebro - Esquema de Base de Datos
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se realizó una actualización completa y exhaustiva del esquema de base de datos en "Cerebro" (el asistente de AI), incluyendo TODAS las tablas, relaciones, campos y métricas del sistema para que pueda responder absolutamente cualquier pregunta sobre los datos.
+
+**Problema Identificado:**
+- El esquema de base de datos estaba desactualizado y solo incluía tablas básicas
+- Faltaban tablas críticas como `financial_accounts`, `ledger_movements`, `operator_payments`, `invoices`, `partner_accounts`, etc.
+- No había ejemplos de queries para métricas complejas
+- El sistema no podía responder preguntas sobre contabilidad, facturación, socios, gastos recurrentes, etc.
+
+**Solución Implementada:**
+
+#### 1. Esquema Completo de Base de Datos:
+- **Agregadas TODAS las tablas principales** (30+ tablas):
+  - Tablas de operaciones: `operations`, `operation_customers`, `operation_operators`
+  - Tablas de pagos: `payments`, `operator_payments`, `recurring_payments`
+  - Tablas contables: `financial_accounts`, `ledger_movements`, `chart_of_accounts`
+  - Tablas de facturación: `invoices`, `invoice_items`, `iva_sales`, `iva_purchases`
+  - Tablas de socios: `partner_accounts`, `partner_withdrawals`, `partner_profit_allocations`
+  - Tablas de tasas: `exchange_rates`, `monthly_exchange_rates`
+  - Y todas las demás tablas del sistema
+
+#### 2. Documentación de Relaciones:
+- Documentadas todas las relaciones entre tablas (FKs)
+- Explicadas las relaciones many-to-many (operations-operators, operations-customers)
+- Clarificadas las relaciones contables (financial_accounts -> ledger_movements)
+
+#### 3. Cálculos y Métricas Clave:
+- **Balance de Cuentas Financieras:** Query completa con ingresos, egresos y balance actual
+- **Deudores por Ventas:** Query con conversión de moneda y cálculo de deuda pendiente
+- **Deuda a Operadores:** Query con pagos parciales y estado
+- **Ventas del Mes:** Query con conversión automática a USD
+- **Posición Contable Mensual:** Queries para Activo, Pasivo y Resultado del Mes
+- Y muchas más métricas importantes
+
+#### 4. Ejemplos de Queries Completos:
+- Viajes próximos (próximas 30 días)
+- Pagos pendientes de clientes
+- Deudores por ventas (TOP 10)
+- Deuda a operadores (TOP 10)
+- Balance de todas las cuentas financieras
+- Ventas del mes actual (en USD)
+- Gastos recurrentes pendientes
+- Operaciones por vendedor
+- Top destinos
+- Facturas emitidas
+- Retiros de socios
+- Asignaciones de ganancias a socios
+
+#### 5. Notas Críticas Documentadas:
+- Conversión de monedas (ARS a USD usando exchange_rates)
+- Manejo de fechas (CURRENT_DATE, date_trunc, etc.)
+- Nombres de columnas correctos (date_due NO due_date)
+- Cálculo de balances (initial_balance + SUM(ledger_movements))
+- Cálculo de márgenes y porcentajes
+- Múltiples operadores por operación
+- Pagos parciales (amount - paid_amount)
+
+#### 6. Mejoras en el Sistema Prompt:
+- Aumentado `max_iterations` de 3 a 5 para permitir más queries en secuencia
+- Aumentado `max_tokens` de 1500 a 2000 para respuestas más completas
+- Mejorado feedback de errores con mensajes más específicos
+- Agregado contexto del usuario (nombre, rol) en cada consulta
+- Mejorada descripción de la función `execute_query` para guiar mejor al AI
+
+**Archivos Modificados:**
+- `app/api/ai/route.ts` - **REESCRITO COMPLETAMENTE**
+  - Esquema de base de datos expandido de ~50 líneas a ~400+ líneas
+  - Agregadas todas las tablas con sus campos completos
+  - Agregados ejemplos de queries para todas las métricas
+  - Mejorado SYSTEM_PROMPT con más contexto y ejemplos
+  - Aumentada capacidad de iteraciones y tokens
+
+**Detalles Técnicos:**
+- El esquema ahora incluye TODAS las tablas del sistema
+- Cada tabla tiene documentados TODOS sus campos importantes
+- Las relaciones entre tablas están claramente documentadas
+- Los ejemplos de queries cubren todos los casos de uso principales
+- El sistema puede responder preguntas sobre:
+  - Operaciones y ventas
+  - Pagos y cobranzas
+  - Contabilidad y balances
+  - Facturación AFIP
+  - Cuentas de socios
+  - Gastos recurrentes
+  - Métricas y reportes
+  - Y cualquier otra pregunta sobre los datos del sistema
+
+**Resultado:**
+- ✅ Cerebro ahora tiene contexto completo de TODO el sistema
+- ✅ Puede responder preguntas sobre cualquier tabla o métrica
+- ✅ Las queries son más precisas gracias al esquema completo
+- ✅ Mejor manejo de errores con feedback específico
+- ✅ Respuestas más completas y útiles para los usuarios
+- ✅ Soporte para consultas complejas con múltiples queries en secuencia
+
+**Ejemplos de Preguntas que Ahora Puede Responder:**
+- "¿Cuánto debo a los operadores?"
+- "¿Cuál es el balance de todas mis cuentas?"
+- "¿Quiénes son mis mayores deudores?"
+- "¿Cuánto facturé este mes?"
+- "¿Cuánto retiraron los socios este mes?"
+- "¿Cuáles son los gastos recurrentes pendientes?"
+- "¿Cuál es la posición contable del mes?"
+- "¿Cuántas operaciones tengo por destino?"
+- Y cualquier otra pregunta sobre los datos del sistema
+
+---
