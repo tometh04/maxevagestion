@@ -2439,5 +2439,70 @@ Se simplificó el tab "Resumen" de Caja para mostrar únicamente los saldos de t
 
 ---
 
+### 33. Verificación de Conversor de Moneda en Pagos a Operadores y Mejora de Claridad en Gastos Recurrentes
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se verificó que el conversor de moneda funciona correctamente en todos los puntos de pago a operadores, y se mejoró la claridad del flujo en Gastos Recurrentes agregando explicaciones visuales.
+
+#### **Verificación de Conversor en Pagos a Operadores:**
+
+**Estado Verificado:**
+- ✅ **Bulk Payment Dialog** (`bulk-payment-dialog.tsx`): Ya tiene conversor de moneda cuando cuenta difiere de deuda
+- ✅ **Mark Paid Dialog** (`mark-paid-dialog.tsx`): Conversor agregado recientemente funciona tanto para cobranzas (INCOME) como para pagos a operadores (EXPENSE)
+  - Para INCOME: compara con `operation.sale_currency`
+  - Para EXPENSE: compara con `operation.operator_cost_currency`
+- ✅ **API mark-paid** (`/api/payments/mark-paid`): Acepta y procesa `exchange_rate` correctamente
+
+**Resultado:**
+- ✅ Todos los puntos de entrada para pagos a operadores tienen conversor de moneda
+- ✅ Validación consistente en frontend y backend
+- ✅ Conversión correcta en todos los movimientos contables
+
+#### **Mejora de Claridad en Gastos Recurrentes:**
+
+**Problema Identificado:**
+- El cliente reportó: "no entiendo bien la funcionalidad, por un lado se carga el gasto, por otro el pago del gasto"
+- No estaba claro el flujo entre crear un gasto recurrente y pagarlo
+
+**Solución Implementada:**
+
+1. **Tooltip de Ayuda en Header:**
+   - Agregado icono de ayuda (`HelpCircle`) junto al título "Gastos Recurrentes"
+   - Tooltip explicativo que aclara:
+     - **Crear Gasto:** Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios)
+     - **Pagar Gasto:** Procesa el pago cuando el gasto está vencido, impactando en tu caja
+
+2. **Descripción Mejorada:**
+   - Cambiado de "Gestión de pagos automáticos a proveedores" a "Define gastos recurrentes y procesa sus pagos cuando correspondan"
+   - Descripción más clara y específica
+
+3. **Botón Más Descriptivo:**
+   - Cambiado de "Nuevo Pago" a "Nuevo Gasto Recurrente"
+   - Deja claro que se está creando un gasto futuro, no procesando un pago inmediato
+
+4. **Dialog de Pago Más Explicativo:**
+   - Actualizada descripción en `PayRecurringExpenseDialog`:
+     - Ahora menciona que el pago impactará en la caja
+     - Explica que actualizará automáticamente la próxima fecha de vencimiento
+
+**Archivos Modificados:**
+- `components/accounting/recurring-payments-page-client.tsx`
+  - Agregado import de `HelpCircle`, `Info`, y componentes `Tooltip`
+  - Agregado tooltip explicativo en el header
+  - Mejorada descripción de la página
+  - Cambiado texto del botón "Nuevo Pago" → "Nuevo Gasto Recurrente"
+- `components/accounting/pay-recurring-expense-dialog.tsx`
+  - Mejorada `DialogDescription` con explicación más detallada del proceso
+
+**Resultado:**
+- ✅ Flujo más claro: crear gasto vs pagar gasto está bien diferenciado
+- ✅ Usuarios entienden mejor cómo funciona el sistema
+- ✅ Mejor UX con tooltips informativos
+- ✅ Textos más descriptivos en toda la sección
+
+---
+
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services

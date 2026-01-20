@@ -22,12 +22,18 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw, AlertCircle, Filter } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
 import { toast } from "sonner"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   BarChart,
   Bar,
@@ -484,8 +490,28 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Gastos Recurrentes</CardTitle>
-              <CardDescription>Gestión de pagos automáticos a proveedores</CardDescription>
+              <div className="flex items-center gap-2">
+                <CardTitle>Gastos Recurrentes</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="font-medium mb-1">¿Cómo funciona?</p>
+                      <p className="text-xs mb-2">
+                        <strong>Crear Gasto:</strong> Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios).
+                      </p>
+                      <p className="text-xs">
+                        <strong>Pagar Gasto:</strong> Procesa el pago cuando el gasto está vencido, impactando en tu caja.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+              <CardDescription>
+                Define gastos recurrentes y procesa sus pagos cuando correspondan
+              </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {/* Filtro por Proveedor */}
@@ -570,7 +596,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
               <Button onClick={() => setNewDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Nuevo Pago
+                Nuevo Gasto Recurrente
               </Button>
             </div>
           </div>
