@@ -309,123 +309,13 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
 
         {/* TAB: Resumen */}
         <TabsContent value="resumen" className="space-y-6">
-          {/* KPIs */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total ARS</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(kpis.totalARS, "ARS")}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Efectivo: {formatCurrency(kpis.efectivoARS, "ARS")} | Bancos: {formatCurrency(kpis.bancosARS, "ARS")}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total USD</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(kpis.totalUSD, "USD")}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Efectivo: {formatCurrency(kpis.efectivoUSD, "USD")} | Bancos: {formatCurrency(kpis.bancosUSD, "USD")}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Efectivo ARS</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoARS, "ARS")}</div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Efectivo USD</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoUSD, "USD")}</div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Gráfico de evolución */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Evolución de la Caja</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="h-[300px] flex items-center justify-center">
-                  <p className="text-muted-foreground">Cargando...</p>
-                </div>
-              ) : chartData.length === 0 ? (
-                <div className="h-[300px] flex items-center justify-center">
-                  <p className="text-muted-foreground">No hay datos disponibles</p>
-                </div>
-              ) : (
-                <ChartContainer config={chartConfig} className="h-[350px] w-full">
-                  <LineChart 
-                    data={chartData}
-                    margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
-                    <XAxis
-                      dataKey="date"
-                      tickLine={false}
-                      tickMargin={8}
-                      axisLine={false}
-                      className="text-xs"
-                    />
-                    <YAxis
-                      tickLine={false}
-                      tickMargin={8}
-                      axisLine={false}
-                      className="text-xs"
-                      tickFormatter={formatYAxisValue}
-                    />
-                    <ChartTooltip
-                      cursor={{ stroke: "hsl(142, 76%, 36%)", strokeWidth: 1 }}
-                      content={({ active, payload }) => {
-                        if (active && payload && payload.length) {
-                          const value = payload[0].value as number
-                          return (
-                            <div className="rounded-lg border bg-background p-2 shadow-sm">
-                              <div className="grid gap-2">
-                                <div className="flex items-center justify-between gap-4">
-                                  <span className="text-xs text-muted-foreground">Balance</span>
-                                  <span className="font-semibold">{formatCurrency(value, "ARS")}</span>
-                                </div>
-                              </div>
-                            </div>
-                          )
-                        }
-                        return null
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="Balance"
-                      stroke="hsl(142, 76%, 36%)"
-                      strokeWidth={3}
-                      dot={false}
-                      activeDot={{ r: 6, fill: "hsl(142, 76%, 36%)" }}
-                    />
-                  </LineChart>
-                </ChartContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Lista de todas las cuentas */}
-          <Card>
+          {/* Lista de todas las cuentas con sus saldos */}
+        <Card>
             <CardHeader>
               <CardTitle>Cuentas Financieras</CardTitle>
               <CardDescription>Balance actual de todas las cuentas</CardDescription>
-            </CardHeader>
-            <CardContent>
+          </CardHeader>
+          <CardContent>
               <div className="space-y-4">
                 <div>
                   <h3 className="text-sm font-medium mb-2">Cuentas USD</h3>
@@ -456,8 +346,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </CardContent>
+        </Card>
         </TabsContent>
 
         {/* TAB: Caja USD */}
@@ -468,11 +358,11 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               <Skeleton className="h-64 w-full" />
             </div>
           ) : usdAccounts.length === 0 ? (
-            <Card>
+        <Card>
               <CardContent className="py-8 text-center text-muted-foreground">
                 No hay cuentas USD configuradas
-              </CardContent>
-            </Card>
+          </CardContent>
+        </Card>
           ) : (
             <div className="space-y-6">
               {usdAccounts.map(account => {
@@ -492,7 +382,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           {formatCurrency(account.current_balance || 0, "USD")}
                         </Badge>
                       </div>
-                    </CardHeader>
+          </CardHeader>
                     <CardContent className="space-y-4">
                       {/* Resumen de ingresos y egresos */}
                       <div className="grid gap-4 md:grid-cols-3">
@@ -587,11 +477,11 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           )}
                         </div>
                       )}
-                    </CardContent>
-                  </Card>
+          </CardContent>
+        </Card>
                 )
               })}
-            </div>
+      </div>
           )}
         </TabsContent>
 
@@ -615,7 +505,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 const movements = accountMovements[account.id] || []
                 const isLoading = loadingMovements[account.id] || false
 
-                return (
+                      return (
                   <Card key={account.id}>
                     <CardHeader>
                       <div className="flex items-center justify-between">
@@ -648,7 +538,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                               {formatCurrency(stats.expenses, "ARS")}
                             </p>
                           </div>
-                        </div>
+                            </div>
                         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                           <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           <div>
@@ -721,9 +611,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                             </div>
                           )}
                         </div>
-                      )}
-                    </CardContent>
-                  </Card>
+          )}
+        </CardContent>
+      </Card>
                 )
               })}
             </div>

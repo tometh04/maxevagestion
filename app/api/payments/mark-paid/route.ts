@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
-    const { paymentId, datePaid, reference, financial_account_id } = body
+    const { paymentId, datePaid, reference, financial_account_id, exchange_rate } = body
 
     if (!paymentId || !datePaid) {
       return NextResponse.json({ error: "Faltan parámetros" }, { status: 400 })
@@ -59,15 +59,33 @@ export async function POST(request: Request) {
     // Solo actualizamos la fecha y referencia, pero no creamos movimientos duplicados
     const alreadyHasLedgerMovement = paymentData.status === "PAID" && paymentData.ledger_movement_id
 
+    // Calcular amount_usd si hay exchange_rate proporcionado
+    let amountUsd: number | null = null
+    if (exchange_rate && paymentData.currency === "ARS") {
+      amountUsd = parseFloat(paymentData.amount) / exchange_rate
+    } else if (paymentData.currency === "USD") {
+      amountUsd = parseFloat(paymentData.amount)
+    }
+
     // Update payment
     const paymentsTable = supabase.from("payments") as any
+    const updateData: any = {
+      date_paid: datePaid,
+      status: "PAID",
+      reference: reference || null,
+      updated_at: new Date().toISOString(),
+    }
+    
+    // Si se proporcionó exchange_rate, guardarlo y calcular amount_usd
+    if (exchange_rate) {
+      updateData.exchange_rate = exchange_rate
+      if (amountUsd !== null) {
+        updateData.amount_usd = amountUsd
+      }
+    }
+    
     await paymentsTable
-      .update({
-        date_paid: datePaid,
-        status: "PAID",
-        reference: reference || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updateData)
       .eq("id", paymentId)
 
     // Si el pago ya tiene ledger_movement_id, no crear movimientos duplicados
@@ -395,23 +413,31 @@ export async function POST(request: Request) {
     }
 
     // Calcular ARS equivalent
-    // Si currency = ARS, amount_ars_equivalent = amount_original
-    // Si currency = USD, necesitamos exchange_rate de la tabla
-    let exchangeRate: number | null = null
-    if (paymentData.currency === "USD") {
-      const rateDate = datePaid ? new Date(datePaid) : new Date()
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-      
-      // Si no hay tasa para esa fecha, usar la más reciente disponible
-      if (!exchangeRate) {
-        const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-        exchangeRate = await getLatestExchangeRate(supabase)
-      }
-      
-      // Fallback: si aún no hay tasa, usar 1000 como último recurso
-      if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-        exchangeRate = 1000
+    // Priorizar exchange_rate proporcionado por el frontend
+    // Si currency = ARS y se proporcionó exchange_rate, usarlo para convertir a USD
+    // Si currency = USD y no se proporcionó exchange_rate, obtenerlo de la tabla
+    let exchangeRate: number | null = exchange_rate || null
+    
+    if (!exchangeRate) {
+      // Solo calcular automáticamente si no se proporcionó desde el frontend
+      if (paymentData.currency === "USD") {
+        const rateDate = datePaid ? new Date(datePaid) : new Date()
+        exchangeRate = await getExchangeRate(supabase, rateDate)
+        
+        // Si no hay tasa para esa fecha, usar la más reciente disponible
+        if (!exchangeRate) {
+          const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
+          exchangeRate = await getLatestExchangeRate(supabase)
+        }
+        
+        // Fallback: si aún no hay tasa, usar 1000 como último recurso
+        if (!exchangeRate) {
+          console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
+          exchangeRate = 1000
+        }
+      } else if (paymentData.currency === "ARS" && exchange_rate) {
+        // Si el pago es en ARS y se proporcionó TC, usarlo
+        exchangeRate = exchange_rate
       }
     }
     
@@ -458,7 +484,7 @@ export async function POST(request: Request) {
             : "Pago a operador",
         currency: paymentData.currency as "ARS" | "USD",
         amount_original: parseFloat(paymentData.amount),
-        exchange_rate: paymentData.currency === "USD" ? exchangeRate : null,
+        exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: ledgerMethod,
         account_id: accountId,
@@ -572,7 +598,7 @@ export async function POST(request: Request) {
             : `Pago en ${paymentData.method || "efectivo"} - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
         currency: paymentData.currency as "ARS" | "USD",
         amount_original: parseFloat(paymentData.amount),
-        exchange_rate: paymentData.currency === "USD" ? exchangeRate : null,
+        exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: ledgerMethod,
         account_id: cashAccountId,

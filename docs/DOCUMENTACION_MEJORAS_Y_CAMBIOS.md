@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Corrección de Nombres de Vendedores en KPIs)
+**Última actualización:** 2025-01-19 (Conversor de Moneda en Deudores por Ventas y Ajuste de Resumen de Caja)
 
 ---
 
@@ -2322,6 +2322,120 @@ Se corrigió un bug crítico donde los nombres de vendedores no aparecían en ni
 - ✅ Estadísticas de operaciones y ventas muestran vendedores con nombres
 - ✅ Reportes muestran nombres correctamente (ya funcionaban)
 - ✅ Mayor robustez en componentes con soporte para múltiples formatos
+
+---
+
+### 31. Conversor de Moneda en Deudores por Ventas
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó un conversor de moneda en el dialog de "Marcar como Pagado" para cobranzas de clientes, que detecta automáticamente cuando la moneda del pago difiere de la moneda de la operación y solicita el tipo de cambio obligatorio.
+
+**Problema Identificado:**
+- Si se cargaba una cobranza en pesos para una operación en dólares, el sistema no pedía tipo de cambio
+- No había conversión de moneda al marcar pagos como pagados desde "Deudores por Ventas"
+- Los movimientos contables no reflejaban correctamente la conversión cuando las monedas diferían
+
+**Solución Implementada:**
+
+1. **Detección Automática de Conversión:**
+   - El dialog obtiene automáticamente la moneda de la operación al abrirse
+   - Compara la moneda del pago (`payment.currency`) con la moneda de la operación
+   - Para cobranzas (INCOME): usa `operation.sale_currency`
+   - Para pagos a operadores (EXPENSE): usa `operation.operator_cost_currency`
+   - Si las monedas difieren, muestra el campo de tipo de cambio obligatorio
+
+2. **Campo de Tipo de Cambio:**
+   - Aparece automáticamente cuando `payment.currency !== operation_currency`
+   - Muestra conversión en tiempo real: "Equivale a [MONEDA_OPERACION] X.XX"
+   - Validación: tipo de cambio requerido cuando hay conversión
+   - Mensaje claro explicando por qué se necesita el TC
+
+3. **Actualización del Payment:**
+   - Guarda `exchange_rate` en el payment cuando se proporciona
+   - Calcula `amount_usd` automáticamente: `amount / exchange_rate` para ARS, `amount` para USD
+   - El API usa el `exchange_rate` proporcionado en todos los movimientos contables
+
+**Archivos Modificados:**
+- `components/payments/mark-paid-dialog.tsx`
+  - Agregado estado `operationCurrency` y `loadingOperation`
+  - Agregado `useEffect` para obtener moneda de la operación desde `/api/operations/[id]`
+  - Agregado `useMemo` para calcular `needsExchangeRate`
+  - Agregado campo de tipo de cambio condicional con validación
+  - Actualizado schema para incluir `exchange_rate` opcional
+  - Actualizado `handleSubmit` para validar y enviar `exchange_rate`
+- `app/api/payments/mark-paid/route.ts`
+  - Agregado `exchange_rate` al body del request
+  - Actualizada lógica para priorizar `exchange_rate` del frontend sobre cálculo automático
+  - Cálculo de `amount_usd` cuando se proporciona `exchange_rate`
+  - Actualizado `update` del payment para guardar `exchange_rate` y `amount_usd`
+  - Actualizados todos los `createLedgerMovement` para usar `exchange_rate` proporcionado
+
+**Detalles Técnicos:**
+- Si el pago es en ARS y la operación en USD: `amount_usd = amount / exchange_rate`
+- Si el pago es en USD y la operación en ARS: `exchange_rate` se usa para calcular `amount_ars_equivalent`
+- El `exchange_rate` proporcionado tiene prioridad sobre el cálculo automático del sistema
+- Si no se proporciona `exchange_rate` y el pago es en USD, el sistema calcula automáticamente desde la tabla de exchange rates
+
+**Resultado:**
+- ✅ El sistema detecta automáticamente cuando se necesita conversión de moneda
+- ✅ Campo de tipo de cambio aparece solo cuando es necesario
+- ✅ Validación asegura que se ingrese TC cuando corresponde
+- ✅ Conversión en tiempo real muestra el equivalente en moneda de operación
+- ✅ Los movimientos contables reflejan correctamente la conversión
+
+---
+
+### 32. Ajuste de Resumen de Caja - Solo Saldos de Cuentas
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se simplificó el tab "Resumen" de Caja para mostrar únicamente los saldos de todas las cuentas financieras, eliminando KPIs agregados y gráficos generales que no permitían control ni conciliación bancaria.
+
+**Problema Identificado:**
+- El resumen mostraba KPIs agregados (Total ARS, Total USD, Efectivo ARS, Efectivo USD)
+- Incluía un gráfico de evolución general que no permitía control específico
+- Mostraba ingresos y egresos por separado de forma agregada
+- No permitía conciliación bancaria porque no estaba asociado a cuentas específicas
+
+**Solución Implementada:**
+
+1. **Eliminación de KPIs Agregados:**
+   - Removidos los 4 cards de KPIs (Total ARS, Total USD, Efectivo ARS, Efectivo USD)
+   - Eliminados los desgloses agregados de efectivo y bancos
+
+2. **Eliminación del Gráfico General:**
+   - Removido el gráfico de "Evolución de la Caja" del resumen
+   - Los gráficos de evolución están disponibles en los tabs "Caja USD" y "Caja ARS" para análisis detallado
+
+3. **Resumen Simplificado:**
+   - Ahora muestra SOLO la lista de todas las cuentas financieras con sus saldos
+   - Agrupadas por moneda: Cuentas USD y Cuentas ARS
+   - Cada cuenta muestra: Nombre, Tipo, Saldo actual
+   - Formato claro y conciso para rápida visualización
+
+**Archivos Modificados:**
+- `components/cash/cash-summary-client.tsx`
+  - Eliminada sección de KPIs agregados (4 cards)
+  - Eliminado gráfico de evolución general
+  - Mantenida solo la lista de cuentas financieras con saldos
+  - Simplificado el tab "Resumen" para mostrar únicamente información de saldos
+
+**Detalles Técnicos:**
+- El tab "Resumen" ahora es equivalente a "Cuentas Financieras" - solo muestra saldos
+- Los tabs "Caja USD" y "Caja ARS" mantienen funcionalidad completa con:
+  - Ingresos y egresos por cuenta individual
+  - Movimientos centralizados para reconciliación
+  - Gráficos de evolución (si se requieren en el futuro)
+
+**Resultado:**
+- ✅ Resumen muestra solo información esencial: saldos de cuentas
+- ✅ Permite control y conciliación bancaria (cada cuenta está identificada)
+- ✅ Información asociada a cuentas específicas, no agregados generales
+- ✅ Interfaz más limpia y enfocada en lo esencial
+- ✅ Mejor UX para reconciliación: fácil identificar cada cuenta y su saldo
 
 ---
 

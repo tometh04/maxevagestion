@@ -37,6 +37,7 @@ const markPaidSchema = z.object({
   datePaid: z.string().min(1, "La fecha de pago es requerida"),
   reference: z.string().optional(),
   financial_account_id: z.string().optional(),
+  exchange_rate: z.coerce.number().optional(),
 })
 
 type MarkPaidFormValues = z.infer<typeof markPaidSchema>
@@ -49,6 +50,7 @@ interface Payment {
   direction: string
   method: string
   date_due: string
+  operation_id?: string
 }
 
 interface FinancialAccount {
@@ -75,6 +77,8 @@ export function MarkPaidDialog({
 }: MarkPaidDialogProps) {
   const [loading, setLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  const [operationCurrency, setOperationCurrency] = useState<string | null>(null)
+  const [loadingOperation, setLoadingOperation] = useState(false)
 
   const form = useForm<MarkPaidFormValues>({
     resolver: zodResolver(markPaidSchema) as any,
@@ -82,8 +86,46 @@ export function MarkPaidDialog({
       datePaid: new Date().toISOString().split("T")[0],
       reference: "",
       financial_account_id: "",
+      exchange_rate: undefined,
     },
   })
+
+  // Obtener moneda de la operación cuando se abre el dialog
+  useEffect(() => {
+    if (open && payment && payment.operation_id) {
+      setLoadingOperation(true)
+      const fetchOperation = async () => {
+        try {
+          const response = await fetch(`/api/operations/${payment.operation_id}`)
+          if (response.ok) {
+            const data = await response.json()
+            const operation = data.operation
+            if (operation) {
+              // Para INCOME (cobranzas): usar sale_currency
+              // Para EXPENSE (pagos a operadores): usar operator_cost_currency
+              const currency = payment.direction === "INCOME" 
+                ? (operation.sale_currency || operation.currency || "USD")
+                : (operation.operator_cost_currency || operation.currency || "USD")
+              setOperationCurrency(currency)
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching operation:", error)
+        } finally {
+          setLoadingOperation(false)
+        }
+      }
+      fetchOperation()
+    } else {
+      setOperationCurrency(null)
+    }
+  }, [open, payment])
+
+  // Calcular si se necesita tipo de cambio
+  const needsExchangeRate = useMemo(() => {
+    if (!payment || !operationCurrency) return false
+    return payment.currency !== operationCurrency
+  }, [payment, operationCurrency])
 
   // Cargar cuentas financieras cuando el método es "Transferencia"
   useEffect(() => {
@@ -125,6 +167,12 @@ export function MarkPaidDialog({
       return
     }
 
+    // Validar tipo de cambio si las monedas difieren
+    if (needsExchangeRate && !values.exchange_rate) {
+      toast.error("Debe ingresar el tipo de cambio cuando la moneda del pago difiere de la moneda de la operación")
+      return
+    }
+
     setLoading(true)
     try {
       const response = await fetch("/api/payments/mark-paid", {
@@ -135,6 +183,7 @@ export function MarkPaidDialog({
           datePaid: values.datePaid,
           reference: values.reference || null,
           financial_account_id: values.financial_account_id || null,
+          exchange_rate: needsExchangeRate ? values.exchange_rate : null,
         }),
       })
 
@@ -189,6 +238,11 @@ export function MarkPaidDialog({
             <div className="text-muted-foreground">Monto:</div>
             <div className="font-medium">
               {payment.currency} {payment.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {operationCurrency && operationCurrency !== payment.currency && (
+                <span className="text-xs text-muted-foreground ml-2">
+                  (Operación en {operationCurrency})
+                </span>
+              )}
             </div>
             <div className="text-muted-foreground">Método:</div>
             <div className="font-medium">{payment.method}</div>
@@ -235,6 +289,39 @@ export function MarkPaidDialog({
                 </FormItem>
               )}
             />
+
+            {/* Mostrar campo de tipo de cambio si las monedas difieren */}
+            {needsExchangeRate && (
+              <FormField
+                control={form.control}
+                name="exchange_rate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de Cambio (ARS por 1 USD) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="Ej: 1500"
+                        {...field}
+                        onChange={(e) => {
+                          field.onChange(e)
+                          // Calcular equivalente en moneda de operación
+                        }}
+                      />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      {field.value && payment && payment.amount 
+                        ? `Equivale a ${operationCurrency} ${(payment.amount / parseFloat(field.value)).toFixed(2)}`
+                        : `La operación está en ${operationCurrency}, el pago en ${payment.currency}. Ingrese el tipo de cambio.`
+                      }
+                    </p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* Mostrar selector de cuenta solo si el método es "Transferencia" */}
             {payment.method === "Transferencia" && (
