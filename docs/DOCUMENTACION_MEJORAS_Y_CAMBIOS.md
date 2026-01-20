@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Mejora de Alineación de Filtros y Reemplazo de Inputs de Fecha)
+**Última actualización:** 2025-01-19 (Revisión Completa de Finanzas - Puntos 1-3.1)
 
 ---
 
@@ -1477,6 +1477,201 @@ Se reemplazaron todos los inputs nativos `type="date"` por el componente persona
 - ✅ Mejor UX con calendario integrado
 - ✅ Validación de rangos de fechas
 - ✅ Sin errores de TypeScript
+
+---
+
+### 22. Reordenamiento de Items en Contabilidad
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se reordenaron los items del submenú "Contabilidad" en el sidebar según el feedback del cliente, colocando los elementos más importantes primero.
+
+**Cambios Realizados:**
+1. **Posición Mensual** - Movido al primer lugar (era el cuarto)
+2. **Deudores por Ventas** - Movido al segundo lugar (era el primero)
+3. **Pagos a Operadores** - Movido al tercer lugar (era el segundo)
+4. **Gastos Recurrentes** - Movido al cuarto lugar (era el tercero)
+5. Los demás items (Libro Mayor, IVA, Cuentas Financieras, Cuentas de Socios) mantienen su posición
+
+**Archivos Modificados:**
+- `components/app-sidebar.tsx` - Reordenados items del submenú "Contabilidad"
+
+**Resultado:**
+- Los elementos más críticos para la gestión contable ahora están al inicio del menú
+- Mejor flujo de trabajo según importancia del cliente
+
+---
+
+### 23. Mejora de Deudores por Ventas (Vendedor y Cobranza)
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se agregó la funcionalidad de filtrar y mostrar el vendedor en "Deudores por Ventas", y se corrigió un bug crítico donde las cobranzas con transferencia bancaria no pedían la cuenta receptiva.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Filtro de Vendedor:
+- Selector dropdown para filtrar por vendedor en la página de Deudores por Ventas
+- Incluye todos los usuarios con rol `SELLER`, `ADMIN` o `SUPER_ADMIN` que estén activos
+- Opción "Todos" para mostrar todos los vendedores
+- El filtro se aplica automáticamente al cambiar la selección
+
+#### 2. Columna Vendedor en Tabla:
+- Agregada columna "Vendedor" en la tabla expandida de operaciones
+- Muestra el nombre del vendedor o "Sin vendedor" si no tiene asignado
+- La columna aparece después de "Destino" y antes de "Fecha Salida"
+
+#### 3. Exportación a Excel con Vendedor:
+- Agregada columna "Vendedor" en la hoja de detalle del Excel exportado
+- Incluye el nombre del vendedor para cada operación con deuda
+
+#### 4. Corrección de Bug: Cuenta Receptiva en Transferencias:
+- **Problema:** Al marcar una cobranza como pagada con método "Transferencia bancaria", el sistema no pedía la cuenta receptiva donde entró el dinero, causando que la cobranza no impactara en el balance bancario.
+- **Solución:** 
+  - Agregado selector de "Cuenta Receptiva" en el dialog de marcar como pagado
+  - El selector solo aparece cuando el método de pago es "Transferencia" y la dirección es "INCOME" (cobranza)
+  - El selector muestra solo cuentas bancarias (CHECKING o SAVINGS) de la misma moneda que el pago
+  - La cuenta seleccionada se guarda en `financial_account_id` del payment
+  - El movimiento contable se registra en la cuenta seleccionada, impactando correctamente en el balance bancario
+
+**Archivos Modificados:**
+- `app/api/accounting/debts-sales/route.ts`
+  - Agregado parámetro `sellerIdFilter` en query params
+  - Modificado query para incluir `seller_id` en operaciones
+  - Agregada lógica para obtener nombres de vendedores desde tabla `users`
+  - Agregado filtro de vendedor en el procesamiento de operaciones
+  - Agregado `seller_id` y `seller_name` a los datos retornados
+- `app/(dashboard)/accounting/debts-sales/page.tsx`
+  - Agregada obtención de vendedores desde la base de datos
+  - Pasado prop `sellers` al componente cliente
+- `components/accounting/debts-sales-page-client.tsx`
+  - Agregado estado `sellerFilter` y `setSellerFilter`
+  - Agregado `Select` component para filtrar por vendedor
+  - Agregada columna "Vendedor" en la tabla expandida
+  - Actualizado `fetchDebtors` para incluir `sellerFilter` en la API call
+  - Actualizada exportación a Excel para incluir columna "Vendedor"
+  - Removido `useEffect` que obtenía vendedores (ahora viene como prop)
+- `components/payments/mark-paid-dialog.tsx`
+  - Agregado estado `financialAccounts` y `financialAccountId`
+  - Agregado `useEffect` para obtener cuentas financieras cuando el método es "Transferencia" y dirección es "INCOME"
+  - Agregado `FormField` con `Select` para elegir cuenta receptiva
+  - Agregada validación para requerir cuenta cuando método es "Transferencia"
+  - Actualizado schema `markPaidSchema` para incluir `financial_account_id`
+  - Actualizado `handleSubmit` para enviar `financialAccountId` al backend
+  - Actualizado interface `Payment` para incluir `method` y `direction`
+- `app/api/payments/mark-paid/route.ts`
+  - Agregado `financialAccountId` al body del request
+  - Modificado para usar la cuenta seleccionada cuando está disponible
+  - Agregado `financial_account_id` al update del payment
+  - Lógica para determinar qué cuenta usar: si es transferencia de ingreso y se proporcionó cuenta, usar esa; sino, usar cuenta por defecto
+- `components/cash/payments-table.tsx`
+  - Actualizado para pasar `selectedPayment`, `dialogOpen`, `setDialogOpen` y `onRefresh` al `MarkPaidDialog`
+  - Removido código duplicado del dialog de confirmar pago
+
+**Detalles Técnicos:**
+- Los vendedores se obtienen desde la tabla `users` filtrando por roles `SELLER`, `ADMIN`, `SUPER_ADMIN` y `is_active = true`
+- El filtro de vendedor se aplica en el backend antes de calcular las deudas
+- La cuenta receptiva se valida que sea bancaria (CHECKING o SAVINGS) y de la misma moneda
+- Si no se selecciona cuenta para transferencias, se muestra error de validación
+- El movimiento contable se registra en la cuenta seleccionada, no en una cuenta por defecto
+
+**Resultado:**
+- ✅ Los usuarios pueden filtrar deudores por vendedor
+- ✅ La tabla muestra claramente quién vendió cada operación
+- ✅ El Excel exportado incluye información del vendedor
+- ✅ Las cobranzas con transferencia bancaria ahora impactan correctamente en el balance bancario
+- ✅ Mejor trazabilidad de las ventas por vendedor
+
+---
+
+### 24. Corrección de Conversión de Moneda en Pago a Operadores
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se corrigió la funcionalidad de conversión de moneda en el dialog de "Cargar Pago Masivo" para operadores. Ahora el sistema detecta automáticamente cuando la cuenta seleccionada tiene una moneda diferente a la de las deudas y muestra el campo de tipo de cambio.
+
+**Problema Identificado:**
+- Al pagar un file en USD desde una cuenta en ARS, el sistema no pedía el tipo de cambio
+- El campo de tipo de cambio solo aparecía cuando se cambiaba manualmente la "Moneda del Pago"
+- Si se seleccionaba una cuenta bancaria en ARS para pagar deudas en USD, no se detectaba la necesidad de conversión
+
+**Solución Implementada:**
+
+1. **Detección Automática de Moneda de Cuenta:**
+   - Cuando se selecciona una cuenta financiera, el sistema detecta automáticamente su moneda
+   - Si la moneda de la cuenta es diferente a la moneda de las deudas (`selectedCurrency`), actualiza automáticamente `paymentCurrency` a la moneda de la cuenta
+   - Esto asegura que el pago se registre en la moneda correcta
+
+2. **Mejora de la Función `needsExchangeRate()`:**
+   - Ahora verifica primero si la cuenta seleccionada tiene moneda diferente a las deudas
+   - Si la cuenta tiene moneda diferente, retorna `true` automáticamente
+   - También verifica si `paymentCurrency` es diferente a `selectedCurrency` como fallback
+
+3. **Validación Mejorada:**
+   - El campo de tipo de cambio se muestra automáticamente cuando hay conversión de moneda
+   - La validación exige el tipo de cambio cuando `needsExchangeRate()` retorna `true`
+   - Mensaje de error claro cuando falta el tipo de cambio
+
+**Archivos Modificados:**
+- `components/accounting/bulk-payment-dialog.tsx`
+  - Agregado `useEffect` para actualizar `paymentCurrency` cuando se selecciona una cuenta con moneda diferente
+  - Mejorada función `needsExchangeRate()` para verificar moneda de cuenta seleccionada
+  - Validación mejorada que asegura tipo de cambio cuando es necesario
+
+**Detalles Técnicos:**
+- El `useEffect` se ejecuta cuando cambia `paymentAccountId`, `financialAccounts` o `selectedCurrency`
+- Si la cuenta seleccionada tiene moneda diferente a `selectedCurrency`, actualiza `paymentCurrency` a la moneda de la cuenta
+- `needsExchangeRate()` primero verifica la cuenta, luego compara `paymentCurrency` con `selectedCurrency`
+- La validación en `handleSubmit` verifica `needsExchangeRate()` y exige `exchangeRate` si es necesario
+
+**Resultado:**
+- ✅ El sistema detecta automáticamente cuando se necesita conversión de moneda
+- ✅ El campo de tipo de cambio aparece automáticamente cuando corresponde
+- ✅ La validación asegura que se ingrese el tipo de cambio cuando es necesario
+- ✅ Mejor UX: el usuario no necesita cambiar manualmente la moneda del pago
+
+---
+
+### 25. Correcciones de Errores de Build
+
+**Fecha:** 2025-01-19
+
+#### Error: Variable `cashAccountType` no definida en mark-paid route
+
+**Problema:**
+- Error de TypeScript: `Cannot find name 'cashAccountType'`
+- La variable estaba declarada dentro del bloque `else`, pero se usaba fuera del bloque en `console.log`
+- El build fallaba en Vercel
+
+**Solución:**
+- Declarada `cashAccountType` antes del bloque `if/else` con valor por defecto `"CASH"`
+- Asignado `"BANK"` cuando se usa cuenta específica para transferencias (ya que se valida que sea bancaria)
+- La variable ahora está disponible en ambos casos
+
+**Archivos Modificados:**
+- `app/api/payments/mark-paid/route.ts`
+
+#### Error: Propiedad duplicada "Vendedor" en Excel export
+
+**Problema:**
+- Error de TypeScript: `An object literal cannot have multiple properties with the same name`
+- La propiedad "Vendedor" estaba duplicada en el objeto literal del detalle de Excel
+- El build fallaba en Vercel
+
+**Solución:**
+- Eliminada la propiedad duplicada "Vendedor" del objeto literal
+- Se mantuvo solo una instancia de la propiedad
+
+**Archivos Modificados:**
+- `components/accounting/debts-sales-page-client.tsx`
+
+**Resultado:**
+- ✅ Build exitoso en Vercel
+- ✅ Sin errores de TypeScript
+- ✅ Funcionalidad preservada
 
 ---
 

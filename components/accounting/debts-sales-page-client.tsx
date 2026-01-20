@@ -189,7 +189,6 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           "Fecha Salida": op.departure_date
             ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
             : "-",
-          Vendedor: op.seller_name || "Sin vendedor",
           "Total Venta (USD)": op.sale_amount_total,
           "Pagado (USD)": op.paid,
           "Deuda (USD)": op.debt,
