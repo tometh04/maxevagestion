@@ -25,6 +25,10 @@ export async function GET(
         operation_customers(
           *,
           customers:customer_id(*)
+        ),
+        operation_operators(
+          *,
+          operators:operator_id(id, name)
         )
       `)
       .eq("id", operationId)

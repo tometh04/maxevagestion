@@ -42,6 +42,8 @@ interface Operation {
   total_cost?: number
   sale_currency?: "ARS" | "USD"
   sale_amount_total?: number
+  operator_cost_total?: number
+  operator_cost_currency?: "ARS" | "USD"
 }
 
 interface InvoiceItem {
@@ -68,6 +70,7 @@ export default function NewInvoicePage() {
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
   const [operations, setOperations] = useState<Operation[]>([])
+  const [filteredOperations, setFilteredOperations] = useState<Operation[]>([])
   
   // Form state
   const [formData, setFormData] = useState({
@@ -110,11 +113,12 @@ export default function NewInvoicePage() {
         setCustomers(data.customers || [])
       }
       
-      // Cargar operaciones
+      // Cargar operaciones (inicialmente todas, luego se filtrarán por cliente)
       const operationsRes = await fetch('/api/operations?limit=100')
       if (operationsRes.ok) {
         const data = await operationsRes.json()
         setOperations(data.operations || [])
+        setFilteredOperations(data.operations || []) // Inicialmente mostrar todas
       }
     } catch (error) {
       console.error('Error loading data:', error)
@@ -123,7 +127,7 @@ export default function NewInvoicePage() {
     }
   }
 
-  const handleCustomerChange = (customerId: string) => {
+  const handleCustomerChange = async (customerId: string) => {
     const customer = customers.find(c => c.id === customerId)
     if (customer) {
       setFormData({
@@ -132,12 +136,56 @@ export default function NewInvoicePage() {
         receptor_nombre: `${customer.first_name} ${customer.last_name}`,
         receptor_doc_nro: customer.cuit || customer.dni || '',
         receptor_doc_tipo: customer.cuit ? 80 : 96, // 80=CUIT, 96=DNI
+        operation_id: '', // Limpiar operación cuando cambia el cliente
       })
+      
+      // Limpiar operación seleccionada
+      setSelectedOperation(null)
+      setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+      
+      // Cargar operaciones del cliente
+      try {
+        const operationsRes = await fetch(`/api/customers/${customerId}/operations`)
+        if (operationsRes.ok) {
+          const operationsData = await operationsRes.json()
+          // Obtener detalles completos de cada operación
+          const operationsWithDetails = await Promise.all(
+            (operationsData.operations || []).map(async (op: any) => {
+              try {
+                const opRes = await fetch(`/api/operations/${op.id}`)
+                if (opRes.ok) {
+                  const opData = await opRes.json()
+                  return opData.operation
+                }
+              } catch (error) {
+                console.error('Error loading operation details:', error)
+              }
+              return op
+            })
+          )
+          setFilteredOperations(operationsWithDetails.filter(Boolean))
+        } else {
+          // Si no hay operaciones para este cliente, dejar lista vacía
+          setFilteredOperations([])
+        }
+      } catch (error) {
+        console.error('Error loading customer operations:', error)
+        setFilteredOperations([])
+      }
+    } else {
+      // Si no hay cliente seleccionado, mostrar todas las operaciones
+      setFilteredOperations(operations)
+      setFormData({
+        ...formData,
+        customer_id: '',
+        operation_id: '',
+      })
+      setSelectedOperation(null)
     }
   }
 
   const handleOperationChange = async (operationId: string) => {
-    const operation = operations.find(o => o.id === operationId)
+    const operation = filteredOperations.find(o => o.id === operationId) || operations.find(o => o.id === operationId)
     if (operation) {
       // Obtener datos completos de la operación
       try {
@@ -199,21 +247,64 @@ export default function NewInvoicePage() {
             })
           }
           
-          // Auto-completar item con información de la operación
-          // Usar useEffect para actualizar items después de que se actualice invoiceCurrency
+          // Auto-completar items con información de la operación
+          // Agregar item de venta (siempre se factura)
           const precioOriginalUSD = fullOperation.sale_amount_total || 0
           const precioEnARS = fullOperation.sale_currency === 'USD' 
             ? precioOriginalUSD * exchangeRate 
             : precioOriginalUSD
-            
-          if (items.length === 1 && !items[0].descripcion) {
-            setItems([{
+          
+          const montoVenta = invoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD
+          
+          // Calcular costo del operador
+          // Primero intentar usar operation_operators (formato nuevo)
+          let costoTotal = 0
+          let costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
+          
+          if (fullOperation.operation_operators && fullOperation.operation_operators.length > 0) {
+            // Sumar costos de todos los operadores
+            costoTotal = fullOperation.operation_operators.reduce((sum: number, op: any) => {
+              return sum + (parseFloat(op.cost) || 0)
+            }, 0)
+            // Usar la moneda del primer operador
+            if (fullOperation.operation_operators[0].cost_currency) {
+              costoOperadorCurrency = fullOperation.operation_operators[0].cost_currency
+            }
+          } else if (fullOperation.operator_cost !== undefined) {
+            // Formato antiguo: operator_cost único
+            costoTotal = parseFloat(fullOperation.operator_cost) || 0
+            costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
+          }
+          
+          let costoEnARS = 0
+          if (costoOperadorCurrency === 'USD') {
+            costoEnARS = costoTotal * exchangeRate
+          } else {
+            costoEnARS = costoTotal
+          }
+          const montoCosto = invoiceCurrency === 'PES' ? costoEnARS : costoTotal
+          
+          // Crear items: venta y costo (opcional, editable)
+          const newItems: InvoiceItem[] = [
+            {
               descripcion: `Servicios turísticos - ${fullOperation.destination} (${fullOperation.file_code})`,
               cantidad: 1,
-              precio_unitario: invoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD,
+              precio_unitario: montoVenta,
               iva_porcentaje: 21,
-            }])
+            }
+          ]
+          
+          // Agregar item de costo del operador si existe (opcional, editable)
+          if (costoTotal > 0) {
+            newItems.push({
+              descripcion: `Costo de operador - ${fullOperation.file_code}`,
+              cantidad: 1,
+              precio_unitario: montoCosto,
+              iva_porcentaje: 21,
+            })
           }
+          
+          setItems(newItems)
         }
       } catch (error) {
         console.error('Error loading operation details:', error)
@@ -521,18 +612,36 @@ export default function NewInvoicePage() {
                   <Select 
                     value={formData.operation_id} 
                     onValueChange={handleOperationChange}
+                    disabled={!formData.customer_id}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Vincular a operación (opcional)" />
+                      <SelectValue placeholder={
+                        formData.customer_id 
+                          ? "Seleccione operación del cliente" 
+                          : "Primero seleccione un cliente"
+                      } />
                     </SelectTrigger>
                     <SelectContent>
-                      {operations.map(op => (
-                        <SelectItem key={op.id} value={op.id}>
-                          {op.file_code} - {op.destination}
+                      {filteredOperations.length === 0 ? (
+                        <SelectItem value="" disabled>
+                          {formData.customer_id 
+                            ? "Este cliente no tiene operaciones" 
+                            : "Seleccione un cliente primero"}
                         </SelectItem>
-                      ))}
+                      ) : (
+                        filteredOperations.map(op => (
+                          <SelectItem key={op.id} value={op.id}>
+                            {op.file_code} - {op.destination}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
+                  {formData.customer_id && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Mostrando {filteredOperations.length} operación{filteredOperations.length !== 1 ? 'es' : ''} de este cliente
+                    </p>
+                  )}
                 </div>
               </div>
               
