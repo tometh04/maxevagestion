@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import {
@@ -15,6 +15,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { format, parseISO } from "date-fns"
 import { RotateCcw } from "lucide-react"
+import { useDebounce } from "@/hooks/use-debounce"
 
 export interface ReportsFiltersState {
   dateFrom: string
@@ -41,10 +42,15 @@ export function ReportsFilters({
 }: ReportsFiltersProps) {
   const [filters, setFilters] = useState<ReportsFiltersState>(defaultFilters)
 
+  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
+  const debouncedFilters = useDebounce(filters, 500)
+
+  useEffect(() => {
+    onFiltersChange(debouncedFilters)
+  }, [debouncedFilters, onFiltersChange])
+
   const handleFilterChange = (key: keyof ReportsFiltersState, value: string) => {
-    const newFilters = { ...filters, [key]: value }
-    setFilters(newFilters)
-    onFiltersChange(newFilters)
+    setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
   // Helper para convertir string a Date
@@ -69,10 +75,6 @@ export function ReportsFilters({
       dateFrom: dateString,
       dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
     }))
-    handleFilterChange("dateFrom", dateString)
-    if (date && parseDate(filters.dateTo) && parseDate(filters.dateTo)! < date) {
-      handleFilterChange("dateTo", "")
-    }
   }
 
   const handleDateToChange = (date: Date | undefined) => {
@@ -81,7 +83,6 @@ export function ReportsFilters({
     }
     const dateString = formatDate(date)
     setFilters((prev) => ({ ...prev, dateTo: dateString }))
-    handleFilterChange("dateTo", dateString)
   }
 
   const handleReset = () => {

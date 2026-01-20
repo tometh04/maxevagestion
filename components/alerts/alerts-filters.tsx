@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { format, parseISO } from "date-fns"
+import { useDebounce } from "@/hooks/use-debounce"
 
 export interface AlertsFiltersState {
   type: string
@@ -51,9 +52,12 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
     setFilters(value)
   }, [value])
 
+  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
+  const debouncedFilters = useDebounce(filters, 500)
+
   useEffect(() => {
-    onChange(filters)
-  }, [filters, onChange])
+    onChange(debouncedFilters)
+  }, [debouncedFilters, onChange])
 
   const handleChange = (field: keyof AlertsFiltersState, newValue: string) => {
     setFilters((prev) => ({ ...prev, [field]: newValue }))

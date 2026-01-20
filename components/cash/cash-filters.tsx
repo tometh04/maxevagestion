@@ -40,9 +40,12 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
     setFilters(value)
   }, [value])
 
+  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
+  const debouncedFilters = useDebounce(filters, 500)
+
   useEffect(() => {
-    onChange(filters)
-  }, [filters, onChange])
+    onChange(debouncedFilters)
+  }, [debouncedFilters, onChange])
 
   const handleChange = (field: keyof CashFiltersState, newValue: string) => {
     setFilters((prev) => ({ ...prev, [field]: newValue }))

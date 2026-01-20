@@ -14,6 +14,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table"
 import { ChevronDown } from "lucide-react"
+import { useDebounce } from "@/hooks/use-debounce"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -62,6 +63,10 @@ export function DataTable<TData, TValue>({
       return {}
     })
   const [rowSelection, setRowSelection] = React.useState({})
+  const [searchInput, setSearchInput] = React.useState("")
+  
+  // Debounce para búsqueda (300ms - más responsivo para texto)
+  const debouncedSearch = useDebounce(searchInput, 300)
 
   const table = useReactTable({
     data,
@@ -82,16 +87,21 @@ export function DataTable<TData, TValue>({
     },
   })
 
+  // Actualizar filtro cuando cambie el valor debounced
+  React.useEffect(() => {
+    if (searchKey) {
+      table.getColumn(searchKey)?.setFilterValue(debouncedSearch)
+    }
+  }, [debouncedSearch, searchKey, table])
+
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {searchKey && (
           <Input
             placeholder={searchPlaceholder}
-            value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ""}
-            onChange={(event) =>
-              table.getColumn(searchKey)?.setFilterValue(event.target.value)
-            }
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
             className="w-full sm:max-w-sm"
           />
         )}

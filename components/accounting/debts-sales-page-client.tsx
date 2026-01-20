@@ -85,6 +85,13 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
   const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
   const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
 
+  // Debounce para campos de texto (300ms para búsqueda rápida y responsiva)
+  const debouncedCustomerFilter = useDebounce(customerFilter, 300)
+  
+  // Debounce para fechas (500ms - da tiempo para completar la selección de fecha)
+  const debouncedDateFrom = useDebounce(dateFromFilter, 500)
+  const debouncedDateTo = useDebounce(dateToFilter, 500)
+
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -93,17 +100,17 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       if (currencyFilter !== "ALL") {
         params.append("currency", currencyFilter)
       }
-      if (customerFilter) {
-        params.append("customerId", customerFilter)
+      if (debouncedCustomerFilter) {
+        params.append("customerId", debouncedCustomerFilter)
       }
       if (sellerFilter !== "ALL") {
         params.append("sellerId", sellerFilter)
       }
-      if (dateFromFilter) {
-        params.append("dateFrom", format(dateFromFilter, "yyyy-MM-dd"))
+      if (debouncedDateFrom) {
+        params.append("dateFrom", format(debouncedDateFrom, "yyyy-MM-dd"))
       }
-      if (dateToFilter) {
-        params.append("dateTo", format(dateToFilter, "yyyy-MM-dd"))
+      if (debouncedDateTo) {
+        params.append("dateTo", format(debouncedDateTo, "yyyy-MM-dd"))
       }
 
       const response = await fetch(`/api/accounting/debts-sales?${params.toString()}`)
@@ -121,7 +128,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     } finally {
       setLoading(false)
     }
-  }, [currencyFilter, customerFilter, sellerFilter, dateFromFilter, dateToFilter])
+  }, [currencyFilter, debouncedCustomerFilter, sellerFilter, debouncedDateFrom, debouncedDateTo])
 
   useEffect(() => {
     fetchDebtors()
