@@ -1,9 +1,10 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/currency"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
 import {
@@ -14,6 +15,17 @@ import {
 } from "@/components/ui/chart"
 import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { ArrowUpCircle, ArrowDownCircle, Wallet } from "lucide-react"
 
 interface CashSummaryClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -27,11 +39,33 @@ interface AccountBalance {
   type: string
   currency: string
   current_balance: number
+  is_active?: boolean
 }
 
 interface DailyBalance {
   date: string
   balance: number
+}
+
+interface LedgerMovement {
+  id: string
+  type: string
+  concept: string
+  currency: string
+  amount_original: number
+  amount_ars_equivalent: number
+  created_at: string
+  financial_accounts?: {
+    id: string
+    name: string
+    type: string
+    currency: string
+  }
+  operations?: {
+    id: string
+    destination: string
+    file_code: string
+  } | null
 }
 
 const chartConfig = {
@@ -59,9 +93,12 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       return undefined
     }
   })
+  const [activeTab, setActiveTab] = useState("resumen")
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
+  const [accountMovements, setAccountMovements] = useState<Record<string, LedgerMovement[]>>({})
   const [loading, setLoading] = useState(true)
+  const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -89,6 +126,25 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   }, [dateFrom, dateTo])
 
+  const fetchAccountMovements = useCallback(async (accountId: string) => {
+    if (!dateFrom || !dateTo) return
+
+    setLoadingMovements(prev => ({ ...prev, [accountId]: true }))
+    try {
+      const response = await fetch(
+        `/api/accounting/ledger?accountId=${accountId}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}&type=ALL`
+      )
+      if (response.ok) {
+        const data = await response.json()
+        setAccountMovements(prev => ({ ...prev, [accountId]: data.movements || [] }))
+      }
+    } catch (error) {
+      console.error("Error fetching account movements:", error)
+    } finally {
+      setLoadingMovements(prev => ({ ...prev, [accountId]: false }))
+    }
+  }, [dateFrom, dateTo])
+
   useEffect(() => {
     fetchSummary()
   }, [fetchSummary])
@@ -111,13 +167,49 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .filter((acc) => acc.type === "SAVINGS_USD")
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
+    const bancosARS = accounts
+      .filter((acc) => (acc.type === "CHECKING_ARS" || acc.type === "SAVINGS_ARS"))
+      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+
+    const bancosUSD = accounts
+      .filter((acc) => (acc.type === "CHECKING_USD" || acc.type === "SAVINGS_USD"))
+      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+
+    const totalARS = efectivoARS + bancosARS
+    const totalUSD = efectivoUSD + bancosUSD
+
     return {
       efectivoARS,
       efectivoUSD,
       cajaAhorroARS,
       cajaAhorroUSD,
+      bancosARS,
+      bancosUSD,
+      totalARS,
+      totalUSD,
     }
   }, [accounts])
+
+  // Filtrar cuentas por moneda
+  const usdAccounts = useMemo(() => {
+    return accounts.filter(acc => acc.currency === "USD" && acc.is_active !== false)
+  }, [accounts])
+
+  const arsAccounts = useMemo(() => {
+    return accounts.filter(acc => acc.currency === "ARS" && acc.is_active !== false)
+  }, [accounts])
+
+  // Calcular ingresos y egresos por cuenta
+  const calculateAccountStats = useCallback((accountId: string) => {
+    const movements = accountMovements[accountId] || []
+    const income = movements
+      .filter(m => m.type === "INCOME")
+      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
+    const expenses = movements
+      .filter(m => m.type === "EXPENSE")
+      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
+    return { income, expenses }
+  }, [accountMovements])
 
   // Preparar datos para el gráfico
   const chartData = useMemo(() => {
@@ -140,8 +232,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Resumen de Caja</h1>
-        <p className="text-muted-foreground">Monitorea el estado de la caja y su evolución</p>
+        <h1 className="text-3xl font-bold">Caja</h1>
+        <p className="text-muted-foreground">Monitorea el estado de la caja y sus movimientos</p>
       </div>
 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
@@ -158,6 +250,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                     if (date && dateTo && dateTo < date) {
                       setDateTo(undefined)
                     }
+                    // Limpiar movimientos cuando cambia la fecha
+                    setAccountMovements({})
                   }}
                   placeholder="dd/MM/yyyy"
                 />
@@ -171,6 +265,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       return
                     }
                     setDateTo(date)
+                    // Limpiar movimientos cuando cambia la fecha
+                    setAccountMovements({})
                   }}
                   placeholder="dd/MM/yyyy"
                   minDate={dateFrom}
@@ -204,110 +300,436 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Efectivo ARS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoARS, "ARS")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Efectivo USD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoUSD, "USD")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Caja Ahorro ARS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(kpis.cajaAhorroARS, "ARS")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Caja Ahorro USD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(kpis.cajaAhorroUSD, "USD")}</div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="resumen">Resumen</TabsTrigger>
+          <TabsTrigger value="usd">Caja USD</TabsTrigger>
+          <TabsTrigger value="ars">Caja ARS</TabsTrigger>
+        </TabsList>
 
-      {/* Gráfico de evolución */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Evolución de la Caja</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="h-[300px] flex items-center justify-center">
-              <p className="text-muted-foreground">Cargando...</p>
-            </div>
-          ) : chartData.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center">
-              <p className="text-muted-foreground">No hay datos disponibles</p>
-            </div>
-          ) : (
-            <ChartContainer config={chartConfig} className="h-[350px] w-full">
-              <LineChart 
-                data={chartData}
-                margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
-                <XAxis
-                  dataKey="date"
-                  tickLine={false}
-                  tickMargin={8}
-                  axisLine={false}
-                  className="text-xs"
-                />
-                <YAxis
-                  tickLine={false}
-                  tickMargin={8}
-                  axisLine={false}
-                  className="text-xs"
-                  tickFormatter={formatYAxisValue}
-                />
-                <ChartTooltip
-                  cursor={{ stroke: "hsl(142, 76%, 36%)", strokeWidth: 1 }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const value = payload[0].value as number
-                      return (
-                        <div className="rounded-lg border bg-background p-2 shadow-sm">
-                          <div className="grid gap-2">
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-xs text-muted-foreground">Balance</span>
-                              <span className="font-semibold">{formatCurrency(value, "ARS")}</span>
+        {/* TAB: Resumen */}
+        <TabsContent value="resumen" className="space-y-6">
+          {/* KPIs */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total ARS</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(kpis.totalARS, "ARS")}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Efectivo: {formatCurrency(kpis.efectivoARS, "ARS")} | Bancos: {formatCurrency(kpis.bancosARS, "ARS")}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total USD</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(kpis.totalUSD, "USD")}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Efectivo: {formatCurrency(kpis.efectivoUSD, "USD")} | Bancos: {formatCurrency(kpis.bancosUSD, "USD")}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Efectivo ARS</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoARS, "ARS")}</div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Efectivo USD</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(kpis.efectivoUSD, "USD")}</div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Gráfico de evolución */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Evolución de la Caja</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-[300px] flex items-center justify-center">
+                  <p className="text-muted-foreground">Cargando...</p>
+                </div>
+              ) : chartData.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center">
+                  <p className="text-muted-foreground">No hay datos disponibles</p>
+                </div>
+              ) : (
+                <ChartContainer config={chartConfig} className="h-[350px] w-full">
+                  <LineChart 
+                    data={chartData}
+                    margin={{ top: 5, right: 10, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-muted" />
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      tickMargin={8}
+                      axisLine={false}
+                      className="text-xs"
+                    />
+                    <YAxis
+                      tickLine={false}
+                      tickMargin={8}
+                      axisLine={false}
+                      className="text-xs"
+                      tickFormatter={formatYAxisValue}
+                    />
+                    <ChartTooltip
+                      cursor={{ stroke: "hsl(142, 76%, 36%)", strokeWidth: 1 }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const value = payload[0].value as number
+                          return (
+                            <div className="rounded-lg border bg-background p-2 shadow-sm">
+                              <div className="grid gap-2">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-xs text-muted-foreground">Balance</span>
+                                  <span className="font-semibold">{formatCurrency(value, "ARS")}</span>
+                                </div>
+                              </div>
                             </div>
+                          )
+                        }
+                        return null
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="Balance"
+                      stroke="hsl(142, 76%, 36%)"
+                      strokeWidth={3}
+                      dot={false}
+                      activeDot={{ r: 6, fill: "hsl(142, 76%, 36%)" }}
+                    />
+                  </LineChart>
+                </ChartContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Lista de todas las cuentas */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Cuentas Financieras</CardTitle>
+              <CardDescription>Balance actual de todas las cuentas</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Cuentas USD</h3>
+                  <div className="space-y-2">
+                    {usdAccounts.map(account => (
+                      <div key={account.id} className="flex items-center justify-between p-2 border rounded">
+                        <span className="text-sm">{account.name}</span>
+                        <span className="font-medium">{formatCurrency(account.current_balance || 0, "USD")}</span>
+                      </div>
+                    ))}
+                    {usdAccounts.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No hay cuentas USD</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Cuentas ARS</h3>
+                  <div className="space-y-2">
+                    {arsAccounts.map(account => (
+                      <div key={account.id} className="flex items-center justify-between p-2 border rounded">
+                        <span className="text-sm">{account.name}</span>
+                        <span className="font-medium">{formatCurrency(account.current_balance || 0, "ARS")}</span>
+                      </div>
+                    ))}
+                    {arsAccounts.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No hay cuentas ARS</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TAB: Caja USD */}
+        <TabsContent value="usd" className="space-y-4">
+          {loading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : usdAccounts.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No hay cuentas USD configuradas
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {usdAccounts.map(account => {
+                const stats = calculateAccountStats(account.id)
+                const movements = accountMovements[account.id] || []
+                const isLoading = loadingMovements[account.id] || false
+
+                return (
+                  <Card key={account.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{account.name}</CardTitle>
+                          <CardDescription>{account.type.replace("_", " ")}</CardDescription>
+                        </div>
+                        <Badge variant="outline" className="text-lg font-semibold">
+                          {formatCurrency(account.current_balance || 0, "USD")}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Resumen de ingresos y egresos */}
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                          <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Ingresos</p>
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              {formatCurrency(stats.income, "USD")}
+                            </p>
                           </div>
                         </div>
-                      )
-                    }
-                    return null
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="Balance"
-                  stroke="hsl(142, 76%, 36%)"
-                  strokeWidth={3}
-                  dot={false}
-                  activeDot={{ r: 6, fill: "hsl(142, 76%, 36%)" }}
-                />
-              </LineChart>
-            </ChartContainer>
+                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                          <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Egresos</p>
+                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                              {formatCurrency(stats.expenses, "USD")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Balance</p>
+                            <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                              {formatCurrency(account.current_balance || 0, "USD")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botón para cargar movimientos */}
+                      {!accountMovements[account.id] && !isLoading && (
+                        <button
+                          onClick={() => fetchAccountMovements(account.id)}
+                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                        >
+                          Ver Movimientos
+                        </button>
+                      )}
+
+                      {/* Tabla de movimientos */}
+                      {accountMovements[account.id] && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          {isLoading ? (
+                            <Skeleton className="h-32 w-full" />
+                          ) : movements.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                          ) : (
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Fecha</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Concepto</TableHead>
+                                    <TableHead className="text-right">Monto</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {movements.map((movement) => (
+                                    <TableRow key={movement.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge
+                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
+                                        >
+                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {movement.concept}
+                                        {movement.operations && (
+                                          <span className="text-muted-foreground ml-1">
+                                            ({movement.operations.file_code})
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                        {movement.type === "INCOME" ? "+" : "-"}
+                                        {formatCurrency(movement.amount_original, movement.currency)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        {/* TAB: Caja ARS */}
+        <TabsContent value="ars" className="space-y-4">
+          {loading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-32 w-full" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : arsAccounts.length === 0 ? (
+            <Card>
+              <CardContent className="py-8 text-center text-muted-foreground">
+                No hay cuentas ARS configuradas
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-6">
+              {arsAccounts.map(account => {
+                const stats = calculateAccountStats(account.id)
+                const movements = accountMovements[account.id] || []
+                const isLoading = loadingMovements[account.id] || false
+
+                return (
+                  <Card key={account.id}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="text-lg">{account.name}</CardTitle>
+                          <CardDescription>{account.type.replace("_", " ")}</CardDescription>
+                        </div>
+                        <Badge variant="outline" className="text-lg font-semibold">
+                          {formatCurrency(account.current_balance || 0, "ARS")}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {/* Resumen de ingresos y egresos */}
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
+                          <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Ingresos</p>
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              {formatCurrency(stats.income, "ARS")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                          <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Egresos</p>
+                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                              {formatCurrency(stats.expenses, "ARS")}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Balance</p>
+                            <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                              {formatCurrency(account.current_balance || 0, "ARS")}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Botón para cargar movimientos */}
+                      {!accountMovements[account.id] && !isLoading && (
+                        <button
+                          onClick={() => fetchAccountMovements(account.id)}
+                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                        >
+                          Ver Movimientos
+                        </button>
+                      )}
+
+                      {/* Tabla de movimientos */}
+                      {accountMovements[account.id] && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          {isLoading ? (
+                            <Skeleton className="h-32 w-full" />
+                          ) : movements.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                          ) : (
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Fecha</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Concepto</TableHead>
+                                    <TableHead className="text-right">Monto</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {movements.map((movement) => (
+                                    <TableRow key={movement.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge
+                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
+                                        >
+                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {movement.concept}
+                                        {movement.operations && (
+                                          <span className="text-muted-foreground ml-1">
+                                            ({movement.operations.file_code})
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                        {movement.type === "INCOME" ? "+" : "-"}
+                                        {formatCurrency(movement.amount_original, movement.currency)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
-
