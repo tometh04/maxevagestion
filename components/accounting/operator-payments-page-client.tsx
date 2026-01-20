@@ -495,6 +495,9 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   <TableHead>Monto</TableHead>
                   <TableHead>Fecha Vencimiento</TableHead>
                   <TableHead>Estado</TableHead>
+                  {(statusFilter === "PAID" || statusFilter === "ALL") && (
+                    <TableHead>Fecha Pago</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -505,6 +508,15 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   const displayStatus = isOverdue ? "OVERDUE" : payment.status
                   const paidAmount = parseFloat(payment.paid_amount || "0") || 0
                   const isPartial = paidAmount > 0 && paidAmount < parseFloat(payment.amount || "0")
+                  const isPaid = payment.status === "PAID"
+                  // Usar created_at del ledger_movement como fecha de pago (fecha real del pago)
+                  // Si no hay ledger_movement, usar updated_at como fallback
+                  const ledgerMovement = (payment as any).ledger_movements
+                  const paidAt = isPaid && ledgerMovement?.created_at
+                    ? format(new Date(ledgerMovement.created_at), "dd/MM/yyyy", { locale: es })
+                    : isPaid && payment.updated_at
+                    ? format(new Date(payment.updated_at), "dd/MM/yyyy", { locale: es })
+                    : null
 
                   return (
                     <TableRow key={payment.id}>
@@ -545,6 +557,11 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                           )}
                         </div>
                       </TableCell>
+                      {(statusFilter === "PAID" || statusFilter === "ALL") && (
+                        <TableCell className="text-muted-foreground">
+                          {paidAt || "-"}
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}
