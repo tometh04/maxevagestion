@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 
 interface Customer {
   id: string
@@ -71,13 +72,20 @@ export default function NewInvoicePage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [operations, setOperations] = useState<Operation[]>([])
   const [filteredOperations, setFilteredOperations] = useState<Operation[]>([])
+  const [pointsOfSale, setPointsOfSale] = useState<Array<{
+    agency_id: string
+    agency_name: string
+    points_of_sale: Array<{ numero: number; tipo: string; bloqueado: boolean }>
+    default_point_of_sale?: number
+  }>>([])
   
   // Form state
   const [formData, setFormData] = useState({
     customer_id: '',
     operation_id: '',
+    agency_id: '', // Se determina del punto de venta seleccionado
     cbte_tipo: 11, // Factura C por defecto
-    pto_vta: 1,
+    pto_vta: 0, // Se selecciona del punto de venta
     concepto: 2, // Servicios
     receptor_nombre: '',
     receptor_doc_tipo: 80, // CUIT
@@ -87,6 +95,9 @@ export default function NewInvoicePage() {
     moneda: 'PES' as 'PES' | 'DOL',
     cotizacion: 1,
   })
+  
+  // Estado para dialog de nuevo cliente
+  const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
   
   const [items, setItems] = useState<InvoiceItem[]>([
     { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
@@ -105,6 +116,27 @@ export default function NewInvoicePage() {
   const loadData = async () => {
     try {
       setLoading(true)
+      
+      // Cargar puntos de venta por agencia
+      const pointsOfSaleRes = await fetch('/api/invoices/points-of-sale')
+      if (pointsOfSaleRes.ok) {
+        const data = await pointsOfSaleRes.json()
+        setPointsOfSale(data.pointsOfSale || [])
+        
+        // Seleccionar el primer punto de venta por defecto
+        if (data.pointsOfSale && data.pointsOfSale.length > 0) {
+          const firstAgency = data.pointsOfSale[0]
+          const firstPtoVta = firstAgency.points_of_sale && firstAgency.points_of_sale.length > 0
+            ? firstAgency.points_of_sale[0].numero
+            : (firstAgency.default_point_of_sale || 1)
+          
+          setFormData(prev => ({
+            ...prev,
+            agency_id: firstAgency.agency_id,
+            pto_vta: firstPtoVta,
+          }))
+        }
+      }
       
       // Cargar clientes
       const customersRes = await fetch('/api/customers?limit=100')
@@ -384,6 +416,15 @@ export default function NewInvoicePage() {
     }
   }
 
+  // Manejar cambio de punto de venta (determina la agencia)
+  const handlePointOfSaleChange = (agencyId: string, ptoVta: number) => {
+    setFormData({
+      ...formData,
+      agency_id: agencyId,
+      pto_vta: ptoVta,
+    })
+  }
+
   const addItem = () => {
     setItems([
       ...items,
@@ -452,11 +493,26 @@ export default function NewInvoicePage() {
         return
       }
       
+      // Validar que se haya seleccionado un punto de venta
+      if (!formData.agency_id || !formData.pto_vta) {
+        toast({
+          title: "Error",
+          description: "Debe seleccionar un punto de venta",
+          variant: "destructive",
+        })
+        setSaving(false)
+        return
+      }
+      
       const response = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          operation_id: formData.operation_id || null, // Puede ser null
+          customer_id: formData.customer_id || null, // Puede ser null
+          agency_id: formData.agency_id, // Requerido: viene del punto de venta
+          pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
           cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD' 
             ? exchangeRate 
@@ -568,14 +624,49 @@ export default function NewInvoicePage() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Punto de Venta</Label>
-                  <Input
-                    type="number"
-                    value={formData.pto_vta}
-                    onChange={(e) => setFormData({ ...formData, pto_vta: parseInt(e.target.value) || 1 })}
-                    min={1}
-                    max={99999}
-                  />
+                  <Label>Punto de Venta / Agencia *</Label>
+                  <Select
+                    value={formData.pto_vta ? `${formData.agency_id}:${formData.pto_vta}` : ''}
+                    onValueChange={(value) => {
+                      const [agencyId, ptoVta] = value.split(':')
+                      handlePointOfSaleChange(agencyId, parseInt(ptoVta))
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccione punto de venta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pointsOfSale.map((agency) => (
+                        <div key={agency.agency_id}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                            {agency.agency_name}
+                          </div>
+                          {agency.points_of_sale && agency.points_of_sale.length > 0 ? (
+                            agency.points_of_sale.map((pv) => (
+                              <SelectItem
+                                key={`${agency.agency_id}:${pv.numero}`}
+                                value={`${agency.agency_id}:${pv.numero}`}
+                              >
+                                P.V. {String(pv.numero).padStart(4, '0')} - {pv.tipo}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem
+                              key={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
+                              value={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
+                            >
+                              P.V. {String(agency.default_point_of_sale || 1).padStart(4, '0')} (por defecto)
+                            </SelectItem>
+                          )}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {formData.agency_id && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Agencia: {pointsOfSale.find(p => p.agency_id === formData.agency_id)?.agency_name || ''}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -590,7 +681,19 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Seleccionar Cliente</Label>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Label>Seleccionar Cliente</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowNewCustomerDialog(true)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Nuevo
+                    </Button>
+                  </div>
                   <Select 
                     value={formData.customer_id} 
                     onValueChange={handleCustomerChange}
@@ -608,7 +711,7 @@ export default function NewInvoicePage() {
                   </Select>
                 </div>
                 <div>
-                  <Label>Operación Asociada</Label>
+                  <Label>Operación Asociada (Opcional)</Label>
                   <Select 
                     value={formData.operation_id} 
                     onValueChange={handleOperationChange}
@@ -901,6 +1004,27 @@ export default function NewInvoicePage() {
           </Card>
         </div>
       </div>
+
+      {/* Dialog para crear nuevo cliente */}
+      <NewCustomerDialog
+        open={showNewCustomerDialog}
+        onOpenChange={setShowNewCustomerDialog}
+        onSuccess={(customer) => {
+          if (customer) {
+            // Agregar el nuevo cliente a la lista y seleccionarlo
+            setCustomers(prev => [...prev, {
+              id: customer.id,
+              first_name: customer.first_name,
+              last_name: customer.last_name,
+              email: customer.email || '',
+              cuit: customer.cuit || undefined,
+              dni: customer.dni || undefined,
+            }])
+            handleCustomerChange(customer.id)
+            setShowNewCustomerDialog(false)
+          }
+        }}
+      />
     </div>
   )
 }

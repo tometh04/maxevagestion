@@ -9,8 +9,10 @@ export const dynamic = 'force-dynamic'
 
 // Schema de validación para crear factura
 const createInvoiceSchema = z.object({
-  operation_id: z.string().uuid().optional(),
-  customer_id: z.string().uuid().optional(),
+  operation_id: z.string().uuid().optional().nullable(),
+  customer_id: z.string().uuid().optional().nullable(),
+  agency_id: z.string().uuid(), // Requerido: viene del punto de venta seleccionado
+  pto_vta: z.number(), // Requerido: punto de venta seleccionado
   cbte_tipo: z.number(),
   concepto: z.number().default(1),
   receptor_doc_tipo: z.number().default(80),
@@ -117,7 +119,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Obtener agencias del usuario
+    // Obtener agencias del usuario para validación
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     
     if (agencyIds.length === 0) {
@@ -129,6 +131,14 @@ export async function POST(request: Request) {
 
     const body = await request.json()
     const validatedData = createInvoiceSchema.parse(body)
+
+    // Validar que la agencia del punto de venta pertenece al usuario
+    if (!agencyIds.includes(validatedData.agency_id)) {
+      return NextResponse.json(
+        { error: "No tiene acceso a la agencia seleccionada" },
+        { status: 403 }
+      )
+    }
 
     // Calcular totales
     let impNeto = 0
@@ -153,23 +163,14 @@ export async function POST(request: Request) {
       }
     })
 
-    // Obtener punto de venta de configuración
-    const { data: financialSettings } = await supabase
-      .from("financial_settings")
-      .select("default_point_of_sale")
-      .eq("agency_id", agencyIds[0])
-      .single()
-
-    const ptoVta = (financialSettings as any)?.default_point_of_sale || 1
-
     // Crear factura
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
-        agency_id: agencyIds[0],
-        operation_id: validatedData.operation_id,
-        customer_id: validatedData.customer_id,
+        agency_id: validatedData.agency_id, // Usar la agencia del punto de venta
+        operation_id: validatedData.operation_id || null,
+        customer_id: validatedData.customer_id || null,
         cbte_tipo: validatedData.cbte_tipo,
-        pto_vta: ptoVta,
+        pto_vta: validatedData.pto_vta,
         concepto: validatedData.concepto,
         receptor_doc_tipo: validatedData.receptor_doc_tipo,
         receptor_doc_nro: validatedData.receptor_doc_nro,
