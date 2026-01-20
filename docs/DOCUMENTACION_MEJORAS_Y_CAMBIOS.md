@@ -2083,5 +2083,156 @@ COMMENT ON COLUMN customers.procedure_number IS
 
 ---
 
+### 26. Implementación de Flujo de Pago para Gastos Recurrentes
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó un flujo completo para procesar pagos de gastos recurrentes directamente desde la página de "Gastos Recurrentes", permitiendo seleccionar la cuenta financiera de origen, manejar conversión de monedas, y actualizar automáticamente la próxima fecha de vencimiento.
+
+**Funcionalidades Implementadas:**
+- Botón "Pagar" en cada gasto recurrente de la tabla
+- Dialog `PayRecurringExpenseDialog` para procesar pagos:
+  - Selector de cuenta financiera con balance visible
+  - Detección automática de necesidad de tipo de cambio
+  - Campo de tipo de cambio cuando moneda del gasto difiere de la cuenta
+  - Cálculo automático de monto equivalente en moneda de la cuenta
+  - Selector de fecha de pago
+  - Campo opcional de referencia/comprobante
+- Crea movimiento en ledger tipo EXPENSE en la cuenta seleccionada
+- Actualiza `next_due_date` y `last_generated_date` del gasto recurrente
+- Impacta directamente en el balance de la cuenta financiera
+
+**Archivos Creados:**
+- `components/accounting/pay-recurring-expense-dialog.tsx` - Dialog completo de pago
+- `app/api/recurring-payments/pay/route.ts` - API para procesar pagos de gastos recurrentes
+
+**Archivos Modificados:**
+- `components/accounting/recurring-payments-page-client.tsx` - Agregado botón "Pagar" y estado del dialog
+
+**Detalles Técnicos:**
+- La moneda del pago se determina automáticamente por la cuenta seleccionada
+- Si el gasto está en ARS y se paga desde cuenta USD (o viceversa), se requiere tipo de cambio
+- El movimiento se registra en la moneda de la cuenta seleccionada
+- La próxima fecha de vencimiento se calcula usando `calculateNextDueDate` según la frecuencia del gasto
+
+**Resultado:**
+- ✅ Los usuarios pueden pagar gastos recurrentes directamente desde la tabla
+- ✅ Conversión de moneda automática con validación de tipo de cambio
+- ✅ Los pagos impactan correctamente en las cuentas financieras
+- ✅ Mejor trazabilidad de pagos de gastos recurrentes
+
+---
+
+### 27. Conversor de Cambio para Retiros en Cuenta Socios
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se agregó funcionalidad de conversión de moneda para retiros de socios cuando la moneda del retiro difiere de la moneda de la cuenta financiera seleccionada, similar al flujo de pago de gastos recurrentes.
+
+**Funcionalidades Implementadas:**
+- Campo de tipo de cambio que aparece automáticamente cuando:
+  - La moneda del retiro es diferente a la moneda de la cuenta financiera
+- Validación de tipo de cambio requerido cuando hay conversión
+- Cálculo automático de monto equivalente en moneda de la cuenta
+- Visualización de balance de cuenta en el selector
+- El ledger movement se registra en la moneda de la cuenta (no en la del retiro)
+
+**Archivos Modificados:**
+- `components/accounting/partner-accounts-client.tsx`
+  - Agregado estado `withdrawalExchangeRate`
+  - Agregada lógica para detectar necesidad de conversión
+  - Agregado campo de tipo de cambio condicional
+  - Agregado cálculo y visualización de monto equivalente
+  - Agregado balance de cuenta en selector
+- `app/api/partner-accounts/withdrawals/route.ts`
+  - Agregado `exchange_rate` al body del request
+  - Validación de tipo de cambio cuando hay conversión
+  - Cálculo de monto en moneda de la cuenta cuando hay conversión
+  - Actualizado ledger movement para usar moneda de cuenta y monto convertido
+
+**Detalles Técnicos:**
+- Si retiro en ARS desde cuenta USD: monto en cuenta = monto retiro / TC
+- Si retiro en USD desde cuenta ARS: monto en cuenta = monto retiro * TC
+- El ledger movement siempre usa la moneda de la cuenta para consistencia contable
+- El `amount_ars_equivalent` se calcula desde el monto en moneda de cuenta
+
+**Resultado:**
+- ✅ Los usuarios pueden retirar en una moneda diferente a la de la cuenta
+- ✅ Conversión automática con validación de tipo de cambio
+- ✅ Mejor UX con visualización de balance y monto equivalente
+- ✅ Consistencia contable: ledger movements siempre en moneda de cuenta
+
+---
+
+### 28. División de Caja en 3 Secciones (Resumen, Caja USD, Caja ARS)
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se reestructuró completamente la página de Caja para dividirla en 3 secciones usando tabs: Resumen (todas las cuentas), Caja USD (cuentas individuales USD), y Caja ARS (cuentas individuales ARS). Cada cuenta individual muestra ingresos, egresos, balance y movimientos centralizados para reconciliación.
+
+**Funcionalidades Implementadas:**
+
+#### Tab 1: Resumen
+- KPIs totales: Total ARS, Total USD, Efectivo ARS, Efectivo USD
+- Desglose de totales: Efectivo y Bancos por moneda
+- Gráfico de evolución de la caja (mantiene funcionalidad anterior)
+- Lista de todas las cuentas financieras agrupadas por moneda
+
+#### Tab 2: Caja USD
+- Lista de todas las cuentas USD activas
+- Para cada cuenta individual:
+  - **Balance actual** (badge destacado)
+  - **Ingresos** (suma de movimientos INCOME) - badge verde
+  - **Egresos** (suma de movimientos EXPENSE) - badge rojo
+  - **Balance** - badge azul
+  - Botón "Ver Movimientos" para cargar movimientos del período
+  - Tabla de movimientos centralizados con:
+    - Fecha
+    - Tipo (Ingreso/Egreso)
+    - Concepto
+    - Monto (con color según tipo)
+    - Código de operación (si aplica)
+
+#### Tab 3: Caja ARS
+- Misma estructura que "Caja USD" pero para cuentas ARS
+
+**Archivos Modificados:**
+- `components/cash/cash-summary-client.tsx` - **REHECHO COMPLETAMENTE**
+  - Agregado componente `Tabs` para las 3 secciones
+  - Agregada función `fetchAccountMovements` para cargar movimientos por cuenta
+  - Agregada función `calculateAccountStats` para calcular ingresos y egresos
+  - Agregado estado `accountMovements` para almacenar movimientos por cuenta
+  - Agregado estado `loadingMovements` para estados de carga individuales
+  - Separadas cuentas USD y ARS usando `useMemo`
+  - Carga lazy de movimientos: solo se cargan cuando el usuario hace click en "Ver Movimientos"
+  - Filtrado de movimientos por cuenta y rango de fechas
+
+**Detalles Técnicos:**
+- Los movimientos se obtienen desde `/api/accounting/ledger?accountId=...&dateFrom=...&dateTo=...`
+- Los ingresos se calculan sumando todos los movimientos tipo `INCOME`
+- Los egresos se calculan sumando todos los movimientos tipo `EXPENSE`
+- El balance actual viene de `financial_accounts.current_balance`
+- Los movimientos se cargan bajo demanda para optimizar rendimiento
+- Se limpian los movimientos cuando cambia el rango de fechas
+
+**UI/UX:**
+- Cards individuales para cada cuenta con información visual clara
+- Badges de color para ingresos (verde), egresos (rojo), balance (azul)
+- Tabla de movimientos con formato claro y colores según tipo
+- Skeleton loaders durante carga
+- Mensajes informativos cuando no hay cuentas o movimientos
+
+**Resultado:**
+- ✅ Caja dividida en 3 secciones claras y organizadas
+- ✅ Cada cuenta individual muestra ingresos, egresos y balance
+- ✅ Movimientos centralizados para reconciliación
+- ✅ Mejor organización y visualización de información financiera
+- ✅ Carga optimizada: movimientos bajo demanda
+
+---
+
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services
