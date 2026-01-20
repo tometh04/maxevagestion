@@ -105,6 +105,7 @@ export function TeamsPageClient() {
   useEffect(() => {
     loadTeams()
     loadUsers()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const loadTeams = async () => {

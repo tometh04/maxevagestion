@@ -105,6 +105,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
 
   useEffect(() => {
     fetchData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function fetchData() {

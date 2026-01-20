@@ -88,6 +88,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     if (!yearFilter || yearFilter === "") {
       setYearFilter(String(now.getFullYear()))
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchData = useCallback(async () => {

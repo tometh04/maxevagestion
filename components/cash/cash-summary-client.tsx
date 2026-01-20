@@ -51,7 +51,7 @@ interface LedgerMovement {
   id: string
   type: string
   concept: string
-  currency: string
+  currency: "ARS" | "USD"
   amount_original: number
   amount_ars_equivalent: number
   created_at: string

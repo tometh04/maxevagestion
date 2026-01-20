@@ -122,7 +122,8 @@ export function PayRecurringExpenseDialog({
       if (selectedAccount) {
         setPaymentCurrency(selectedAccount.currency)
         // Si cambia la moneda y necesita TC, resetear el campo
-        if (needsExchangeRate() && expense) {
+        const needsTC = expense && expense.currency !== selectedAccount.currency
+        if (needsTC) {
           form.setValue("exchange_rate", undefined)
         }
       }
