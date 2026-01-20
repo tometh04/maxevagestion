@@ -192,11 +192,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
 
   // Filtrar cuentas por moneda
   const usdAccounts = useMemo(() => {
-    return accounts.filter(acc => acc.currency === "USD" && acc.is_active !== false)
+    return accounts
+      .filter(acc => acc.currency === "USD" && acc.is_active !== false)
+      .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [accounts])
 
   const arsAccounts = useMemo(() => {
-    return accounts.filter(acc => acc.currency === "ARS" && acc.is_active !== false)
+    return accounts
+      .filter(acc => acc.currency === "ARS" && acc.is_active !== false)
+      .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [accounts])
 
   // Calcular ingresos y egresos por cuenta
