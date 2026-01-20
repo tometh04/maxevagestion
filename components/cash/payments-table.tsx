@@ -6,17 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { DatePicker } from "@/components/ui/date-picker"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
@@ -28,13 +17,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { MarkPaidDialog } from "@/components/payments/mark-paid-dialog"
 
 interface PaymentOperation {
   id: string
@@ -91,9 +74,6 @@ export function PaymentsTable({
   const [loading, setLoading] = useState(!initialPayments)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
-  const [datePaid, setDatePaid] = useState("")
-  const [reference, setReference] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
   
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
@@ -291,36 +271,8 @@ export function PaymentsTable({
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                 {payment.status !== "PAID" && (
                   <DropdownMenuItem
-                    onClick={async () => {
+                    onClick={() => {
                       setSelectedPayment(payment)
-                      setDatePaid(new Date().toISOString().split("T")[0])
-                      setReference(payment.reference || "")
-                      setFinancialAccountId("")
-                      
-                      // Si el método es "Transferencia", cargar cuentas financieras
-                      if (payment.method === "Transferencia") {
-                        try {
-                          const response = await fetch("/api/accounting/financial-accounts")
-                          if (response.ok) {
-                            const data = await response.json()
-                            const bankAccounts = (data.accounts || []).filter(
-                              (acc: any) =>
-                                acc.is_active !== false &&
-                                (acc.type === "CHECKING_ARS" ||
-                                  acc.type === "CHECKING_USD" ||
-                                  acc.type === "SAVINGS_ARS" ||
-                                  acc.type === "SAVINGS_USD") &&
-                                acc.currency === payment.currency
-                            )
-                            setFinancialAccounts(bankAccounts)
-                          }
-                        } catch (error) {
-                          console.error("Error fetching financial accounts:", error)
-                        }
-                      } else {
-                        setFinancialAccounts([])
-                      }
-                      
                       setDialogOpen(true)
                     }}
                   >
@@ -335,42 +287,6 @@ export function PaymentsTable({
     ],
     []
   )
-
-  const handleConfirm = async () => {
-    if (!selectedPayment || !datePaid) return
-
-    // Validar que si el método es "Transferencia", se haya seleccionado una cuenta
-    if (selectedPayment.method === "Transferencia" && !financialAccountId) {
-      alert("Debe seleccionar una cuenta receptiva para transferencias bancarias")
-      return
-    }
-
-    setIsSubmitting(true)
-
-    try {
-      await fetch("/api/payments/mark-paid", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentId: selectedPayment.id,
-          datePaid,
-          reference: reference || null,
-          financial_account_id: financialAccountId || null,
-        }),
-      })
-
-      setDialogOpen(false)
-      setSelectedPayment(null)
-      onRefresh?.()
-      if (useServerPagination) {
-        fetchPayments() // Recargar si usa paginación server-side
-      }
-    } catch (error) {
-      console.error("Error al marcar pago:", error)
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
 
   const isLoading = externalLoading || (loading && useServerPagination)
 
@@ -420,75 +336,17 @@ export function PaymentsTable({
         )}
       </div>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar pago</DialogTitle>
-            <DialogDescription>
-              Completa la información para marcar este pago como pagado y registrar el movimiento en caja.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label>Fecha de pago</Label>
-              <DatePicker
-                value={datePaid}
-                onChange={setDatePaid}
-                placeholder="Seleccionar fecha"
-              />
-            </div>
-            <div>
-              <Label>Referencia / Notas</Label>
-              <Input
-                value={reference}
-                placeholder="Recibo, transferencia, etc."
-                onChange={(event) => setReference(event.target.value)}
-              />
-            </div>
-            
-            {/* Mostrar selector de cuenta solo si el método es "Transferencia" */}
-            {selectedPayment?.method === "Transferencia" && (
-              <div>
-                <Label>Cuenta Receptiva *</Label>
-                <Select value={financialAccountId} onValueChange={setFinancialAccountId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar cuenta bancaria" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {financialAccounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>
-                        {account.name} ({account.currency})
-                        {account.current_balance !== undefined && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            - Balance: {account.current_balance.toLocaleString("es-AR", {
-                              style: "currency",
-                              currency: account.currency,
-                            })}
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-              setDialogOpen(false)
-              setFinancialAccountId("")
-              setFinancialAccounts([])
-            }} disabled={isSubmitting}>
-              Cancelar
-            </Button>
-            <Button onClick={handleConfirm} disabled={isSubmitting || !datePaid || (selectedPayment?.method === "Transferencia" && !financialAccountId)}>
-              Confirmar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <MarkPaidDialog
+        payment={selectedPayment}
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        onSuccess={() => {
+          onRefresh?.()
+          if (useServerPagination) {
+            fetchPayments() // Recargar si usa paginación server-side
+          }
+        }}
+      />
     </>
   )
 }
