@@ -258,6 +258,51 @@ export function OperationsTable({
         enableSorting: false,
       },
       {
+        id: "actions",
+        header: "Acciones",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const operation = row.original
+
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="h-8 w-8 p-0">
+                  <span className="sr-only">Abrir menú</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <Link href={`/operations/${operation.id}`}>
+                    <Eye className="mr-2 h-4 w-4" />
+                    Ver detalles
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => handleEditClick(operation)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Editar
+                </DropdownMenuItem>
+                {["ADMIN", "SUPER_ADMIN"].includes(userRole) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={() => handleDeleteClick(operation)}
+                      className="text-red-600 focus:text-red-600"
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Eliminar
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        },
+      },
+      {
         accessorKey: "operation_date",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Fecha" />
