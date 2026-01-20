@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Revisión Completa de Finanzas - Puntos 1-8)
+**Última actualización:** 2025-01-19 (Corrección de Nombres de Vendedores en KPIs)
 
 ---
 
@@ -2268,6 +2268,60 @@ Se corrigieron errores de TypeScript y warnings de React hooks que estaban causa
 - ✅ Build exitoso en Vercel
 - ✅ Sin errores de TypeScript
 - ✅ Warnings de React hooks suprimidos donde es apropiado
+
+---
+
+### 30. Corrección de Nombres de Vendedores en KPIs y Reportes
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se corrigió un bug crítico donde los nombres de vendedores no aparecían en ningún KPI del sistema debido al uso incorrecto del campo `full_name` (que no existe) en lugar de `name` en varios endpoints de analytics.
+
+**Problema Identificado:**
+- Los KPIs y reportes mostraban "Vendedor" o "Sin asignar" en lugar de los nombres reales
+- Los endpoints de estadísticas usaban `full_name` que no existe en la tabla `users`
+- La tabla `users` tiene el campo `name`, no `full_name`
+- Inconsistencia en los componentes: algunos esperaban `sellerName`, otros `name`
+
+**Solución Implementada:**
+
+1. **Corrección en `/api/operations/statistics/route.ts`:**
+   - Cambiado `.select("id, full_name")` → `.select("id, name")`
+   - Actualizado mapeo: `s.full_name` → `s.name`
+
+2. **Corrección en `/api/sales/statistics/route.ts`:**
+   - Cambiado `.select("id, full_name")` → `.select("id, name")`
+   - Actualizado mapeo: `s.full_name` → `s.name`
+
+3. **Mejora en `components/dashboard/sales-by-seller-chart.tsx`:**
+   - Actualizada interfaz `SellerData` para aceptar tanto `name` como `sellerName` (compatibilidad)
+   - Agregado fallback: `seller.name || seller.sellerName || "Sin nombre"`
+   - Soporta ambos campos para mayor robustez
+
+4. **Logging de Debug:**
+   - Agregado logging temporal en `/api/analytics/sellers/route.ts` para diagnosticar problemas
+   - Logs muestran cantidad de vendedores encontrados y sus nombres
+
+**Archivos Modificados:**
+- `app/api/operations/statistics/route.ts` - Corregido campo `full_name` → `name`
+- `app/api/sales/statistics/route.ts` - Corregido campo `full_name` → `name`
+- `components/dashboard/sales-by-seller-chart.tsx` - Soporte para múltiples formatos de nombre
+- `app/api/analytics/sellers/route.ts` - Agregado logging de debug
+
+**Detalles Técnicos:**
+- La tabla `users` tiene el campo `name` (TEXT NOT NULL)
+- Los endpoints de reportes (`/api/reports/sales`, `/api/reports/margins`) ya usaban correctamente `sellers:seller_id(id, name)`
+- El problema estaba específicamente en los endpoints de estadísticas (`/api/operations/statistics`, `/api/sales/statistics`)
+- El endpoint `/api/analytics/sellers` ya estaba correcto, pero se agregó logging para facilitar debugging
+
+**Resultado:**
+- ✅ Los nombres de vendedores ahora aparecen correctamente en todos los KPIs
+- ✅ Dashboard muestra nombres reales en gráficos de ventas por vendedor
+- ✅ Top Vendedores muestra nombres correctos
+- ✅ Estadísticas de operaciones y ventas muestran vendedores con nombres
+- ✅ Reportes muestran nombres correctamente (ya funcionaban)
+- ✅ Mayor robustez en componentes con soporte para múltiples formatos
 
 ---
 
