@@ -68,12 +68,12 @@ export async function GET(request: Request) {
     if (sellerIds.length > 0) {
       const { data: sellers } = await supabase
         .from("users")
-        .select("id, full_name")
+        .select("id, name")
         .in("id", sellerIds)
       
       if (sellers) {
         sellers.forEach((s: any) => {
-          sellersMap[s.id] = s.full_name || "Sin asignar"
+          sellersMap[s.id] = s.name || "Sin asignar"
         })
       }
     }

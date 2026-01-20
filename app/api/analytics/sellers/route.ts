@@ -88,10 +88,15 @@ export async function GET(request: Request) {
         console.error("Error fetching sellers:", sellersError)
         // Continue without seller data rather than failing completely
       } else {
+        console.log(`[Sellers API] Found ${sellers?.length || 0} sellers with IDs:`, sellerIds)
         sellersData = (sellers || []).reduce((acc: any, seller: any) => {
+          console.log(`[Sellers API] Seller ${seller.id}: name="${seller.name}"`)
           acc[seller.id] = seller
           return acc
         }, {})
+        if (sellerIds.length > 0 && (!sellers || sellers.length === 0)) {
+          console.warn(`[Sellers API] WARNING: No sellers found for IDs:`, sellerIds)
+        }
       }
       }
 
