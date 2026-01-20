@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Dialog,
   DialogContent,
@@ -48,28 +48,7 @@ export function DistributeProfitsDialog({
   const [distributing, setDistributing] = useState(false)
   const [preview, setPreview] = useState<Array<{ partner_name: string; percentage: number; amount: number }>>([])
 
-  // Cargar socios al abrir el dialog
-  useEffect(() => {
-    if (open) {
-      loadPartners()
-    }
-  }, [open])
-
-  // Calcular preview cuando cambian los datos
-  useEffect(() => {
-    if (partners.length > 0 && profitAmount > 0) {
-      const previewData = partners
-        .filter((p) => (p.profit_percentage || 0) > 0)
-        .map((partner) => ({
-          partner_name: partner.partner_name,
-          percentage: partner.profit_percentage || 0,
-          amount: (profitAmount * (partner.profit_percentage || 0)) / 100,
-        }))
-      setPreview(previewData)
-    }
-  }, [partners, profitAmount])
-
-  const loadPartners = async () => {
+  const loadPartners = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch("/api/partner-accounts")
@@ -87,7 +66,28 @@ export function DistributeProfitsDialog({
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  // Cargar socios al abrir el dialog
+  useEffect(() => {
+    if (open) {
+      loadPartners()
+    }
+  }, [open, loadPartners])
+
+  // Calcular preview cuando cambian los datos
+  useEffect(() => {
+    if (partners.length > 0 && profitAmount > 0) {
+      const previewData = partners
+        .filter((p) => (p.profit_percentage || 0) > 0)
+        .map((partner) => ({
+          partner_name: partner.partner_name,
+          percentage: partner.profit_percentage || 0,
+          amount: (profitAmount * (partner.profit_percentage || 0)) / 100,
+        }))
+      setPreview(previewData)
+    }
+  }, [partners, profitAmount])
 
   const handleDistribute = async () => {
     // Verificar que la suma de porcentajes sea 100
@@ -225,7 +225,7 @@ export function DistributeProfitsDialog({
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  No hay socios activos con porcentaje de ganancias asignado. Configure los porcentajes en "Cuentas de Socios".
+                  No hay socios activos con porcentaje de ganancias asignado. Configure los porcentajes en &quot;Cuentas de Socios&quot;.
                 </AlertDescription>
               </Alert>
             )}

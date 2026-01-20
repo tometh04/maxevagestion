@@ -2504,5 +2504,94 @@ Se verificó que el conversor de moneda funciona correctamente en todos los punt
 
 ---
 
+### 34. Sistema de Distribución de Ganancias a Socios y Tracking de Deudas
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó un sistema completo para distribuir ganancias mensuales entre socios según porcentajes asignados y rastrear las deudas de socios que gastaron más de lo asignado.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Distribución de Ganancias desde Posición Mensual:
+- **Campo de porcentaje en socios:** Agregado campo `profit_percentage` (0-100%) en tabla `partner_accounts`
+- **Botón "Distribuir a Socios"** en el card de "Resultado del Mes" cuando hay ganancias positivas
+- **Dialog de distribución** (`DistributeProfitsDialog`) que muestra:
+  - Vista previa de distribución según porcentajes asignados
+  - Validación que la suma de porcentajes sea 100%
+  - Tabla con socio, porcentaje y monto asignado
+  - Confirmación antes de distribuir
+- **API de distribución** (`/api/partner-accounts/distribute-profits`) que:
+  - Valida que la suma de porcentajes sea 100%
+  - Verifica que no se haya distribuido ya para el mes/año
+  - Crea asignaciones en tabla `partner_profit_allocations` para cada socio
+  - Guarda monto, moneda (USD), tipo de cambio y período
+
+#### 2. Tracking de Deuda de Socios:
+- **Cálculo automático de deuda:** Si un socio retira más de lo asignado, aparece como deudor
+- **Integración en Posición Mensual:** La deuda de socios se incluye en "Cuentas por Cobrar - Socios"
+- **Detalle por socio:** Muestra asignado, retirado y deuda pendiente
+- **Cálculo hasta fecha de corte:** Considera todas las asignaciones y retiros hasta el último día del mes
+
+**Archivos Creados:**
+- `supabase/migrations/088_partner_profit_allocations.sql` - Migración para tabla de asignaciones y campo de porcentaje
+- `app/api/partner-accounts/distribute-profits/route.ts` - API para distribuir ganancias (GET/POST)
+- `components/accounting/distribute-profits-dialog.tsx` - Dialog de distribución de ganancias
+
+**Archivos Modificados:**
+- `components/accounting/monthly-position-page-client.tsx`
+  - Agregado botón "Distribuir a Socios" en card de Resultado del Mes
+  - Integrado `DistributeProfitsDialog`
+  - Solo visible para SUPER_ADMIN, ADMIN y CONTABLE
+  - Solo aparece si hay ganancias positivas
+- `app/api/accounting/monthly-position/route.ts`
+  - Agregado cálculo de deuda de socios (withdrawn > allocated)
+  - Integrado en "Cuentas por Cobrar" como subsección "socios"
+  - Incluye detalle de deuda por socio con asignado, retirado y deuda
+- `components/accounting/partner-accounts-client.tsx`
+  - Agregado campo "Porcentaje de Ganancias (%)" en formulario de crear socio
+  - Mostrado porcentaje en tarjetas de socios (badge)
+  - Validación de porcentaje (0-100)
+- `app/api/partner-accounts/route.ts`
+  - Agregado `profit_percentage` al crear socio
+  - Validación de rango (0-100)
+
+**Detalles Técnicos:**
+
+#### Tabla `partner_profit_allocations`:
+- Campos principales: `partner_id`, `year`, `month`, `profit_amount`, `currency`, `exchange_rate`, `status`
+- Status: `ALLOCATED` (asignado pero no retirado) o `WITHDRAWN` (retirado completamente)
+- Constraint `UNIQUE(partner_id, year, month)` para evitar duplicados
+- Referencia opcional a `monthly_position_id` para trazabilidad futura
+
+#### Cálculo de Deuda:
+1. Obtiene todas las asignaciones de ganancias hasta la fecha de corte
+2. Obtiene todos los retiros hasta la fecha de corte
+3. Agrupa por socio y convierte todo a USD (usando exchange_rate si aplica)
+4. Calcula: `deuda = total_retirado - total_asignado`
+5. Si `deuda > 0`, aparece en "Cuentas por Cobrar - Socios"
+
+#### Validaciones:
+- Porcentajes de socios deben sumar 100% para poder distribuir
+- No se puede distribuir dos veces para el mismo mes/año
+- El monto de ganancia debe ser positivo
+- El tipo de cambio es obligatorio
+
+**UI/UX:**
+- Dialog informativo con vista previa clara
+- Validación en tiempo real de suma de porcentajes
+- Badge de porcentaje visible en tarjetas de socios
+- Mensajes de error descriptivos
+- Solo aparece botón cuando corresponde (ganancias positivas + permisos)
+
+**Resultado:**
+- ✅ Los usuarios pueden distribuir ganancias mensuales entre socios desde Posición Mensual
+- ✅ Los socios pueden tener porcentajes de ganancias configurados
+- ✅ El sistema rastrea automáticamente si un socio gastó más de lo asignado
+- ✅ Las deudas de socios aparecen correctamente en Posición Mensual como activo
+- ✅ Mejor control y trazabilidad de distribución de ganancias
+
+---
+
 **Mantenido por:** AI Assistant
 **Para:** Migración a Vibook Services
