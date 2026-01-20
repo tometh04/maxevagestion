@@ -40,6 +40,7 @@ import { Label } from "@/components/ui/label"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Download, Filter, X } from "lucide-react"
 import * as XLSX from "xlsx"
+import { useDebounce } from "@/hooks/use-debounce"
 
 interface DebtorOperation {
   id: string
