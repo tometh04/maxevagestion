@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { partner_id, amount, currency, withdrawal_date, account_id, description } = body
+    const { partner_id, amount, currency, withdrawal_date, account_id, description, exchange_rate } = body
 
     // Validaciones
     if (!partner_id) {
@@ -116,6 +116,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })
     }
 
+    // Validar tipo de cambio si la moneda del retiro es diferente a la de la cuenta
+    const accountCurrency = account.currency as "ARS" | "USD"
+    const needsConversion = currency !== accountCurrency
+    
+    if (needsConversion && !exchange_rate) {
+      return NextResponse.json(
+        { error: "Tipo de cambio requerido para convertir entre monedas diferentes" },
+        { status: 400 }
+      )
+    }
+
     console.log(`💸 partner-withdrawals: Cuenta seleccionada para retiro`, {
       partner_id,
       account_id,
@@ -140,9 +151,24 @@ export async function POST(request: Request) {
       paymentMethod = "USD"
     }
 
-    // Calcular exchange rate si es USD
+    // Calcular exchange rate
     let exchangeRate: number | null = null
-    if (currency === "USD") {
+    let withdrawalAmountInAccountCurrency = parseFloat(amount)
+
+    if (needsConversion && exchange_rate) {
+      // Usar el tipo de cambio proporcionado por el usuario
+      exchangeRate = exchange_rate
+      
+      // Calcular el monto en la moneda de la cuenta
+      if (currency === "ARS" && accountCurrency === "USD") {
+        // Retiro en ARS desde cuenta USD: dividir por TC
+        withdrawalAmountInAccountCurrency = parseFloat(amount) / exchange_rate
+      } else if (currency === "USD" && accountCurrency === "ARS") {
+        // Retiro en USD desde cuenta ARS: multiplicar por TC
+        withdrawalAmountInAccountCurrency = parseFloat(amount) * exchange_rate
+      }
+    } else if (currency === "USD" && !needsConversion) {
+      // Si el retiro es en USD y la cuenta también es USD, obtener TC para cálculo ARS equivalente
       const rateDate = new Date(withdrawal_date)
       exchangeRate = await getExchangeRate(supabase, rateDate)
       
@@ -160,21 +186,22 @@ export async function POST(request: Request) {
 
     // Calcular amount_ars_equivalent
     const amountARS = calculateARSEquivalent(
-      parseFloat(amount),
-      currency as "ARS" | "USD",
+      withdrawalAmountInAccountCurrency,
+      accountCurrency,
       exchangeRate
     )
 
     // Crear movimiento en ledger usando la función centralizada
+    // IMPORTANTE: Usar la moneda de la cuenta, no la del retiro
     const { id: ledgerMovementId } = await createLedgerMovement(
       {
         operation_id: null,
         lead_id: null,
         type: "EXPENSE",
         concept: `Retiro socio: ${partner.partner_name}${description ? ` - ${description}` : ""}`,
-        currency: currency as "ARS" | "USD",
-        amount_original: parseFloat(amount),
-        exchange_rate: currency === "USD" ? exchangeRate : null,
+        currency: accountCurrency, // Usar moneda de la cuenta
+        amount_original: withdrawalAmountInAccountCurrency, // Monto en moneda de la cuenta
+        exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: paymentMethod, // Método según tipo de cuenta financiera (CASH, BANK, MP, USD)
         account_id: account_id,

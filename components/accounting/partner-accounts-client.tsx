@@ -89,7 +89,8 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const [withdrawalDate, setWithdrawalDate] = useState(new Date().toISOString().split("T")[0])
   const [withdrawalDescription, setWithdrawalDescription] = useState("")
   const [withdrawalAccountId, setWithdrawalAccountId] = useState("")
-  const [financialAccounts, setFinancialAccounts] = useState<Array<{ id: string; name: string; currency: string; type: string }>>([])
+  const [withdrawalExchangeRate, setWithdrawalExchangeRate] = useState("")
+  const [financialAccounts, setFinancialAccounts] = useState<Array<{ id: string; name: string; currency: string; type: string; current_balance?: number }>>([])
 
   const fetchPartners = useCallback(async () => {
     try {
@@ -151,6 +152,11 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     }
   }, [newWithdrawalOpen])
 
+  // Verificar si necesita tipo de cambio
+  const selectedAccount = financialAccounts.find(acc => acc.id === withdrawalAccountId)
+  const accountCurrency = selectedAccount?.currency || "USD"
+  const needsExchangeRate = withdrawalAccountId && withdrawalCurrency !== accountCurrency
+
   const handleCreatePartner = async () => {
     if (!partnerName.trim()) {
       toast.error("El nombre es requerido")
@@ -203,6 +209,12 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       return
     }
 
+    // Validar tipo de cambio si es necesario
+    if (needsExchangeRate && (!withdrawalExchangeRate || parseFloat(withdrawalExchangeRate) <= 0)) {
+      toast.error("Debe ingresar el tipo de cambio para convertir monedas")
+      return
+    }
+
     setSubmitting(true)
     try {
       const res = await fetch("/api/partner-accounts/withdrawals", {
@@ -215,6 +227,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           withdrawal_date: withdrawalDate,
           account_id: withdrawalAccountId,
           description: withdrawalDescription.trim() || null,
+          exchange_rate: needsExchangeRate ? parseFloat(withdrawalExchangeRate) : null,
         }),
       })
 
@@ -269,6 +282,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setWithdrawalDate(new Date().toISOString().split("T")[0])
     setWithdrawalDescription("")
     setWithdrawalAccountId("")
+    setWithdrawalExchangeRate("")
   }
 
   // Calcular totales
@@ -403,7 +417,11 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                 </div>
                 <div>
                   <Label>Cuenta Financiera *</Label>
-                  <Select value={withdrawalAccountId} onValueChange={setWithdrawalAccountId}>
+                  <Select value={withdrawalAccountId} onValueChange={(value) => {
+                    setWithdrawalAccountId(value)
+                    // Resetear tipo de cambio si cambia la cuenta
+                    setWithdrawalExchangeRate("")
+                  }}>
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar cuenta" />
                     </SelectTrigger>
@@ -411,11 +429,52 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                       {financialAccounts.map((account) => (
                         <SelectItem key={account.id} value={account.id}>
                           {account.name} ({account.currency})
+                          {account.current_balance !== undefined && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              - Balance: {new Intl.NumberFormat("es-AR", {
+                                style: "currency",
+                                currency: account.currency === "USD" ? "USD" : "ARS",
+                              }).format(account.current_balance)}
+                            </span>
+                          )}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+                {needsExchangeRate && (
+                  <div>
+                    <Label>Tipo de Cambio *</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={withdrawalExchangeRate}
+                      onChange={(e) => setWithdrawalExchangeRate(e.target.value)}
+                      placeholder="Ej: 1200"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Requerido para convertir {withdrawalCurrency} a {accountCurrency}
+                    </p>
+                    {withdrawalExchangeRate && parseFloat(withdrawalExchangeRate) > 0 && (
+                      <div className="bg-muted p-3 rounded-lg mt-2">
+                        <div className="text-sm text-muted-foreground">
+                          Monto equivalente en {accountCurrency}:
+                        </div>
+                        <div className="text-lg font-bold">
+                          {accountCurrency === "USD"
+                            ? new Intl.NumberFormat("es-AR", {
+                                style: "currency",
+                                currency: "USD",
+                              }).format(parseFloat(withdrawalAmount || "0") / parseFloat(withdrawalExchangeRate))
+                            : new Intl.NumberFormat("es-AR", {
+                                style: "currency",
+                                currency: "ARS",
+                              }).format(parseFloat(withdrawalAmount || "0") * parseFloat(withdrawalExchangeRate))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div>
                   <Label>Descripción (opcional)</Label>
                   <Textarea
