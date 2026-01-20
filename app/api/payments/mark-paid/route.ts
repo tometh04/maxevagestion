@@ -476,6 +476,8 @@ export async function POST(request: Request) {
     // ============================================
     // Si el método es "Transferencia" y se proporcionó financial_account_id, usar esa cuenta
     let cashAccountId: string
+    let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
+    
     if (paymentData.method === "Transferencia" && financial_account_id) {
       // Validar que la cuenta existe y es del tipo correcto
       const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
@@ -513,6 +515,7 @@ export async function POST(request: Request) {
       }
 
       cashAccountId = account.id
+      cashAccountType = "BANK" // Transferencia siempre usa cuenta bancaria
       console.log(`💵 mark-paid: Usando cuenta específica seleccionada`, {
         account_id: cashAccountId,
         account_name: account.name,
@@ -521,7 +524,6 @@ export async function POST(request: Request) {
       })
     } else {
       // Para otros métodos o si no se proporcionó cuenta específica, usar cuenta por defecto
-      let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
       if (paymentData.method === "Efectivo") {
         cashAccountType = "CASH"
       } else if (paymentData.method === "Transferencia") {
