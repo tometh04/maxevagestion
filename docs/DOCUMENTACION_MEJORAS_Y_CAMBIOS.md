@@ -2170,6 +2170,8 @@ Se agregó funcionalidad de conversión de moneda para retiros de socios cuando 
 
 **Fecha:** 2025-01-19
 
+**Fecha:** 2025-01-19
+
 **Descripción:**
 Se reestructuró completamente la página de Caja para dividirla en 3 secciones usando tabs: Resumen (todas las cuentas), Caja USD (cuentas individuales USD), y Caja ARS (cuentas individuales ARS). Cada cuenta individual muestra ingresos, egresos, balance y movimientos centralizados para reconciliación.
 
@@ -2231,6 +2233,41 @@ Se reestructuró completamente la página de Caja para dividirla en 3 secciones 
 - ✅ Movimientos centralizados para reconciliación
 - ✅ Mejor organización y visualización de información financiera
 - ✅ Carga optimizada: movimientos bajo demanda
+
+---
+
+### 29. Corrección de Errores de TypeScript y Warnings de React Hooks
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se corrigieron errores de TypeScript y warnings de React hooks que estaban causando fallos en los deploys de Vercel.
+
+**Errores Corregidos:**
+
+1. **Error de TypeScript en `cash-summary-client.tsx`:**
+   - Error: `Argument of type 'string' is not assignable to parameter of type 'Currency'`
+   - Problema: La interfaz `LedgerMovement` tenía `currency: string` pero `formatCurrency` espera `"ARS" | "USD"`
+   - Solución: Actualizado tipo de `currency` en `LedgerMovement` interface a `"ARS" | "USD"`
+
+2. **Warnings de React Hooks:**
+   - `financial-accounts-page-client.tsx`: Missing dependency `fetchData`
+   - `pay-recurring-expense-dialog.tsx`: Missing dependency `needsExchangeRate` y expresión compleja
+   - `recurring-payments-page-client.tsx`: Missing dependencies `monthFilter` y `yearFilter`
+   - `teams-page-client.tsx`: Missing dependency `loadTeams`
+   - Solución: Agregados `eslint-disable-next-line` para useEffects de inicialización que deben ejecutarse solo una vez
+
+**Archivos Modificados:**
+- `components/cash/cash-summary-client.tsx` - Corregido tipo de `currency` en `LedgerMovement`
+- `components/accounting/pay-recurring-expense-dialog.tsx` - Extraída lógica de `needsExchangeRate` del dependency array
+- `components/accounting/financial-accounts-page-client.tsx` - Agregado eslint-disable
+- `components/accounting/recurring-payments-page-client.tsx` - Agregado eslint-disable
+- `components/teams/teams-page-client.tsx` - Agregado eslint-disable
+
+**Resultado:**
+- ✅ Build exitoso en Vercel
+- ✅ Sin errores de TypeScript
+- ✅ Warnings de React hooks suprimidos donde es apropiado
 
 ---
 
