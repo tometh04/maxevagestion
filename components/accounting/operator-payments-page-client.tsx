@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -134,51 +134,52 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     }
   }, [operationSearchInput])
 
-  // Fetch de pagos (se ejecuta cuando cambian los filtros aplicados)
-  useEffect(() => {
-    async function fetchPayments() {
-      setLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (statusFilter !== "ALL") {
-          params.append("status", statusFilter)
-        }
-        if (agencyFilter !== "ALL") {
-          params.append("agencyId", agencyFilter)
-        }
-        if (operatorFilter !== "ALL") {
-          params.append("operatorId", operatorFilter)
-        }
+  // Fetch de pagos (función reutilizable)
+  const fetchPayments = useCallback(async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (statusFilter !== "ALL") {
+        params.append("status", statusFilter)
+      }
+      if (agencyFilter !== "ALL") {
+        params.append("agencyId", agencyFilter)
+      }
+      if (operatorFilter !== "ALL") {
+        params.append("operatorId", operatorFilter)
+      }
       if (dueDateFrom) {
         params.append("dueDateFrom", format(dueDateFrom, "yyyy-MM-dd"))
       }
       if (dueDateTo) {
         params.append("dueDateTo", format(dueDateTo, "yyyy-MM-dd"))
       }
-        if (amountMin) {
-          params.append("amountMin", amountMin)
-        }
-        if (amountMax) {
-          params.append("amountMax", amountMax)
-        }
-        if (operationSearch.trim()) {
-          params.append("operationSearch", operationSearch.trim())
-        }
-
-        const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
-        if (!response.ok) throw new Error("Error al obtener pagos")
-
-        const data = await response.json()
-        setPayments(data.payments || [])
-      } catch (error) {
-        console.error("Error fetching operator payments:", error)
-      } finally {
-        setLoading(false)
+      if (amountMin) {
+        params.append("amountMin", amountMin)
       }
-    }
+      if (amountMax) {
+        params.append("amountMax", amountMax)
+      }
+      if (operationSearch.trim()) {
+        params.append("operationSearch", operationSearch.trim())
+      }
 
-    fetchPayments()
+      const response = await fetch(`/api/accounting/operator-payments?${params.toString()}`)
+      if (!response.ok) throw new Error("Error al obtener pagos")
+
+      const data = await response.json()
+      setPayments(data.payments || [])
+    } catch (error) {
+      console.error("Error fetching operator payments:", error)
+    } finally {
+      setLoading(false)
+    }
   }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, amountMin, amountMax, operationSearch])
+
+  // Ejecutar fetch cuando cambian los filtros
+  useEffect(() => {
+    fetchPayments()
+  }, [fetchPayments])
 
   const overdueCount = payments.filter((p) => p.status === "OVERDUE").length
   const pendingCount = payments.filter((p) => p.status === "PENDING").length
