@@ -5,7 +5,13 @@ import { OperationsFilters } from "./operations-filters"
 import { OperationsTable } from "./operations-table"
 import { NewOperationDialog } from "./new-operation-dialog"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -103,7 +109,22 @@ export function OperationsPageClient({
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Operaciones</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Operaciones</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Operaciones:</strong> Cada operación representa un viaje o paquete turístico. Incluye venta, costos de operadores, pasajeros, pagos y documentos.</p>
+                  <p className="text-xs mb-2"><strong>Estados:</strong> RESERVADO → CONFIRMADO → EN VIAJE → VIAJADO. El sistema genera alertas y movimientos contables automáticamente.</p>
+                  <p className="text-xs">Los pagos de clientes y a operadores se gestionan desde el detalle de cada operación. Haz click en una operación para ver toda la información.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-muted-foreground">Gestiona todas las operaciones de viajes</p>
         </div>
         <Button onClick={() => setNewOperationDialogOpen(true)}>

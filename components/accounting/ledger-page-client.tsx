@@ -4,6 +4,13 @@ import { useState } from "react"
 import { LedgerTable } from "@/components/accounting/ledger-table"
 import { LedgerFilters } from "@/components/accounting/ledger-filters"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface LedgerPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -21,7 +28,22 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Libro Mayor (Ledger)</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold">Libro Mayor (Ledger)</h1>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="font-medium mb-1">¿Cómo funciona?</p>
+                <p className="text-xs mb-2"><strong>Libro Mayor:</strong> Registro completo de todos los movimientos contables del sistema. Cada movimiento está asociado a una cuenta financiera.</p>
+                <p className="text-xs mb-2"><strong>Tipos de Movimiento:</strong> INCOME (ingresos) aumenta el balance, EXPENSE (egresos) lo disminuye. Todos los movimientos incluyen referencia a operación, fecha y monto.</p>
+                <p className="text-xs">Los movimientos se crean automáticamente al registrar pagos de clientes, pagos a operadores, y otras transacciones. Puedes filtrar por fecha, tipo, moneda y agencia.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <p className="text-muted-foreground">
           Vista completa de todos los movimientos contables del sistema
         </p>

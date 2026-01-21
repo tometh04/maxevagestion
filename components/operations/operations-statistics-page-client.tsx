@@ -5,7 +5,13 @@ import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
-import { Loader2, TrendingUp, DollarSign, Users, MapPin } from "lucide-react"
+import { Loader2, TrendingUp, DollarSign, Users, MapPin, HelpCircle } from "lucide-react"
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import {
   Breadcrumb,
@@ -235,7 +241,22 @@ export function OperationsStatisticsPageClient() {
       {/* Header con filtros */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Estadísticas</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">Estadísticas</h1>
+            <TooltipProvider>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Estadísticas de Operaciones:</strong> Métricas sobre tus operaciones: ventas, márgenes, cobrado vs pendiente, destinos más rentables y top vendedores.</p>
+                  <p className="text-xs mb-2"><strong>Gráficos:</strong> Visualización de tendencias por período (días o meses según rango), distribución de cobrado vs pendiente, y análisis por destino.</p>
+                  <p className="text-xs">Todos los valores se muestran en USD. Los KPIs muestran el estado financiero general de las operaciones en el período seleccionado.</p>
+                </TooltipContent>
+              </UITooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-xs text-muted-foreground">
             Métricas de operaciones en USD
           </p>

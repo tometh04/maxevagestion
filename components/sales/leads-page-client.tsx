@@ -16,7 +16,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, RefreshCw, Loader2, Wifi, WifiOff } from "lucide-react"
+import { Plus, RefreshCw, Loader2, Wifi, WifiOff, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { createBrowserClient } from "@supabase/ssr"
 import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js"
@@ -370,7 +376,22 @@ export function LeadsPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Leads</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">Leads</h1>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-medium mb-1">¿Cómo funciona?</p>
+                    <p className="text-xs mb-2"><strong>Leads:</strong> Oportunidades de venta en etapa inicial. Pueden venir de formularios web, Trello, o creación manual.</p>
+                    <p className="text-xs mb-2"><strong>Conversión:</strong> Cuando un lead se convierte en operación, todos los datos se transfieren automáticamente y el lead se marca como ganado.</p>
+                    <p className="text-xs">Los leads pueden estar sincronizados con Trello. El sistema actualiza automáticamente cuando hay cambios en tiempo real.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             {/* Indicador de conexión en tiempo real */}
             <div 
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${

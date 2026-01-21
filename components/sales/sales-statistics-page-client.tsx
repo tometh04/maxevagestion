@@ -4,7 +4,13 @@ import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Users, Target, DollarSign, Percent, Instagram, MessageCircle, Megaphone, TrendingUp } from "lucide-react"
+import { Loader2, Users, Target, DollarSign, Percent, Instagram, MessageCircle, Megaphone, TrendingUp, HelpCircle } from "lucide-react"
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -286,7 +292,22 @@ export function SalesStatisticsPageClient() {
       {/* Header con filtros */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Estadísticas</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold">Estadísticas</h1>
+            <TooltipProvider>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Estadísticas de Ventas:</strong> Métricas sobre tus leads: total, activos, ganados, perdidos, tasa de conversión y depósitos.</p>
+                  <p className="text-xs mb-2"><strong>Gráficos:</strong> Visualización de tendencias por período, distribución por origen (Instagram, WhatsApp, etc.) y top vendedores por conversión.</p>
+                  <p className="text-xs">Los leads pueden convertirse en operaciones desde su detalle. Todos los análisis se muestran en USD para consistencia.</p>
+                </TooltipContent>
+              </UITooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-xs text-muted-foreground">
             Métricas de ventas en USD
           </p>

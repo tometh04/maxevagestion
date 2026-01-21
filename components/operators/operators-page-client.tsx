@@ -5,7 +5,13 @@ import Link from "next/link"
 import { OperatorsTable, Operator } from "./operators-table"
 import { NewOperatorDialog } from "./new-operator-dialog"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -63,7 +69,22 @@ export function OperatorsPageClient({ initialOperators }: OperatorsPageClientPro
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Operadores</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Operadores</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Operadores:</strong> Mayoristas y proveedores de servicios turísticos (hoteles, vuelos, paquetes). Cada operador puede asociarse a múltiples operaciones.</p>
+                  <p className="text-xs mb-2"><strong>Costos:</strong> Los costos de operadores se registran automáticamente al crear operaciones. Puedes gestionar pagos pendientes desde &quot;Pagos a Operadores&quot; en Contabilidad.</p>
+                  <p className="text-xs">Los operadores pueden tener pagos parciales y múltiples pagos por operación. El sistema calcula automáticamente el saldo pendiente.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-muted-foreground">Gestiona tus operadores y mayoristas</p>
         </div>
         <Button onClick={() => setNewOperatorDialogOpen(true)}>

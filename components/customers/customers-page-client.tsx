@@ -5,7 +5,13 @@ import { CustomersFilters } from "./customers-filters"
 import { CustomersTable } from "./customers-table"
 import { NewCustomerDialog } from "./new-customer-dialog"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { Plus, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -44,7 +50,22 @@ export function CustomersPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Clientes</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Clientes</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Base de Clientes:</strong> Registro completo de todos los clientes. Puedes crear nuevos clientes usando OCR desde DNI/Pasaporte para extracción automática de datos.</p>
+                  <p className="text-xs mb-2"><strong>Filtros:</strong> Busca por nombre, email, teléfono o documento. Cada cliente puede estar asociado a múltiples operaciones.</p>
+                  <p className="text-xs">Desde aquí accedes a estadísticas de clientes y su historial completo de operaciones.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-muted-foreground">Gestiona tu base de clientes</p>
         </div>
         <Button onClick={() => setNewCustomerDialogOpen(true)}>
