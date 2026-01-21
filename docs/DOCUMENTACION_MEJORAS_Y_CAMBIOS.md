@@ -2961,31 +2961,35 @@ Se realizó una actualización completa y exhaustiva del esquema de base de dato
 **Fecha:** 2025-01-19
 
 **Descripción:**
-Se implementó la funcionalidad para crear pagos manuales tanto en "Deudores por Ventas" como en "Pago a Operadores", permitiendo agregar cobranzas y pagos sin necesidad de estar vinculados a una operación específica.
+Se implementó la funcionalidad para crear deudas manuales tanto en "Deudores por Ventas" como en "Pago a Operadores", permitiendo agregar cuentas por cobrar y cuentas por pagar sin necesidad de estar vinculadas a una operación específica. **Importante:** Estas funcionalidades crean DEUDAS/CUENTAS PENDIENTES (status: PENDING), no pagos ya realizados. Los pagos se marcan como realizados posteriormente usando los flujos existentes (marcar como pagado/cobrado).
 
 **Funcionalidades Implementadas:**
 
-#### 1. Pagos Manuales en Deudores por Ventas:
-- **Botón "Nueva Cobranza Manual"** en la página de Deudores por Ventas
-- **Dialog `ManualPaymentDialog`** para crear cobranzas manuales:
+#### 1. Cuentas por Cobrar Manuales en Deudores por Ventas:
+- **Botón "Nueva Cuenta por Cobrar"** en la página de Deudores por Ventas
+- **Dialog `ManualPaymentDialog`** para crear cuentas por cobrar manuales:
   - Nombre del cliente (texto libre)
   - Monto y moneda (ARS/USD)
   - Tipo de cambio (si es ARS, se obtiene automáticamente el TC más reciente)
   - Método de pago (Transferencia, Efectivo, Tarjeta, etc.)
   - Fecha de vencimiento
   - Referencia y notas opcionales
-- **Sin operación asociada:** Los pagos manuales se crean con `operation_id = null`
+- **Sin operación asociada:** Las cuentas por cobrar manuales se crean con `operation_id = null`
+- **Estado inicial:** Se crean como `status: "PENDING"` (pendiente de cobro)
 - **Conversión de moneda:** Si el pago es en ARS, se muestra el equivalente en USD usando el TC ingresado
+- **Marcar como cobrado:** Una vez creada, la cuenta por cobrar puede ser marcada como cobrada usando el flujo existente de "Marcar como Pagado"
 
-#### 2. Pagos Manuales en Pago a Operadores:
-- **Botón "Nuevo Pago Manual"** en la página de Pago a Operadores
-- **Dialog `ManualOperatorPaymentDialog`** para crear pagos manuales a operadores:
+#### 2. Deudas Manuales en Pago a Operadores:
+- **Botón "Nueva Deuda Manual"** en la página de Pago a Operadores
+- **Dialog `ManualOperatorPaymentDialog`** para crear deudas manuales a operadores:
   - Selector de operador (dropdown con todos los operadores)
   - Monto y moneda (ARS/USD)
   - Fecha de vencimiento
   - Notas opcionales
-- **Sin operación asociada:** Los pagos manuales se crean con `operation_id = null`
+- **Sin operación asociada:** Las deudas manuales se crean con `operation_id = null`
+- **Estado inicial:** Se crean como `status: "PENDING"`, `paid_amount = 0` (pendiente de pago)
 - **API POST `/api/accounting/operator-payments`:** Nuevo endpoint para crear operator_payments manuales
+- **Marcar como pagado:** Una vez creada, la deuda puede ser marcada como pagada usando "Cargar Pago Masivo" o el flujo existente de pagos
 
 #### 3. Cambios en Endpoints:
 - **`/api/payments` (POST):**
@@ -3006,12 +3010,12 @@ Se implementó la funcionalidad para crear pagos manuales tanto en "Deudores por
   - Mantiene compatibilidad con código existente
 
 **Archivos Creados:**
-- `components/accounting/manual-payment-dialog.tsx` - Dialog para cobranzas manuales
-- `components/accounting/manual-operator-payment-dialog.tsx` - Dialog para pagos manuales a operadores
+- `components/accounting/manual-payment-dialog.tsx` - Dialog para cuentas por cobrar manuales
+- `components/accounting/manual-operator-payment-dialog.tsx` - Dialog para deudas manuales a operadores
 
 **Archivos Modificados:**
-- `components/accounting/debts-sales-page-client.tsx` - Agregado botón y dialog para cobranzas manuales
-- `components/accounting/operator-payments-page-client.tsx` - Agregado botón y dialog para pagos manuales
+- `components/accounting/debts-sales-page-client.tsx` - Agregado botón "Nueva Cuenta por Cobrar" y dialog
+- `components/accounting/operator-payments-page-client.tsx` - Agregado botón "Nueva Deuda Manual" y dialog
 - `app/api/payments/route.ts` - `operation_id` ahora es opcional
 - `app/api/accounting/operator-payments/route.ts` - Agregado método POST
 - `lib/accounting/operator-payments.ts` - Actualizada firma de `createOperatorPayment`
@@ -3020,24 +3024,39 @@ Se implementó la funcionalidad para crear pagos manuales tanto en "Deudores por
 - Scripts de migración y testing actualizados
 
 **Detalles Técnicos:**
-- Los pagos manuales en "Deudores por Ventas" se crean como `payments` con `payer_type = "CUSTOMER"`, `direction = "INCOME"`, y `operation_id = null`
-- Los pagos manuales en "Pago a Operadores" se crean como `operator_payments` con `operation_id = null`
-- Ambos tipos de pagos aparecen en sus respectivas listas junto con los pagos automáticos vinculados a operaciones
-- Los pagos manuales pueden ser marcados como pagados usando los flujos existentes
-- Los movimientos contables se crean cuando se marca el pago como PAID
+- Las cuentas por cobrar manuales en "Deudores por Ventas" se crean como `payments` con:
+  - `payer_type = "CUSTOMER"`, `direction = "INCOME"`
+  - `operation_id = null` (sin operación asociada)
+  - `status = "PENDING"` (pendiente de cobro)
+- Las deudas manuales en "Pago a Operadores" se crean como `operator_payments` con:
+  - `operation_id = null` (sin operación asociada)
+  - `status = "PENDING"`, `paid_amount = 0` (pendiente de pago)
+- Ambos tipos aparecen en sus respectivas listas junto con los items automáticos vinculados a operaciones
+- Pueden ser marcados como pagados/cobrados usando los flujos existentes:
+  - Cuentas por cobrar: usar "Marcar como Pagado" desde la lista de deudores
+  - Deudas a operadores: usar "Cargar Pago Masivo" o marcar individualmente
+- Los movimientos contables se crean cuando se marca el item como PAID (no al crearlo)
 
 **UI/UX:**
 - Botones claramente identificados con icono "+" (Plus)
-- Dialogs informativos que explican que son pagos manuales
+- **Textos claros:** "Nueva Cuenta por Cobrar" y "Nueva Deuda Manual" para evitar confusión
+- Dialogs informativos que explican que se crean como pendientes y pueden marcarse como pagados/cobrados después
 - Validaciones completas en frontend y backend
-- Mensajes de éxito/error claros
-- Recarga automática de listas después de crear pagos
+- Mensajes de éxito claros: "Cuenta por cobrar creada exitosamente" / "Deuda a operador creada exitosamente"
+- Recarga automática de listas después de crear items
+
+**Aclaración Importante:**
+- ⚠️ Estos diálogos **NO crean pagos realizados**, crean **DEUDAS/CUENTAS PENDIENTES**
+- Los items se crean con `status: "PENDING"` y aparecen en las listas de pendientes
+- Para registrar el pago/cobro real, se debe usar el flujo de "Marcar como Pagado/Cobrado"
+- Los movimientos contables se crean cuando se marca como PAID, no al crear la deuda/cuenta
 
 **Resultado:**
-- ✅ Los usuarios pueden crear cobranzas manuales en "Deudores por Ventas" sin necesidad de una operación
-- ✅ Los usuarios pueden crear pagos manuales a operadores sin necesidad de una operación
-- ✅ Mayor flexibilidad para gestionar pagos que no están vinculados a operaciones específicas
-- ✅ Mejor trazabilidad de todos los pagos del sistema (automáticos y manuales)
+- ✅ Los usuarios pueden crear cuentas por cobrar manuales en "Deudores por Ventas" sin necesidad de una operación
+- ✅ Los usuarios pueden crear deudas manuales a operadores sin necesidad de una operación
+- ✅ Mayor flexibilidad para gestionar deudas/cuentas que no están vinculadas a operaciones específicas
+- ✅ Mejor trazabilidad de todos los items del sistema (automáticos y manuales)
+- ✅ Textos claros que evitan confusión: se crean como pendientes, no como pagos realizados
 - ✅ Compatibilidad completa con código existente (no rompe funcionalidad anterior)
 
 ---
