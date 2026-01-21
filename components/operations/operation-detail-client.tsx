@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { EditOperationDialog } from "./edit-operation-dialog"
 import { OperationRequirementsSection } from "./operation-requirements-section"
+import { PassengersSection } from "./passengers-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -323,52 +324,11 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Clientes de la Operación</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {customers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay clientes asociados</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead>Creado</TableHead>
-                      <TableHead>Rol</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {customers.map((oc: any) => (
-                      <TableRow key={oc.id}>
-                        <TableCell>
-                          <Link href={`/customers/${oc.customer_id}`} className="hover:underline font-medium">
-                            {oc.customers?.first_name} {oc.customers?.last_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell>{oc.customers?.email || "-"}</TableCell>
-                        <TableCell>{oc.customers?.phone || "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {(() => {
-                            try {
-                              if (!oc.customers?.created_at) return "-"
-                              return format(new Date(oc.customers.created_at), "dd/MM/yyyy", { locale: es })
-                            } catch { return "-" }
-                          })()}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{oc.role === "MAIN" ? "Principal" : "Acompañante"}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+          <PassengersSection
+            operationId={operation.id}
+            initialCustomers={customers}
+            onUpdate={() => router.refresh()}
+          />
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">

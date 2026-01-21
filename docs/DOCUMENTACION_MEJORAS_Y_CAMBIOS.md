@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Actualización Completa de Cerebro - Esquema de Base de Datos)
+**Última actualización:** 2025-01-19 (Corrección de Acceso a Comisiones para ADMIN/SUPER_ADMIN)
 
 ---
 

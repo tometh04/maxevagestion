@@ -33,6 +33,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
+import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 
 interface Customer {
   id: string
@@ -70,6 +71,7 @@ export function PassengersSection({
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
   const [selectedRole, setSelectedRole] = useState<"MAIN" | "COMPANION">("COMPANION")
   const [adding, setAdding] = useState(false)
+  const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
 
   // Buscar clientes
   const searchCustomers = useCallback(async (query: string) => {
@@ -323,6 +325,20 @@ export function PassengersSection({
               </div>
             </div>
 
+            {/* Botón crear cliente nuevo */}
+            <div className="flex items-center justify-between">
+              <Label>Buscar cliente existente</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setShowNewCustomerDialog(true)}
+              >
+                <UserPlus className="h-4 w-4 mr-2" />
+                Crear Cliente Nuevo (OCR)
+              </Button>
+            </div>
+
             {/* Resultados */}
             {searching ? (
               <div className="flex items-center justify-center py-4">
@@ -394,6 +410,60 @@ export function PassengersSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog para crear cliente nuevo con OCR */}
+      <NewCustomerDialog
+        open={showNewCustomerDialog}
+        onOpenChange={setShowNewCustomerDialog}
+        onSuccess={(newCustomer) => {
+          if (newCustomer) {
+            // Agregar el nuevo cliente automáticamente como acompañante
+            const addNewCustomer = async () => {
+              try {
+                const response = await fetch(`/api/operations/${operationId}/customers`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    customer_id: newCustomer.id,
+                    role: selectedRole,
+                  }),
+                })
+
+                if (!response.ok) {
+                  throw new Error("Error al agregar cliente")
+                }
+
+                const data = await response.json()
+                
+                // Agregar al estado local
+                setCustomers(prev => [...prev, {
+                  ...data.operationCustomer,
+                  customers: {
+                    id: newCustomer.id,
+                    first_name: newCustomer.first_name,
+                    last_name: newCustomer.last_name,
+                    email: newCustomer.email || "",
+                    phone: newCustomer.phone || "",
+                  }
+                }])
+
+                toast.success(`${newCustomer.first_name} ${newCustomer.last_name} creado y agregado como pasajero`)
+                setAddDialogOpen(false)
+                setSelectedCustomer(null)
+                setSearchQuery("")
+                setSearchResults([])
+                onUpdate?.()
+              } catch (error) {
+                console.error("Error adding new customer:", error)
+                toast.error("Cliente creado pero error al agregarlo a la operación")
+              }
+            }
+
+            addNewCustomer()
+            setShowNewCustomerDialog(false)
+          }
+        }}
+      />
     </Card>
   )
 }

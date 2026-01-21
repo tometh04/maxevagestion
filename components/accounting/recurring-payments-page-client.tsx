@@ -704,61 +704,35 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
       {/* Gráficos de Análisis */}
       {filteredPayments.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           {/* Gráfico de barras: Gastos por categoría */}
-          <Card className="col-span-2">
-            <CardHeader>
-              <CardTitle>Gastos por Categoría (Mensual)</CardTitle>
-              <CardDescription>Distribución de gastos recurrentes por categoría</CardDescription>
+          <Card className="md:col-span-2">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Gastos por Categoría (Mensual)</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
+            <CardContent className="px-4 pb-4">
+              <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={expensesByCategory}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
-                    <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Gráfico de líneas: Evolución mensual */}
-          <Card className="col-span-2">
-            <CardHeader>
-              <CardTitle>Evolución de Gastos por Categoría</CardTitle>
-              <CardDescription>Últimos 6 meses</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={monthlyEvolution}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" />
-                    <YAxis />
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
-                    <Legend />
-                    {categories.map((cat, index) => (
-                      <Line
-                        key={cat.id}
-                        type="monotone"
-                        dataKey={cat.name}
-                        stroke={cat.color}
-                        strokeWidth={2}
-                        dot={{ fill: cat.color }}
-                      />
-                    ))}
-                    <Line
-                      type="monotone"
-                      dataKey="Sin categoría"
-                      stroke="#6b7280"
-                      strokeWidth={2}
-                      dot={{ fill: "#6b7280" }}
+                  <BarChart data={expensesByCategory} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="name" 
+                      tick={{ fontSize: 10 }} 
+                      tickLine={false}
+                      axisLine={{ stroke: '#e5e7eb' }}
                     />
-                  </LineChart>
+                    <YAxis 
+                      tick={{ fontSize: 10 }} 
+                      tickLine={false}
+                      axisLine={{ stroke: '#e5e7eb' }}
+                      tickFormatter={(value) => formatCurrency(value, "USD")}
+                    />
+                    <RechartsTooltip 
+                      formatter={(value: number) => formatCurrency(value, "USD")} 
+                      contentStyle={{ fontSize: 11 }}
+                    />
+                    <Bar dataKey="value" name="Total" fill="#3b82f6" radius={[2, 2, 0, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>
@@ -766,12 +740,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
           {/* Gráfico de torta: Distribución porcentual */}
           <Card>
-            <CardHeader>
-              <CardTitle>Distribución por Categoría</CardTitle>
-              <CardDescription>Porcentaje del total de gastos</CardDescription>
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Distribución por Categoría</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
+            <CardContent className="px-4 pb-4">
+              <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -779,8 +752,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                       cx="50%"
                       cy="50%"
                       labelLine={false}
-                      label={({ name, percentage }) => `${name}: ${percentage}%`}
-                      outerRadius={100}
+                      label={({ percentage }) => `${percentage}%`}
+                      outerRadius={60}
                       fill="#8884d8"
                       dataKey="value"
                     >
@@ -791,9 +764,131 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                         )
                       })}
                     </Pie>
-                    <RechartsTooltip formatter={(value: number) => formatCurrency(value, "USD")} />
+                    <RechartsTooltip 
+                      formatter={(value: number, name: string, props: any) => [
+                        formatCurrency(value, "USD"),
+                        props.payload.name
+                      ]} 
+                      contentStyle={{ fontSize: 11 }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
+              </div>
+              <div className="mt-2 space-y-1">
+                {categoryDistribution.slice(0, 4).map((entry) => {
+                  const category = categories.find(c => c.name === entry.name)
+                  return (
+                    <div key={entry.name} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-2 h-2 rounded-full" 
+                          style={{ backgroundColor: category?.color || "#6b7280" }}
+                        />
+                        <span className="text-muted-foreground">{entry.name}</span>
+                      </div>
+                      <span className="font-medium">{entry.percentage}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Gráfico de líneas: Evolución mensual */}
+          <Card className="md:col-span-3">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Evolución de Gastos por Categoría - Últimos 6 Meses</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={monthlyEvolution} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis 
+                      dataKey="month" 
+                      tick={{ fontSize: 10 }} 
+                      tickLine={false}
+                      axisLine={{ stroke: '#e5e7eb' }}
+                    />
+                    <YAxis 
+                      tick={{ fontSize: 10 }} 
+                      tickLine={false}
+                      axisLine={{ stroke: '#e5e7eb' }}
+                      tickFormatter={(value) => formatCurrency(value, "USD")}
+                    />
+                    <RechartsTooltip 
+                      formatter={(value: number) => formatCurrency(value, "USD")} 
+                      contentStyle={{ fontSize: 11 }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    {categories.map((cat) => (
+                      <Line
+                        key={cat.id}
+                        type="monotone"
+                        dataKey={cat.name}
+                        name={cat.name}
+                        stroke={cat.color}
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: cat.color }}
+                      />
+                    ))}
+                    {monthlyEvolution.some((d: any) => d["Sin categoría"] > 0) && (
+                      <Line
+                        type="monotone"
+                        dataKey="Sin categoría"
+                        name="Sin categoría"
+                        stroke="#6b7280"
+                        strokeWidth={2}
+                        dot={{ r: 3, fill: "#6b7280" }}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Estadísticas adicionales */}
+          <Card className="md:col-span-3">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Estadísticas Adicionales</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {filteredPayments.filter(p => p.is_active).length}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Gastos Activos</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {filteredPayments.filter(p => {
+                      const daysUntilDue = Math.ceil(
+                        (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                      )
+                      return daysUntilDue <= 7 && daysUntilDue >= 0
+                    }).length}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Vencen Esta Semana</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-red-600">
+                    {filteredPayments.filter(p => {
+                      const daysUntilDue = Math.ceil(
+                        (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+                      )
+                      return daysUntilDue < 0
+                    }).length}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">Vencidos</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-green-600">
+                    {filteredPayments.filter(p => p.currency === "USD").length}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">En USD</div>
+                </div>
               </div>
             </CardContent>
           </Card>
