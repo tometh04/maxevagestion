@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Corrección de Acceso a Comisiones para ADMIN/SUPER_ADMIN)
+**Última actualización:** 2025-01-19 (Agregar Clientes con OCR a Operaciones y Mejora de Gráficos de Gastos Recurrentes)
 
 ---
 
@@ -3058,5 +3058,102 @@ Se implementó la funcionalidad para crear deudas manuales tanto en "Deudores po
 - ✅ Mejor trazabilidad de todos los items del sistema (automáticos y manuales)
 - ✅ Textos claros que evitan confusión: se crean como pendientes, no como pagos realizados
 - ✅ Compatibilidad completa con código existente (no rompe funcionalidad anterior)
+
+---
+
+### 42. Agregar Clientes con OCR a Operaciones y Mejora de Gráficos de Gastos Recurrentes
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementaron tres mejoras importantes: funcionalidad para agregar clientes a operaciones usando el dialog de OCR existente (para viajes grupales), mejora completa de los gráficos de Gastos Recurrentes usando la UI moderna, y se inició la implementación de tooltips explicativos en todas las secciones del sistema.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Agregar Clientes a Operaciones con OCR (Tarea 1):
+- **Reemplazo de tabla simple:** La tabla simple de clientes en el detalle de operación fue reemplazada por el componente `PassengersSection` completo
+- **Funcionalidad de agregar pasajeros:** Los usuarios pueden buscar clientes existentes y agregarlos como pasajeros (principal o acompañante)
+- **Crear cliente nuevo con OCR:** Botón "Crear Cliente Nuevo (OCR)" en el dialog de agregar pasajero que abre `NewCustomerDialog` con funcionalidad completa de OCR
+- **Flujo completo:**
+  - El usuario hace click en "Agregar" en la sección de Pasajeros
+  - Busca un cliente existente o hace click en "Crear Cliente Nuevo (OCR)"
+  - Si crea un cliente nuevo, puede subir DNI/Pasaporte y el OCR extrae automáticamente los datos
+  - El cliente creado se agrega automáticamente a la operación como pasajero
+- **Perfecto para viajes grupales:** Permite agregar múltiples clientes a una misma operación (ej: viaje grupal de 5 personas)
+
+**Archivos Modificados:**
+- `components/operations/operation-detail-client.tsx` - Reemplazada tabla simple por `PassengersSection`
+- `components/operations/passengers-section.tsx` - Agregado botón y funcionalidad para crear cliente nuevo con OCR, integración con `NewCustomerDialog`
+
+**Detalles Técnicos:**
+- `PassengersSection` ahora incluye import de `NewCustomerDialog`
+- El dialog de agregar pasajero tiene botón "Crear Cliente Nuevo (OCR)" que abre `NewCustomerDialog`
+- Al crear un cliente exitosamente, se agrega automáticamente a la operación usando el endpoint `/api/operations/${operationId}/customers`
+- El cliente se agrega con el rol seleccionado (MAIN o COMPANION)
+- La lista de pasajeros se actualiza automáticamente después de agregar el cliente
+
+#### 2. Mejora de Gráficos de Gastos Recurrentes (Tarea 3):
+- **Estilo moderno unificado:** Los gráficos ahora usan el mismo estilo moderno que se usa en páginas de estadísticas (operations, customers, sales)
+- **Diseño compacto:**
+  - Altura reducida: `h-[200px]` en lugar de `h-[300px]`
+  - Padding reducido: `py-3 px-4` en headers, `px-4 pb-4` en content
+  - Labels más pequeños: `text-sm font-medium` en títulos, `fontSize: 10` en ejes
+- **Mejoras en gráficos:**
+  - **Gráfico de barras (Gastos por Categoría):** Ejes más limpios, tooltips mejorados, colores consistentes
+  - **Gráfico de torta (Distribución por Categoría):** Radio reducido, leyenda mejorada, tooltips con formato de moneda
+  - **Gráfico de líneas (Evolución por Categoría):** Ejes mejorados, leyenda más compacta, puntos más pequeños
+- **Estadísticas adicionales agregadas:**
+  - **Gastos Activos:** Cantidad de gastos recurrentes activos
+  - **Vencen Esta Semana:** Gastos que vencen en los próximos 7 días
+  - **Vencidos:** Gastos que ya pasaron su fecha de vencimiento
+  - **En USD:** Cantidad de gastos en dólares estadounidenses
+- **Grid responsive mejorado:**
+  - Gráfico de barras: `md:col-span-2` (ocupa 2 columnas en pantallas medianas)
+  - Gráfico de torta: columna individual con leyenda de colores debajo
+  - Gráfico de líneas: `md:col-span-3` (ocupa 3 columnas - ancho completo)
+  - Card de estadísticas: `md:col-span-3` con grid interno de 4 columnas
+
+**Archivos Modificados:**
+- `components/accounting/recurring-payments-page-client.tsx` - Gráficos completamente rediseñados, estadísticas adicionales agregadas
+
+**Detalles Técnicos:**
+- Todos los gráficos usan `margin={{ top: 5, right: 5, left: 0, bottom: 5 }}` para mejor aprovechamiento del espacio
+- Ejes con `stroke="#e5e7eb"` para consistencia visual
+- Tooltips con `contentStyle={{ fontSize: 11 }}` para texto más compacto
+- Formateo de valores en USD usando `formatCurrency(value, "USD")`
+- Cálculo correcto de estadísticas adicionales desde `filteredPayments`
+
+#### 3. Tooltips Explicativos en Sistema (Tarea 2 - En Progreso):
+- **Funcionalidad ya implementada en Gastos Recurrentes:** Ya existe un tooltip con `HelpCircle` que explica cómo funciona crear gasto vs pagar gasto
+- **Próximos pasos:** Agregar tooltips similares en todas las secciones principales del sistema
+
+**Secciones identificadas para tooltips:**
+- Dashboard (KPIs y gráficos)
+- Operaciones (información básica, financiero, asignaciones)
+- Caja (Resumen, Caja USD, Caja ARS)
+- Contabilidad (Posición Mensual, Deudores por Ventas, Pagos a Operadores, etc.)
+- Otras secciones según prioridad del usuario
+
+**Patrón de Tooltip:**
+```tsx
+<TooltipProvider>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+    </TooltipTrigger>
+    <TooltipContent className="max-w-xs">
+      <p className="font-medium mb-1">¿Cómo funciona?</p>
+      <p className="text-xs">Explicación corta y clara</p>
+    </TooltipContent>
+  </Tooltip>
+</TooltipProvider>
+```
+
+**Resultado:**
+- ✅ Los usuarios pueden agregar múltiples clientes a una operación fácilmente (perfecto para viajes grupales)
+- ✅ Crear clientes nuevos directamente desde la operación usando OCR (sin salir del contexto)
+- ✅ Gráficos de Gastos Recurrentes con diseño moderno, compacto y profesional
+- ✅ Estadísticas adicionales útiles para gestión de gastos recurrentes
+- ✅ Mejor UX con visualización clara de información financiera
 
 ---
