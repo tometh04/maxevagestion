@@ -364,7 +364,7 @@ async function testCompleteFlowWithAPI() {
 
     // Crear Operator Payment
     const dueDate = calculateDueDate(operationPayload.product_type as any, undefined, operationPayload.checkin_date, operationPayload.departure_date)
-    await createOperatorPayment(serverSupabase, operation.id, operationPayload.operator_id, operationPayload.operator_cost, operationPayload.operator_cost_currency as "ARS" | "USD", dueDate, `Pago automático para operación ${operation.id}`)
+    await createOperatorPayment(serverSupabase, operationPayload.operator_id, operationPayload.operator_cost, operationPayload.operator_cost_currency as "ARS" | "USD", dueDate, operation.id, `Pago automático para operación ${operation.id}`)
 
     // Crear Commission Record
     if (operationPayload.commission_percentage && operationPayload.commission_percentage > 0 && marginAmount > 0) {

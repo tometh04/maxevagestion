@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
-import { CreditCard, Download } from "lucide-react"
+import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
+import { CreditCard, Download, Plus } from "lucide-react"
 import * as XLSX from "xlsx"
 import {
   Table,
@@ -75,6 +76,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [operationSearch, setOperationSearch] = useState<string>("")
   
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
+  const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
   
   // Refs para los timeouts de debounce
   const amountMinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -474,6 +476,10 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 <Download className="h-4 w-4 mr-2" />
                 Exportar Excel
               </Button>
+              <Button variant="outline" onClick={() => setManualPaymentOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nuevo Pago Manual
+              </Button>
               <Button onClick={() => setBulkPaymentOpen(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
                 Cargar Pago Masivo
@@ -577,6 +583,16 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         onOpenChange={setBulkPaymentOpen}
         operators={operators}
         agencies={agencies}
+      />
+
+      {/* Manual Operator Payment Dialog */}
+      <ManualOperatorPaymentDialog
+        open={manualPaymentOpen}
+        onOpenChange={setManualPaymentOpen}
+        onSuccess={() => {
+          fetchPayments()
+        }}
+        operators={operators}
       />
     </div>
   )

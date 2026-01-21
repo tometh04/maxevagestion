@@ -46,24 +46,26 @@ export function calculateDueDate(
 
 /**
  * Crear pago a operador
+ * @param operationId - ID de la operación (opcional para pagos manuales)
  */
 export async function createOperatorPayment(
   supabase: SupabaseClient<Database>,
-  operationId: string,
   operatorId: string,
   amount: number,
   currency: "ARS" | "USD",
   dueDate: string,
+  operationId?: string | null,
   notes?: string
 ): Promise<{ id: string }> {
   const { data, error } = await (supabase.from("operator_payments") as any)
     .insert({
-      operation_id: operationId,
+      operation_id: operationId || null,
       operator_id: operatorId,
       amount,
       currency,
       due_date: dueDate,
       status: "PENDING",
+      paid_amount: 0,
       notes: notes || null,
     })
     .select("id")

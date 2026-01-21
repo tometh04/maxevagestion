@@ -341,11 +341,11 @@ export async function POST(request: Request) {
 
         await createOperatorPayment(
           supabase,
-          op.id,
               operatorData.operator_id,
               operatorData.cost,
               operatorData.cost_currency as "ARS" | "USD",
           dueDate,
+          op.id, // operationId
           `Pago automático generado para operación ${operation.id}`
         )
             console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)

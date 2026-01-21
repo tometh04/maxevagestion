@@ -132,11 +132,11 @@ async function migrateHistoricalData() {
 
         await createOperatorPayment(
           supabase,
-          operation.id,
           operation.operator_id,
           operation.operator_cost,
           (operation.operator_cost_currency || "ARS") as "ARS" | "USD",
           dueDate,
+          operation.id, // operationId
           `Pago automático generado para operación ${operation.id.slice(0, 8)} (migración histórica)`
         )
         paymentsCreated++

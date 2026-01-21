@@ -123,3 +123,63 @@ export async function GET(request: Request) {
   }
 }
 
+// POST - Crear pago manual a operador (sin operación)
+export async function POST(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+    const body = await request.json()
+
+    const {
+      operator_id,
+      amount,
+      currency,
+      due_date,
+      notes,
+    } = body
+
+    // Validaciones
+    if (!operator_id || !amount || !currency || !due_date) {
+      return NextResponse.json({ error: "Faltan campos requeridos (operator_id, amount, currency, due_date)" }, { status: 400 })
+    }
+
+    if (amount <= 0) {
+      return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
+    }
+
+    // Validar que el operador existe
+    const { data: operator, error: operatorError } = await (supabase.from("operators") as any)
+      .select("id")
+      .eq("id", operator_id)
+      .single()
+
+    if (operatorError || !operator) {
+      return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
+    }
+
+    // Crear operator_payment manual (sin operation_id)
+    const { data: operatorPayment, error: paymentError } = await (supabase.from("operator_payments") as any)
+      .insert({
+        operation_id: null, // Pago manual sin operación
+        operator_id,
+        amount: parseFloat(amount),
+        currency,
+        due_date,
+        status: "PENDING",
+        paid_amount: 0,
+        notes: notes || null,
+      })
+      .select()
+      .single()
+
+    if (paymentError) {
+      console.error("Error creating operator payment:", paymentError)
+      return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
+    }
+
+    return NextResponse.json({ payment: operatorPayment }, { status: 201 })
+  } catch (error: any) {
+    console.error("Error in POST /api/accounting/operator-payments:", error)
+    return NextResponse.json({ error: error.message || "Error al crear pago a operador" }, { status: 500 })
+  }
+}

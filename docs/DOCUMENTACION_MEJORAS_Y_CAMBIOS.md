@@ -2955,3 +2955,89 @@ Se realizó una actualización completa y exhaustiva del esquema de base de dato
 - Y cualquier otra pregunta sobre los datos del sistema
 
 ---
+
+### 40. Pagos Manuales en Deudores por Ventas y Pagos a Operadores
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se implementó la funcionalidad para crear pagos manuales tanto en "Deudores por Ventas" como en "Pago a Operadores", permitiendo agregar cobranzas y pagos sin necesidad de estar vinculados a una operación específica.
+
+**Funcionalidades Implementadas:**
+
+#### 1. Pagos Manuales en Deudores por Ventas:
+- **Botón "Nueva Cobranza Manual"** en la página de Deudores por Ventas
+- **Dialog `ManualPaymentDialog`** para crear cobranzas manuales:
+  - Nombre del cliente (texto libre)
+  - Monto y moneda (ARS/USD)
+  - Tipo de cambio (si es ARS, se obtiene automáticamente el TC más reciente)
+  - Método de pago (Transferencia, Efectivo, Tarjeta, etc.)
+  - Fecha de vencimiento
+  - Referencia y notas opcionales
+- **Sin operación asociada:** Los pagos manuales se crean con `operation_id = null`
+- **Conversión de moneda:** Si el pago es en ARS, se muestra el equivalente en USD usando el TC ingresado
+
+#### 2. Pagos Manuales en Pago a Operadores:
+- **Botón "Nuevo Pago Manual"** en la página de Pago a Operadores
+- **Dialog `ManualOperatorPaymentDialog`** para crear pagos manuales a operadores:
+  - Selector de operador (dropdown con todos los operadores)
+  - Monto y moneda (ARS/USD)
+  - Fecha de vencimiento
+  - Notas opcionales
+- **Sin operación asociada:** Los pagos manuales se crean con `operation_id = null`
+- **API POST `/api/accounting/operator-payments`:** Nuevo endpoint para crear operator_payments manuales
+
+#### 3. Cambios en Endpoints:
+- **`/api/payments` (POST):**
+  - `operation_id` ahora es opcional (puede ser `null` para pagos manuales)
+  - Validación ajustada para permitir pagos sin operación
+  - Movimientos contables se crean solo si el pago está marcado como PAID y existe operation_id (o se maneja manualmente)
+
+- **`/api/accounting/operator-payments` (POST):**
+  - Nuevo método POST para crear operator_payments manuales
+  - Valida que el operador exista
+  - Crea operator_payment con `operation_id = null`
+  - Estado inicial: `PENDING`, `paid_amount = 0`
+
+#### 4. Cambios en Librería:
+- **`createOperatorPayment` función actualizada:**
+  - `operationId` ahora es el último parámetro y es opcional
+  - Nueva firma: `createOperatorPayment(supabase, operatorId, amount, currency, dueDate, operationId?, notes?)`
+  - Mantiene compatibilidad con código existente
+
+**Archivos Creados:**
+- `components/accounting/manual-payment-dialog.tsx` - Dialog para cobranzas manuales
+- `components/accounting/manual-operator-payment-dialog.tsx` - Dialog para pagos manuales a operadores
+
+**Archivos Modificados:**
+- `components/accounting/debts-sales-page-client.tsx` - Agregado botón y dialog para cobranzas manuales
+- `components/accounting/operator-payments-page-client.tsx` - Agregado botón y dialog para pagos manuales
+- `app/api/payments/route.ts` - `operation_id` ahora es opcional
+- `app/api/accounting/operator-payments/route.ts` - Agregado método POST
+- `lib/accounting/operator-payments.ts` - Actualizada firma de `createOperatorPayment`
+- `app/api/operations/route.ts` - Actualizada llamada a `createOperatorPayment`
+- `app/api/admin/migrate-historical-accounting/route.ts` - Actualizada llamada a `createOperatorPayment`
+- Scripts de migración y testing actualizados
+
+**Detalles Técnicos:**
+- Los pagos manuales en "Deudores por Ventas" se crean como `payments` con `payer_type = "CUSTOMER"`, `direction = "INCOME"`, y `operation_id = null`
+- Los pagos manuales en "Pago a Operadores" se crean como `operator_payments` con `operation_id = null`
+- Ambos tipos de pagos aparecen en sus respectivas listas junto con los pagos automáticos vinculados a operaciones
+- Los pagos manuales pueden ser marcados como pagados usando los flujos existentes
+- Los movimientos contables se crean cuando se marca el pago como PAID
+
+**UI/UX:**
+- Botones claramente identificados con icono "+" (Plus)
+- Dialogs informativos que explican que son pagos manuales
+- Validaciones completas en frontend y backend
+- Mensajes de éxito/error claros
+- Recarga automática de listas después de crear pagos
+
+**Resultado:**
+- ✅ Los usuarios pueden crear cobranzas manuales en "Deudores por Ventas" sin necesidad de una operación
+- ✅ Los usuarios pueden crear pagos manuales a operadores sin necesidad de una operación
+- ✅ Mayor flexibilidad para gestionar pagos que no están vinculados a operaciones específicas
+- ✅ Mejor trazabilidad de todos los pagos del sistema (automáticos y manuales)
+- ✅ Compatibilidad completa con código existente (no rompe funcionalidad anterior)
+
+---

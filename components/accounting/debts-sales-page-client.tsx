@@ -38,9 +38,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Download, Filter, X } from "lucide-react"
+import { Download, Filter, X, Plus } from "lucide-react"
 import * as XLSX from "xlsx"
 import { useDebounce } from "@/hooks/use-debounce"
+import { ManualPaymentDialog } from "./manual-payment-dialog"
 
 interface DebtorOperation {
   id: string
@@ -85,6 +86,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
   const [sellerFilter, setSellerFilter] = useState<string>("ALL")
   const [dateFromFilter, setDateFromFilter] = useState<Date | undefined>(undefined)
   const [dateToFilter, setDateToFilter] = useState<Date | undefined>(undefined)
+  const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
 
   // Debounce para campos de texto (300ms para búsqueda rápida y responsiva)
   const debouncedCustomerFilter = useDebounce(customerFilter, 300)
@@ -303,12 +305,18 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
             Clientes con pagos pendientes de operaciones
           </p>
         </div>
-        <Button variant="outline" asChild>
-          <Link href="/accounting/ledger">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver a Contabilidad
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setManualPaymentOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nueva Cobranza Manual
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href="/accounting/ledger">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver a Contabilidad
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -600,6 +608,16 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog para cobranza manual */}
+      <ManualPaymentDialog
+        open={manualPaymentOpen}
+        onOpenChange={setManualPaymentOpen}
+        onSuccess={() => {
+          fetchDebtors()
+        }}
+        direction="INCOME"
+      />
     </div>
   )
 }

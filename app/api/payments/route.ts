@@ -39,7 +39,8 @@ export async function POST(request: Request) {
       notes,
     } = body
 
-    if (!operation_id || !payer_type || !direction || !amount || !currency) {
+    // operation_id ahora es opcional (para pagos manuales)
+    if (!payer_type || !direction || !amount || !currency) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
@@ -117,15 +118,21 @@ export async function POST(request: Request) {
     // Si status no se especifica, el default es PENDING, así que no crear movimientos
     if (status === "PAID") {
       try {
-        // 2. Obtener datos de la operación para seller_id y operator_id
-        const { data: operation } = await (supabase.from("operations") as any)
-          .select("seller_id, operator_id, agency_id")
-          .eq("id", operation_id)
-          .single()
+        // 2. Obtener datos de la operación para seller_id y operator_id (si existe operation_id)
+        let sellerId: string | null = null
+        let operatorId: string | null = null
+        let agencyId: string | undefined = undefined
 
-        const sellerId = operation?.seller_id || null
-        const operatorId = operation?.operator_id || null
-        const agencyId = operation?.agency_id
+        if (operation_id) {
+          const { data: operation } = await (supabase.from("operations") as any)
+            .select("seller_id, operator_id, agency_id")
+            .eq("id", operation_id)
+            .single()
+
+          sellerId = operation?.seller_id || null
+          operatorId = operation?.operator_id || null
+          agencyId = operation?.agency_id
+        }
 
         // 3. Calcular tasa de cambio
         // Si es USD: buscar tasa para convertir a ARS
