@@ -475,7 +475,22 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Pagos a Operadores</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>Pagos a Operadores</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="font-medium mb-1">¿Cómo funciona?</p>
+                      <p className="text-xs mb-2"><strong>Cuentas por Pagar:</strong> Lista de deudas pendientes a operadores. Se calcula como: monto total menos monto pagado (permite pagos parciales).</p>
+                      <p className="text-xs mb-2"><strong>Cargar Pago Masivo:</strong> Selecciona un operador y moneda, luego elige las deudas a pagar. Puedes pagar múltiples deudas en una sola transacción.</p>
+                      <p className="text-xs">Puedes crear deudas manuales sin operación asociada usando el botón "Nueva Deuda Manual".</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <CardDescription>Cuentas a pagar a operadores</CardDescription>
             </div>
             <div className="flex gap-2">
