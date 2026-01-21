@@ -15,8 +15,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   CalendarIcon, RefreshCw, DollarSign, TrendingUp, 
   Wallet, Users, Truck, FileText, AlertCircle, CheckCircle2,
-  ArrowUpRight, ArrowDownRight, Save, Share2
+  ArrowUpRight, ArrowDownRight, Save, Share2, HelpCircle
 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -246,7 +252,22 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Posición Contable Mensual</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold">Posición Contable Mensual</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Balance General:</strong> Estado de Activos (lo que tienes), Pasivos (lo que debes) y Patrimonio Neto al cierre del mes.</p>
+                  <p className="text-xs mb-2"><strong>Estado de Resultados:</strong> Ingresos, costos, gastos y resultado del mes (ganancia/pérdida).</p>
+                  <p className="text-xs">Usa un tipo de cambio mensual independiente para dolarizar todos los valores. Verifica que Activo = Pasivo + Patrimonio Neto.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-muted-foreground">
             Balance General al {data?.fechaCorte ? format(new Date(data.fechaCorte + "T12:00:00"), "dd/MM/yyyy") : "..."}
           </p>

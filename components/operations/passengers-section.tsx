@@ -29,8 +29,15 @@ import {
   Loader2,
   User,
   Mail,
-  Phone
+  Phone,
+  HelpCircle
 } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { EmptyState } from "@/components/ui/empty-state"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
@@ -181,6 +188,16 @@ export function PassengersSection({
           <CardTitle className="text-lg flex items-center gap-2">
             <Users className="h-5 w-5" />
             Pasajeros
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-xs">Lista de clientes asociados a esta operación. El pasajero principal es el responsable del pago. Puedes agregar múltiples pasajeros (ej: viajes grupales) usando búsqueda o creando nuevos clientes con OCR desde DNI/Pasaporte.</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </CardTitle>
           <CardDescription>
             {customers.length} pasajero{customers.length !== 1 ? "s" : ""} en esta operación

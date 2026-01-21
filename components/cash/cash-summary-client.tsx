@@ -25,7 +25,13 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowUpCircle, ArrowDownCircle, Wallet } from "lucide-react"
+import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 interface CashSummaryClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -236,7 +242,22 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Caja</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-3xl font-bold">Caja</h1>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="font-medium mb-1">¿Cómo funciona?</p>
+                <p className="text-xs mb-2"><strong>Resumen:</strong> Muestra los saldos actuales de todas las cuentas financieras (efectivo, bancos, etc.).</p>
+                <p className="text-xs mb-2"><strong>Caja USD/ARS:</strong> Detalle de cada cuenta individual con ingresos, egresos, balance y movimientos centralizados para reconciliación bancaria.</p>
+                <p className="text-xs">Los movimientos se cargan bajo demanda al hacer click en "Ver Movimientos" para optimizar el rendimiento.</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <p className="text-muted-foreground">Monitorea el estado de la caja y sus movimientos</p>
       </div>
 

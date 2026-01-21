@@ -38,7 +38,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Download, Filter, X, Plus } from "lucide-react"
+import { Download, Filter, X, Plus, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import * as XLSX from "xlsx"
 import { useDebounce } from "@/hooks/use-debounce"
 import { ManualPaymentDialog } from "./manual-payment-dialog"
@@ -300,7 +306,22 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Deudores por Ventas</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold">Deudores por Ventas</h1>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium mb-1">¿Cómo funciona?</p>
+                  <p className="text-xs mb-2"><strong>Cuentas por Cobrar:</strong> Lista de clientes que deben dinero por operaciones vendidas. Se calcula como: monto de venta menos pagos recibidos.</p>
+                  <p className="text-xs mb-2"><strong>Marcar como Pagado:</strong> Cuando el cliente paga, marca la cobranza como pagada. Esto impacta en la caja y reduce la deuda.</p>
+                  <p className="text-xs">Puedes crear cuentas por cobrar manuales sin operación asociada usando el botón "Nueva Cuenta por Cobrar".</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
           <p className="text-muted-foreground">
             Clientes con pagos pendientes de operaciones
           </p>
@@ -470,7 +491,19 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Lista de Deudores</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle>Lista de Deudores</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Expande cada cliente para ver el detalle de operaciones con deuda pendiente. Haz click en "Ver" para marcar cobranzas como pagadas.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <CardDescription>
                 Clientes que tienen pagos pendientes de operaciones
               </CardDescription>

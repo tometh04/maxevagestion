@@ -15,7 +15,13 @@ import { BirthdaysTodayCard } from "./birthdays-today-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
-import { DollarSign, TrendingUp, Package, Percent, Users, Building2 } from "lucide-react"
+import { DollarSign, TrendingUp, Package, Percent, Users, Building2, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 // Función para formatear números completos con separadores de miles
 function formatNumber(value: number): string {
@@ -220,8 +226,20 @@ export function DashboardPageClient({
             <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
               <DollarSign className="h-3.5 w-3.5 text-blue-600" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Suma total de ventas de todas las operaciones confirmadas en el período seleccionado, convertidas a USD.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="text-base font-semibold">${formatNumber(kpis.totalSales)}</p>
               {loading ? (
                 <Skeleton className="h-3 w-16 mt-0.5" />
@@ -237,8 +255,20 @@ export function DashboardPageClient({
             <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Ganancia bruta: diferencia entre ventas y costos de operadores. Margen % es el porcentaje promedio de ganancia sobre las ventas.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="text-base font-semibold text-emerald-600">${formatNumber(kpis.totalMargin)}</p>
               {loading ? (
                 <Skeleton className="h-3 w-16 mt-0.5" />
@@ -254,8 +284,20 @@ export function DashboardPageClient({
             <div className="p-1.5 rounded bg-amber-100 dark:bg-amber-900/30">
               <Users className="h-3.5 w-3.5 text-amber-600" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deudores</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deudores</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Total adeudado por clientes. Calculado como: monto de venta menos pagos recibidos, convertido a USD usando tipo de cambio histórico.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="text-base font-semibold text-amber-600">${formatNumber(kpis.pendingCustomerPayments)}</p>
               {loading ? (
                 <Skeleton className="h-3 w-20 mt-0.5" />
@@ -271,8 +313,20 @@ export function DashboardPageClient({
             <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
               <Building2 className="h-3.5 w-3.5 text-purple-600" />
             </div>
-            <div>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deuda</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-1">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deuda</p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-xs">Total pendiente de pago a operadores. Incluye pagos parciales: monto total menos monto pagado, convertido a USD.</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <p className="text-base font-semibold text-purple-600">${formatNumber(kpis.pendingOperatorPayments)}</p>
               {loading ? (
                 <Skeleton className="h-3 w-20 mt-0.5" />

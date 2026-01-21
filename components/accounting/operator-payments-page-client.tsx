@@ -8,7 +8,13 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
 import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
-import { CreditCard, Download, Plus } from "lucide-react"
+import { CreditCard, Download, Plus, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import * as XLSX from "xlsx"
 import {
   Table,

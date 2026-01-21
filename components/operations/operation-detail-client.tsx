@@ -16,7 +16,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle } from "lucide-react"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
@@ -185,7 +191,19 @@ export function OperationDetailClient({
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Información Básica</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Información Básica</CardTitle>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Datos generales de la operación: tipo de viaje, destino, fechas y cantidad de pasajeros. Esta información se usa para generación automática de alertas y reportes.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -253,7 +271,19 @@ export function OperationDetailClient({
 
             <Card>
               <CardHeader>
-                <CardTitle>Financiero</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Financiero</CardTitle>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Montos de venta, costo de operadores y margen bruto calculado automáticamente. El margen es la ganancia antes de gastos operativos (venta - costo operador).</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
@@ -287,7 +317,19 @@ export function OperationDetailClient({
 
             <Card>
               <CardHeader>
-                <CardTitle>Asignaciones</CardTitle>
+                <div className="flex items-center gap-2">
+                  <CardTitle>Asignaciones</CardTitle>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs">
+                        <p className="text-xs">Vendedor asignado (para cálculo de comisiones), operador que provee el servicio, y agencia responsable. El vendedor determina quién recibe la comisión de la venta.</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
