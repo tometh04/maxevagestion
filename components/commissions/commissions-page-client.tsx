@@ -35,6 +35,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
     setLoading(true)
     try {
       const params = new URLSearchParams()
+      params.set("sellerId", sellerId) // Usar sellerId para commission_records
       if (statusFilter !== "ALL") {
         params.set("status", statusFilter)
       }
@@ -51,7 +52,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, monthFilter])
+  }, [sellerId, statusFilter, monthFilter])
 
   useEffect(() => {
     fetchCommissions()

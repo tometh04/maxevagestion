@@ -19,13 +19,13 @@ import { DollarSign, TrendingUp, Calendar } from "lucide-react"
 export default async function MyBalancePage() {
   const { user } = await getCurrentUser()
 
-  // Solo vendedores pueden acceder
-  if (user.role !== "SELLER") {
+  // Permitir acceso a SELLER, ADMIN y SUPER_ADMIN (si tienen operaciones asignadas)
+  if (!["SELLER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
     return (
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Balance</h1>
-          <p className="text-muted-foreground">Solo disponible para vendedores</p>
+          <p className="text-muted-foreground">Solo disponible para vendedores, administradores y super administradores</p>
         </div>
       </div>
     )

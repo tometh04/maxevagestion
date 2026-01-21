@@ -236,9 +236,9 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
     })
     .filter((item): item is NavItem => {
       if (!item) return false
-      // Items sin módulo (como "Mi Balance") solo para vendedores
+      // Items sin módulo (como "Mi Balance") para vendedores, ADMIN y SUPER_ADMIN (si tienen operaciones asignadas)
       if (item.url === "/my/balance" || item.url === "/my/commissions") {
-        return userRole === "SELLER"
+        return userRole === "SELLER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN"
       }
       return true
     })

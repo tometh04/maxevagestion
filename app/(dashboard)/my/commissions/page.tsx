@@ -5,13 +5,13 @@ import { CommissionsPageClient } from "@/components/commissions/commissions-page
 export default async function MyCommissionsPage() {
   const { user } = await getCurrentUser()
 
-  // Only SELLER role can access this page
-  if (user.role !== "SELLER") {
+  // Permitir acceso a SELLER, ADMIN y SUPER_ADMIN (si tienen operaciones asignadas)
+  if (!["SELLER", "ADMIN", "SUPER_ADMIN"].includes(user.role)) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold">Acceso denegado</h1>
-          <p className="text-muted-foreground mt-2">Solo los vendedores pueden ver sus comisiones</p>
+          <p className="text-muted-foreground mt-2">Solo vendedores, administradores y super administradores pueden ver sus comisiones</p>
         </div>
       </div>
     )
