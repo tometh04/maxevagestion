@@ -95,7 +95,7 @@ export function ManualOperatorPaymentDialog({
         throw new Error(error.error || "Error al crear pago")
       }
 
-      toast.success("Pago a operador creado exitosamente")
+      toast.success("Deuda a operador creada exitosamente")
       form.reset()
       onOpenChange(false)
       onSuccess()
@@ -111,9 +111,9 @@ export function ManualOperatorPaymentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuevo Pago Manual a Operador</DialogTitle>
+          <DialogTitle>Nueva Deuda a Operador</DialogTitle>
           <DialogDescription>
-            Agregar un pago manual a operador sin operación asociada.
+            Agregar una deuda pendiente (cuenta por pagar) a operador sin operación asociada. Este pago aparecerá como pendiente y podrás marcarlo como pagado más adelante.
           </DialogDescription>
         </DialogHeader>
 

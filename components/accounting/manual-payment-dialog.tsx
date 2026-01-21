@@ -148,7 +148,7 @@ export function ManualPaymentDialog({
         throw new Error(error.error || "Error al crear pago")
       }
 
-      toast.success("Pago creado exitosamente")
+      toast.success(direction === "INCOME" ? "Cuenta por cobrar creada exitosamente" : "Deuda a operador creada exitosamente")
       form.reset()
       onOpenChange(false)
       onSuccess()
@@ -165,12 +165,12 @@ export function ManualPaymentDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {direction === "INCOME" ? "Nueva Cobranza Manual" : "Nuevo Pago Manual"}
+            {direction === "INCOME" ? "Nueva Cuenta por Cobrar" : "Nueva Deuda a Operador"}
           </DialogTitle>
           <DialogDescription>
             {direction === "INCOME" 
-              ? "Agregar una cobranza manual sin operación asociada."
-              : "Agregar un pago manual a operador sin operación asociada."}
+              ? "Agregar una cuenta por cobrar pendiente del cliente sin operación asociada. Esta cobranza aparecerá como pendiente y podrás marcarla como cobrada más adelante."
+              : "Agregar una deuda pendiente (cuenta por pagar) a operador sin operación asociada. Este pago aparecerá como pendiente y podrás marcarlo como pagado más adelante."}
           </DialogDescription>
         </DialogHeader>
 

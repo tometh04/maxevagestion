@@ -308,7 +308,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         <div className="flex items-center gap-2">
           <Button onClick={() => setManualPaymentOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Nueva Cobranza Manual
+            Nueva Cuenta por Cobrar
           </Button>
           <Button variant="outline" asChild>
             <Link href="/accounting/ledger">

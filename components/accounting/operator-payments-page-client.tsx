@@ -479,7 +479,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               </Button>
               <Button variant="outline" onClick={() => setManualPaymentOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Nuevo Pago Manual
+                Nueva Deuda Manual
               </Button>
               <Button onClick={() => setBulkPaymentOpen(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
