@@ -186,48 +186,55 @@ export async function POST(request: Request) {
           .maybeSingle()
         
         if (accountsReceivableAccount) {
-          // Calcular exchange rate si es USD
-          let exchangeRate: number | null = null
-          if (paymentData.currency === "USD") {
-            exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-            if (!exchangeRate) {
-              const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-              exchangeRate = await getLatestExchangeRate(supabase)
+          // IMPORTANTE: Verificar que "Cuentas por Cobrar" NO sea la misma cuenta que la seleccionada
+          // Si es la misma, NO crear este movimiento para evitar duplicación
+          if (accountsReceivableAccount.id === financial_account_id) {
+            console.log(`⚠️ "Cuentas por Cobrar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
+          } else {
+            // Calcular exchange rate si es USD
+            let exchangeRate: number | null = null
+            if (paymentData.currency === "USD") {
+              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
+              if (!exchangeRate) {
+                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
+                exchangeRate = await getLatestExchangeRate(supabase)
+              }
+              if (!exchangeRate) {
+                console.warn(`No exchange rate found for USD payment ${paymentId}`)
+                exchangeRate = 1000 // Fallback temporal
+              }
             }
-            if (!exchangeRate) {
-              console.warn(`No exchange rate found for USD payment ${paymentId}`)
-              exchangeRate = 1000 // Fallback temporal
-            }
+            
+            const amountARS = calculateARSEquivalent(
+              parseFloat(paymentData.amount),
+              paymentData.currency as "ARS" | "USD",
+              exchangeRate
+            )
+            
+            // Crear movimiento INCOME en "Cuentas por Cobrar" para REDUCIR el activo
+            // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
+            await createLedgerMovement(
+              {
+                operation_id: paymentData.operation_id || null,
+                lead_id: null,
+                type: "INCOME", // INCOME reduce el activo "Cuentas por Cobrar"
+                concept: `Cobro de cliente - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+                currency: paymentData.currency as "ARS" | "USD",
+                amount_original: parseFloat(paymentData.amount),
+                exchange_rate: exchangeRate,
+                amount_ars_equivalent: amountARS,
+                method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
+                account_id: accountsReceivableAccount.id, // Cuenta "Cuentas por Cobrar" (diferente a la seleccionada)
+                seller_id: operation?.seller_id || null,
+                operator_id: null,
+                receipt_number: reference || null,
+                notes: `Pago recibido: ${reference || ""}`,
+                created_by: user.id,
+              },
+              supabase
+            )
+            console.log(`✅ Reducido "Cuentas por Cobrar" (${accountsReceivableAccount.id}) por pago de cliente ${paymentId}`)
           }
-          
-          const amountARS = calculateARSEquivalent(
-            parseFloat(paymentData.amount),
-            paymentData.currency as "ARS" | "USD",
-            exchangeRate
-          )
-          
-          // Crear movimiento INCOME en "Cuentas por Cobrar" para REDUCIR el activo
-          await createLedgerMovement(
-            {
-              operation_id: paymentData.operation_id || null,
-              lead_id: null,
-              type: "INCOME", // INCOME reduce el activo "Cuentas por Cobrar"
-              concept: `Cobro de cliente - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
-              currency: paymentData.currency as "ARS" | "USD",
-              amount_original: parseFloat(paymentData.amount),
-              exchange_rate: exchangeRate,
-              amount_ars_equivalent: amountARS,
-              method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
-              account_id: accountsReceivableAccount.id,
-              seller_id: operation?.seller_id || null,
-              operator_id: null,
-              receipt_number: reference || null,
-              notes: `Pago recibido: ${reference || ""}`,
-              created_by: user.id,
-            },
-            supabase
-          )
-          console.log(`✅ Reducido "Cuentas por Cobrar" por pago de cliente ${paymentId}`)
         }
       }
     } else if (paymentData.payer_type === "OPERATOR") {
@@ -247,53 +254,61 @@ export async function POST(request: Request) {
           .maybeSingle()
         
         if (accountsPayableAccount) {
-          // Calcular exchange rate si es USD
-          let exchangeRate: number | null = null
-          if (paymentData.currency === "USD") {
-            exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-            if (!exchangeRate) {
-              const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-              exchangeRate = await getLatestExchangeRate(supabase)
+          // IMPORTANTE: Verificar que "Cuentas por Pagar" NO sea la misma cuenta que la seleccionada
+          // Si es la misma, NO crear este movimiento para evitar duplicación
+          if (accountsPayableAccount.id === financial_account_id) {
+            console.log(`⚠️ "Cuentas por Pagar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
+          } else {
+            // Calcular exchange rate si es USD
+            let exchangeRate: number | null = null
+            if (paymentData.currency === "USD") {
+              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
+              if (!exchangeRate) {
+                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
+                exchangeRate = await getLatestExchangeRate(supabase)
+              }
+              if (!exchangeRate) {
+                console.warn(`No exchange rate found for USD payment ${paymentId}`)
+                exchangeRate = 1000 // Fallback temporal
+              }
             }
-            if (!exchangeRate) {
-              console.warn(`No exchange rate found for USD payment ${paymentId}`)
-              exchangeRate = 1000 // Fallback temporal
-            }
+            
+            const amountARS = calculateARSEquivalent(
+              parseFloat(paymentData.amount),
+              paymentData.currency as "ARS" | "USD",
+              exchangeRate
+            )
+            
+            // Crear movimiento INCOME en "Cuentas por Pagar" para REDUCIR el pasivo
+            // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
+            await createLedgerMovement(
+              {
+                operation_id: paymentData.operation_id || null,
+                lead_id: null,
+                type: "INCOME", // INCOME reduce el pasivo "Cuentas por Pagar"
+                concept: `Pago a operador - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+                currency: paymentData.currency as "ARS" | "USD",
+                amount_original: parseFloat(paymentData.amount),
+                exchange_rate: exchangeRate,
+                amount_ars_equivalent: amountARS,
+                method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
+                account_id: accountsPayableAccount.id, // Cuenta "Cuentas por Pagar" (diferente a la seleccionada)
+                seller_id: operation?.seller_id || null,
+                operator_id: operation?.operator_id || null,
+                receipt_number: reference || null,
+                notes: `Pago realizado: ${reference || ""}`,
+                created_by: user.id,
+              },
+              supabase
+            )
+            console.log(`✅ Reducido "Cuentas por Pagar" (${accountsPayableAccount.id}) por pago a operador ${paymentId}`)
           }
-          
-          const amountARS = calculateARSEquivalent(
-            parseFloat(paymentData.amount),
-            paymentData.currency as "ARS" | "USD",
-            exchangeRate
-          )
-          
-          // Crear movimiento INCOME en "Cuentas por Pagar" para REDUCIR el pasivo
-          await createLedgerMovement(
-            {
-              operation_id: paymentData.operation_id || null,
-              lead_id: null,
-              type: "INCOME", // INCOME reduce el pasivo "Cuentas por Pagar"
-              concept: `Pago a operador - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
-              currency: paymentData.currency as "ARS" | "USD",
-              amount_original: parseFloat(paymentData.amount),
-              exchange_rate: exchangeRate,
-              amount_ars_equivalent: amountARS,
-              method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
-              account_id: accountsPayableAccount.id,
-              seller_id: operation?.seller_id || null,
-              operator_id: operation?.operator_id || null,
-              receipt_number: reference || null,
-              notes: `Pago realizado: ${reference || ""}`,
-              created_by: user.id,
-            },
-            supabase
-          )
-          console.log(`✅ Reducido "Cuentas por Pagar" por pago a operador ${paymentId}`)
         }
       }
     }
     
-    // 2. Crear movimiento en RESULTADO (INGRESOS/COSTOS/GASTOS)
+    // 2. Crear movimiento en la cuenta financiera seleccionada
+    // IMPORTANTE: Este es el movimiento principal que afecta el balance de la cuenta seleccionada
     // Usar la cuenta financiera proporcionada por el frontend
     const accountId = financial_account_id
 
@@ -301,6 +316,63 @@ export async function POST(request: Request) {
     if (financialAccount.currency !== paymentData.currency) {
       return NextResponse.json({ error: `La cuenta financiera debe estar en ${paymentData.currency}` }, { status: 400 })
     }
+
+    // Validar que la cuenta seleccionada NO sea la misma que "Cuentas por Cobrar/Pagar"
+    // para evitar duplicar movimientos
+    let accountsReceivableAccountId: string | null = null
+    let accountsPayableAccountId: string | null = null
+    
+    if (paymentData.direction === "INCOME") {
+      const { data: accountsReceivableChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "1.1.03")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (accountsReceivableChart) {
+        const { data: accountsReceivableAccount } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", accountsReceivableChart.id)
+          .eq("currency", paymentData.currency)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        accountsReceivableAccountId = accountsReceivableAccount?.id || null
+      }
+    } else if (paymentData.payer_type === "OPERATOR") {
+      const { data: accountsPayableChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "2.1.01")
+        .eq("is_active", true)
+        .maybeSingle()
+      
+      if (accountsPayableChart) {
+        const { data: accountsPayableAccount } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", accountsPayableChart.id)
+          .eq("currency", paymentData.currency)
+          .eq("is_active", true)
+          .maybeSingle()
+        
+        accountsPayableAccountId = accountsPayableAccount?.id || null
+      }
+    }
+
+    if (accountId === accountsReceivableAccountId || accountId === accountsPayableAccountId) {
+      console.warn(`⚠️ La cuenta seleccionada es la misma que "Cuentas por Cobrar/Pagar". Esto puede causar duplicación de movimientos.`)
+    }
+
+    console.log(`💰 Creando movimiento contable PRINCIPAL en cuenta seleccionada:`, {
+      accountId: accountId,
+      accountCurrency: financialAccount.currency,
+      direction: paymentData.direction,
+      amount: paymentData.amount,
+      currency: paymentData.currency,
+      paymentId: paymentId,
+      accountsReceivableAccountId: accountsReceivableAccountId,
+      accountsPayableAccountId: accountsPayableAccountId,
+      isSameAccount: accountId === accountsReceivableAccountId || accountId === accountsPayableAccountId
+    })
 
     // Calcular ARS equivalent
     // Priorizar exchange_rate proporcionado por el frontend
@@ -362,7 +434,8 @@ export async function POST(request: Request) {
         ? "OPERATOR_PAYMENT"
         : "EXPENSE"
 
-    // Crear ledger movement
+    // Crear ledger movement PRINCIPAL en la cuenta financiera seleccionada
+    // Este es el movimiento que afecta directamente el balance de la cuenta seleccionada
     const { id: ledgerMovementId } = await createLedgerMovement(
       {
         operation_id: paymentData.operation_id || null,
@@ -370,86 +443,40 @@ export async function POST(request: Request) {
         type: ledgerType,
         concept:
           paymentData.direction === "INCOME"
-            ? "Pago de cliente"
-            : "Pago a operador",
+            ? `Pago de cliente recibido en cuenta ${financialAccount.currency}`
+            : `Pago a operador desde cuenta ${financialAccount.currency}`,
         currency: paymentData.currency as "ARS" | "USD",
         amount_original: parseFloat(paymentData.amount),
         exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: ledgerMethod,
-        account_id: accountId,
+        account_id: accountId, // IMPORTANTE: Usar la cuenta financiera seleccionada por el usuario
         seller_id: sellerId,
         operator_id: operatorId,
         receipt_number: reference || null,
-        notes: reference || null,
+        notes: `Cuenta: ${financialAccount.name || accountId} - ${reference || ""}`,
         created_by: user.id,
       },
       supabase
     )
-
-    // ============================================
-    // 3. REGISTRAR EN CUENTA DE CAJA
-    // ============================================
-    // Usar siempre la cuenta financiera proporcionada
-    const cashAccountId = financial_account_id
-    let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
     
-    // Determinar el tipo de cuenta según el método de pago para el concepto
-    if (paymentData.method === "Efectivo") {
-      cashAccountType = "CASH"
-    } else if (paymentData.method === "Transferencia") {
-      cashAccountType = "BANK"
-    } else if (paymentData.method === "Mercado Pago" || paymentData.method === "MercadoPago" || paymentData.method === "MP") {
-      cashAccountType = "MP"
-    } else if (paymentData.method === "USD") {
-      cashAccountType = "USD"
-    }
-    
-    console.log(`💵 mark-paid: Usando cuenta financiera seleccionada`, {
-      account_id: cashAccountId,
-      account_currency: financialAccount.currency,
-      method: paymentData.method,
-      cashAccountType,
-    })
-    console.log(`💵 mark-paid: Cuenta de caja seleccionada`, {
-      paymentId,
-      method: paymentData.method,
-      currency: paymentData.currency,
-      cashAccountType,
-      cashAccountId,
-      amount: paymentData.amount,
+    console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
+      ledgerMovementId: ledgerMovementId,
+      accountId: accountId,
+      accountName: financialAccount.name || "N/A",
+      accountCurrency: financialAccount.currency,
+      type: ledgerType,
       direction: paymentData.direction,
+      amount: paymentData.amount,
+      currency: paymentData.currency,
+      effect: paymentData.direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
     })
 
-    // Crear movimiento en cuenta de caja
-    // Para INCOME: aumenta la cuenta (INCOME)
-    // Para EXPENSE: disminuye la cuenta (EXPENSE)
-    const cashLedgerType = paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE"
-    
-    await createLedgerMovement(
-      {
-        operation_id: paymentData.operation_id || null,
-        lead_id: null,
-        type: cashLedgerType,
-        concept:
-          paymentData.direction === "INCOME"
-            ? `Cobro en ${paymentData.method || "efectivo"} - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`
-            : `Pago en ${paymentData.method || "efectivo"} - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
-        currency: paymentData.currency as "ARS" | "USD",
-        amount_original: parseFloat(paymentData.amount),
-        exchange_rate: exchangeRate,
-        amount_ars_equivalent: amountARS,
-        method: ledgerMethod,
-        account_id: cashAccountId,
-        seller_id: sellerId,
-        operator_id: operatorId,
-        receipt_number: reference || null,
-        notes: reference || null,
-        created_by: user.id,
-      },
-      supabase
-    )
-    console.log(`✅ Registrado movimiento en cuenta de caja ${cashAccountType} por pago ${paymentId}`)
+    // NOTA: Solo creamos movimientos contables necesarios:
+    // 1. Movimiento para reducir Cuentas por Cobrar/Pagar (líneas 172-294) - parte de la contabilidad de doble entrada
+    // 2. Movimiento en la cuenta financiera seleccionada (líneas 365-388) - este es el que afecta el balance de la cuenta
+    // NO creamos un tercer movimiento duplicado
+    console.log(`✅ Movimiento contable creado en cuenta ${accountId} por pago ${paymentId}`)
 
     // Si es un pago a operador, marcar operator_payment como PAID
     if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id) {

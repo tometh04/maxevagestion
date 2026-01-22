@@ -181,6 +181,31 @@ export async function POST(request: Request) {
 
         // 4. Usar la cuenta financiera proporcionada por el frontend
         const accountId = financial_account_id
+        
+        // Validar que la cuenta existe y está activa
+        const { data: selectedAccount, error: accountCheckError } = await (supabase.from("financial_accounts") as any)
+          .select("id, name, currency, is_active")
+          .eq("id", accountId)
+          .single()
+
+        if (accountCheckError || !selectedAccount || !selectedAccount.is_active) {
+          return NextResponse.json({ error: "La cuenta financiera seleccionada no existe o no está activa" }, { status: 400 })
+        }
+
+        // Validar que la moneda de la cuenta coincide
+        if (selectedAccount.currency !== currency) {
+          return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+        }
+
+        console.log(`💰 Creando movimiento contable en cuenta seleccionada:`, {
+          accountId: accountId,
+          accountName: selectedAccount.name,
+          accountCurrency: selectedAccount.currency,
+          direction: direction,
+          amount: amount,
+          currency: currency,
+          type: direction === "INCOME" ? "INCOME" : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+        })
 
         // 5. Mapear método de pago a método de ledger
         const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
@@ -199,82 +224,52 @@ export async function POST(request: Request) {
           ? "INCOME" 
           : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
 
-        // 7. Crear movimiento en libro mayor (ledger_movements)
+        // 7. Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
+        // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
         const { id: ledgerMovementId } = await createLedgerMovement(
           {
             operation_id,
             lead_id: null,
             type: ledgerType,
             concept: direction === "INCOME" 
-              ? `Pago de cliente - Operación ${operation_id.slice(0, 8)}`
-              : `Pago a operador - Operación ${operation_id.slice(0, 8)}`,
+              ? `Pago de cliente recibido en cuenta ${selectedAccount.currency} - Op. ${operation_id?.slice(0, 8) || "N/A"}`
+              : `Pago a operador desde cuenta ${selectedAccount.currency} - Op. ${operation_id?.slice(0, 8) || "N/A"}`,
             currency: currency as "ARS" | "USD",
             amount_original: parseFloat(amount),
             exchange_rate: exchangeRate,
             amount_ars_equivalent: amountARS,
             method: ledgerMethod,
-            account_id: accountId,
+            account_id: accountId, // IMPORTANTE: Usar la cuenta financiera seleccionada por el usuario
             seller_id: sellerId,
             operator_id: payer_type === "OPERATOR" ? operatorId : null,
             receipt_number: null,
-            notes: notes || null,
+            notes: `Cuenta: ${selectedAccount.name} - ${notes || ""}`,
             created_by: user.id,
           },
           supabase
         )
+        
+        console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
+          ledgerMovementId: ledgerMovementId,
+          accountId: accountId,
+          accountName: selectedAccount.name,
+          accountCurrency: selectedAccount.currency,
+          type: ledgerType,
+          direction: direction,
+          amount: amount,
+          currency: currency,
+          effect: direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
+        })
 
         // 8. Actualizar payment con referencia al ledger_movement
         await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
 
-        // 9. CREAR MOVIMIENTO EN CUENTA DE CAJA
-        // Determinar tipo de cuenta de caja según método de pago y moneda
-        let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
-        if (method === "Efectivo") {
-          cashAccountType = "CASH"
-        } else if (method === "Transferencia") {
-          cashAccountType = "BANK"
-        } else if (method === "MercadoPago" || method === "MP") {
-          cashAccountType = "MP"
-        }
-
-        // Obtener o crear cuenta de caja según tipo y moneda
-        const cashAccountId = await getOrCreateDefaultAccount(
-          cashAccountType,
-          currency as "ARS" | "USD",
-          user.id,
-          supabase
-        )
-
-        // Crear movimiento en la cuenta de caja
-        // Para INCOME: aumenta la caja (tipo INCOME)
-        // Para EXPENSE: disminuye la caja (tipo EXPENSE)
-        const cashLedgerType = direction === "INCOME" ? "INCOME" : "EXPENSE"
-        
-        await createLedgerMovement(
-          {
-            operation_id,
-            lead_id: null,
-            type: cashLedgerType,
-            concept: direction === "INCOME"
-              ? `Cobro en ${method || "efectivo"} - Op. ${operation_id.slice(0, 8)}`
-              : `Pago en ${method || "efectivo"} - Op. ${operation_id.slice(0, 8)}`,
-            currency: currency as "ARS" | "USD",
-            amount_original: parseFloat(amount),
-            exchange_rate: exchangeRate,
-            amount_ars_equivalent: amountARS,
-            method: ledgerMethod,
-            account_id: cashAccountId,
-            seller_id: sellerId,
-            operator_id: payer_type === "OPERATOR" ? operatorId : null,
-            receipt_number: null,
-            notes: notes || null,
-            created_by: user.id,
-          },
-          supabase
-        )
-        console.log(`💵 Creado movimiento en cuenta de CAJA ${cashAccountType} - ${currency} para pago ${payment.id}`)
+        // NOTA: Solo creamos UN movimiento contable usando la cuenta financiera seleccionada
+        // El movimiento ya fue creado arriba (línea 203-224) usando accountId = financial_account_id
+        // No creamos un segundo movimiento duplicado en otra cuenta
+        console.log(`✅ Pago ${payment.id} creado con movimiento contable en cuenta ${accountId}`)
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
         if (payer_type === "OPERATOR") {
