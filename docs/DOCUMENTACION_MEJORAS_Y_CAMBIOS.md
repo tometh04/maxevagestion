@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Agregar Clientes con OCR a Operaciones y Mejora de Gráficos de Gastos Recurrentes)
+**Última actualización:** 2025-01-19 (Tooltips Explicativos en Todo el Sistema)
 
 ---
 
@@ -417,6 +417,17 @@ Si no aparecen deudas para un operador:
 2. Verificar que los pagos estén en la moneda seleccionada
 3. Verificar que los pagos tengan deuda pendiente (`amount - paid_amount > 0`)
 4. Revisar logs en consola: `[BulkPayment]` (frontend) y `[OperatorPayments API]` (backend)
+
+### 11. Posición Contable Mensual - REHECHA DESDE CERO (Balance General Profesional)
+
+**Fecha:** 2025-01-19
+
+**Descripción:**
+Se eliminó completamente la funcionalidad anterior de Posición Contable Mensual y se rehizo desde cero con una estructura contable profesional que incluye Balance General completo y Estado de Resultados del mes. La nueva implementación está completamente integrada con el resto del sistema (deudores por ventas, pagos a operadores, caja, etc.).
+
+*Nota: Esta sección está documentada en detalle más abajo. Ver sección completa después de la sección 17.*
+
+---
 
 ### 12. Filtros Avanzados para Cuentas por Pagar a Proveedores
 
@@ -1480,7 +1491,7 @@ Se reemplazaron todos los inputs nativos `type="date"` por el componente persona
 
 ---
 
-### 22. Reordenamiento de Items en Contabilidad
+### 20. Reordenamiento de Items en Contabilidad
 
 **Fecha:** 2025-01-19
 
@@ -1503,7 +1514,7 @@ Se reordenaron los items del submenú "Contabilidad" en el sidebar según el fee
 
 ---
 
-### 23. Mejora de Deudores por Ventas (Vendedor y Cobranza)
+### 21. Mejora de Deudores por Ventas (Vendedor y Cobranza)
 
 **Fecha:** 2025-01-19
 
@@ -1586,7 +1597,7 @@ Se agregó la funcionalidad de filtrar y mostrar el vendedor en "Deudores por Ve
 
 ---
 
-### 24. Corrección de Conversión de Moneda en Pago a Operadores
+### 22. Corrección de Conversión de Moneda en Pago a Operadores
 
 **Fecha:** 2025-01-19
 
@@ -3061,7 +3072,7 @@ Se implementó la funcionalidad para crear deudas manuales tanto en "Deudores po
 
 ---
 
-### 42. Agregar Clientes con OCR a Operaciones y Mejora de Gráficos de Gastos Recurrentes
+### 41. Agregar Clientes con OCR a Operaciones y Mejora de Gráficos de Gastos Recurrentes
 
 **Fecha:** 2025-01-19
 
@@ -3123,18 +3134,23 @@ Se implementaron tres mejoras importantes: funcionalidad para agregar clientes a
 - Formateo de valores en USD usando `formatCurrency(value, "USD")`
 - Cálculo correcto de estadísticas adicionales desde `filteredPayments`
 
-#### 3. Tooltips Explicativos en Sistema (Tarea 2 - En Progreso):
-- **Funcionalidad ya implementada en Gastos Recurrentes:** Ya existe un tooltip con `HelpCircle` que explica cómo funciona crear gasto vs pagar gasto
-- **Próximos pasos:** Agregar tooltips similares en todas las secciones principales del sistema
+#### 3. Tooltips Explicativos en Sistema (Tarea 2 - ✅ COMPLETADO):
+- **Implementación completa:** Se agregaron tooltips explicativos con icono `HelpCircle` en todas las secciones principales del sistema
+- **Secciones con tooltips implementados:**
+  - ✅ **Clientes** (`customers-page-client.tsx`): Explica gestión de clientes y base de datos
+  - ✅ **Operaciones** (`operations-page-client.tsx`): Explica gestión de operaciones turísticas
+  - ✅ **Leads/Ventas** (`leads-page-client.tsx`): Explica gestión de leads y proceso de conversión
+  - ✅ **Reportes** (`reports-page-client.tsx`): Explica reportes financieros y análisis
+  - ✅ **Estadísticas de Clientes** (`customers-statistics-page-client.tsx`): Explica métricas de clientes
+  - ✅ **Estadísticas de Operaciones** (`operations-statistics-page-client.tsx`): Explica métricas de operaciones
+  - ✅ **Estadísticas de Ventas** (`sales-statistics-page-client.tsx`): Explica métricas de ventas
+  - ✅ **Operadores** (`operators-page-client.tsx`): Explica gestión de operadores
+  - ✅ **Libro Mayor** (`ledger-page-client.tsx`): Explica registros contables y movimientos
+  - ✅ **Cuentas Financieras** (`financial-accounts-page-client.tsx`): Explica gestión de cuentas bancarias y efectivo
+  - ✅ **Gastos Recurrentes** (`recurring-payments-page-client.tsx`): Ya tenía tooltip implementado previamente
+  - ✅ **Pagos a Operadores** (`operator-payments-page-client.tsx`): Ya tenía tooltip implementado previamente
 
-**Secciones identificadas para tooltips:**
-- Dashboard (KPIs y gráficos)
-- Operaciones (información básica, financiero, asignaciones)
-- Caja (Resumen, Caja USD, Caja ARS)
-- Contabilidad (Posición Mensual, Deudores por Ventas, Pagos a Operadores, etc.)
-- Otras secciones según prioridad del usuario
-
-**Patrón de Tooltip:**
+**Patrón de Tooltip Implementado:**
 ```tsx
 <TooltipProvider>
   <Tooltip>
@@ -3143,17 +3159,37 @@ Se implementaron tres mejoras importantes: funcionalidad para agregar clientes a
     </TooltipTrigger>
     <TooltipContent className="max-w-xs">
       <p className="font-medium mb-1">¿Cómo funciona?</p>
-      <p className="text-xs">Explicación corta y clara</p>
+      <p className="text-xs">Explicación corta y clara de la funcionalidad</p>
     </TooltipContent>
   </Tooltip>
 </TooltipProvider>
 ```
+
+**Archivos Modificados:**
+- `components/customers/customers-page-client.tsx` - Agregado tooltip en header
+- `components/operations/operations-page-client.tsx` - Agregado tooltip en header
+- `components/sales/leads-page-client.tsx` - Agregado tooltip en header
+- `components/reports/reports-page-client.tsx` - Agregado tooltip en header
+- `components/customers/customers-statistics-page-client.tsx` - Agregado tooltip en header
+- `components/operations/operations-statistics-page-client.tsx` - Agregado tooltip en header
+- `components/sales/sales-statistics-page-client.tsx` - Agregado tooltip en header
+- `components/operators/operators-page-client.tsx` - Agregado tooltip en header
+- `components/accounting/ledger-page-client.tsx` - Agregado tooltip en header
+- `components/accounting/financial-accounts-page-client.tsx` - Agregado tooltip en header
+
+**Detalles Técnicos:**
+- Todos los tooltips usan el mismo patrón visual consistente
+- Icono `HelpCircle` de lucide-react para identificación visual
+- Tooltips aparecen al hacer hover sobre el icono
+- Contenido explicativo breve y claro en cada sección
+- Implementación unificada en todos los headers de página
 
 **Resultado:**
 - ✅ Los usuarios pueden agregar múltiples clientes a una operación fácilmente (perfecto para viajes grupales)
 - ✅ Crear clientes nuevos directamente desde la operación usando OCR (sin salir del contexto)
 - ✅ Gráficos de Gastos Recurrentes con diseño moderno, compacto y profesional
 - ✅ Estadísticas adicionales útiles para gestión de gastos recurrentes
-- ✅ Mejor UX con visualización clara de información financiera
+- ✅ **Tooltips explicativos en todas las secciones principales** para mejorar la comprensión del sistema
+- ✅ Mejor UX con visualización clara de información financiera y explicaciones contextuales
 
 ---

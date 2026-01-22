@@ -2,7 +2,23 @@
 
 ## 🎯 Resumen
 
-Se implementó la funcionalidad para crear un nuevo cliente directamente desde el diálogo de creación de operación, con OCR automático que extrae datos del DNI/Pasaporte y autocompleta el formulario.
+Se implementó la funcionalidad para crear un nuevo cliente directamente desde operaciones, con OCR automático que extrae datos del DNI/Pasaporte y autocompleta el formulario. Esta funcionalidad está disponible en **dos puntos de entrada**:
+
+1. **Desde el diálogo de creación de operación** (`new-operation-dialog.tsx`): Crear cliente al crear una nueva operación
+2. **Desde el detalle de operación existente** (`passengers-section.tsx`): Agregar clientes a operaciones existentes (perfecto para viajes grupales)
+
+### Características del OCR
+
+- **Soporte para múltiples formatos:** Imágenes (JPEG, PNG, WebP) y PDFs (máximo 15MB)
+- **Extracción automática de campos:**
+  - Nombre y apellido
+  - Número de documento
+  - **Número de trámite** (`procedure_number`) - para DNI y Pasaportes
+  - Fecha de nacimiento
+  - Nacionalidad
+  - Tipo de documento (DNI o PASSPORT)
+- **Procesamiento con OpenAI Vision (GPT-4o)** para máxima precisión
+- **Autocompletado inteligente** del formulario con datos extraídos
 
 ---
 
@@ -180,15 +196,15 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
   if (!file) return
 
   // Validar tipo de archivo
-  const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"]
+  const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]
   if (!allowedTypes.includes(file.type)) {
-    toast.error("Solo se permiten imágenes (JPEG, PNG, WebP)")
+    toast.error("Solo se permiten imágenes (JPEG, PNG, WebP) o PDFs")
     return
   }
 
-  // Validar tamaño (máximo 10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    toast.error("El archivo es demasiado grande. Máximo 10MB")
+  // Validar tamaño (máximo 15MB)
+  if (file.size > 15 * 1024 * 1024) {
+    toast.error("El archivo es demasiado grande. Máximo 15MB")
     return
   }
 
@@ -310,7 +326,7 @@ const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/jpg,image/png,image/webp"
+        accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
         onChange={handleFileUpload}
         className="hidden"
         id="document-upload"
@@ -743,15 +759,139 @@ if (!first_name || !last_name || !phone) {
 
 ---
 
-## 🚀 Para Replicar en Otro Proyecto
+---
 
-1. Copiar el endpoint `/api/documents/ocr-only/route.ts`
-2. Agregar estados y funciones en `new-operation-dialog.tsx`
-3. Agregar estados y funciones de OCR en `new-customer-dialog.tsx`
-4. Agregar UI de subida de documento en `new-customer-dialog.tsx`
-5. Modificar `/api/customers/route.ts` para no requerir email
-6. Asegurar que el endpoint `/api/documents/upload-with-ocr` acepte `customerId`
+## 5️⃣ Agregar Clientes con OCR desde Detalle de Operación (`passengers-section.tsx`)
+
+**Fecha:** 2025-01-19
+
+### 5.1. Importar el diálogo de cliente
+
+```typescript
+import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+```
+
+### 5.2. Estados para gestionar clientes
+
+```typescript
+const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
+```
+
+### 5.3. Botón "Crear Cliente Nuevo (OCR)" en el dialog de agregar pasajero
+
+```typescript
+{/* Botón crear cliente nuevo */}
+<div className="flex items-center justify-between">
+  <Label>Buscar cliente existente</Label>
+  <Button
+    type="button"
+    variant="outline"
+    size="sm"
+    onClick={() => setShowNewCustomerDialog(true)}
+  >
+    <UserPlus className="h-4 w-4 mr-2" />
+    Crear Cliente Nuevo (OCR)
+  </Button>
+</div>
+```
+
+### 5.4. Renderizar `NewCustomerDialog` al final del componente
+
+```typescript
+{/* Dialog para crear cliente nuevo con OCR */}
+<NewCustomerDialog
+  open={showNewCustomerDialog}
+  onOpenChange={setShowNewCustomerDialog}
+  onSuccess={(customer) => {
+    if (customer) {
+      // Agregar automáticamente el cliente creado a la operación
+      const addCustomerToOperation = async () => {
+        try {
+          const response = await fetch(`/api/operations/${operationId}/customers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customer_id: customer.id,
+              role: selectedRole, // MAIN o COMPANION
+            }),
+          })
+
+          if (!response.ok) {
+            throw new Error("Error al agregar pasajero")
+          }
+
+          const data = await response.json()
+          
+          // Agregar al estado local
+          setCustomers(prev => [...prev, {
+            ...data.operationCustomer,
+            customers: customer
+          }])
+
+          toast.success(`${customer.first_name} agregado como pasajero`)
+          setAddDialogOpen(false)
+          setSelectedCustomer(null)
+          setSearchQuery("")
+          setSearchResults([])
+          onUpdate?.()
+        } catch (error) {
+          console.error("Error adding passenger:", error)
+          toast.error("Error al agregar pasajero")
+        }
+      }
+
+      addCustomerToOperation()
+      setShowNewCustomerDialog(false)
+    }
+  }}
+/>
+```
+
+### 5.5. Flujo de uso
+
+1. Usuario abre el detalle de una operación existente
+2. Va a la sección "Pasajeros"
+3. Hace clic en "Agregar" para agregar un nuevo pasajero
+4. En el dialog de agregar pasajero, hace clic en "Crear Cliente Nuevo (OCR)"
+5. Se abre el diálogo `NewCustomerDialog` con funcionalidad completa de OCR
+6. Usuario sube foto del DNI/Pasaporte
+7. El OCR extrae los datos automáticamente
+8. Usuario completa/ajusta datos y crea el cliente
+9. El cliente se agrega automáticamente a la operación como pasajero
+10. El cliente creado se muestra en la lista de pasajeros de la operación
+
+### 5.6. Caso de uso: Viajes Grupales
+
+Esta funcionalidad es especialmente útil para **viajes grupales** donde se necesitan agregar múltiples clientes a una misma operación. El usuario puede:
+
+- Agregar clientes existentes mediante búsqueda
+- Crear nuevos clientes con OCR directamente desde el detalle de la operación
+- Asignar roles: Principal (MAIN) o Acompañante (COMPANION)
+- Ver todos los pasajeros asociados a la operación en una sola vista
 
 ---
 
+## 🚀 Para Replicar en Otro Proyecto
+
+1. Copiar el endpoint `/api/documents/ocr-only/route.ts`
+2. Agregar estados y funciones en `new-operation-dialog.tsx` (para crear operación nueva)
+3. Agregar estados y funciones en `passengers-section.tsx` (para agregar clientes a operaciones existentes)
+4. Agregar estados y funciones de OCR en `new-customer-dialog.tsx`
+5. Agregar UI de subida de documento en `new-customer-dialog.tsx`
+6. Modificar `/api/customers/route.ts` para no requerir email
+7. Asegurar que el endpoint `/api/documents/upload-with-ocr` acepte `customerId`
+8. Agregar endpoint `/api/operations/[id]/customers` (POST) para agregar clientes a operaciones
+
+---
+
+## 📝 Notas Importantes
+
+- **Dos puntos de entrada:** La funcionalidad de crear cliente con OCR está disponible tanto al crear una nueva operación como al agregar pasajeros a una operación existente
+- **Uso para viajes grupales:** La funcionalidad de `PassengersSection` permite agregar múltiples clientes a una misma operación, ideal para viajes grupales
+- **OCR unificado:** Ambos puntos de entrada usan el mismo diálogo `NewCustomerDialog` con funcionalidad completa de OCR
+- **Automático:** El cliente creado se selecciona automáticamente en la operación nueva o se agrega automáticamente como pasajero en operaciones existentes
+
+---
+
+**Última actualización:** 2025-01-19
 **Fin del documento**
