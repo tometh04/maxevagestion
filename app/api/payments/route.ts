@@ -181,28 +181,6 @@ export async function POST(request: Request) {
 
         // 4. Usar la cuenta financiera proporcionada por el frontend
         const accountId = financial_account_id
-                  currency: currency as "ARS" | "USD",
-                  chart_account_id: gastosChart.id,
-                  initial_balance: 0,
-                  is_active: true,
-                  created_by: user.id,
-                })
-                .select("id")
-                .single()
-              gastosFinancialAccount = newFA
-            }
-            accountId = gastosFinancialAccount.id
-          } else {
-            // Fallback
-            const accountType = currency === "USD" ? "USD" : "CASH"
-            accountId = await getOrCreateDefaultAccount(
-              accountType,
-              currency as "ARS" | "USD",
-              user.id,
-              supabase
-            )
-          }
-        }
 
         // 5. Mapear método de pago a método de ledger
         const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {

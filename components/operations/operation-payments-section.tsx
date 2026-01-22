@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -47,12 +47,22 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
 
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
+}
+
 const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   exchange_rate: z.coerce.number().optional(), // Tipo de cambio para ARS
   date_paid: z.date({
     required_error: "Fecha de pago es requerida",
@@ -97,6 +107,28 @@ export function OperationPaymentsSection({
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+
+  // Cargar cuentas financieras cuando se abre cualquier diálogo
+  useEffect(() => {
+    if (incomeDialogOpen || expenseDialogOpen) {
+      const fetchFinancialAccounts = async () => {
+        try {
+          const response = await fetch("/api/accounting/financial-accounts")
+          if (response.ok) {
+            const data = await response.json()
+            const accounts = (data.accounts || []).filter(
+              (acc: FinancialAccount) => acc.is_active !== false
+            )
+            setFinancialAccounts(accounts)
+          }
+        } catch (error) {
+          console.error("Error fetching financial accounts:", error)
+        }
+      }
+      fetchFinancialAccounts()
+    }
+  }, [incomeDialogOpen, expenseDialogOpen])
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -409,6 +441,7 @@ export function OperationPaymentsSection({
       method: "Transferencia",
       amount: 0,
       currency: "USD", // Default USD
+      financial_account_id: "",
       exchange_rate: undefined,
       date_paid: new Date(),
       notes: "",
@@ -423,6 +456,7 @@ export function OperationPaymentsSection({
       method: "Transferencia",
       amount: 0,
       currency: "USD", // Default USD
+      financial_account_id: "",
       exchange_rate: undefined,
       date_paid: new Date(),
       notes: "",
@@ -460,6 +494,12 @@ export function OperationPaymentsSection({
   const operatorDebt = operatorCost - totalPaidToOperatorUsd
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
+    // Validar cuenta financiera
+    if (!values.financial_account_id) {
+      alert("Debe seleccionar una cuenta financiera")
+      return
+    }
+
     // Validar tipo de cambio si es ARS
     if (values.currency === "ARS" && !values.exchange_rate) {
       alert("Debe ingresar el tipo de cambio para pagos en ARS")
@@ -477,6 +517,7 @@ export function OperationPaymentsSection({
           payer_type: "CUSTOMER",
           direction: "INCOME",
           ...restValues,
+          financial_account_id: values.financial_account_id,
           exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
@@ -501,6 +542,12 @@ export function OperationPaymentsSection({
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
+    // Validar cuenta financiera
+    if (!values.financial_account_id) {
+      alert("Debe seleccionar una cuenta financiera")
+      return
+    }
+
     // Validar tipo de cambio si es ARS
     if (values.currency === "ARS" && !values.exchange_rate) {
       alert("Debe ingresar el tipo de cambio para pagos en ARS")
@@ -518,6 +565,7 @@ export function OperationPaymentsSection({
           payer_type: "OPERATOR",
           direction: "EXPENSE",
           ...restValues,
+          financial_account_id: values.financial_account_id,
           exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
@@ -898,6 +946,41 @@ export function OperationPaymentsSection({
 
               <FormField
                 control={incomeForm.control}
+                name="financial_account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cuenta Financiera *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cuenta" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {financialAccounts
+                          .filter((acc) => acc.currency === incomeForm.watch("currency"))
+                          .map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({account.currency})
+                              {account.current_balance !== undefined && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                    style: "currency",
+                                    currency: account.currency,
+                                  })}
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
@@ -1069,6 +1152,41 @@ export function OperationPaymentsSection({
                         />
                       </PopoverContent>
                     </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={expenseForm.control}
+                name="financial_account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cuenta Financiera *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cuenta" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {financialAccounts
+                          .filter((acc) => acc.currency === expenseForm.watch("currency"))
+                          .map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({account.currency})
+                              {account.current_balance !== undefined && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                    style: "currency",
+                                    currency: account.currency,
+                                  })}
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

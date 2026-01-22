@@ -395,29 +395,6 @@ export async function POST(request: Request) {
     let cashAccountType: "CASH" | "BANK" | "MP" | "USD" = "CASH"
     
     // Determinar el tipo de cuenta según el método de pago para el concepto
-    if (paymentData.method === "Transferencia") {
-      cashAccountType = "BANK"
-      if (
-        account.type !== "CHECKING_ARS" &&
-        account.type !== "CHECKING_USD" &&
-        account.type !== "SAVINGS_ARS" &&
-        account.type !== "SAVINGS_USD"
-      ) {
-        return NextResponse.json(
-          { error: "La cuenta seleccionada debe ser una cuenta bancaria (corriente o ahorro)" },
-          { status: 400 }
-        )
-      }
-
-      // Validar que la moneda coincida
-      if (account.currency !== paymentData.currency) {
-        return NextResponse.json(
-          { error: `La cuenta seleccionada es en ${account.currency} pero el pago es en ${paymentData.currency}` },
-          { status: 400 }
-        )
-      }
-
-    // Determinar el tipo de cuenta según el método de pago para el concepto
     if (paymentData.method === "Efectivo") {
       cashAccountType = "CASH"
     } else if (paymentData.method === "Transferencia") {
