@@ -36,7 +36,7 @@ import { toast } from "sonner"
 const markPaidSchema = z.object({
   datePaid: z.string().min(1, "La fecha de pago es requerida"),
   reference: z.string().optional(),
-  financial_account_id: z.string().optional(),
+  financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   exchange_rate: z.coerce.number().optional(),
 })
 
@@ -127,25 +127,21 @@ export function MarkPaidDialog({
     return payment.currency !== operationCurrency
   }, [payment, operationCurrency])
 
-  // Cargar cuentas financieras cuando el método es "Transferencia"
+  // Cargar cuentas financieras siempre
   useEffect(() => {
-    if (open && payment && payment.method === "Transferencia") {
+    if (open && payment) {
       const fetchFinancialAccounts = async () => {
         try {
           const response = await fetch("/api/accounting/financial-accounts")
           if (response.ok) {
             const data = await response.json()
-            // Filtrar solo cuentas bancarias (CHECKING, SAVINGS) de la misma moneda
-            const bankAccounts = (data.accounts || []).filter(
+            // Filtrar cuentas activas de la misma moneda
+            const accounts = (data.accounts || []).filter(
               (acc: FinancialAccount) =>
                 acc.is_active !== false &&
-                (acc.type === "CHECKING_ARS" ||
-                  acc.type === "CHECKING_USD" ||
-                  acc.type === "SAVINGS_ARS" ||
-                  acc.type === "SAVINGS_USD") &&
                 acc.currency === payment.currency
             )
-            setFinancialAccounts(bankAccounts)
+            setFinancialAccounts(accounts)
           }
         } catch (error) {
           console.error("Error fetching financial accounts:", error)
@@ -161,9 +157,9 @@ export function MarkPaidDialog({
   const handleSubmit = async (values: MarkPaidFormValues) => {
     if (!payment) return
 
-    // Validar que si el método es "Transferencia", se haya seleccionado una cuenta
-    if (payment.method === "Transferencia" && !values.financial_account_id) {
-      toast.error("Debe seleccionar una cuenta receptiva para transferencias bancarias")
+    // Validar que se haya seleccionado una cuenta financiera
+    if (!values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
@@ -323,42 +319,39 @@ export function MarkPaidDialog({
               />
             )}
 
-            {/* Mostrar selector de cuenta solo si el método es "Transferencia" */}
-            {payment.method === "Transferencia" && (
-              <FormField
-                control={form.control}
-                name="financial_account_id"
-                rules={{ required: "Debe seleccionar una cuenta receptiva" }}
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Receptiva *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta bancaria" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {financialAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.currency})
-                            {account.current_balance !== undefined && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                  style: "currency",
-                                  currency: account.currency,
-                                })}
-                              </span>
-                            )}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
+            {/* Mostrar selector de cuenta financiera siempre */}
+            <FormField
+              control={form.control}
+              name="financial_account_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cuenta Financiera *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value || ""}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar cuenta" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {financialAccounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name} ({account.currency})
+                          {account.current_balance !== undefined && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                style: "currency",
+                                currency: account.currency,
+                              })}
+                            </span>
+                          )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <DialogFooter>
               <Button 

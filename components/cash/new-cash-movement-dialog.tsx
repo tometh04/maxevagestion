@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -24,12 +24,22 @@ import {
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
+}
+
 const cashMovementSchema = z.object({
   operation_id: z.string().optional().nullable(),
   type: z.enum(["INCOME", "EXPENSE"]),
   category: z.string().min(1, "La categoría es requerida"),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   movement_date: z.string().min(1, "La fecha es requerida"),
   notes: z.string().optional(),
 })
@@ -62,6 +72,7 @@ export function NewCashMovementDialog({
   operations = [],
 }: NewCashMovementDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
   // Helper to get datetime-local format
   const getDefaultDateTimeLocal = () => {
@@ -82,12 +93,42 @@ export function NewCashMovementDialog({
       category: "",
       amount: 0,
       currency: "ARS",
+      financial_account_id: "",
       movement_date: getDefaultDateTimeLocal(),
       notes: "",
     },
   })
 
+  // Cargar cuentas financieras cuando se abre el dialog
+  useEffect(() => {
+    if (open) {
+      const fetchFinancialAccounts = async () => {
+        try {
+          const response = await fetch("/api/accounting/financial-accounts")
+          if (response.ok) {
+            const data = await response.json()
+            const accounts = (data.accounts || []).filter(
+              (acc: FinancialAccount) => acc.is_active !== false
+            )
+            setFinancialAccounts(accounts)
+          }
+        } catch (error) {
+          console.error("Error fetching financial accounts:", error)
+        }
+      }
+      fetchFinancialAccounts()
+    } else {
+      form.reset()
+      setFinancialAccounts([])
+    }
+  }, [open, form])
+
   const onSubmit = async (values: CashMovementFormValues) => {
+    if (!values.financial_account_id) {
+      alert("Debe seleccionar una cuenta financiera")
+      return
+    }
+
     setIsLoading(true)
     try {
       // Convert datetime-local to ISO string
@@ -99,6 +140,7 @@ export function NewCashMovementDialog({
         body: JSON.stringify({
           ...values,
           operation_id: values.operation_id || null,
+          financial_account_id: values.financial_account_id,
           movement_date: movementDate,
           notes: values.notes || null,
         }),
@@ -267,6 +309,41 @@ export function NewCashMovementDialog({
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="financial_account_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cuenta Financiera *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar cuenta" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {financialAccounts
+                        .filter((acc) => acc.currency === form.watch("currency"))
+                        .map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name} ({account.currency})
+                            {account.current_balance !== undefined && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                  style: "currency",
+                                  currency: account.currency,
+                                })}
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

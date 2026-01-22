@@ -40,6 +40,7 @@ const manualPaymentSchema = z.object({
   customer_name: z.string().min(1, "El nombre del cliente es requerido"),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   exchange_rate: z.coerce.number().optional(),
   method: z.string().min(1, "El método de pago es requerido"),
   date_due: z.date({
@@ -68,6 +69,15 @@ interface ManualPaymentDialogProps {
   defaultCurrency?: string
 }
 
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
+}
+
 export function ManualPaymentDialog({
   open,
   onOpenChange,
@@ -78,6 +88,7 @@ export function ManualPaymentDialog({
   const [loading, setLoading] = useState(false)
   const [currency, setCurrency] = useState<"ARS" | "USD">(defaultCurrency as "ARS" | "USD")
   const [needsExchangeRate, setNeedsExchangeRate] = useState(false)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
   const form = useForm<ManualPaymentFormValues>({
     resolver: zodResolver(manualPaymentSchema) as any,
@@ -86,6 +97,7 @@ export function ManualPaymentDialog({
       customer_name: "",
       amount: 0,
       currency: defaultCurrency as "ARS" | "USD",
+      financial_account_id: "",
       exchange_rate: undefined,
       method: "Transferencia",
       date_due: new Date(),
@@ -93,6 +105,30 @@ export function ManualPaymentDialog({
       notes: "",
     },
   })
+
+  // Cargar cuentas financieras cuando se abre el dialog
+  useEffect(() => {
+    if (open) {
+      const fetchFinancialAccounts = async () => {
+        try {
+          const response = await fetch("/api/accounting/financial-accounts")
+          if (response.ok) {
+            const data = await response.json()
+            const accounts = (data.accounts || []).filter(
+              (acc: FinancialAccount) => acc.is_active !== false
+            )
+            setFinancialAccounts(accounts)
+          }
+        } catch (error) {
+          console.error("Error fetching financial accounts:", error)
+        }
+      }
+      fetchFinancialAccounts()
+    } else {
+      form.reset()
+      setFinancialAccounts([])
+    }
+  }, [open, form])
 
   // Obtener moneda actual del formulario
   const formCurrency = form.watch("currency")
@@ -116,6 +152,11 @@ export function ManualPaymentDialog({
   }, [formCurrency, form])
 
   const handleSubmit = async (values: ManualPaymentFormValues) => {
+    if (!values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera")
+      return
+    }
+
     setLoading(true)
     try {
       // Validar tipo de cambio si es necesario
@@ -135,6 +176,7 @@ export function ManualPaymentDialog({
           method: values.method,
           amount: values.amount,
           currency: values.currency,
+          financial_account_id: values.financial_account_id,
           exchange_rate: values.exchange_rate,
           date_due: format(values.date_due, "yyyy-MM-dd"),
           status: "PENDING",
@@ -286,6 +328,41 @@ export function ManualPaymentDialog({
                           {method.label}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="financial_account_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cuenta Financiera *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar cuenta" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {financialAccounts
+                        .filter((acc) => acc.currency === form.watch("currency"))
+                        .map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name} ({account.currency})
+                            {account.current_balance !== undefined && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                  style: "currency",
+                                  currency: account.currency,
+                                })}
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />

@@ -21,6 +21,7 @@ export async function POST(request: Request) {
       category,
       amount,
       currency,
+      financial_account_id,
       movement_date,
       notes,
       is_touristic,
@@ -28,8 +29,24 @@ export async function POST(request: Request) {
     } = body
 
     // Validate required fields
-    if (!type || !category || amount === undefined || !currency || !movement_date) {
-      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    if (!type || !category || amount === undefined || !currency || !movement_date || !financial_account_id) {
+      return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
+    }
+
+    // Validar que la cuenta financiera existe
+    const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
+      .select("id, currency")
+      .eq("id", financial_account_id)
+      .eq("is_active", true)
+      .single()
+
+    if (accountError || !financialAccount) {
+      return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
+    }
+
+    // Validar que la moneda de la cuenta coincide con la del movimiento
+    if (financialAccount.currency !== currency) {
+      return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
     }
 
     // Get default cash box if not provided
@@ -94,14 +111,8 @@ export async function POST(request: Request) {
     // ============================================
     // FASE 1: CREAR LEDGER MOVEMENT
     // ============================================
-    // Determinar tipo de cuenta financiera
-    const accountType = currency === "USD" ? "USD" : "CASH"
-    const accountId = await getOrCreateDefaultAccount(
-      accountType,
-      currency as "ARS" | "USD",
-      user.id,
-      supabase
-    )
+    // Usar la cuenta financiera proporcionada por el frontend
+    const accountId = financial_account_id
 
     // Calcular ARS equivalent
     let exchangeRate: number | null = null

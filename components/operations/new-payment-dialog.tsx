@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -33,12 +33,22 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
+}
+
 const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
   method: z.string().min(1, "El método de pago es requerido"),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
   date_due: z.string().min(1, "La fecha de vencimiento es requerida"),
   reference: z.string().optional(),
 })
@@ -70,6 +80,7 @@ export function NewPaymentDialog({
   defaultCurrency = "USD",
 }: NewPaymentDialogProps) {
   const [loading, setLoading] = useState(false)
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema) as any,
@@ -79,10 +90,35 @@ export function NewPaymentDialog({
       method: "Transferencia",
       amount: 0,
       currency: defaultCurrency as "ARS" | "USD",
+      financial_account_id: "",
       date_due: new Date().toISOString().split("T")[0],
       reference: "",
     },
   })
+
+  // Cargar cuentas financieras cuando se abre el dialog
+  useEffect(() => {
+    if (open) {
+      const fetchFinancialAccounts = async () => {
+        try {
+          const response = await fetch("/api/accounting/financial-accounts")
+          if (response.ok) {
+            const data = await response.json()
+            const accounts = (data.accounts || []).filter(
+              (acc: FinancialAccount) => acc.is_active !== false
+            )
+            setFinancialAccounts(accounts)
+          }
+        } catch (error) {
+          console.error("Error fetching financial accounts:", error)
+        }
+      }
+      fetchFinancialAccounts()
+    } else {
+      form.reset()
+      setFinancialAccounts([])
+    }
+  }, [open, form])
 
   // Auto-ajustar dirección según tipo de pagador
   const payerType = form.watch("payer_type")
@@ -94,6 +130,11 @@ export function NewPaymentDialog({
   }
 
   const handleSubmit = async (values: PaymentFormValues) => {
+    if (!values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera")
+      return
+    }
+
     setLoading(true)
     try {
       const response = await fetch("/api/payments", {
@@ -102,6 +143,7 @@ export function NewPaymentDialog({
         body: JSON.stringify({
           operation_id: operationId,
           ...values,
+          financial_account_id: values.financial_account_id,
           status: "PENDING",
         }),
       })
@@ -206,6 +248,41 @@ export function NewPaymentDialog({
                           {method.label}
                         </SelectItem>
                       ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="financial_account_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cuenta Financiera *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar cuenta" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {financialAccounts
+                        .filter((acc) => acc.currency === form.watch("currency"))
+                        .map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name} ({account.currency})
+                            {account.current_balance !== undefined && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                  style: "currency",
+                                  currency: account.currency,
+                                })}
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                   <FormMessage />
