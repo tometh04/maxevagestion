@@ -125,10 +125,13 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function fetchData() {
-      setLoading(true)
-      try {
-      const accountsRes = await fetch("/api/accounting/financial-accounts")
+  async function fetchData(bustCache = false) {
+    setLoading(true)
+    try {
+      const url = bustCache
+        ? `/api/accounting/financial-accounts?_=${Date.now()}`
+        : "/api/accounting/financial-accounts"
+      const accountsRes = await fetch(url)
 
       if (!accountsRes.ok) throw new Error("Error al obtener cuentas")
 
@@ -139,10 +142,10 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       setAgencies(initialAgencies)
     } catch (error: any) {
       toast.error(error.message || "Error al cargar datos")
-      } finally {
-        setLoading(false)
-      }
+    } finally {
+      setLoading(false)
     }
+  }
 
   const handleClearAll = async () => {
     try {
@@ -316,7 +319,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       if (!res.ok) throw new Error(data.error || "Error al eliminar")
       toast.success(data.message || "Cuenta eliminada")
       closeDeleteAccount()
-      fetchData()
+      await fetchData(true)
       router.refresh()
     } catch (e: any) {
       toast.error(e.message || "Error al eliminar la cuenta")

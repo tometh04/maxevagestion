@@ -160,6 +160,12 @@ export async function DELETE(
           supabase
         )
       }
+
+      const verifyBalance = await getAccountBalance(target.id, supabase)
+      console.log(`[DELETE account] Transferido ${amount} ${account.currency} a ${target.name}. Balance destino: ${verifyBalance}`)
+      if (Math.abs(verifyBalance) < 1e-6 && amount > 1e-6) {
+        console.warn(`[DELETE account] Balance destino sigue ~0 tras transferir ${amount}. Revisar getAccountBalance/chart.`)
+      }
     }
 
     const { error: updateError } = await (supabase.from("financial_accounts") as any)

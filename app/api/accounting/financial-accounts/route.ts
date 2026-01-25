@@ -47,7 +47,9 @@ export async function GET(request: Request) {
       })
     )
 
-    return NextResponse.json({ accounts: accountsWithBalance })
+    const res = NextResponse.json({ accounts: accountsWithBalance })
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate")
+    return res
   } catch (error) {
     console.error("Error in GET /api/accounting/financial-accounts:", error)
     return NextResponse.json({ error: "Error al obtener cuentas financieras" }, { status: 500 })
