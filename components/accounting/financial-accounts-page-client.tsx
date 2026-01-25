@@ -90,6 +90,17 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [agencies, setAgencies] = useState<any[]>(initialAgencies)
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+  const [accountToDelete, setAccountToDelete] = useState<{
+    id: string
+    name: string
+    balance: number
+    currency: string
+    displayName: string
+  } | null>(null)
+  const [transferToId, setTransferToId] = useState("")
+  const [deleteStep, setDeleteStep] = useState<"confirm" | "transfer">("confirm")
+  const [isDeleting, setIsDeleting] = useState(false)
   const [formData, setFormData] = useState<any>({
     name: "",
     type: "",
@@ -263,6 +274,57 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     return account.name
   }
 
+  const openDeleteAccount = (account: any) => {
+    const balance = account.current_balance ?? 0
+    setAccountToDelete({
+      id: account.id,
+      name: account.name,
+      balance,
+      currency: account.currency,
+      displayName: getDisplayName(account),
+    })
+    setTransferToId("")
+    setDeleteStep("confirm")
+    setDeleteAccountOpen(true)
+  }
+
+  const closeDeleteAccount = () => {
+    setDeleteAccountOpen(false)
+    setAccountToDelete(null)
+    setTransferToId("")
+    setDeleteStep("confirm")
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!accountToDelete) return
+    const hasBalance = Math.abs(accountToDelete.balance) > 1e-6
+    if (hasBalance && !transferToId) {
+      toast.error("Selecciona una cuenta destino para transferir el saldo")
+      return
+    }
+    setIsDeleting(true)
+    try {
+      const opts: RequestInit = {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      }
+      if (hasBalance && transferToId) {
+        opts.body = JSON.stringify({ transfer_to_account_id: transferToId })
+      }
+      const res = await fetch(`/api/accounting/financial-accounts/${accountToDelete.id}`, opts)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || "Error al eliminar")
+      toast.success(data.message || "Cuenta eliminada")
+      closeDeleteAccount()
+      fetchData()
+      router.refresh()
+    } catch (e: any) {
+      toast.error(e.message || "Error al eliminar la cuenta")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -339,6 +401,115 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
               </DialogContent>
             </Dialog>
           )}
+
+          <Dialog open={deleteAccountOpen} onOpenChange={(open) => !open && closeDeleteAccount()}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <Trash2 className="h-5 w-5" />
+                  Eliminar cuenta
+                </DialogTitle>
+                <DialogDescription asChild>
+                  <div className="space-y-3">
+                    {accountToDelete && (
+                      <>
+                        {Math.abs(accountToDelete.balance) <= 1e-6 ? (
+                          <p>
+                            ¿Eliminar la cuenta <strong>{accountToDelete.displayName}</strong>? Esta acción no se puede deshacer.
+                          </p>
+                        ) : deleteStep === "confirm" ? (
+                          <p>
+                            La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
+                            <strong className={accountToDelete.balance >= 0 ? "text-amber-600" : "text-red-600"}>
+                              {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
+                            </strong>{" "}
+                            de saldo. ¿Quieres transferirlo a otra cuenta?
+                          </p>
+                        ) : (
+                          <>
+                            <p>
+                              Transferir{" "}
+                              <strong className={accountToDelete.balance >= 0 ? "text-amber-600" : "text-red-600"}>
+                                {formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}
+                              </strong>{" "}
+                              a:
+                            </p>
+                            <Select value={transferToId} onValueChange={setTransferToId}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecciona una cuenta" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts
+                                  .filter(
+                                    (a: any) =>
+                                      a.id !== accountToDelete.id &&
+                                      a.currency === accountToDelete.currency &&
+                                      a.is_active !== false
+                                  )
+                                  .map((a: any) => (
+                                    <SelectItem key={a.id} value={a.id}>
+                                      {getDisplayName(a)} ({a.currency})
+                                    </SelectItem>
+                                  ))}
+                              </SelectContent>
+                            </Select>
+                            {accounts.filter(
+                              (a: any) =>
+                                a.id !== accountToDelete.id &&
+                                a.currency === accountToDelete.currency &&
+                                a.is_active !== false
+                            ).length === 0 && (
+                              <p className="text-sm text-amber-600">
+                                No hay otras cuentas en {accountToDelete.currency} para transferir.
+                              </p>
+                            )}
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                {accountToDelete && (
+                  <>
+                    {Math.abs(accountToDelete.balance) <= 1e-6 ? (
+                      <>
+                        <Button variant="outline" onClick={closeDeleteAccount}>
+                          Cancelar
+                        </Button>
+                        <Button variant="destructive" onClick={handleDeleteAccount} disabled={isDeleting}>
+                          {isDeleting ? "Eliminando…" : "Sí, eliminar"}
+                        </Button>
+                      </>
+                    ) : deleteStep === "confirm" ? (
+                      <>
+                        <Button variant="outline" onClick={closeDeleteAccount}>
+                          No, cancelar
+                        </Button>
+                        <Button onClick={() => setDeleteStep("transfer")}>
+                          Sí, transferir
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button variant="outline" onClick={() => setDeleteStep("confirm")}>
+                          Atrás
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={handleDeleteAccount}
+                          disabled={isDeleting || !transferToId}
+                        >
+                          {isDeleting ? "Eliminando…" : "Eliminar y transferir"}
+                        </Button>
+                      </>
+                    )}
+                  </>
+                )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <DialogTrigger asChild>
@@ -620,33 +791,45 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 <TableHead>Nombre</TableHead>
                 <TableHead>Tipo</TableHead>
                 <TableHead>Moneda</TableHead>
-                      <TableHead className="text-right">Saldo Inicial</TableHead>
-                      <TableHead className="text-right">Balance Actual</TableHead>
+                <TableHead className="text-right">Saldo Inicial</TableHead>
+                <TableHead className="text-right">Balance Actual</TableHead>
+                <TableHead className="w-[80px]">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-                    {data.accounts.map((account: any) => (
+              {data.accounts.map((account: any) => (
                 <TableRow key={account.id}>
-                        <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
+                  <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
                   <TableCell>
-                          <Badge variant="outline">
-                            {accountTypeLabels[account.type] || account.type}
-                          </Badge>
+                    <Badge variant="outline">
+                      {accountTypeLabels[account.type] || account.type}
+                    </Badge>
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">{account.currency}</Badge>
                   </TableCell>
-                        <TableCell className="text-right">
+                  <TableCell className="text-right">
                     {formatCurrency(account.initial_balance || 0, account.currency)}
                   </TableCell>
-                        <TableCell className="text-right">
+                  <TableCell className="text-right">
                     <span
                       className={`font-bold ${
-                              (account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"
+                        (account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"
                       }`}
                     >
                       {formatCurrency(account.current_balance || 0, account.currency)}
                     </span>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => openDeleteAccount(account)}
+                      title="Eliminar cuenta"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}

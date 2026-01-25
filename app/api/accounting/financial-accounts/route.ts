@@ -9,12 +9,13 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Get all financial accounts with agency info
+    // Get all active financial accounts with agency info
     const { data: accounts, error: accountsError } = await (supabase.from("financial_accounts") as any)
       .select(`
         *,
         agencies:agency_id(id, name)
       `)
+      .eq("is_active", true)
       .order("agency_id", { ascending: true })
       .order("type", { ascending: true })
       .order("currency", { ascending: true })
