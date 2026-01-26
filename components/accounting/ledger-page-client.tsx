@@ -1,8 +1,23 @@
 "use client"
 
 import { useState } from "react"
-import { LedgerTable } from "@/components/accounting/ledger-table"
+import dynamic from "next/dynamic"
 import { LedgerFilters } from "@/components/accounting/ledger-filters"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const LedgerTable = dynamic(
+  () => import("@/components/accounting/ledger-table").then((m) => ({ default: m.LedgerTable })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-2">
+        {[...Array(8)].map((_, i) => (
+          <Skeleton key={i} className="h-12 w-full" />
+        ))}
+      </div>
+    ),
+  }
+)
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { HelpCircle } from "lucide-react"
 import {

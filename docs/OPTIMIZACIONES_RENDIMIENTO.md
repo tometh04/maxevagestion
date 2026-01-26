@@ -166,6 +166,9 @@ El caché se invalida automáticamente cuando:
 5. **`components/sales/crm-manychat-page-client.tsx`** (Fase 2)
    - Límite 5000 → 200 por fuente (Manychat + Trello)
 
+6. **`components/accounting/ledger-page-client.tsx`** (Fase 3)
+   - `LedgerTable` cargado con `next/dynamic` (lazy load, ssr: false)
+
 ---
 
 ## ✅ FASE 2: OPTIMIZACIONES IMPORTANTES (COMPLETADA)
@@ -183,11 +186,15 @@ El caché se invalida automáticamente cuando:
 
 ---
 
-## 🚀 PRÓXIMAS FASES (PENDIENTES)
+## ✅ FASE 3: MEJORAS ADICIONALES (EN PROGRESO)
 
-### Fase 3: Mejoras Adicionales
-- [ ] Lazy loading en componentes pesados
-- [ ] Code splitting en componentes grandes
+### 1. Lazy loading – Libro Mayor
+- **Cambio:** `LedgerTable` cargado con `next/dynamic` (ssr: false) en la página Ledger.
+- **Motivo:** Tabla pesada con muchos movimientos; al diferir su carga se reduce el JS inicial y se mejora el TTI.
+- **Impacto:** Mejor tiempo de carga inicial de la ruta `/accounting/ledger`.
+
+### Pendientes Fase 3
+- [ ] Code splitting en más componentes pesados (reportes, dashboards)
 - [ ] Optimizar imágenes y assets
 
 ---
