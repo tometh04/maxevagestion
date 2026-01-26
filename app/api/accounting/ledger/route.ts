@@ -25,7 +25,10 @@ export async function GET(request: Request) {
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
-    // Build filters
+    // Build filters con paginación
+    const limit = parseInt(searchParams.get("limit") || "1000")
+    const offset = parseInt(searchParams.get("offset") || "0")
+    
     const filters: Parameters<typeof getLedgerMovements>[1] = {
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,
@@ -36,13 +39,15 @@ export async function GET(request: Request) {
       operatorId: searchParams.get("operatorId") || "ALL",
       operationId: searchParams.get("operationId") || undefined,
       leadId: searchParams.get("leadId") || undefined,
+      limit,
+      offset,
     }
 
-    // Get ledger movements
-    const movements = await getLedgerMovements(supabase, filters)
+    // Get ledger movements (ahora retorna objeto con paginación)
+    const result = await getLedgerMovements(supabase, filters)
 
     // Apply role-based filtering
-    let filteredMovements = movements || []
+    let filteredMovements = result.movements || []
 
     if (user.role === "SELLER") {
       // Sellers can only see their own movements
@@ -65,7 +70,15 @@ export async function GET(request: Request) {
       })
     }
 
-    return NextResponse.json({ movements: filteredMovements })
+    return NextResponse.json({
+      movements: filteredMovements,
+      pagination: {
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+        hasMore: result.hasMore,
+      },
+    })
   } catch (error) {
     console.error("Error in GET /api/accounting/ledger:", error)
     return NextResponse.json({ error: "Error al obtener movimientos del ledger" }, { status: 500 })

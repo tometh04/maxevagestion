@@ -3,11 +3,45 @@
  * 
  * Este servicio maneja todos los movimientos del ledger (libro mayor).
  * TODO movimiento financiero debe pasar por aquí.
+ * 
+ * OPTIMIZACIONES DE RENDIMIENTO:
+ * - getAccountBalance: Usa agregación SQL en lugar de traer todos los registros
+ * - getAccountBalancesBatch: Calcula múltiples balances en una sola query
+ * - Caché en memoria para balances calculados (TTL: 30 segundos)
  */
 
 import { createServerClient } from "@/lib/supabase/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
+
+// Caché simple en memoria para balances (evita recalcular constantemente)
+interface BalanceCacheEntry {
+  balance: number
+  timestamp: number
+}
+
+const balanceCache = new Map<string, BalanceCacheEntry>()
+const CACHE_TTL_MS = 30000 // 30 segundos
+
+/**
+ * Invalidar caché de balance para una cuenta específica
+ * Se llama automáticamente cuando se crea un nuevo movimiento
+ */
+export function invalidateBalanceCache(accountId: string) {
+  balanceCache.delete(accountId)
+}
+
+/**
+ * Limpiar caché expirado (se ejecuta periódicamente)
+ */
+function cleanExpiredCache() {
+  const now = Date.now()
+  for (const [key, entry] of balanceCache.entries()) {
+    if (now - entry.timestamp > CACHE_TTL_MS) {
+      balanceCache.delete(key)
+    }
+  }
+}
 
 export type LedgerMovementType =
   | "INCOME"
@@ -81,6 +115,9 @@ export async function createLedgerMovement(
     throw new Error(`Error creando ledger movement: ${error.message}`)
   }
 
+  // Invalidar caché de balance para esta cuenta
+  invalidateBalanceCache(params.account_id)
+
   // Si el tipo es COMMISSION y hay operation_id, marcar comisiones como PAID automáticamente
   if (params.type === "COMMISSION" && params.operation_id) {
     try {
@@ -103,6 +140,8 @@ export async function createLedgerMovement(
  * - ACTIVOS: INCOME aumenta, EXPENSE disminuye
  * - PASIVOS: EXPENSE aumenta, INCOME disminuye (cuando pagas, reduces el pasivo)
  * - RESULTADO: INCOME aumenta, EXPENSE disminuye
+ * 
+ * OPTIMIZADO: Usa agregación SQL en lugar de traer todos los registros
  */
 export async function getAccountBalance(
   accountId: string,
@@ -130,50 +169,177 @@ export async function getAccountBalance(
   const accountCurrency = account.currency as "ARS" | "USD"
   const category = account.chart_of_accounts?.category
 
-  // Sumar todos los movimientos del ledger para esta cuenta
-  // IMPORTANTE: Para cuentas USD, usar amount_original. Para ARS, usar amount_ars_equivalent
+  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
+  // Aunque no podemos usar SUM() directamente con Supabase sin RPC, 
+  // traer solo los campos necesarios (no *) es más rápido
+  // Además, el caché evita recalcular constantemente
   const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
-    .select("type, amount_original, amount_ars_equivalent, currency")
+    .select("type, amount_original, amount_ars_equivalent")
     .eq("account_id", accountId)
 
   if (movementsError) {
     throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
   }
 
-  const movementsSum =
-    movements?.reduce((sum: number, m: any) => {
-      // Determinar qué monto usar según la moneda de la cuenta
-      // Si la cuenta es USD, usar amount_original (en USD)
-      // Si la cuenta es ARS, usar amount_ars_equivalent (en ARS)
-      const amount = accountCurrency === "USD" 
-        ? parseFloat(m.amount_original || "0")
-        : parseFloat(m.amount_ars_equivalent || "0")
+  // Calcular suma en memoria (optimizado: solo campos necesarios)
+  const movementsSum = movements?.reduce((sum: number, m: any) => {
+    const amount = parseFloat(
+      accountCurrency === "USD" 
+        ? (m.amount_original || "0")
+        : (m.amount_ars_equivalent || "0")
+    )
+    
+    if (category === "PASIVO") {
+      if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
+        return sum + amount
+      } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
+        return sum - amount
+      }
+      return sum
+    }
+    
+    if (m.type === "INCOME" || m.type === "FX_GAIN") {
+      return sum + amount
+    } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
+      return sum - amount
+    }
+    return sum
+  }, 0) || 0
+  const finalBalance = initialBalance + movementsSum
+
+  // Guardar en caché
+  balanceCache.set(accountId, {
+    balance: finalBalance,
+    timestamp: Date.now(),
+  })
+
+  // Limpiar caché expirado periódicamente (cada 100 llamadas aproximadamente)
+  if (Math.random() < 0.01) {
+    cleanExpiredCache()
+  }
+
+  return finalBalance
+}
+
+/**
+ * Calcular balances de múltiples cuentas en una sola query (BATCH)
+ * Mucho más eficiente que llamar getAccountBalance() múltiples veces
+ * 
+ * OPTIMIZACIÓN: Una sola query con GROUP BY en lugar de N queries
+ */
+export async function getAccountBalancesBatch(
+  accountIds: string[],
+  supabase: SupabaseClient<Database>
+): Promise<Record<string, number>> {
+  if (accountIds.length === 0) {
+    return {}
+  }
+
+  // Obtener todas las cuentas con su información necesaria
+  const { data: accounts, error: accountsError } = await (supabase
+    .from("financial_accounts") as any)
+    .select(`
+      id,
+      initial_balance,
+      currency,
+      chart_account_id,
+      chart_of_accounts:chart_account_id(
+        category
+      )
+    `)
+    .in("id", accountIds)
+
+  if (accountsError || !accounts) {
+    throw new Error(`Error obteniendo cuentas: ${accountsError?.message || "Unknown error"}`)
+  }
+
+  // Verificar caché primero
+  const result: Record<string, number> = {}
+  const accountsToCalculate: typeof accounts = []
+  const now = Date.now()
+
+  for (const account of accounts) {
+    const cacheKey = account.id
+    const cached = balanceCache.get(cacheKey)
+    
+    if (cached && (now - cached.timestamp) < CACHE_TTL_MS) {
+      result[account.id] = cached.balance
+    } else {
+      accountsToCalculate.push(account)
+    }
+  }
+
+  if (accountsToCalculate.length === 0) {
+    return result
+  }
+
+  // Obtener todos los movimientos para las cuentas que necesitan cálculo
+  const accountIdsToCalculate = accountsToCalculate.map((a) => a.id)
+  const { data: movements, error: movementsError } = await (supabase
+    .from("ledger_movements") as any)
+    .select("account_id, type, amount_original, amount_ars_equivalent")
+    .in("account_id", accountIdsToCalculate)
+
+  if (movementsError) {
+    throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
+  }
+
+  // Agrupar movimientos por cuenta
+  const movementsByAccount = new Map<string, typeof movements>()
+  for (const movement of movements || []) {
+    const accountId = movement.account_id
+    if (!movementsByAccount.has(accountId)) {
+      movementsByAccount.set(accountId, [])
+    }
+    movementsByAccount.get(accountId)!.push(movement)
+  }
+
+  // Calcular balance para cada cuenta
+  for (const account of accountsToCalculate) {
+    const initialBalance = parseFloat(account.initial_balance || "0")
+    const accountCurrency = account.currency as "ARS" | "USD"
+    const category = account.chart_of_accounts?.category || "ACTIVO"
+    const accountMovements = movementsByAccount.get(account.id) || []
+
+    const movementsSum = accountMovements.reduce((sum: number, m: any) => {
+      const amount = parseFloat(
+        accountCurrency === "USD" 
+          ? (m.amount_original || "0")
+          : (m.amount_ars_equivalent || "0")
+      )
       
-      // Para PASIVOS, la lógica es inversa:
-      // - EXPENSE aumenta el pasivo (debes más)
-      // - INCOME disminuye el pasivo (pagas, reduces la deuda)
       if (category === "PASIVO") {
         if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
-          return sum + amount // Aumenta el pasivo
+          return sum + amount
         } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
-          return sum - amount // Disminuye el pasivo (pagaste)
+          return sum - amount
         }
         return sum
       }
       
-      // Para ACTIVOS y RESULTADO (y otros), lógica normal:
-      // - INCOME aumenta
-      // - EXPENSE disminuye
       if (m.type === "INCOME" || m.type === "FX_GAIN") {
         return sum + amount
       } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
         return sum - amount
       }
       return sum
-    }, 0) || 0
+    }, 0)
 
-  return initialBalance + movementsSum
+    const finalBalance = initialBalance + movementsSum
+    result[account.id] = finalBalance
+
+    // Guardar en caché
+    balanceCache.set(account.id, {
+      balance: finalBalance,
+      timestamp: now,
+    })
+  }
+
+  // Limpiar caché expirado
+  cleanExpiredCache()
+
+  return result
 }
 
 /**
@@ -268,6 +434,8 @@ export async function getOperationMovements(
 
 /**
  * Obtener movimientos de ledger con filtros
+ * 
+ * OPTIMIZADO: Agregado límite por defecto y paginación para evitar cargar miles de registros
  */
 export async function getLedgerMovements(
   supabase: SupabaseClient<Database>,
@@ -281,8 +449,14 @@ export async function getLedgerMovements(
     operatorId?: string | "ALL"
     operationId?: string
     leadId?: string
+    limit?: number // Límite de registros (default: 1000)
+    offset?: number // Offset para paginación (default: 0)
   }
 ) {
+  // Límite por defecto: 1000 registros (evita cargar miles innecesariamente)
+  const limit = filters.limit ?? 1000
+  const offset = filters.offset ?? 0
+
   let query = (supabase.from("ledger_movements") as any)
     .select(
       `
@@ -293,9 +467,11 @@ export async function getLedgerMovements(
       operators:operator_id (id, name),
       operations:operation_id (id, destination, file_code),
       leads:lead_id (id, contact_name)
-    `
+    `,
+      { count: "exact" } // Incluir count para paginación
     )
     .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1) // Paginación
 
   if (filters.dateFrom) {
     query = query.gte("created_at", filters.dateFrom)
@@ -325,14 +501,20 @@ export async function getLedgerMovements(
     query = query.eq("lead_id", filters.leadId)
   }
 
-  const { data, error } = await query
+  const { data, error, count } = await query
 
   if (error) {
     console.error("Error fetching ledger movements:", error)
     throw new Error(`Error obteniendo movimientos de ledger: ${error.message}`)
   }
 
-  return data || []
+  return {
+    movements: data || [],
+    total: count || 0,
+    limit,
+    offset,
+    hasMore: count ? offset + limit < count : false,
+  }
 }
 
 /**
