@@ -123,8 +123,8 @@ export function LedgerTable({ filters }: LedgerTableProps) {
             <TableHead>Fecha</TableHead>
             <TableHead>Tipo</TableHead>
             <TableHead>Concepto</TableHead>
-            <TableHead>Monto Original</TableHead>
-            <TableHead>ARS Equivalente</TableHead>
+            <TableHead className="text-right">Monto Original</TableHead>
+            <TableHead className="text-right">ARS Equivalente</TableHead>
             <TableHead>Cuenta</TableHead>
             <TableHead>Operación</TableHead>
             <TableHead>Vendedor</TableHead>
@@ -142,7 +142,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                 </Badge>
               </TableCell>
               <TableCell className="max-w-xs truncate">{movement.concept}</TableCell>
-              <TableCell>
+              <TableCell className="text-right">
                 {formatCurrency(movement.amount_original, movement.currency)}
                 {movement.exchange_rate && movement.currency === "USD" && (
                   <span className="text-xs text-muted-foreground ml-1">
@@ -150,7 +150,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                   </span>
                 )}
               </TableCell>
-              <TableCell className="font-medium">
+              <TableCell className="font-medium text-right">
                 {formatCurrency(movement.amount_ars_equivalent, "ARS")}
               </TableCell>
               <TableCell>

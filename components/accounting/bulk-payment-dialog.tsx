@@ -531,11 +531,11 @@ export function BulkPaymentDialog({
                           />
                         </TableHead>
                         <TableHead>Operación</TableHead>
-                        <TableHead>Monto Total</TableHead>
-                        <TableHead>Pagado</TableHead>
-                        <TableHead>Pendiente</TableHead>
+                        <TableHead className="text-right">Monto Total</TableHead>
+                        <TableHead className="text-right">Pagado</TableHead>
+                        <TableHead className="text-right">Pendiente</TableHead>
                         <TableHead>Vencimiento</TableHead>
-                        <TableHead>Monto a Pagar</TableHead>
+                        <TableHead className="text-right">Monto a Pagar</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -570,19 +570,19 @@ export function BulkPaymentDialog({
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium text-right">
                               <div className="space-y-1">
                                 <div>{formatCurrency(payment.amount, payment.currency)}</div>
                                 <div className="text-xs text-muted-foreground">Total</div>
                               </div>
                             </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="text-muted-foreground text-right">
                               <div className="space-y-1">
                                 <div>{formatCurrency(paidAmount, payment.currency)}</div>
                                 <div className="text-xs">Pagado</div>
                               </div>
                             </TableCell>
-                            <TableCell className="font-medium text-orange-600">
+                            <TableCell className="font-medium text-orange-600 text-right">
                               <div className="space-y-1">
                                 <div>{formatCurrency(remaining, payment.currency)}</div>
                                 <div className="text-xs">Pendiente</div>
@@ -604,9 +604,9 @@ export function BulkPaymentDialog({
                                 )}
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="text-right">
                               {isSelected ? (
-                                <div className="space-y-1">
+                                <div className="space-y-1 flex flex-col items-end">
                                   <Input
                                     type="number"
                                     step="0.01"

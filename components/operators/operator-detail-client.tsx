@@ -205,9 +205,9 @@ export function OperatorDetailClient({
                       <TableHead>Destino</TableHead>
                       <TableHead>Fecha Salida</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead>Costo</TableHead>
+                      <TableHead className="text-right">Costo</TableHead>
                       <TableHead>Vendedor</TableHead>
-                      <TableHead>Acciones</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -239,7 +239,7 @@ export function OperatorDetailClient({
                               {op.status}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right">
                             {op.currency} {op.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell>{op.sellers?.name || "-"}</TableCell>
@@ -271,10 +271,10 @@ export function OperatorDetailClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha Vencimiento</TableHead>
-                      <TableHead>Monto</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
                       <TableHead>Moneda</TableHead>
                       <TableHead>Operación</TableHead>
-                      <TableHead>Acciones</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -290,7 +290,7 @@ export function OperatorDetailClient({
                           <TableCell>
                             {format(new Date(payment.date_due), "dd/MM/yyyy", { locale: es })}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right">
                             {payment.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                           </TableCell>
                           <TableCell>{payment.currency}</TableCell>

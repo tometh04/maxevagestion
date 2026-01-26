@@ -165,7 +165,7 @@ export function MovementsTable({
             <p className="text-xs text-muted-foreground">{movement.operations?.id || "-"}</p>
           </div>
         </TableCell>
-        <TableCell>
+        <TableCell className="text-right">
           {movement.currency} {movement.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
         </TableCell>
         <TableCell>{movement.users?.name || "-"}</TableCell>
@@ -184,7 +184,7 @@ export function MovementsTable({
             <TableHead>Tipo</TableHead>
             <TableHead>Categoría / Agencia</TableHead>
             <TableHead>Operación</TableHead>
-            <TableHead>Monto</TableHead>
+            <TableHead className="text-right">Monto</TableHead>
             <TableHead>Usuario</TableHead>
             <TableHead>Notas</TableHead>
           </TableRow>

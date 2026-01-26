@@ -279,7 +279,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       {
         accessorKey: "sale_amount_total",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Total Venta" />
+          <DataTableColumnHeader column={column} title="Total Venta" className="justify-end" />
         ),
         cell: ({ row }) => {
           return (
@@ -292,7 +292,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       {
         accessorKey: "paid",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" />
+          <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
         ),
         cell: ({ row }) => {
           return (
@@ -305,7 +305,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       {
         accessorKey: "debt",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Deuda" />
+          <DataTableColumnHeader column={column} title="Deuda" className="justify-end" />
         ),
         cell: ({ row }) => {
           return (
@@ -317,16 +317,18 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       },
       {
         id: "actions",
-        header: "Acciones",
+        header: () => <div className="text-right">Acciones</div>,
         enableHiding: false,
         cell: ({ row }) => {
           const op = row.original
           return (
-            <Button variant="ghost" size="sm" asChild>
-              <Link href={`/operations/${op.id}`}>
-                <Eye className="h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="text-right">
+              <Button variant="ghost" size="sm" asChild>
+                <Link href={`/operations/${op.id}`}>
+                  <Eye className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           )
         },
       },

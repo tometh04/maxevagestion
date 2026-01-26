@@ -448,10 +448,10 @@ export function OperationsTable({
       {
         accessorKey: "sale_amount_total",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Venta" />
+          <DataTableColumnHeader column={column} title="Venta" className="justify-end" />
         ),
         cell: ({ row }) => (
-          <div className="text-xs font-medium">
+          <div className="text-xs font-medium text-right">
             {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
           </div>
         ),
@@ -459,12 +459,12 @@ export function OperationsTable({
       {
         accessorKey: "paid_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Monto Cobrado" />
+          <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
         ),
         cell: ({ row }) => {
           const paid = row.original.paid_amount || 0
           return (
-            <div className="text-xs text-green-600 font-medium">
+            <div className="text-xs text-green-600 font-medium text-right">
               {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
             </div>
           )
@@ -473,14 +473,14 @@ export function OperationsTable({
       {
         accessorKey: "pending_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A cobrar" />
+          <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
         ),
         cell: ({ row }) => {
           const pending = row.original.pending_amount || 0
           const total = row.original.sale_amount_total || 0
           const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
           return (
-            <div className="text-xs text-orange-600 font-medium">
+            <div className="text-xs text-orange-600 font-medium text-right">
               {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
             </div>
           )
@@ -489,12 +489,12 @@ export function OperationsTable({
       {
         accessorKey: "operator_paid_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" />
+          <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
         ),
         cell: ({ row }) => {
           const operatorPaid = row.original.operator_paid_amount || 0
           return (
-            <div className="text-xs text-blue-600 font-medium">
+            <div className="text-xs text-blue-600 font-medium text-right">
               {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
             </div>
           )
@@ -503,14 +503,14 @@ export function OperationsTable({
       {
         accessorKey: "operator_pending_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A pagar" />
+          <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
         ),
         cell: ({ row }) => {
           const operatorPending = row.original.operator_pending_amount || 0
           const operatorCost = row.original.operator_cost || 0
           const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
           return (
-            <div className="text-xs text-red-600 font-medium">
+            <div className="text-xs text-red-600 font-medium text-right">
               {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
             </div>
           )
@@ -519,10 +519,10 @@ export function OperationsTable({
       {
         accessorKey: "margin_amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Margen" />
+          <DataTableColumnHeader column={column} title="Margen" className="justify-end" />
         ),
         cell: ({ row }) => (
-          <div className="text-xs">
+          <div className="text-xs text-right">
             <span className="font-medium">
               {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
             </span>

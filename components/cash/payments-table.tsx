@@ -212,10 +212,10 @@ export function PaymentsTable({
       {
         accessorKey: "amount",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Monto" />
+          <DataTableColumnHeader column={column} title="Monto" className="justify-end" />
         ),
         cell: ({ row }) => (
-          <div>
+          <div className="text-right">
             {row.original.currency}{" "}
             {row.original.amount.toLocaleString("es-AR", {
               minimumFractionDigits: 2,
