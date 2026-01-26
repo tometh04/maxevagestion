@@ -11,6 +11,7 @@ import {
   createLedgerMovement,
   getOrCreateDefaultAccount,
   calculateARSEquivalent,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
@@ -20,11 +21,11 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { commissionId, amount, currency, datePaid, method, notes } = body
+    const { commissionId, amount, currency, datePaid, method, notes, financial_account_id, exchange_rate } = body
 
-    if (!commissionId || !amount || !datePaid) {
+    if (!commissionId || !amount || !datePaid || !financial_account_id) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos: commissionId, amount, datePaid" },
+        { error: "Faltan campos requeridos: commissionId, amount, datePaid, financial_account_id" },
         { status: 400 }
       )
     }
@@ -62,31 +63,51 @@ export async function POST(request: Request) {
 
     const operation = commission.operations
 
-    // Obtener cuenta financiera por defecto
-    const accountType = currency === "USD" ? "USD" : "CASH"
-    const accountId = await getOrCreateDefaultAccount(
-      accountType,
-      currency as "ARS" | "USD",
-      user.id,
-      supabase
-    )
+    // Validar que la cuenta financiera existe
+    const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
+      .select("id, name, currency, is_active")
+      .eq("id", financial_account_id)
+      .eq("is_active", true)
+      .single()
+
+    if (accountError || !financialAccount) {
+      return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
+    }
+
+    // Validar que la moneda de la cuenta coincide con la de la comisión
+    if (financialAccount.currency !== currency) {
+      return NextResponse.json({
+        error: `La cuenta financiera debe estar en ${currency}`,
+      }, { status: 400 })
+    }
+
+    const accountId = financial_account_id
 
     // Calcular ARS equivalent
-    let exchangeRate: number | null = null
+    // Si currency = USD, exchange_rate es obligatorio (ya validado en createLedgerMovement)
+    // Si currency = ARS, exchange_rate puede ser null o proporcionado para conversión
+    let exchangeRate: number | null = exchange_rate ? parseFloat(exchange_rate.toString()) : null
+    
     if (currency === "USD") {
-      const rateDate = datePaid ? new Date(datePaid) : new Date()
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-      
-      // Si no hay tasa para esa fecha, usar la más reciente disponible
+      // Para USD, siempre necesitamos tipo de cambio
       if (!exchangeRate) {
-        exchangeRate = await getLatestExchangeRate(supabase)
+        const rateDate = datePaid ? new Date(datePaid) : new Date()
+        exchangeRate = await getExchangeRate(supabase, rateDate)
+        
+        if (!exchangeRate) {
+          exchangeRate = await getLatestExchangeRate(supabase)
+        }
+        
+        if (!exchangeRate) {
+          return NextResponse.json(
+            { error: "Tipo de cambio requerido para comisiones en USD" },
+            { status: 400 }
+          )
+        }
       }
-      
-      // Fallback: si aún no hay tasa, usar 1000 como último recurso
-      if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-        exchangeRate = 1000
-      }
+    } else if (currency === "ARS" && exchange_rate) {
+      // Si es ARS y se proporcionó TC, usarlo (para casos especiales)
+      exchangeRate = parseFloat(exchange_rate.toString())
     }
     
     const amountARS = calculateARSEquivalent(
@@ -94,6 +115,22 @@ export async function POST(request: Request) {
       currency as "ARS" | "USD",
       exchangeRate
     )
+
+    // Validar saldo suficiente (NUNCA permitir saldo negativo)
+    const amountToCheck = parseFloat(amount)
+    const balanceCheck = await validateSufficientBalance(
+      accountId,
+      amountToCheck,
+      currency as "ARS" | "USD",
+      supabase
+    )
+    
+    if (!balanceCheck.valid) {
+      return NextResponse.json(
+        { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+        { status: 400 }
+      )
+    }
 
     // Crear ledger_movement COMMISSION
     // Esto automáticamente marcará la comisión como PAID (ver lib/accounting/ledger.ts)

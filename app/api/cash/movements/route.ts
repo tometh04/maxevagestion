@@ -5,6 +5,7 @@ import {
   createLedgerMovement,
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
@@ -137,6 +138,24 @@ export async function POST(request: Request) {
       currency as "ARS" | "USD",
       exchangeRate
     )
+
+    // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
+    if (type === "EXPENSE") {
+      const amountToCheck = Number(amount)
+      const balanceCheck = await validateSufficientBalance(
+        accountId,
+        amountToCheck,
+        currency as "ARS" | "USD",
+        supabase
+      )
+      
+      if (!balanceCheck.valid) {
+        return NextResponse.json(
+          { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+          { status: 400 }
+        )
+      }
+    }
 
     // Mapear type de cash_movement a ledger type
     const ledgerType = type === "INCOME" ? "INCOME" : "EXPENSE"

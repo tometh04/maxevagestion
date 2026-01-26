@@ -136,7 +136,7 @@ export function BulkPaymentDialog({
 
     const fetchFinancialAccounts = async () => {
       try {
-        const response = await fetch("/api/accounting/financial-accounts")
+        const response = await fetch("/api/accounting/financial-accounts?excludeAccountingOnly=true")
         if (!response.ok) throw new Error("Error al obtener cuentas")
 
         const data = await response.json()

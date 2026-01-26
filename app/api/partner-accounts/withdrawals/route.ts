@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import {
   getExchangeRate,
@@ -190,6 +191,21 @@ export async function POST(request: Request) {
       accountCurrency,
       exchangeRate
     )
+
+    // Validar saldo suficiente (NUNCA permitir saldo negativo)
+    const balanceCheck = await validateSufficientBalance(
+      account_id,
+      withdrawalAmountInAccountCurrency,
+      accountCurrency,
+      supabase
+    )
+    
+    if (!balanceCheck.valid) {
+      return NextResponse.json(
+        { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el retiro" },
+        { status: 400 }
+      )
+    }
 
     // Crear movimiento en ledger usando la función centralizada
     // IMPORTANTE: Usar la moneda de la cuenta, no la del retiro

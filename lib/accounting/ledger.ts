@@ -414,3 +414,67 @@ export async function getOrCreateDefaultAccount(
   return newAccount.id
 }
 
+/**
+ * Verificar si una cuenta financiera es una cuenta contable (Cuentas por Cobrar/Pagar)
+ * Estas cuentas NO deben aparecer en selecciones de pagos/ingresos/transferencias
+ */
+export async function isAccountingOnlyAccount(
+  accountId: string,
+  supabase: SupabaseClient<Database>
+): Promise<boolean> {
+  const { data: account, error } = await (supabase.from("financial_accounts") as any)
+    .select(`
+      chart_account_id,
+      chart_of_accounts:chart_account_id(
+        account_code
+      )
+    `)
+    .eq("id", accountId)
+    .single()
+
+  if (error || !account || !account.chart_account_id) {
+    return false
+  }
+
+  const accountCode = account.chart_of_accounts?.account_code
+  // Cuentas por Cobrar: 1.1.03, Cuentas por Pagar: 2.1.01
+  return accountCode === "1.1.03" || accountCode === "2.1.01"
+}
+
+/**
+ * Validar que una cuenta tiene saldo suficiente para un egreso
+ * NUNCA se permite saldo negativo en cuentas financieras
+ */
+export async function validateSufficientBalance(
+  accountId: string,
+  amount: number,
+  currency: "ARS" | "USD",
+  supabase: SupabaseClient<Database>
+): Promise<{ valid: boolean; currentBalance: number; error?: string }> {
+  const balance = await getAccountBalance(accountId, supabase)
+  
+  // Determinar qué monto usar según la moneda de la cuenta
+  const { data: account } = await (supabase.from("financial_accounts") as any)
+    .select("currency")
+    .eq("id", accountId)
+    .single()
+
+  if (!account) {
+    return { valid: false, currentBalance: 0, error: "Cuenta no encontrada" }
+  }
+
+  // Si la cuenta es USD y el monto es en ARS, necesitamos convertir
+  // Pero por ahora asumimos que amount ya está en la moneda correcta de la cuenta
+  // (validado en el endpoint antes de llamar esta función)
+  
+  if (balance < amount) {
+    return {
+      valid: false,
+      currentBalance: balance,
+      error: `Saldo insuficiente en cuenta. Disponible: ${balance.toFixed(2)} ${account.currency}, requerido: ${amount.toFixed(2)} ${account.currency}`,
+    }
+  }
+
+  return { valid: true, currentBalance: balance }
+}
+

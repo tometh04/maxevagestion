@@ -38,10 +38,35 @@ export async function DELETE(
       return NextResponse.json({ error: "La cuenta ya está eliminada" }, { status: 400 })
     }
 
+    // Verificar cuántas cuentas activas quedan
+    const { data: activeAccounts, error: countError } = await (supabase.from("financial_accounts") as any)
+      .select("id", { count: "exact" })
+      .eq("is_active", true)
+    
+    const activeCount = activeAccounts?.length || 0
+    const isLastAccount = activeCount === 1
+
     const balance = await getAccountBalance(id, supabase)
     let targetName: string | null = null
 
-    if (Math.abs(balance) > 1e-6) {
+    // Si es la última cuenta, se permite eliminar todo (incluyendo movimientos)
+    if (isLastAccount) {
+      console.log(`⚠️ Última cuenta financiera. Se eliminarán todos los movimientos contables.`)
+      
+      // Eliminar TODOS los movimientos contables del sistema
+      // Usar una condición que siempre sea verdadera (id IS NOT NULL siempre es true para registros válidos)
+      const { error: deleteMovementsError } = await (supabase.from("ledger_movements") as any)
+        .delete()
+        .not("id", "is", null) // Condición siempre verdadera para borrar todo
+      
+      if (deleteMovementsError) {
+        console.error("Error eliminando movimientos contables:", deleteMovementsError)
+        return NextResponse.json({ error: "Error al eliminar movimientos contables" }, { status: 500 })
+      }
+      
+      console.log(`✅ Todos los movimientos contables eliminados`)
+    } else if (Math.abs(balance) > 1e-6) {
+      // Si NO es la última cuenta y tiene saldo, requiere transferencia
       if (!transfer_to_account_id) {
         return NextResponse.json(
           {
@@ -168,18 +193,32 @@ export async function DELETE(
       }
     }
 
-    const { error: updateError } = await (supabase.from("financial_accounts") as any)
-      .update({ is_active: false })
+    // HARD DELETE: Eliminar la cuenta completamente (no soft-delete)
+    // Primero eliminar movimientos de ledger que referencian esta cuenta
+    const { error: deleteLedgerError } = await (supabase.from("ledger_movements") as any)
+      .delete()
+      .eq("account_id", id)
+    
+    if (deleteLedgerError) {
+      console.error("Error eliminando movimientos de ledger:", deleteLedgerError)
+      return NextResponse.json({ error: "Error al eliminar movimientos de la cuenta" }, { status: 500 })
+    }
+
+    // Eliminar la cuenta
+    const { error: deleteError } = await (supabase.from("financial_accounts") as any)
+      .delete()
       .eq("id", id)
 
-    if (updateError) {
-      console.error("Error soft-deleting account:", updateError)
+    if (deleteError) {
+      console.error("Error eliminando cuenta:", deleteError)
       return NextResponse.json({ error: "Error al eliminar la cuenta" }, { status: 500 })
     }
 
     return NextResponse.json({
       success: true,
-      message: targetName
+      message: isLastAccount
+        ? "Última cuenta eliminada. Todos los movimientos contables fueron eliminados."
+        : targetName
         ? `Cuenta eliminada. Saldo transferido a "${targetName}".`
         : "Cuenta eliminada correctamente.",
     })

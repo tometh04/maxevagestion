@@ -95,7 +95,7 @@ export function PayRecurringExpenseDialog({
     if (open) {
       const fetchFinancialAccounts = async () => {
         try {
-          const response = await fetch("/api/accounting/financial-accounts")
+          const response = await fetch("/api/accounting/financial-accounts?excludeAccountingOnly=true")
           if (response.ok) {
             const data = await response.json()
             const accounts = (data.accounts || []).filter(

@@ -5,6 +5,7 @@ import {
   createLedgerMovement,
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import {
   getExchangeRate,
@@ -195,6 +196,24 @@ export async function POST(request: Request) {
         // Validar que la moneda de la cuenta coincide
         if (selectedAccount.currency !== currency) {
           return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+        }
+
+        // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
+        if (direction === "EXPENSE" || payer_type === "OPERATOR") {
+          const amountToCheck = parseFloat(amount)
+          const balanceCheck = await validateSufficientBalance(
+            accountId,
+            amountToCheck,
+            currency as "ARS" | "USD",
+            supabase
+          )
+          
+          if (!balanceCheck.valid) {
+            return NextResponse.json(
+              { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+              { status: 400 }
+            )
+          }
         }
 
         console.log(`💰 Creando movimiento contable en cuenta seleccionada:`, {

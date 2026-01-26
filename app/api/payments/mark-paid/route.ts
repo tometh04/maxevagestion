@@ -5,6 +5,7 @@ import {
   createLedgerMovement,
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
 import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
@@ -425,6 +426,24 @@ export async function POST(request: Request) {
     const ledgerMethod = paymentData.method 
       ? (methodMap[paymentData.method] || "OTHER")
       : "CASH"
+
+    // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
+    if (paymentData.direction === "EXPENSE" || paymentData.payer_type === "OPERATOR") {
+      const amountToCheck = parseFloat(paymentData.amount)
+      const balanceCheck = await validateSufficientBalance(
+        accountId,
+        amountToCheck,
+        paymentData.currency as "ARS" | "USD",
+        supabase
+      )
+      
+      if (!balanceCheck.valid) {
+        return NextResponse.json(
+          { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+          { status: 400 }
+        )
+      }
+    }
 
     // Determinar tipo de ledger movement
     const ledgerType =

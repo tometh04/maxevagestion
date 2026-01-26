@@ -5,6 +5,7 @@ import {
   createLedgerMovement,
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  validateSufficientBalance,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate } from "@/lib/accounting/exchange-rates"
 import { calculateNextDueDate } from "@/lib/accounting/recurring-payments"
@@ -113,7 +114,22 @@ export async function POST(request: Request) {
       ledgerMethod = "MP"
     }
 
-    // 6. Crear movimiento en ledger (EXPENSE) en la cuenta seleccionada
+    // 6. Validar saldo suficiente (NUNCA permitir saldo negativo)
+    const balanceCheck = await validateSufficientBalance(
+      financial_account_id,
+      paymentAmount,
+      paymentCurrency,
+      supabase
+    )
+    
+    if (!balanceCheck.valid) {
+      return NextResponse.json(
+        { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+        { status: 400 }
+      )
+    }
+
+    // 7. Crear movimiento en ledger (EXPENSE) en la cuenta seleccionada
     // Este movimiento impacta directamente en el balance de la cuenta financiera
     const { id: ledgerMovementId } = await createLedgerMovement(
       {
