@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency } from "@/lib/currency"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
@@ -46,6 +53,7 @@ interface AccountBalance {
   currency: string
   current_balance: number
   is_active?: boolean
+  agency_id?: string | null
 }
 
 interface DailyBalance {
@@ -99,6 +107,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       return undefined
     }
   })
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>("ALL")
   const [activeTab, setActiveTab] = useState("resumen")
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
@@ -118,9 +127,12 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
 
       // Obtener evolución diaria de la caja
       if (!dateFrom || !dateTo) return
-      const dailyResponse = await fetch(
-        `/api/cash/daily-balance?dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
-      )
+      const dailyParams = new URLSearchParams({
+        dateFrom: format(dateFrom, "yyyy-MM-dd"),
+        dateTo: format(dateTo, "yyyy-MM-dd"),
+      })
+      if (selectedAgencyId !== "ALL") dailyParams.set("agencyId", selectedAgencyId)
+      const dailyResponse = await fetch(`/api/cash/daily-balance?${dailyParams.toString()}`)
       if (dailyResponse.ok) {
         const dailyData = await dailyResponse.json()
         setDailyBalances(dailyData.dailyBalances || [])
@@ -130,7 +142,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, selectedAgencyId])
 
   const fetchAccountMovements = useCallback(async (accountId: string) => {
     if (!dateFrom || !dateTo) return
@@ -155,29 +167,37 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     fetchSummary()
   }, [fetchSummary])
 
-  // Calcular KPIs
+  // Filtrar cuentas por agencia
+  const filteredAccounts = useMemo(() => {
+    if (selectedAgencyId === "ALL") return accounts
+    return accounts.filter(
+      (acc) => (acc.agency_id ?? null) === selectedAgencyId
+    )
+  }, [accounts, selectedAgencyId])
+
+  // Calcular KPIs (sobre cuentas filtradas)
   const kpis = useMemo(() => {
-    const efectivoARS = accounts
+    const efectivoARS = filteredAccounts
       .filter((acc) => acc.type === "CASH_ARS")
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
-    const efectivoUSD = accounts
+    const efectivoUSD = filteredAccounts
       .filter((acc) => acc.type === "CASH_USD")
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
-    const cajaAhorroARS = accounts
+    const cajaAhorroARS = filteredAccounts
       .filter((acc) => acc.type === "SAVINGS_ARS")
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
-    const cajaAhorroUSD = accounts
+    const cajaAhorroUSD = filteredAccounts
       .filter((acc) => acc.type === "SAVINGS_USD")
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
-    const bancosARS = accounts
+    const bancosARS = filteredAccounts
       .filter((acc) => (acc.type === "CHECKING_ARS" || acc.type === "SAVINGS_ARS"))
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
-    const bancosUSD = accounts
+    const bancosUSD = filteredAccounts
       .filter((acc) => (acc.type === "CHECKING_USD" || acc.type === "SAVINGS_USD"))
       .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
 
@@ -194,20 +214,20 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       totalARS,
       totalUSD,
     }
-  }, [accounts])
+  }, [filteredAccounts])
 
-  // Filtrar cuentas por moneda
+  // Filtrar cuentas por moneda (usando cuentas ya filtradas por agencia)
   const usdAccounts = useMemo(() => {
-    return accounts
+    return filteredAccounts
       .filter(acc => acc.currency === "USD" && acc.is_active !== false)
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
-  }, [accounts])
+  }, [filteredAccounts])
 
   const arsAccounts = useMemo(() => {
-    return accounts
+    return filteredAccounts
       .filter(acc => acc.currency === "ARS" && acc.is_active !== false)
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
-  }, [accounts])
+  }, [filteredAccounts])
 
   // Calcular ingresos y egresos por cuenta
   const calculateAccountStats = useCallback((accountId: string) => {
@@ -262,8 +282,28 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       </div>
 
       <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="space-y-2 flex-1">
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="agency-filter-caja" className="text-sm font-medium">Agencia</Label>
+            <Select
+              value={selectedAgencyId}
+              onValueChange={(v) => {
+                setSelectedAgencyId(v)
+                setAccountMovements({})
+              }}
+            >
+              <SelectTrigger id="agency-filter-caja" className="w-[220px]">
+                <SelectValue placeholder="Selecciona una agencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las agencias</SelectItem>
+                {agencies.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2 flex-1 min-w-[200px]">
             <Label className="text-sm font-medium">Rango de fechas</Label>
             <div className="flex items-center gap-2">
               <div className="space-y-1.5 flex-1">
@@ -299,7 +339,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               </div>
             </div>
           </div>
-          <div className="ml-4">
+          <div className="shrink-0">
             <button
               onClick={async () => {
                 if (confirm("¿Sincronizar pagos pagados con movimientos de caja? Esto creará movimientos para todos los pagos que no tienen movimiento asociado.")) {

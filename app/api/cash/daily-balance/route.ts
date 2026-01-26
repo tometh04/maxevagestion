@@ -11,15 +11,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const agencyId = searchParams.get("agencyId") || null
 
     if (!dateFrom || !dateTo) {
       return NextResponse.json({ error: "Faltan parámetros dateFrom y dateTo" }, { status: 400 })
     }
 
-    // Obtener todas las cuentas financieras de efectivo y caja de ahorro
-    const { data: accounts } = await (supabase.from("financial_accounts") as any)
+    // Obtener cuentas financieras de efectivo y caja de ahorro (opcionalmente filtradas por agencia)
+    let query = (supabase.from("financial_accounts") as any)
       .select("*")
       .in("type", ["CASH_ARS", "CASH_USD", "SAVINGS_ARS", "SAVINGS_USD"])
+    if (agencyId) {
+      query = query.eq("agency_id", agencyId)
+    }
+    const { data: accounts } = await query
 
     if (!accounts || accounts.length === 0) {
       return NextResponse.json({ dailyBalances: [] })
