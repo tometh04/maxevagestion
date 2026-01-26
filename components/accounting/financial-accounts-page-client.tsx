@@ -88,6 +88,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [loading, setLoading] = useState(true)
   const [accounts, setAccounts] = useState<any[]>([])
   const [agencies, setAgencies] = useState<any[]>(initialAgencies)
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>("ALL")
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
@@ -340,6 +341,12 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const accountsByAgency = accounts.reduce((acc, account) => {
     // Asegurar que agency_id esté disponible (puede venir directamente o desde agencies)
     const agencyId = account.agency_id || (account.agencies as any)?.id || "sin-agencia"
+    
+    // Filtrar por agencia seleccionada
+    if (selectedAgencyId !== "ALL" && agencyId !== selectedAgencyId) {
+      return acc
+    }
+    
     if (!acc[agencyId]) {
       acc[agencyId] = {
         agency: agencies.find((a) => a.id === agencyId) || (account.agencies as any),
@@ -758,6 +765,35 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
           </Dialog>
         </div>
       </div>
+
+      {/* Filtro de agencia */}
+      <Card>
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-4">
+            <Label htmlFor="agency-filter" className="text-sm font-medium whitespace-nowrap">
+              Filtrar por agencia:
+            </Label>
+            <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
+              <SelectTrigger id="agency-filter" className="w-[250px]">
+                <SelectValue placeholder="Selecciona una agencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las agencias</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedAgencyId !== "ALL" && (
+              <p className="text-sm text-muted-foreground">
+                Mostrando cuentas de {agencies.find((a) => a.id === selectedAgencyId)?.name || "la agencia seleccionada"}
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Tabla de cuentas por agencia */}
       {Object.keys(accountsByAgency).length === 0 ? (
