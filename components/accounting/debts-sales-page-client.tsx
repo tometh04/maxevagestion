@@ -198,126 +198,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     })
   }, [debtors, customerFilter])
 
-  // Exportar a Excel
-  const handleExportExcel = () => {
-    const workbook = XLSX.utils.book_new()
-
-    // Hoja 1: Resumen por Cliente (con vendedor promedio o principal)
-    const summaryData = filteredDebtors.map((debtor) => {
-      const customerName = extractCustomerName(
-        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
-          debtor.customer.first_name ||
-          ""
-      )
-      // Obtener vendedores únicos de las operaciones
-      const sellers = [...new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean))]
-      return {
-        Cliente: customerName,
-        "Documento": debtor.customer.document_number || "",
-        "Email": debtor.customer.email || "",
-        "Teléfono": debtor.customer.phone || "",
-        "Vendedores": sellers.join(", ") || "Sin vendedor",
-        "Deuda Total (USD)": debtor.totalDebt,
-        "Cantidad Operaciones": debtor.operationsWithDebt.length,
-      }
-    })
-
-    const summarySheet = XLSX.utils.json_to_sheet(summaryData)
-    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Cliente")
-
-    // Hoja 2: Detalle de Operaciones (con vendedor)
-    const detailData: any[] = []
-    filteredOperations.forEach((op) => {
-      detailData.push({
-        Cliente: op.customer_name,
-        "Documento": op.customer_document || "",
-        "Email": op.customer_email || "",
-        "Teléfono": op.customer_phone || "",
-        "Código Operación": op.file_code || "-",
-        Destino: op.destination,
-        Vendedor: op.seller_name || "Sin vendedor",
-        "Fecha Salida": op.departure_date
-          ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
-          : "-",
-        "Total Venta (USD)": op.sale_amount_total,
-        "Pagado (USD)": op.paid,
-        "Deuda (USD)": op.debt,
-      })
-    })
-
-    const detailSheet = XLSX.utils.json_to_sheet(detailData)
-    XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Operaciones")
-
-    // Guardar archivo
-    const fileName = `deudores-por-ventas-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
-    XLSX.writeFile(workbook, fileName)
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-6">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/dashboard">Dashboard</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/accounting/ledger">Contabilidad</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbPage>Deudores por Ventas</BreadcrumbPage>
-          </BreadcrumbList>
-        </Breadcrumb>
-
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <Breadcrumb>
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/dashboard">Dashboard</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/accounting/ledger">Contabilidad</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbPage>Deudores por Ventas</BreadcrumbPage>
-          </BreadcrumbList>
-        </Breadcrumb>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600">
-              <AlertCircle className="h-5 w-5" />
-              <p>{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
-
-  const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
-  const totalDebtors = filteredDebtors.length
-
-  // Definir columnas para DataTable
+  // Definir columnas para DataTable (ANTES de cualquier return condicional)
   const columns: ColumnDef<DebtorOperation>[] = useMemo(
     () => [
       {
@@ -453,6 +334,125 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     ],
     []
   )
+
+  // Exportar a Excel
+  const handleExportExcel = () => {
+    const workbook = XLSX.utils.book_new()
+
+    // Hoja 1: Resumen por Cliente (con vendedor promedio o principal)
+    const summaryData = filteredDebtors.map((debtor) => {
+      const customerName = extractCustomerName(
+        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
+          debtor.customer.first_name ||
+          ""
+      )
+      // Obtener vendedores únicos de las operaciones
+      const sellers = [...new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean))]
+      return {
+        Cliente: customerName,
+        "Documento": debtor.customer.document_number || "",
+        "Email": debtor.customer.email || "",
+        "Teléfono": debtor.customer.phone || "",
+        "Vendedores": sellers.join(", ") || "Sin vendedor",
+        "Deuda Total (USD)": debtor.totalDebt,
+        "Cantidad Operaciones": debtor.operationsWithDebt.length,
+      }
+    })
+
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData)
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Cliente")
+
+    // Hoja 2: Detalle de Operaciones (con vendedor)
+    const detailData: any[] = []
+    filteredOperations.forEach((op) => {
+      detailData.push({
+        Cliente: op.customer_name,
+        "Documento": op.customer_document || "",
+        "Email": op.customer_email || "",
+        "Teléfono": op.customer_phone || "",
+        "Código Operación": op.file_code || "-",
+        Destino: op.destination,
+        Vendedor: op.seller_name || "Sin vendedor",
+        "Fecha Salida": op.departure_date
+          ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+          : "-",
+        "Total Venta (USD)": op.sale_amount_total,
+        "Pagado (USD)": op.paid,
+        "Deuda (USD)": op.debt,
+      })
+    })
+
+    const detailSheet = XLSX.utils.json_to_sheet(detailData)
+    XLSX.utils.book_append_sheet(workbook, detailSheet, "Detalle Operaciones")
+
+    // Guardar archivo
+    const fileName = `deudores-por-ventas-${format(new Date(), "yyyy-MM-dd", { locale: es })}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/accounting/ledger">Contabilidad</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbPage>Deudores por Ventas</BreadcrumbPage>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Breadcrumb>
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/dashboard">Dashboard</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/accounting/ledger">Contabilidad</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbPage>Deudores por Ventas</BreadcrumbPage>
+          </BreadcrumbList>
+        </Breadcrumb>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-red-600">
+              <AlertCircle className="h-5 w-5" />
+              <p>{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
+  const totalDebtors = filteredDebtors.length
 
   return (
     <div className="space-y-6">
