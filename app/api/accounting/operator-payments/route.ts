@@ -116,7 +116,30 @@ export async function GET(request: Request) {
       })
     }
 
-    return NextResponse.json({ payments: filteredPayments })
+    // Enriquecer pagos con nombre del pasajero principal
+    const enrichedPayments = await Promise.all(
+      filteredPayments.map(async (payment: any) => {
+        if (payment.operations?.id) {
+          const { data: mainCustomer } = await (supabase.from("operation_customers") as any)
+            .select(`
+              customers:customer_id (first_name, last_name)
+            `)
+            .eq("operation_id", payment.operations.id)
+            .eq("role", "MAIN")
+            .maybeSingle()
+          
+          if (mainCustomer?.customers) {
+            const c = mainCustomer.customers as any
+            const firstName = c.first_name || ""
+            const lastName = c.last_name || ""
+            payment.operations.main_passenger_name = `${firstName} ${lastName}`.trim()
+          }
+        }
+        return payment
+      })
+    )
+
+    return NextResponse.json({ payments: enrichedPayments })
   } catch (error) {
     console.error("Error in GET /api/accounting/operator-payments:", error)
     return NextResponse.json({ error: "Error al obtener pagos a operadores" }, { status: 500 })

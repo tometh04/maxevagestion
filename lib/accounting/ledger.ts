@@ -14,6 +14,39 @@ import { createServerClient } from "@/lib/supabase/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
+/**
+ * Obtener el nombre del pasajero principal de una operación
+ */
+export async function getMainPassengerName(
+  operationId: string | null | undefined,
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  if (!operationId) return null
+
+  try {
+    const { data: mainCustomer } = await (supabase.from("operation_customers") as any)
+      .select(`
+        customers:customer_id (first_name, last_name)
+      `)
+      .eq("operation_id", operationId)
+      .eq("role", "MAIN")
+      .single()
+
+    if (mainCustomer?.customers) {
+      const c = mainCustomer.customers as any
+      const firstName = c.first_name || ""
+      const lastName = c.last_name || ""
+      const fullName = `${firstName} ${lastName}`.trim()
+      return fullName || null
+    }
+
+    return null
+  } catch (error) {
+    console.error("Error obteniendo nombre del pasajero principal:", error)
+    return null
+  }
+}
+
 // Caché simple en memoria para balances (evita recalcular constantemente)
 interface BalanceCacheEntry {
   balance: number

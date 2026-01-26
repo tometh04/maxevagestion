@@ -6,6 +6,7 @@ import {
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
   validateSufficientBalance,
+  getMainPassengerName,
 } from "@/lib/accounting/ledger"
 import {
   getExchangeRate,
@@ -243,6 +244,10 @@ export async function POST(request: Request) {
           ? "INCOME" 
           : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
 
+        // 6.1. Obtener nombre del pasajero principal para el concepto
+        const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
+        const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
+        
         // 7. Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
         // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
         const { id: ledgerMovementId } = await createLedgerMovement(
@@ -251,8 +256,12 @@ export async function POST(request: Request) {
             lead_id: null,
             type: ledgerType,
             concept: direction === "INCOME" 
-              ? `Pago de cliente recibido en cuenta ${selectedAccount.currency} - Op. ${operation_id?.slice(0, 8) || "N/A"}`
-              : `Pago a operador desde cuenta ${selectedAccount.currency} - Op. ${operation_id?.slice(0, 8) || "N/A"}`,
+              ? passengerName 
+                ? `${passengerName} (${operationCode})`
+                : `Pago de cliente recibido - Op. ${operationCode}`
+              : passengerName
+                ? `Pago a operador - ${passengerName} (${operationCode})`
+                : `Pago a operador - Op. ${operationCode}`,
             currency: currency as "ARS" | "USD",
             amount_original: parseFloat(amount),
             exchange_rate: exchangeRate,

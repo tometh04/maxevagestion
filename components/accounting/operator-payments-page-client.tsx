@@ -555,6 +555,11 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         <div className="text-xs text-muted-foreground">
                           {payment.operations?.destination || "-"}
                         </div>
+                        {payment.operations?.main_passenger_name && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {payment.operations.main_passenger_name}
+                          </div>
+                        )}
                       </TableCell>
                       <TableCell>{payment.operators?.name || "-"}</TableCell>
                       <TableCell className="font-medium">

@@ -108,6 +108,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   })
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("ALL")
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("ALL")
   const [activeTab, setActiveTab] = useState("resumen")
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
@@ -132,6 +133,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         dateTo: format(dateTo, "yyyy-MM-dd"),
       })
       if (selectedAgencyId !== "ALL") dailyParams.set("agencyId", selectedAgencyId)
+      if (selectedAccountId !== "ALL") dailyParams.set("accountId", selectedAccountId)
       const dailyResponse = await fetch(`/api/cash/daily-balance?${dailyParams.toString()}`)
       if (dailyResponse.ok) {
         const dailyData = await dailyResponse.json()
@@ -142,7 +144,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, selectedAgencyId])
+  }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId])
 
   const fetchAccountMovements = useCallback(async (accountId: string) => {
     if (!dateFrom || !dateTo) return
@@ -167,13 +169,19 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     fetchSummary()
   }, [fetchSummary])
 
-  // Filtrar cuentas por agencia
+  // Filtrar cuentas por agencia y cuenta individual
   const filteredAccounts = useMemo(() => {
-    if (selectedAgencyId === "ALL") return accounts
-    return accounts.filter(
-      (acc) => (acc.agency_id ?? null) === selectedAgencyId
-    )
-  }, [accounts, selectedAgencyId])
+    let filtered = accounts
+    if (selectedAgencyId !== "ALL") {
+      filtered = filtered.filter(
+        (acc) => (acc.agency_id ?? null) === selectedAgencyId
+      )
+    }
+    if (selectedAccountId !== "ALL") {
+      filtered = filtered.filter((acc) => acc.id === selectedAccountId)
+    }
+    return filtered
+  }, [accounts, selectedAgencyId, selectedAccountId])
 
   // Calcular KPIs (sobre cuentas filtradas)
   const kpis = useMemo(() => {
@@ -289,6 +297,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               value={selectedAgencyId}
               onValueChange={(v) => {
                 setSelectedAgencyId(v)
+                setSelectedAccountId("ALL") // Resetear cuenta cuando cambia agencia
                 setAccountMovements({})
               }}
             >
@@ -300,6 +309,30 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 {agencies.map((a) => (
                   <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="account-filter-caja" className="text-sm font-medium">Cuenta</Label>
+            <Select
+              value={selectedAccountId}
+              onValueChange={(v) => {
+                setSelectedAccountId(v)
+                setAccountMovements({})
+              }}
+            >
+              <SelectTrigger id="account-filter-caja" className="w-[220px]">
+                <SelectValue placeholder="Todas las cuentas" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas las cuentas</SelectItem>
+                {accounts
+                  .filter((acc) => selectedAgencyId === "ALL" || (acc.agency_id ?? null) === selectedAgencyId)
+                  .map((acc) => (
+                    <SelectItem key={acc.id} value={acc.id}>
+                      {acc.name} ({acc.currency})
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </div>

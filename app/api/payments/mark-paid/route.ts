@@ -6,6 +6,7 @@ import {
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
   validateSufficientBalance,
+  getMainPassengerName,
 } from "@/lib/accounting/ledger"
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
 import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
@@ -212,6 +213,12 @@ export async function POST(request: Request) {
               exchangeRate
             )
             
+            // Obtener nombre del pasajero para el concepto
+            const passengerNameForCpC = paymentData.operation_id 
+              ? await getMainPassengerName(paymentData.operation_id, supabase) 
+              : null
+            const operationCodeForCpC = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : ""
+
             // Crear movimiento INCOME en "Cuentas por Cobrar" para REDUCIR el activo
             // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
             await createLedgerMovement(
@@ -219,7 +226,9 @@ export async function POST(request: Request) {
                 operation_id: paymentData.operation_id || null,
                 lead_id: null,
                 type: "INCOME", // INCOME reduce el activo "Cuentas por Cobrar"
-                concept: `Cobro de cliente - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+                concept: passengerNameForCpC
+                  ? `${passengerNameForCpC} (${operationCodeForCpC})`
+                  : `Cobro de cliente - Op. ${operationCodeForCpC}`,
                 currency: paymentData.currency as "ARS" | "USD",
                 amount_original: parseFloat(paymentData.amount),
                 exchange_rate: exchangeRate,
@@ -280,6 +289,12 @@ export async function POST(request: Request) {
               exchangeRate
             )
             
+            // Obtener nombre del pasajero para el concepto
+            const passengerNameForCpP = paymentData.operation_id 
+              ? await getMainPassengerName(paymentData.operation_id, supabase) 
+              : null
+            const operationCodeForCpP = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : ""
+
             // Crear movimiento INCOME en "Cuentas por Pagar" para REDUCIR el pasivo
             // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
             await createLedgerMovement(
@@ -287,7 +302,9 @@ export async function POST(request: Request) {
                 operation_id: paymentData.operation_id || null,
                 lead_id: null,
                 type: "INCOME", // INCOME reduce el pasivo "Cuentas por Pagar"
-                concept: `Pago a operador - Operación ${paymentData.operation_id?.slice(0, 8) || ""}`,
+                concept: passengerNameForCpP
+                  ? `Pago a operador - ${passengerNameForCpP} (${operationCodeForCpP})`
+                  : `Pago a operador - Op. ${operationCodeForCpP}`,
                 currency: paymentData.currency as "ARS" | "USD",
                 amount_original: parseFloat(paymentData.amount),
                 exchange_rate: exchangeRate,
@@ -453,6 +470,12 @@ export async function POST(request: Request) {
         ? "OPERATOR_PAYMENT"
         : "EXPENSE"
 
+    // Obtener nombre del pasajero principal para el concepto
+    const passengerName = paymentData.operation_id 
+      ? await getMainPassengerName(paymentData.operation_id, supabase) 
+      : null
+    const operationCode = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : "N/A"
+
     // Crear ledger movement PRINCIPAL en la cuenta financiera seleccionada
     // Este es el movimiento que afecta directamente el balance de la cuenta seleccionada
     const { id: ledgerMovementId } = await createLedgerMovement(
@@ -462,8 +485,12 @@ export async function POST(request: Request) {
         type: ledgerType,
         concept:
           paymentData.direction === "INCOME"
-            ? `Pago de cliente recibido en cuenta ${financialAccount.currency}`
-            : `Pago a operador desde cuenta ${financialAccount.currency}`,
+            ? passengerName
+              ? `${passengerName} (${operationCode})`
+              : `Pago de cliente recibido - Op. ${operationCode}`
+            : passengerName
+              ? `Pago a operador - ${passengerName} (${operationCode})`
+              : `Pago a operador - Op. ${operationCode}`,
         currency: paymentData.currency as "ARS" | "USD",
         amount_original: parseFloat(paymentData.amount),
         exchange_rate: exchangeRate,
