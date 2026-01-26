@@ -306,7 +306,7 @@ export function DebtsSalesPageClient() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Código</TableHead>
+                              <TableHead>Código / Cliente</TableHead>
                               <TableHead>Destino</TableHead>
                               <TableHead>Fecha Salida</TableHead>
                               <TableHead className="text-right">Total Venta</TableHead>
@@ -318,8 +318,15 @@ export function DebtsSalesPageClient() {
                           <TableBody>
                             {debtor.operationsWithDebt.map((op) => (
                               <TableRow key={op.id}>
-                                <TableCell className="font-mono text-xs">
-                                  {op.file_code || "-"}
+                                <TableCell>
+                                  <div className="space-y-1">
+                                    <div className="font-mono text-xs">
+                                      {op.file_code || "-"}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">
+                                      {customerName}
+                                    </div>
+                                  </div>
                                 </TableCell>
                                 <TableCell>{op.destination}</TableCell>
                                 <TableCell>

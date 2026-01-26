@@ -223,12 +223,19 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       {
         accessorKey: "file_code",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Código" />
+          <DataTableColumnHeader column={column} title="Código / Cliente" />
         ),
         cell: ({ row }) => {
           return (
-            <div className="font-mono text-xs">
-              {row.original.file_code || "-"}
+            <div className="space-y-1">
+              <div className="font-mono text-xs">
+                {row.original.file_code || "-"}
+              </div>
+              {row.original.customer_name && (
+                <div className="text-xs text-muted-foreground">
+                  {row.original.customer_name}
+                </div>
+              )}
             </div>
           )
         },
