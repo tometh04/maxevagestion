@@ -275,7 +275,7 @@ export async function getAccountBalancesBatch(
   }
 
   // Obtener todos los movimientos para las cuentas que necesitan cálculo
-  const accountIdsToCalculate = accountsToCalculate.map((a) => a.id)
+  const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
   const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
     .select("account_id, type, amount_original, amount_ars_equivalent")
