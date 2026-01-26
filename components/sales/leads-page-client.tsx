@@ -115,29 +115,31 @@ export function LeadsPageClient({
     }
   }, [])
 
-  // Definir loadLeads como useCallback para poder usarla en Realtime
-  // OPTIMIZADO: Para Trello, cargar más leads (hasta 2000 por agencia)
+  // OPTIMIZACIÓN Fase 2: límite inicial 200 (antes 2000). Paginación con "Cargar más".
+  const LEADS_LIMIT = 200
+  const [leadsPage, setLeadsPage] = useState(1)
+  const [leadsHasMore, setLeadsHasMore] = useState(false)
+  const [leadsTotal, setLeadsTotal] = useState(0)
+  const [loadingMore, setLoadingMore] = useState(false)
+
   const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
     setLoading(true)
     try {
-      // Para Trello, aumentar el límite a 2000 (máximo por agencia según el usuario)
-      const limit = 2000
-      let url = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${limit}&source=Trello`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
-      
-      if (trelloListId && trelloListId !== "ALL") {
-        url += `&trelloListId=${trelloListId}`
-      }
+      const url = agencyId === "ALL"
+        ? `/api/leads?page=1&limit=${LEADS_LIMIT}&source=Trello`
+        : `/api/leads?agencyId=${agencyId}&page=1&limit=${LEADS_LIMIT}&source=Trello`
+      const withList = trelloListId && trelloListId !== "ALL" ? `&trelloListId=${trelloListId}` : ""
 
-      const response = await fetch(url, { cache: 'no-store' })
+      const response = await fetch(`${url}${withList}`, { cache: "no-store" })
       const data = await response.json()
-      
-      if (data.leads && data.leads.length > 0) {
-        setLeads(data.leads)
-        console.log(`✅ Cargados ${data.leads.length} leads de ${data.pagination?.total || 'N/A'} totales`)
+
+      setLeads(data.leads || [])
+      setLeadsPage(1)
+      setLeadsHasMore(data.pagination?.hasMore ?? false)
+      setLeadsTotal(data.pagination?.total ?? 0)
+      if (data.leads?.length) {
+        console.log(`✅ Cargados ${data.leads.length} de ${data.pagination?.total ?? "?"} leads`)
       } else {
-        setLeads([])
         console.log("ℹ️ No se encontraron leads")
       }
     } catch (error) {
@@ -146,6 +148,34 @@ export function LeadsPageClient({
       setLoading(false)
     }
   }, [])
+
+  const loadMoreLeads = useCallback(async () => {
+    if (!leadsHasMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const nextPage = leadsPage + 1
+      const url = selectedAgencyId === "ALL"
+        ? `/api/leads?page=${nextPage}&limit=${LEADS_LIMIT}&source=Trello`
+        : `/api/leads?agencyId=${selectedAgencyId}&page=${nextPage}&limit=${LEADS_LIMIT}&source=Trello`
+      const withList = selectedTrelloListId && selectedTrelloListId !== "ALL"
+        ? `&trelloListId=${selectedTrelloListId}` : ""
+
+      const response = await fetch(`${url}${withList}`, { cache: "no-store" })
+      const data = await response.json()
+      const newLeads = data.leads || []
+
+      setLeads((prev) => [...prev, ...newLeads])
+      setLeadsPage(nextPage)
+      setLeadsHasMore(data.pagination?.hasMore ?? false)
+      if (newLeads.length) {
+        console.log(`✅ +${newLeads.length} leads cargados`)
+      }
+    } catch (error) {
+      console.error("Error loading more leads:", error)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [leadsHasMore, leadsPage, loadingMore, selectedAgencyId, selectedTrelloListId])
 
   // 🔄 SUPABASE REALTIME - Actualización automática sin recargar
   useEffect(() => {
@@ -245,6 +275,8 @@ export function LeadsPageClient({
     } else if (selectedAgencyId === "ALL") {
       // Si se selecciona "Todas las agencias", usar los initialLeads (solo Trello)
       setLeads(initialLeads)
+      setLeadsHasMore(false)
+      setLeadsTotal(initialLeads.length)
       if (initialLoad) {
         setInitialLoad(false)
       }
@@ -481,7 +513,30 @@ export function LeadsPageClient({
               <p className="text-muted-foreground">Cargando leads...</p>
             </div>
           ) : (
-            KanbanComponent
+            <div className="space-y-4">
+              {KanbanComponent}
+              {shouldUseTrelloKanban && leadsHasMore && (
+                <div className="flex flex-col items-center gap-2 pt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Mostrando {leads.length} de {leadsTotal} leads
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={loadMoreLeads}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Cargando...
+                      </>
+                    ) : (
+                      "Cargar más"
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
           )}
         </TabsContent>
         <TabsContent value="table" className="space-y-4">

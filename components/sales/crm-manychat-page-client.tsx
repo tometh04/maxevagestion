@@ -87,17 +87,15 @@ export function CRMManychatPageClient({
   }, [])
 
   // Cargar leads: Manychat (nuevos) + Trello con list_name (migración visual)
+  // OPTIMIZACIÓN Fase 2: límite 200 por fuente (antes 5000)
   const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
-      const limit = 5000
-      // Cargar leads de Manychat (nuevos)
-      let manychatUrl = agencyId === "ALL"
+      const limit = 200
+      const manychatUrl = agencyId === "ALL"
         ? `/api/leads?page=1&limit=${limit}&source=Manychat`
         : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Manychat`
-      
-      // Cargar leads de Trello que tienen list_name (migración visual)
-      let trelloUrl = agencyId === "ALL"
+      const trelloUrl = agencyId === "ALL"
         ? `/api/leads?page=1&limit=${limit}&source=Trello`
         : `/api/leads?agencyId=${agencyId}&page=1&limit=${limit}&source=Trello`
 

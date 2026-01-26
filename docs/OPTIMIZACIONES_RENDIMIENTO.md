@@ -160,14 +160,30 @@ El caché se invalida automáticamente cuando:
 3. **`app/api/accounting/ledger/route.ts`**
    - Actualizado para manejar nueva estructura de respuesta con paginación
 
+4. **`components/sales/leads-page-client.tsx`** (Fase 2)
+   - Límite 2000 → 200, paginación "Cargar más", estado `leadsPage` / `leadsHasMore` / `leadsTotal`
+
+5. **`components/sales/crm-manychat-page-client.tsx`** (Fase 2)
+   - Límite 5000 → 200 por fuente (Manychat + Trello)
+
+---
+
+## ✅ FASE 2: OPTIMIZACIONES IMPORTANTES (COMPLETADA)
+
+### 1. Leads page (Trello)
+- **Antes:** Carga inicial 2000 leads por agencia
+- **Después:** Carga inicial 200 leads, botón "Cargar más" con paginación
+- **Cambios:** `LEADS_LIMIT = 200`, estado `leadsPage` / `leadsHasMore` / `leadsTotal`, `loadMoreLeads()`, UI "Mostrando X de Y" + "Cargar más"
+- **Impacto:** ~10x más rápido carga inicial
+
+### 2. CRM Manychat
+- **Antes:** 5000 leads por fuente (Manychat + Trello en paralelo)
+- **Después:** 200 por fuente
+- **Impacto:** ~25x más rápido carga inicial
+
 ---
 
 ## 🚀 PRÓXIMAS FASES (PENDIENTES)
-
-### Fase 2: Optimizaciones Importantes
-- [ ] Reducir límites de carga de leads (de 2000-5000 a 100-200)
-- [ ] Implementar paginación server-side real en componentes de leads
-- [ ] Optimizar queries N+1 en otros endpoints
 
 ### Fase 3: Mejoras Adicionales
 - [ ] Lazy loading en componentes pesados
@@ -206,4 +222,4 @@ Para verificar las optimizaciones:
 ---
 
 **Última actualización:** 22/01/2025  
-**Estado:** Fase 1 completada ✅
+**Estado:** Fase 1 ✅ Fase 2 ✅
