@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
-import { Loader2, AlertCircle, Eye, ArrowLeft } from "lucide-react"
+import { Loader2, AlertCircle, Eye, ArrowLeft, ExternalLink } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -60,6 +60,11 @@ interface DebtorOperation {
   departure_date: string | null
   seller_id: string | null
   seller_name: string | null
+  customer_id: string
+  customer_name: string
+  customer_email: string | null
+  customer_phone: string | null
+  customer_document: string | null
 }
 
 interface Debtor {
@@ -86,7 +91,6 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
   const [allDebtors, setAllDebtors] = useState<Debtor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
   const [currencyFilter, setCurrencyFilter] = useState<string>("ALL")
   const [customerFilter, setCustomerFilter] = useState<string>("")
   const [sellerFilter, setSellerFilter] = useState<string>("ALL")
@@ -143,15 +147,45 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     fetchDebtors()
   }, [fetchDebtors])
 
-  const toggleExpand = (customerId: string) => {
-    setExpandedCustomerId(expandedCustomerId === customerId ? null : customerId)
-  }
-
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${Math.round(amount).toLocaleString("es-AR")}`
   }
 
-  // Filtrar deudores localmente (por búsqueda de nombre de cliente)
+  // Aplanar todas las operaciones con deuda en una sola lista para la tabla
+  const allOperations: DebtorOperation[] = useMemo(() => {
+    const operations: DebtorOperation[] = []
+    debtors.forEach((debtor) => {
+      const customerName = extractCustomerName(
+        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
+          debtor.customer.first_name ||
+          ""
+      )
+      debtor.operationsWithDebt.forEach((op) => {
+        operations.push({
+          ...op,
+          customer_id: debtor.customer.id,
+          customer_name: customerName,
+          customer_email: debtor.customer.email || null,
+          customer_phone: debtor.customer.phone || null,
+          customer_document: debtor.customer.document_number || null,
+        })
+      })
+    })
+    return operations
+  }, [debtors])
+
+  // Filtrar operaciones localmente (por búsqueda de nombre de cliente)
+  const filteredOperations = useMemo(() => {
+    if (!customerFilter.trim()) return allOperations
+    
+    const searchTerm = customerFilter.toLowerCase().trim()
+    return allOperations.filter((op) => {
+      const customerName = op.customer_name?.toLowerCase() || ""
+      return customerName.includes(searchTerm)
+    })
+  }, [allOperations, customerFilter])
+
+  // Filtrar deudores para el resumen (mantener compatibilidad)
   const filteredDebtors = useMemo(() => {
     if (!customerFilter.trim()) return debtors
     
@@ -168,18 +202,21 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
   const handleExportExcel = () => {
     const workbook = XLSX.utils.book_new()
 
-    // Hoja 1: Resumen por Cliente
+    // Hoja 1: Resumen por Cliente (con vendedor promedio o principal)
     const summaryData = filteredDebtors.map((debtor) => {
       const customerName = extractCustomerName(
         `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
           debtor.customer.first_name ||
           ""
       )
+      // Obtener vendedores únicos de las operaciones
+      const sellers = [...new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean))]
       return {
         Cliente: customerName,
         "Documento": debtor.customer.document_number || "",
         "Email": debtor.customer.email || "",
         "Teléfono": debtor.customer.phone || "",
+        "Vendedores": sellers.join(", ") || "Sin vendedor",
         "Deuda Total (USD)": debtor.totalDebt,
         "Cantidad Operaciones": debtor.operationsWithDebt.length,
       }
@@ -188,27 +225,23 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
     const summarySheet = XLSX.utils.json_to_sheet(summaryData)
     XLSX.utils.book_append_sheet(workbook, summarySheet, "Resumen por Cliente")
 
-    // Hoja 2: Detalle de Operaciones
+    // Hoja 2: Detalle de Operaciones (con vendedor)
     const detailData: any[] = []
-    filteredDebtors.forEach((debtor) => {
-      const customerName = extractCustomerName(
-        `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
-          debtor.customer.first_name ||
-          ""
-      )
-      debtor.operationsWithDebt.forEach((op) => {
-        detailData.push({
-          Cliente: customerName,
-          "Código Operación": op.file_code || "-",
-          Destino: op.destination,
-          Vendedor: op.seller_name || "Sin vendedor",
-          "Fecha Salida": op.departure_date
-            ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
-            : "-",
-          "Total Venta (USD)": op.sale_amount_total,
-          "Pagado (USD)": op.paid,
-          "Deuda (USD)": op.debt,
-        })
+    filteredOperations.forEach((op) => {
+      detailData.push({
+        Cliente: op.customer_name,
+        "Documento": op.customer_document || "",
+        "Email": op.customer_email || "",
+        "Teléfono": op.customer_phone || "",
+        "Código Operación": op.file_code || "-",
+        Destino: op.destination,
+        Vendedor: op.seller_name || "Sin vendedor",
+        "Fecha Salida": op.departure_date
+          ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
+          : "-",
+        "Total Venta (USD)": op.sale_amount_total,
+        "Pagado (USD)": op.paid,
+        "Deuda (USD)": op.debt,
       })
     })
 
@@ -283,6 +316,143 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
 
   const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
   const totalDebtors = filteredDebtors.length
+
+  // Definir columnas para DataTable
+  const columns: ColumnDef<DebtorOperation>[] = useMemo(
+    () => [
+      {
+        accessorKey: "customer_name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Cliente" />
+        ),
+        cell: ({ row }) => {
+          const op = row.original
+          return (
+            <div className="space-y-1">
+              <div className="font-medium">{op.customer_name}</div>
+              {op.customer_document && (
+                <div className="text-xs text-muted-foreground">
+                  {op.customer_document}
+                </div>
+              )}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "file_code",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Código" />
+        ),
+        cell: ({ row }) => {
+          return (
+            <div className="font-mono text-xs">
+              {row.original.file_code || "-"}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "destination",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Destino" />
+        ),
+        cell: ({ row }) => {
+          return <div className="max-w-[200px] truncate" title={row.original.destination}>
+            {row.original.destination}
+          </div>
+        },
+      },
+      {
+        accessorKey: "seller_name",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Vendedor" />
+        ),
+        cell: ({ row }) => {
+          return (
+            <Badge variant="outline" className="text-xs">
+              {row.original.seller_name || "Sin vendedor"}
+            </Badge>
+          )
+        },
+      },
+      {
+        accessorKey: "departure_date",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Fecha Salida" />
+        ),
+        cell: ({ row }) => {
+          const date = row.original.departure_date
+          return date
+            ? format(new Date(date), "dd/MM/yyyy", { locale: es })
+            : "-"
+        },
+      },
+      {
+        accessorKey: "sale_amount_total",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Total Venta" />
+        ),
+        cell: ({ row }) => {
+          return (
+            <div className="text-right font-medium">
+              {formatCurrency(row.original.sale_amount_total, row.original.currency)}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "paid",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Pagado" />
+        ),
+        cell: ({ row }) => {
+          return (
+            <div className="text-right text-green-600 font-medium">
+              {formatCurrency(row.original.paid, row.original.currency)}
+            </div>
+          )
+        },
+      },
+      {
+        accessorKey: "debt",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Deuda" />
+        ),
+        cell: ({ row }) => {
+          return (
+            <div className="text-right font-semibold text-red-600">
+              {formatCurrency(row.original.debt, row.original.currency)}
+            </div>
+          )
+        },
+      },
+      {
+        id: "actions",
+        header: "Acciones",
+        enableHiding: false,
+        cell: ({ row }) => {
+          const op = row.original
+          return (
+            <div className="flex items-center gap-2">
+              <Button variant="default" size="sm" asChild>
+                <Link href={`/operations/${op.id}`}>
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Ver Operación
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link href={`/customers/${op.customer_id}`}>
+                  <Eye className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+          )
+        },
+      },
+    ],
+    []
+  )
 
   return (
     <div className="space-y-6">
@@ -486,32 +656,32 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         </Card>
       </div>
 
-      {/* Tabla de deudores */}
+      {/* Tabla de operaciones con deuda */}
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle>Lista de Deudores</CardTitle>
+                <CardTitle>Operaciones con Deuda</CardTitle>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Expande cada cliente para ver el detalle de operaciones con deuda pendiente. Haz click en &quot;Ver&quot; para marcar cobranzas como pagadas.</p>
+                      <p className="text-xs">Lista completa de operaciones con deuda pendiente. Haz click en &quot;Ver Operación&quot; para ver detalles y marcar cobranzas como pagadas.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>
               <CardDescription>
-                Clientes que tienen pagos pendientes de operaciones
+                {filteredOperations.length} operación{filteredOperations.length !== 1 ? "es" : ""} con deuda pendiente
               </CardDescription>
             </div>
             <Button
               variant="outline"
               onClick={handleExportExcel}
-              disabled={filteredDebtors.length === 0}
+              disabled={filteredOperations.length === 0}
             >
               <Download className="mr-2 h-4 w-4" />
               Exportar Excel
@@ -519,125 +689,19 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           </div>
         </CardHeader>
         <CardContent>
-          {filteredDebtors.length === 0 ? (
+          {filteredOperations.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
-              {debtors.length === 0
-                ? "No hay clientes con deudas pendientes"
+              {allOperations.length === 0
+                ? "No hay operaciones con deudas pendientes"
                 : "No se encontraron resultados con los filtros aplicados"}
             </div>
           ) : (
-            <div className="space-y-4">
-              {filteredDebtors.map((debtor) => {
-                const customerName = extractCustomerName(
-                  `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
-                    debtor.customer.first_name ||
-                    ""
-                )
-                const isExpanded = expandedCustomerId === debtor.customer.id
-
-                return (
-                  <div key={debtor.customer.id} className="border rounded-lg">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3">
-                            <h3 className="font-semibold">{customerName}</h3>
-                            {debtor.customer.document_number && (
-                              <Badge variant="outline">
-                                {debtor.customer.document_type || "DNI"}: {debtor.customer.document_number}
-                              </Badge>
-                            )}
-                          </div>
-                          {debtor.customer.email && (
-                            <p className="text-sm text-muted-foreground">{debtor.customer.email}</p>
-                          )}
-                          {debtor.customer.phone && (
-                            <p className="text-sm text-muted-foreground">{debtor.customer.phone}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <div className="text-2xl font-bold text-red-600">
-                              {formatCurrency(debtor.totalDebt, debtor.currency)}
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              {debtor.operationsWithDebt.length} operación{debtor.operationsWithDebt.length !== 1 ? "es" : ""}
-                            </p>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleExpand(debtor.customer.id)}
-                          >
-                            {isExpanded ? "Ocultar" : "Ver operaciones"}
-                          </Button>
-                          <Button variant="outline" size="sm" asChild>
-                            <Link href={`/customers/${debtor.customer.id}`}>
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {isExpanded && (
-                      <div className="border-t bg-muted/50">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Código</TableHead>
-                              <TableHead>Destino</TableHead>
-                              <TableHead>Vendedor</TableHead>
-                              <TableHead>Fecha Salida</TableHead>
-                              <TableHead className="text-right">Total Venta</TableHead>
-                              <TableHead className="text-right">Pagado</TableHead>
-                              <TableHead className="text-right">Deuda</TableHead>
-                              <TableHead></TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {debtor.operationsWithDebt.map((op) => (
-                              <TableRow key={op.id}>
-                                <TableCell className="font-mono text-xs">
-                                  {op.file_code || "-"}
-                                </TableCell>
-                                <TableCell>{op.destination}</TableCell>
-                                <TableCell>
-                                  <Badge variant="outline" className="text-xs">
-                                    {op.seller_name || "Sin vendedor"}
-                                  </Badge>
-                                </TableCell>
-                                <TableCell>
-                                  {op.departure_date
-                                    ? format(new Date(op.departure_date), "dd/MM/yyyy", { locale: es })
-                                    : "-"}
-                                </TableCell>
-                                <TableCell className="text-right">
-                                  {formatCurrency(op.sale_amount_total, op.currency)}
-                                </TableCell>
-                                <TableCell className="text-right text-green-600">
-                                  {formatCurrency(op.paid, op.currency)}
-                                </TableCell>
-                                <TableCell className="text-right font-semibold text-red-600">
-                                  {formatCurrency(op.debt, op.currency)}
-                                </TableCell>
-                                <TableCell>
-                                  <Button variant="ghost" size="sm" asChild>
-                                    <Link href={`/operations/${op.id}`}>
-                                      <Eye className="h-4 w-4" />
-                                    </Link>
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <DataTable
+              columns={columns}
+              data={filteredOperations}
+              searchKey="customer_name"
+              searchPlaceholder="Buscar por cliente..."
+            />
           )}
         </CardContent>
       </Card>
