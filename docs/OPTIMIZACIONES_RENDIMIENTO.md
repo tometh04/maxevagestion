@@ -203,19 +203,19 @@ El caché se invalida automáticamente cuando:
 - **Impacto:** Mejor tiempo de carga inicial de la ruta `/accounting/ledger`.
 
 ### 2. Lazy loading – Dashboard
-- **Cambio:** `DashboardPageClient` cargado con `next/dynamic` (ssr: false) en `/dashboard`.
+- **Cambio:** `DashboardPageClient` cargado con `next/dynamic` en `/dashboard` (sin `ssr: false`: páginas Server Component no lo permiten).
 - **Motivo:** Múltiples gráficos (Recharts), KPIs y filtros; bundle pesado.
-- **Impacto:** Menor JS inicial al entrar al dashboard, mejor TTI.
+- **Impacto:** Code splitting; skeleton mientras carga.
 
 ### 3. Lazy loading – Reportes
-- **Cambio:** `ReportsPageClient` cargado con `next/dynamic` (ssr: false) en `/reports`.
+- **Cambio:** `ReportsPageClient` cargado con `next/dynamic` en `/reports`.
 - **Motivo:** Reportes de ventas, márgenes, flujo de caja con gráficos y tablas.
-- **Impacto:** Ruta `/reports` más rápida de cargar.
+- **Impacto:** Code splitting; skeleton mientras carga.
 
 ### 4. Lazy loading – Resumen de Caja
-- **Cambio:** `CashSummaryClient` cargado con `next/dynamic` (ssr: false) en `/cash/summary`.
+- **Cambio:** `CashSummaryClient` cargado con `next/dynamic` en `/cash/summary`.
 - **Motivo:** LineChart (Recharts), tablas de cuentas por moneda.
-- **Impacto:** Mejor TTI en Caja → Resumen.
+- **Impacto:** Code splitting; skeleton mientras carga.
 
 ### Pendientes (opcional)
 - [ ] Optimizar imágenes y assets (`next/image`, lazy, tamaños)
