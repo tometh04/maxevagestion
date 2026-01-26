@@ -9,7 +9,6 @@ const ReportsPageClient = dynamic(
       default: m.ReportsPageClient,
     })),
   {
-    ssr: false,
     loading: () => (
       <div className="space-y-6">
         <Skeleton className="h-8 w-48" />

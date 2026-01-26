@@ -10,7 +10,6 @@ const CashSummaryClient = dynamic(
       default: m.CashSummaryClient,
     })),
   {
-    ssr: false,
     loading: () => (
       <div className="space-y-6">
         <div className="flex gap-4 flex-wrap">
