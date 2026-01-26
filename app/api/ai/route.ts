@@ -73,13 +73,15 @@ const DATABASE_SCHEMA = `
 
 #### ledger_movements (Movimientos Contables) - CORAZÓN CONTABLE ⭐
 - id, operation_id, lead_id, type ('INCOME','EXPENSE','FX_GAIN','FX_LOSS','COMMISSION','OPERATOR_PAYMENT')
-- concept, notes, currency ('ARS','USD')
+- concept (formato: "Nombre Pasajero (OP-XXXXXX)" o "Pago a operador - Nombre Pasajero (OP-XXXXXX)" - muestra nombre del pasajero principal, no solo código)
+- notes, currency ('ARS','USD')
 - amount_original (monto en moneda original)
 - exchange_rate (tasa usada), amount_ars_equivalent (siempre en ARS)
 - method ('CASH','BANK','MP','USD','OTHER')
 - account_id (FK a financial_accounts), chart_account_id (FK a chart_of_accounts)
 - seller_id, operator_id, receipt_number
 - created_at, created_by
+- NOTA: El campo 'concept' ahora muestra el nombre completo del pasajero principal de la operación, con el código entre paréntesis
 
 #### operator_payments (Pagos a Operadores) - Cuentas por Pagar
 - id, operation_id, operator_id, amount, currency ('ARS','USD')
@@ -266,14 +268,24 @@ AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 
 1. **Monedas:** Siempre convertir a USD usando exchange_rates. Si operation.sale_currency = 'USD', usar directamente. Si es 'ARS', dividir por exchange_rate.
 2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. Para fechas de operaciones usar departure_date o created_at según corresponda.
-3. **Payments:** La columna es date_due (NO due_date). Usar amount_usd para cálculos en USD.
-4. **Ledger Movements:** amount_ars_equivalent SIEMPRE está en ARS. Para USD, usar amount_original con exchange_rate.
-5. **Operator Payments:** Usar (amount - paid_amount) para calcular pendiente. Status puede ser 'PENDING', 'PAID', 'OVERDUE'.
-6. **Financial Accounts:** Balance = initial_balance + SUM(ledger_movements.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
+3. **Payments:** La columna es date_due (NO due_date). Usar amount_usd para cálculos en USD. Todos los pagos requieren financial_account_id (cuenta financiera de origen/destino).
+4. **Ledger Movements:** 
+   - amount_ars_equivalent SIEMPRE está en ARS. Para USD, usar amount_original con exchange_rate.
+   - El campo 'concept' muestra el nombre del pasajero principal: "Juan Pérez (OP-20260114)" en lugar de solo "Pago de cliente - Op. OP-20260114"
+   - Para obtener el nombre del pasajero: JOIN operation_customers con role='MAIN' y customers
+5. **Operator Payments:** Usar (amount - paid_amount) para calcular pendiente. Status puede ser 'PENDING', 'PAID', 'OVERDUE'. La tabla muestra nombre completo del pasajero principal en la columna de operación.
+6. **Financial Accounts:** 
+   - Balance = initial_balance + SUM(ledger_movements.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
+   - Cada cuenta tiene una sola moneda (ARS o USD).
+   - En la vista de Caja hay filtros por agencia y por cuenta individual (banco principal, Santander, etc.).
 7. **Margen:** margin_amount = sale_amount_total - operator_cost. margin_percentage = (margin_amount / sale_amount_total) * 100.
 8. **Múltiples Operadores:** Si una operación tiene operation_operators, sumar todos los costos para obtener el costo total.
 9. **Partner Accounts:** Los retiros aparecen en ledger_movements tipo EXPENSE. Las asignaciones están en partner_profit_allocations.
 10. **Monthly Exchange Rates:** Cada mes/año tiene su propio TC. Si no hay TC para un mes, buscar en exchange_rates la más cercana anterior.
+11. **Caja y Movimientos:**
+    - La vista de Caja permite filtrar por agencia y por cuenta financiera individual.
+    - Los movimientos muestran nombre del pasajero principal en el concepto, con código de operación entre paréntesis.
+    - Para obtener nombre del pasajero: SELECT c.first_name, c.last_name FROM operation_customers oc JOIN customers c ON c.id = oc.customer_id WHERE oc.operation_id = ? AND oc.role = 'MAIN'
 
 ### 📈 MÉTRICAS DISPONIBLES
 
@@ -281,7 +293,8 @@ AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 - Margen bruto por mes
 - Deudores por ventas (operaciones con pagos pendientes)
 - Deuda a operadores (operator_payments pendientes)
-- Balance de cuentas financieras
+- Balance de cuentas financieras (filtrable por agencia o cuenta individual)
+- Movimientos de caja con nombre del pasajero en el concepto
 - Gastos recurrentes pendientes
 - Retiros de socios
 - Asignaciones de ganancias a socios
@@ -290,6 +303,19 @@ AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 - Comisiones calculadas
 - Operaciones por destino, vendedor, estado
 - Leads por estado, región, fuente
+
+### 🆕 FUNCIONALIDADES RECIENTES (2025-01-22)
+
+1. **Concepto de Movimientos:** El campo 'concept' en ledger_movements ahora muestra el nombre completo del pasajero principal, con el código de operación entre paréntesis. Ejemplo: "Juan Pérez (OP-20260114)" en lugar de solo "Pago de cliente - Op. OP-20260114"
+
+2. **Filtros en Caja:** La vista de Caja permite filtrar por:
+   - Agencia (todas o una específica)
+   - Cuenta financiera individual (banco principal, Santander, etc.)
+   - Ambos filtros funcionan en conjunto
+
+3. **Pago Operadores:** La tabla de pagos a operadores muestra el nombre completo del pasajero principal en la columna de operación (además del código y destino)
+
+4. **Selección de Cuenta:** Todos los pagos (cobros, pagos a operadores, gastos recurrentes, etc.) requieren seleccionar una cuenta financiera, mostrando el saldo disponible al momento de elegir
 `
 
 const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de MAXEVA GESTION para agencias de viajes.
@@ -355,16 +381,28 @@ AND (op.amount - op.paid_amount) > 0
 GROUP BY opr.name, op.currency
 ORDER BY total_pendiente DESC LIMIT 10
 
--- Balance de todas las cuentas financieras
-SELECT fa.name, fa.type, fa.currency, fa.initial_balance,
+-- Balance de todas las cuentas financieras (con filtro opcional por agencia o cuenta)
+SELECT fa.name, fa.type, fa.currency, fa.agency_id, fa.initial_balance,
   COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as ingresos,
   COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as egresos,
   fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
 FROM financial_accounts fa
 LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
 WHERE fa.is_active = true
-GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.initial_balance
+-- Agregar filtros opcionales: AND fa.agency_id = 'xxx' o AND fa.id = 'xxx'
+GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.agency_id, fa.initial_balance
 ORDER BY fa.currency, balance_actual DESC
+
+-- Movimientos de caja con nombre del pasajero (el concepto ya lo incluye)
+SELECT lm.id, lm.concept, lm.type, lm.amount_original, lm.currency, 
+  lm.created_at, fa.name as cuenta_financiera,
+  o.file_code, o.destination
+FROM ledger_movements lm
+JOIN financial_accounts fa ON fa.id = lm.account_id
+LEFT JOIN operations o ON o.id = lm.operation_id
+WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD')
+-- El concepto ya incluye: "Nombre Pasajero (OP-XXXXXX)"
+ORDER BY lm.created_at DESC LIMIT 50
 
 -- Ventas del mes actual (en USD)
 SELECT 
@@ -426,6 +464,43 @@ JOIN partner_accounts pa ON pa.id = ppa.partner_id
 WHERE ppa.year = EXTRACT(YEAR FROM CURRENT_DATE)
 AND ppa.month = EXTRACT(MONTH FROM CURRENT_DATE)
 ORDER BY ppa.profit_amount DESC
+
+-- Movimientos de caja con nombre del pasajero (el concepto incluye nombre completo)
+SELECT lm.id, lm.concept, lm.type, lm.amount_original, lm.currency, 
+  lm.created_at, fa.name as cuenta_financiera, fa.agency_id,
+  o.file_code, o.destination
+FROM ledger_movements lm
+JOIN financial_accounts fa ON fa.id = lm.account_id
+LEFT JOIN operations o ON o.id = lm.operation_id
+WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD')
+-- Filtrar por agencia: AND fa.agency_id = 'xxx'
+-- Filtrar por cuenta específica: AND fa.id = 'xxx'
+ORDER BY lm.created_at DESC LIMIT 50
+
+-- Pagos a operadores con nombre del pasajero (obtener desde operation_customers)
+SELECT op.id, op.amount, op.currency, op.due_date, op.status,
+  o.file_code, o.destination,
+  c.first_name || ' ' || c.last_name as pasajero_principal
+FROM operator_payments op
+JOIN operations o ON o.id = op.operation_id
+LEFT JOIN operation_customers oc ON oc.operation_id = o.id AND oc.role = 'MAIN'
+LEFT JOIN customers c ON c.id = oc.customer_id
+WHERE op.status IN ('PENDING', 'OVERDUE')
+AND (op.amount - op.paid_amount) > 0
+ORDER BY op.due_date ASC LIMIT 20
+
+-- Cuentas financieras filtradas por agencia o cuenta individual
+SELECT fa.id, fa.name, fa.type, fa.currency, fa.agency_id,
+  ag.name as agencia,
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+FROM financial_accounts fa
+LEFT JOIN agencies ag ON ag.id = fa.agency_id
+LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
+WHERE fa.is_active = true
+-- Filtrar por agencia: AND fa.agency_id = 'xxx'
+-- Filtrar por cuenta específica: AND fa.id = 'xxx'
+GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.agency_id, ag.name, fa.initial_balance
+ORDER BY fa.currency, balance_actual DESC
 
 🔍 SI UNA QUERY FALLA:
 - Intenta con una versión más simple (menos JOINs, sin subqueries complejas)

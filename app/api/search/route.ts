@@ -68,6 +68,41 @@ export async function GET(request: Request) {
         .catch((err: any) => ({ type: 'operations', data: null, error: err }))
     )
 
+    // Buscar operaciones por nombre de pasajero (operation_customers)
+    let passengerSearchQuery = (supabase.from("operation_customers") as any)
+      .select(`
+        operation_id,
+        operations:operation_id (id, file_code, destination, status, agency_id, reservation_code_air, reservation_code_hotel, seller_id),
+        customers:customer_id (first_name, last_name)
+      `)
+      .or(`customers.first_name.ilike.${searchTerm},customers.last_name.ilike.${searchTerm}`)
+      .limit(5)
+    
+    // Aplicar filtros de permisos para búsqueda por pasajero
+    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+      passengerSearchQuery = passengerSearchQuery.in("operations.agency_id", agencyIds)
+    } else if (user.role === "SELLER") {
+      passengerSearchQuery = passengerSearchQuery.eq("operations.seller_id", user.id)
+    }
+    
+    searchPromises.push(
+      passengerSearchQuery
+        .then((r: any) => {
+          // Transformar resultados para que sean consistentes con la búsqueda de operaciones
+          const transformed = (r.data || []).map((item: any) => {
+            if (item.operations) {
+              return {
+                ...item.operations,
+                _passenger_name: item.customers ? `${item.customers.first_name || ""} ${item.customers.last_name || ""}`.trim() : null
+              }
+            }
+            return null
+          }).filter(Boolean)
+          return { type: 'operations_by_passenger', data: transformed, error: r.error }
+        })
+        .catch((err: any) => ({ type: 'operations_by_passenger', data: null, error: err }))
+    )
+
     // Buscar operadores
     const operatorQuery = (supabase.from("operators") as any)
       .select("id, name, contact_email")
@@ -124,7 +159,7 @@ export async function GET(request: Request) {
             subtitle: c.email || c.phone || "Sin contacto",
           })
         })
-      } else if (result.type === 'operations' && result.data) {
+      } else if ((result.type === 'operations' || result.type === 'operations_by_passenger') && result.data) {
         const statusLabels: Record<string, string> = {
           PRE_RESERVATION: "Pre-reserva",
           RESERVED: "Reservado",
@@ -134,6 +169,11 @@ export async function GET(request: Request) {
           CLOSED: "Cerrado",
         }
         result.data.forEach((o: any) => {
+          // Evitar duplicados (si ya está en results)
+          if (results.some((r: any) => r.id === o.id && r.type === "operation")) {
+            return
+          }
+          
           // Determinar qué mostramos en el título según qué coincidió
           const queryLower = query.toLowerCase()
           let title = o.file_code || o.destination || "Sin código"
@@ -143,6 +183,9 @@ export async function GET(request: Request) {
             title = `Cod. Aéreo: ${o.reservation_code_air}`
           } else if (o.reservation_code_hotel && o.reservation_code_hotel.toLowerCase().includes(queryLower)) {
             title = `Cod. Hotel: ${o.reservation_code_hotel}`
+          } else if (o._passenger_name) {
+            // Si se encontró por nombre de pasajero, mostrar el nombre
+            title = `${o._passenger_name} - ${o.file_code || "Sin código"}`
           }
           
           const subtitleParts = []
