@@ -36,11 +36,11 @@ export function invalidateBalanceCache(accountId: string) {
  */
 function cleanExpiredCache() {
   const now = Date.now()
-  for (const [key, entry] of balanceCache.entries()) {
+  Array.from(balanceCache.entries()).forEach(([key, entry]) => {
     if (now - entry.timestamp > CACHE_TTL_MS) {
       balanceCache.delete(key)
     }
-  }
+  })
 }
 
 export type LedgerMovementType =
