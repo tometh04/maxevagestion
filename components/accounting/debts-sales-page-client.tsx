@@ -347,7 +347,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           ""
       )
       // Obtener vendedores únicos de las operaciones
-      const sellers = [...new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean))]
+      const sellers = Array.from(new Set(debtor.operationsWithDebt.map(op => op.seller_name).filter(Boolean)))
       return {
         Cliente: customerName,
         "Documento": debtor.customer.document_number || "",
