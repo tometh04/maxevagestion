@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
-import { Loader2, AlertCircle, Eye, ArrowLeft, ExternalLink } from "lucide-react"
+import { Loader2, AlertCircle, Eye, ArrowLeft } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -315,19 +315,11 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         cell: ({ row }) => {
           const op = row.original
           return (
-            <div className="flex items-center gap-2">
-              <Button variant="default" size="sm" asChild>
-                <Link href={`/operations/${op.id}`}>
-                  <ExternalLink className="h-4 w-4 mr-1" />
-                  Ver Operación
-                </Link>
-              </Button>
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/customers/${op.customer_id}`}>
-                  <Eye className="h-4 w-4" />
-                </Link>
-              </Button>
-            </div>
+            <Button variant="ghost" size="sm" asChild>
+              <Link href={`/operations/${op.id}`}>
+                <Eye className="h-4 w-4" />
+              </Link>
+            </Button>
           )
         },
       },
