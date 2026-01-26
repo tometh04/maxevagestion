@@ -1,7 +1,31 @@
-import { CashSummaryClient } from "@/components/cash/cash-summary-client"
+import dynamic from "next/dynamic"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { canAccessModule } from "@/lib/permissions"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const CashSummaryClient = dynamic(
+  () =>
+    import("@/components/cash/cash-summary-client").then((m) => ({
+      default: m.CashSummaryClient,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-6">
+        <div className="flex gap-4 flex-wrap">
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-[200px] w-full" />
+          <Skeleton className="h-[200px] w-full" />
+        </div>
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    ),
+  }
+)
 
 function getDefaultDateRange() {
   const today = new Date()

@@ -1,6 +1,28 @@
+import dynamic from "next/dynamic"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
-import { ReportsPageClient } from "@/components/reports/reports-page-client"
+import { Skeleton } from "@/components/ui/skeleton"
+
+const ReportsPageClient = dynamic(
+  () =>
+    import("@/components/reports/reports-page-client").then((m) => ({
+      default: m.ReportsPageClient,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-48" />
+        <div className="flex gap-2">
+          <Skeleton className="h-10 w-24" />
+          <Skeleton className="h-10 w-28" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Skeleton className="h-[400px] w-full" />
+      </div>
+    ),
+  }
+)
 
 export default async function ReportsPage() {
   const { user } = await getCurrentUser()

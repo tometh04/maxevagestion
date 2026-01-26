@@ -169,6 +169,15 @@ El caché se invalida automáticamente cuando:
 6. **`components/accounting/ledger-page-client.tsx`** (Fase 3)
    - `LedgerTable` cargado con `next/dynamic` (lazy load, ssr: false)
 
+7. **`app/(dashboard)/dashboard/page.tsx`** (Fase 3)
+   - `DashboardPageClient` lazy load con skeleton (KPIs + charts)
+
+8. **`app/(dashboard)/reports/page.tsx`** (Fase 3)
+   - `ReportsPageClient` lazy load con skeleton
+
+9. **`app/(dashboard)/cash/summary/page.tsx`** (Fase 3)
+   - `CashSummaryClient` lazy load con skeleton
+
 ---
 
 ## ✅ FASE 2: OPTIMIZACIONES IMPORTANTES (COMPLETADA)
@@ -186,16 +195,30 @@ El caché se invalida automáticamente cuando:
 
 ---
 
-## ✅ FASE 3: MEJORAS ADICIONALES (EN PROGRESO)
+## ✅ FASE 3: MEJORAS ADICIONALES (COMPLETADA)
 
 ### 1. Lazy loading – Libro Mayor
 - **Cambio:** `LedgerTable` cargado con `next/dynamic` (ssr: false) en la página Ledger.
 - **Motivo:** Tabla pesada con muchos movimientos; al diferir su carga se reduce el JS inicial y se mejora el TTI.
 - **Impacto:** Mejor tiempo de carga inicial de la ruta `/accounting/ledger`.
 
-### Pendientes Fase 3
-- [ ] Code splitting en más componentes pesados (reportes, dashboards)
-- [ ] Optimizar imágenes y assets
+### 2. Lazy loading – Dashboard
+- **Cambio:** `DashboardPageClient` cargado con `next/dynamic` (ssr: false) en `/dashboard`.
+- **Motivo:** Múltiples gráficos (Recharts), KPIs y filtros; bundle pesado.
+- **Impacto:** Menor JS inicial al entrar al dashboard, mejor TTI.
+
+### 3. Lazy loading – Reportes
+- **Cambio:** `ReportsPageClient` cargado con `next/dynamic` (ssr: false) en `/reports`.
+- **Motivo:** Reportes de ventas, márgenes, flujo de caja con gráficos y tablas.
+- **Impacto:** Ruta `/reports` más rápida de cargar.
+
+### 4. Lazy loading – Resumen de Caja
+- **Cambio:** `CashSummaryClient` cargado con `next/dynamic` (ssr: false) en `/cash/summary`.
+- **Motivo:** LineChart (Recharts), tablas de cuentas por moneda.
+- **Impacto:** Mejor TTI en Caja → Resumen.
+
+### Pendientes (opcional)
+- [ ] Optimizar imágenes y assets (`next/image`, lazy, tamaños)
 
 ---
 
@@ -229,4 +252,4 @@ Para verificar las optimizaciones:
 ---
 
 **Última actualización:** 22/01/2025  
-**Estado:** Fase 1 ✅ Fase 2 ✅
+**Estado:** Fase 1 ✅ Fase 2 ✅ Fase 3 ✅
