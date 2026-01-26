@@ -32,7 +32,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, HelpCircle } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, HelpCircle, ArrowRightLeft } from "lucide-react"
+import { TransferAccountDialog } from "./transfer-account-dialog"
 import {
   Tooltip,
   TooltipContent,
@@ -90,6 +91,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [agencies, setAgencies] = useState<any[]>(initialAgencies)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("ALL")
   const [openDialog, setOpenDialog] = useState(false)
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
   const [accountToDelete, setAccountToDelete] = useState<{
@@ -381,6 +383,10 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
           <p className="text-muted-foreground">Gestiona todas las cuentas y cajas de las agencias</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
+            <ArrowRightLeft className="h-4 w-4 mr-2" />
+            Transferir
+          </Button>
           {accounts.length > 0 && (
             <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
               <DialogTrigger asChild>
@@ -879,6 +885,16 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
           ))}
         </div>
       )}
+
+      {/* Dialog de transferencia */}
+      <TransferAccountDialog
+        open={transferDialogOpen}
+        onOpenChange={setTransferDialogOpen}
+        onSuccess={() => {
+          fetchData(true)
+          router.refresh()
+        }}
+      />
     </div>
   )
 }
