@@ -281,7 +281,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 <p className="font-medium mb-1">¿Cómo funciona?</p>
                 <p className="text-xs mb-2"><strong>Resumen:</strong> Muestra los saldos actuales de todas las cuentas financieras (efectivo, bancos, etc.).</p>
                 <p className="text-xs mb-2"><strong>Caja USD/ARS:</strong> Detalle de cada cuenta individual con ingresos, egresos, balance y movimientos centralizados para reconciliación bancaria.</p>
-                <p className="text-xs">Los movimientos se cargan bajo demanda al hacer click en &quot;Ver Movimientos&quot; para optimizar el rendimiento.</p>
+                <p className="text-xs">Los movimientos se cargan bajo demanda al hacer click en &apos;Ver Movimientos&apos; para optimizar el rendimiento.</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

@@ -116,21 +116,22 @@ export function PayRecurringExpenseDialog({
 
   // Actualizar moneda de pago cuando se selecciona una cuenta
   const selectedAccountId = form.watch("financial_account_id")
+  const expenseCurrency = expense?.currency
   
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedAccountId) {
       const selectedAccount = financialAccounts.find((acc) => acc.id === selectedAccountId)
       if (selectedAccount) {
         setPaymentCurrency(selectedAccount.currency)
         // Si cambia la moneda y necesita TC, resetear el campo
-        const needsTC = expense && expense.currency !== selectedAccount.currency
+        const needsTC = expenseCurrency && expenseCurrency !== selectedAccount.currency
         if (needsTC) {
           form.setValue("exchange_rate", undefined)
         }
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAccountId, financialAccounts, expense])
+  }, [selectedAccountId, financialAccounts, expenseCurrency])
 
   const handleSubmit = async (values: PayRecurringExpenseFormValues) => {
     if (!expense) return

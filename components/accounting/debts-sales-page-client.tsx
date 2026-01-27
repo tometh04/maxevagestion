@@ -488,7 +488,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
                   <p className="font-medium mb-1">¿Cómo funciona?</p>
                   <p className="text-xs mb-2"><strong>Cuentas por Cobrar:</strong> Lista de clientes que deben dinero por operaciones vendidas. Se calcula como: monto de venta menos pagos recibidos.</p>
                   <p className="text-xs mb-2"><strong>Marcar como Pagado:</strong> Cuando el cliente paga, marca la cobranza como pagada. Esto impacta en la caja y reduce la deuda.</p>
-                  <p className="text-xs">Puedes crear cuentas por cobrar manuales sin operación asociada usando el botón &quot;Nueva Cuenta por Cobrar&quot;.</p>
+                  <p className="text-xs">Puedes crear cuentas por cobrar manuales sin operación asociada usando el botón &apos;Nueva Cuenta por Cobrar&apos;.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
