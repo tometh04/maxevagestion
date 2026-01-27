@@ -118,7 +118,6 @@ export function PayRecurringExpenseDialog({
   const selectedAccountId = form.watch("financial_account_id")
   const expenseCurrency = expense?.currency
   
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (selectedAccountId) {
       const selectedAccount = financialAccounts.find((acc) => acc.id === selectedAccountId)
@@ -131,6 +130,7 @@ export function PayRecurringExpenseDialog({
         }
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedAccountId, financialAccounts, expenseCurrency])
 
   const handleSubmit = async (values: PayRecurringExpenseFormValues) => {
@@ -188,7 +188,6 @@ export function PayRecurringExpenseDialog({
 
   const providerName = expense.provider_name || expense.operators?.name || "Proveedor"
   const expenseAmount = expense.amount
-  const expenseCurrency = expense.currency
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

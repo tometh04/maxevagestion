@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
     let saldoRestante = 0
     let totalOperacion = 0
     let totalPagado = 0
+    let allPayments: any[] = []
     
     if (payment.operations?.id) {
       // Obtener cliente principal
@@ -80,15 +81,16 @@ export async function GET(request: NextRequest) {
       }
 
       // Obtener todos los pagos de la operación para calcular saldo y mostrar historial
-      const { data: allPayments } = await (supabase.from("payments") as any)
+      const { data: paymentsData } = await (supabase.from("payments") as any)
         .select("id, amount, currency, date_paid, status, payer_type, reference")
         .eq("operation_id", payment.operations.id)
         .eq("payer_type", "CUSTOMER")
         .eq("status", "PAID")
         .order("date_paid", { ascending: true })
 
+      allPayments = paymentsData || []
       totalOperacion = Number(payment.operations.sale_amount_total) || 0
-      totalPagado = (allPayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
+      totalPagado = allPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
       saldoRestante = totalOperacion - totalPagado
     }
 
