@@ -332,6 +332,25 @@ export async function POST(request: Request) {
       }
     }
 
+    // Generar alertas a 30 días si el pago está asociado a una operación
+    if (operation_id && status === "PENDING") {
+      try {
+        // Obtener datos de la operación para generar alertas
+        const { data: operation } = await (supabase.from("operations") as any)
+          .select("id, destination, seller_id")
+          .eq("id", operation_id)
+          .single()
+
+        if (operation && operation.seller_id) {
+          const { generatePaymentAlerts30Days } = await import("@/lib/alerts/generate")
+          await generatePaymentAlerts30Days(supabase, operation_id, operation.seller_id, operation.destination || "Sin destino")
+        }
+      } catch (error) {
+        console.error("Error generating payment alerts:", error)
+        // No lanzamos error para no romper la creación del pago
+      }
+    }
+
     return NextResponse.json({ payment })
   } catch (error) {
     console.error("Error in POST /api/payments:", error)

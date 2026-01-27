@@ -718,6 +718,7 @@ export async function POST(request: Request) {
 
     // Generar alertas a 30 días para pagos a operadores y cobros de clientes
     try {
+      const { generatePaymentAlerts30Days } = await import("@/lib/alerts/generate")
       await generatePaymentAlerts30Days(supabase, operation.id, seller_id, destination)
     } catch (error) {
       console.error("Error generating payment alerts:", error)
@@ -1169,83 +1170,6 @@ async function generateDestinationRequirementAlerts(
   }
 }
 
-/**
- * Genera alertas a 30 días para pagos a operadores y cobros de clientes
- */
-async function generatePaymentAlerts30Days(
-  supabase: any,
-  operationId: string,
-  sellerId: string,
-  destination: string
-) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const alertsToCreate: any[] = []
-
-  // Obtener todos los pagos de la operación
-  const { data: payments } = await (supabase.from("payments") as any)
-    .select("id, amount, currency, date_due, direction, payer_type, status")
-    .eq("operation_id", operationId)
-    .eq("status", "PENDING")
-
-  if (!payments || payments.length === 0) {
-    return
-  }
-
-  for (const payment of payments) {
-    const dueDate = new Date(payment.date_due + 'T12:00:00')
-    const alertDate = new Date(dueDate)
-    alertDate.setDate(alertDate.getDate() - 30)
-
-    // Solo crear alerta si la fecha de alerta es en el futuro
-    if (alertDate >= today) {
-      if (payment.direction === "INCOME" && payment.payer_type === "CUSTOMER") {
-        // Alerta de cobro de cliente
-        alertsToCreate.push({
-          operation_id: operationId,
-          user_id: sellerId,
-          type: "PAYMENT_DUE",
-          description: `💰 Cobro de cliente: ${payment.currency} ${payment.amount} - ${destination} (Vence: ${payment.date_due})`,
-          date_due: alertDate.toISOString().split("T")[0],
-          status: "PENDING",
-        })
-      } else if (payment.direction === "EXPENSE" && payment.payer_type === "OPERATOR") {
-        // Alerta de pago a operador
-        alertsToCreate.push({
-          operation_id: operationId,
-          user_id: sellerId,
-          type: "OPERATOR_DUE",
-          description: `💸 Pago a operador: ${payment.currency} ${payment.amount} - ${destination} (Vence: ${payment.date_due})`,
-          date_due: alertDate.toISOString().split("T")[0],
-          status: "PENDING",
-        })
-      }
-    }
-  }
-
-  // Insertar alertas
-  if (alertsToCreate.length > 0) {
-    const { data: createdAlerts, error: insertError } = await (supabase.from("alerts") as any).insert(alertsToCreate).select()
-    if (insertError) {
-      console.error("Error creando alertas de pagos:", insertError)
-    } else {
-      console.log(`✅ Creadas ${alertsToCreate.length} alertas de pagos a 30 días para operación ${operationId}`)
-      
-      // Generar mensajes de WhatsApp para las alertas creadas
-      if (createdAlerts && createdAlerts.length > 0) {
-        try {
-          const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
-          if (messagesGenerated > 0) {
-            console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de pagos`)
-          }
-        } catch (error) {
-          console.error("Error generando mensajes de WhatsApp para alertas de pagos:", error)
-          // No lanzamos error para no romper la creación de alertas
-        }
-      }
-    }
-  }
-}
 
 /**
  * Genera alertas automáticas para una operación (check-in, check-out, cumpleaños)
