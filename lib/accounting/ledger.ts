@@ -507,10 +507,12 @@ export async function getLedgerMovements(
     .range(offset, offset + limit - 1) // Paginación
 
   if (filters.dateFrom) {
-    query = query.gte("created_at", filters.dateFrom)
+    // Incluir todo el día desde las 00:00:00
+    query = query.gte("created_at", `${filters.dateFrom}T00:00:00`)
   }
   if (filters.dateTo) {
-    query = query.lte("created_at", filters.dateTo)
+    // Incluir todo el día hasta las 23:59:59
+    query = query.lte("created_at", `${filters.dateTo}T23:59:59`)
   }
   if (filters.type && filters.type !== "ALL") {
     query = query.eq("type", filters.type)

@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Obtener pago con datos relacionados
+    // Obtener pago con datos relacionados (incluyendo info completa del viaje)
     const { data: payment, error } = await (supabase.from("payments") as any)
       .select(`
         *,
@@ -25,9 +25,18 @@ export async function GET(request: NextRequest) {
           id,
           file_code,
           destination,
+          origin,
+          departure_date,
+          return_date,
           sale_amount_total,
+          sale_currency,
           currency,
-          agencies:agency_id (id, name, city)
+          adults,
+          children,
+          infants,
+          type,
+          agencies:agency_id (id, name, city),
+          operators:operator_id (id, name)
         )
       `)
       .eq("id", paymentId)
@@ -70,12 +79,13 @@ export async function GET(request: NextRequest) {
         customerCity = c.city || ""
       }
 
-      // Obtener todos los pagos de la operación para calcular saldo
+      // Obtener todos los pagos de la operación para calcular saldo y mostrar historial
       const { data: allPayments } = await (supabase.from("payments") as any)
-        .select("amount, status, payer_type")
+        .select("id, amount, currency, date_paid, status, payer_type, reference")
         .eq("operation_id", payment.operations.id)
         .eq("payer_type", "CUSTOMER")
         .eq("status", "PAID")
+        .order("date_paid", { ascending: true })
 
       totalOperacion = Number(payment.operations.sale_amount_total) || 0
       totalPagado = (allPayments || []).reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0)
@@ -122,6 +132,22 @@ export async function GET(request: NextRequest) {
       totalPagado,
       saldoRestante,
       destination: payment.operations?.destination || "",
+      fileCode: payment.operations?.file_code || "",
+      origin: payment.operations?.origin || "",
+      departureDate: payment.operations?.departure_date || null,
+      returnDate: payment.operations?.return_date || null,
+      adults: payment.operations?.adults || 0,
+      children: payment.operations?.children || 0,
+      infants: payment.operations?.infants || 0,
+      operationType: payment.operations?.type || "",
+      operatorName: payment.operations?.operators?.name || "",
+      paymentHistory: (allPayments || []).map((p: any) => ({
+        id: p.id,
+        amount: Number(p.amount) || 0,
+        currency: p.currency,
+        datePaid: p.date_paid,
+        reference: p.reference || "",
+      })),
     })
   } catch (error: any) {
     console.error("Error fetching receipt data:", error)

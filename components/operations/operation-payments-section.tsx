@@ -228,6 +228,8 @@ export function OperationPaymentsSection({
 
       // Importar jsPDF dinámicamente (solo en cliente)
       const { default: jsPDF } = await import("jspdf")
+      const { format } = await import("date-fns")
+      const { es } = await import("date-fns/locale")
       
       // Crear PDF
       const doc = new jsPDF()
@@ -308,9 +310,9 @@ export function OperationPaymentsSection({
       doc.setFontSize(10)
       
       doc.setFont("helvetica", "bold")
-      doc.text("Senor:", margin, y)
+      doc.text("Señor/a:", margin, y)
       doc.setFont("helvetica", "normal")
-      doc.text(data.customerName, margin + 22, y)
+      doc.text(data.customerName, margin + 25, y)
       
       y += 8
       
@@ -328,10 +330,81 @@ export function OperationPaymentsSection({
 
       y += 15
 
+      // ========== INFORMACIÓN DEL VIAJE (si existe) ==========
+      if (data.destination || data.fileCode) {
+        doc.setFillColor(240, 240, 240)
+        doc.rect(margin, y - 5, pageWidth - 2 * margin, 10, "F")
+        doc.setFontSize(11)
+        doc.setFont("helvetica", "bold")
+        doc.setTextColor(194, 156, 95) // Color dorado Lozada
+        doc.text("INFORMACIÓN DEL VIAJE", margin + 5, y + 2)
+        doc.setTextColor(0, 0, 0)
+        y += 15
+
+        doc.setFontSize(9)
+        if (data.fileCode) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Código de Operación:", margin, y)
+          doc.setFont("helvetica", "normal")
+          doc.text(data.fileCode, margin + 50, y)
+          y += 7
+        }
+        if (data.destination) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Destino:", margin, y)
+          doc.setFont("helvetica", "normal")
+          doc.text(data.destination, margin + 25, y)
+          y += 7
+        }
+        if (data.origin) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Origen:", margin, y)
+          doc.setFont("helvetica", "normal")
+          doc.text(data.origin, margin + 25, y)
+          y += 7
+        }
+        if (data.departureDate) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Fecha de Salida:", margin, y)
+          doc.setFont("helvetica", "normal")
+          const depDate = format(new Date(data.departureDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es })
+          doc.text(depDate, margin + 40, y)
+          y += 7
+        }
+        if (data.returnDate) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Fecha de Regreso:", margin, y)
+          doc.setFont("helvetica", "normal")
+          const retDate = format(new Date(data.returnDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es })
+          doc.text(retDate, margin + 45, y)
+          y += 7
+        }
+        if (data.adults || data.children || data.infants) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Pasajeros:", margin, y)
+          doc.setFont("helvetica", "normal")
+          const pasajeros = []
+          if (data.adults > 0) pasajeros.push(`${data.adults} adulto${data.adults > 1 ? 's' : ''}`)
+          if (data.children > 0) pasajeros.push(`${data.children} menor${data.children > 1 ? 'es' : ''}`)
+          if (data.infants > 0) pasajeros.push(`${data.infants} bebé${data.infants > 1 ? 's' : ''}`)
+          doc.text(pasajeros.join(", ") || "-", margin + 30, y)
+          y += 7
+        }
+        if (data.operatorName) {
+          doc.setFont("helvetica", "bold")
+          doc.text("Operador:", margin, y)
+          doc.setFont("helvetica", "normal")
+          doc.text(data.operatorName, margin + 28, y)
+          y += 7
+        }
+
+        y += 10
+      }
+
       // ========== MONTO RECIBIDO ==========
       doc.setFont("helvetica", "bold")
       doc.setFontSize(11)
-      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR")}`, margin, y)
+      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin, y)
 
       y += 12
 
@@ -350,6 +423,41 @@ export function OperationPaymentsSection({
 
       y += 20
 
+      // ========== HISTORIAL DE PAGOS (si hay múltiples pagos) ==========
+      if (data.paymentHistory && data.paymentHistory.length > 1) {
+        doc.setFillColor(250, 250, 250)
+        doc.rect(margin, y - 5, pageWidth - 2 * margin, 12, "F")
+        doc.setFontSize(10)
+        doc.setFont("helvetica", "bold")
+        doc.text("HISTORIAL DE PAGOS", margin + 5, y + 2)
+        y += 15
+
+        doc.setFontSize(8)
+        doc.setFont("helvetica", "bold")
+        // Encabezados de tabla
+        doc.text("Fecha", margin, y)
+        doc.text("Monto", margin + 50, y)
+        doc.text("Referencia", margin + 100, y)
+        y += 6
+
+        doc.setDrawColor(200, 200, 200)
+        doc.setLineWidth(0.2)
+        doc.line(margin, y, pageWidth - margin, y)
+        y += 4
+
+        doc.setFont("helvetica", "normal")
+        for (const pago of data.paymentHistory) {
+          const fechaPago = pago.datePaid ? format(new Date(pago.datePaid), "dd/MM/yyyy", { locale: es }) : "-"
+          const montoPago = `${pago.currency} ${pago.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          
+          doc.text(fechaPago, margin, y)
+          doc.text(montoPago, margin + 50, y)
+          doc.text(pago.reference || "-", margin + 100, y)
+          y += 6
+        }
+        y += 5
+      }
+
       // ========== TOTAL ==========
       doc.setLineWidth(0.3)
       doc.line(pageWidth - 85, y, pageWidth - margin, y)
@@ -360,7 +468,7 @@ export function OperationPaymentsSection({
       doc.setFont("helvetica", "bold")
       doc.text("TOTAL", pageWidth - 85, y)
       
-      const totalFormatted = `${data.currency} ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
+      const totalFormatted = `${data.currency} ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
       doc.text(totalFormatted, pageWidth - margin, y, { align: "right" })
 
       y += 4
@@ -378,12 +486,12 @@ export function OperationPaymentsSection({
         doc.text("SALDO PENDIENTE DE PAGO:", margin + 5, y + 3)
         
         doc.setFontSize(12)
-        const saldoFormatted = `${data.currency} ${data.saldoRestante.toLocaleString("es-AR", { minimumFractionDigits: 0 })}`
+        const saldoFormatted = `${data.currency} ${data.saldoRestante.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
         doc.text(saldoFormatted, pageWidth - margin - 5, y + 3, { align: "right" })
         
         doc.setFontSize(8)
         doc.setFont("helvetica", "normal")
-        doc.text(`(Total operacion: ${data.currency} ${data.totalOperacion.toLocaleString("es-AR")} - Pagado: ${data.currency} ${data.totalPagado.toLocaleString("es-AR")})`, margin + 5, y + 10)
+        doc.text(`(Total operación: ${data.currency} ${data.totalOperacion.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - Pagado: ${data.currency} ${data.totalPagado.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`, margin + 5, y + 10)
         
         doc.setTextColor(0, 0, 0)
         y += 20
