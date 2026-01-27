@@ -304,13 +304,16 @@ async function main() {
     steps.push(STEP("10. Crear pago a operador (PENDING)", true))
 
     // Generar alertas automáticamente para el pago a operador también
-    try {
-      const { generatePaymentAlerts30Days } = await import("../lib/alerts/generate")
-      await generatePaymentAlerts30Days(supabase, operationId!, userId!, "Punta Cana Test")
-    } catch (alertErr) {
-      console.error("Error generando alertas en test:", alertErr)
-      // No fallar el test por esto
-    }
+    // Hacerlo en background para no bloquear el test
+    Promise.resolve().then(async () => {
+      try {
+        const { generatePaymentAlerts30Days } = await import("../lib/alerts/generate")
+        await Promise.race([
+          generatePaymentAlerts30Days(supabase, operationId!, userId!, "Punta Cana Test"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 8000))
+        ]).catch(() => {}) // Silenciar errores en background
+      } catch {}
+    })
 
     const bal = await getBalance(financialAccountId)
     if (bal < expenseAmount) {

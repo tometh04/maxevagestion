@@ -276,15 +276,19 @@ export async function generatePaymentAlerts30Days(
     } else {
       console.log(`✅ Creadas ${alertsToCreate.length} alertas de pagos a 30 días para operación ${operationId}`)
       
-      // Generar mensajes de WhatsApp para las alertas creadas
+      // Generar mensajes de WhatsApp para las alertas creadas (con timeout para evitar cuelgues)
       if (createdAlerts && createdAlerts.length > 0) {
         try {
-          const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
+          const messagesPromise = generateMessagesFromAlerts(supabase, createdAlerts)
+          const timeoutPromise = new Promise<number>((_, reject) => 
+            setTimeout(() => reject(new Error("Timeout generando mensajes WhatsApp")), 5000)
+          )
+          const messagesGenerated = await Promise.race([messagesPromise, timeoutPromise])
           if (messagesGenerated > 0) {
             console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de pagos`)
           }
-        } catch (error) {
-          console.error("Error generando mensajes de WhatsApp para alertas de pagos:", error)
+        } catch (error: any) {
+          console.error("Error/Timeout generando mensajes de WhatsApp para alertas de pagos:", error?.message || error)
           // No lanzamos error para no romper la creación de alertas
         }
       }

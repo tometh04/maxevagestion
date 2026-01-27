@@ -16,7 +16,8 @@
     "db:check": "tsx scripts/verify-tables.ts",
     "test:audit-fixes": "tsx scripts/test-audit-fixes.ts",
     "test:sistema-completo": "tsx scripts/test-sistema-completo.ts",
-    "test:run-completo": "tsx scripts/run-test-completo-e2e.ts"
+    "test:run-completo": "tsx scripts/run-test-completo-e2e.ts",
+    "limpieza:masiva": "tsx scripts/limpieza-masiva-pre-importacion.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
