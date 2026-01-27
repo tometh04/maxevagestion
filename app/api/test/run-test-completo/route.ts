@@ -185,8 +185,8 @@ export async function GET() {
     }
 
     const { getAccountBalance } = await import("@/lib/accounting/ledger")
-    balanceBeforeIncome = await getAccountBalance(financialAccountId, supabase)
-    invalidateBalanceCache(financialAccountId)
+    balanceBeforeIncome = await getAccountBalance(financialAccountId!, supabase)
+    invalidateBalanceCache(financialAccountId!)
 
     const passengerName = await getMainPassengerName(operationId, supabase)
     const opCode = operationId!.slice(0, 8)
@@ -203,7 +203,7 @@ export async function GET() {
         exchange_rate: null,
         amount_ars_equivalent: roundMoney(amountARS),
         method: "BANK",
-        account_id: financialAccountId,
+        account_id: financialAccountId!,
         seller_id: userId,
         operator_id: operatorId,
         receipt_number: null,
@@ -236,7 +236,7 @@ export async function GET() {
     operatorPaymentId = opPayId
     steps.push(STEP("10. Crear pago a operador (PENDING)", true))
 
-    const balanceCheck = await validateSufficientBalance(financialAccountId, expenseAmount, "ARS", supabase)
+    const balanceCheck = await validateSufficientBalance(financialAccountId!, expenseAmount, "ARS", supabase)
     if (!balanceCheck.valid) {
       steps.push(STEP("11. Saldo suficiente para pagar operador", false, balanceCheck.error ?? "Saldo insuficiente"))
       return NextResponse.json({ success: false, steps }, { status: 200 })
@@ -255,7 +255,7 @@ export async function GET() {
         exchange_rate: null,
         amount_ars_equivalent: roundMoney(expenseAmount),
         method: "BANK",
-        account_id: financialAccountId,
+        account_id: financialAccountId!,
         seller_id: userId,
         operator_id: operatorId,
         receipt_number: "TEST-E2E",
