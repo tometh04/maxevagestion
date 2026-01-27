@@ -3,10 +3,22 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
-  calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  validateSufficientBalance,
+  isAccountingOnlyAccount,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { roundMoney } from "@/lib/currency"
+
+interface ToProcessItem {
+  paymentItem: { operator_payment_id: string; operation_id: string; amount_to_pay: number | string }
+  operatorPayment: any
+  amountInPaymentCurrency: number
+  amountARS: number
+  newPaidAmount: number
+  isFullyPaid: boolean
+  operation: any
+}
 
 export async function POST(request: Request) {
   try {
@@ -15,7 +27,7 @@ export async function POST(request: Request) {
     const body = await request.json()
 
     const {
-      payments, // Array<{ operator_payment_id, operation_id, amount_to_pay }>
+      payments,
       payment_account_id,
       payment_currency,
       exchange_rate,
@@ -29,10 +41,12 @@ export async function POST(request: Request) {
     }
 
     if (!payment_account_id || !receipt_number || !payment_date) {
-      return NextResponse.json({ error: "Faltan campos requeridos (payment_account_id, receipt_number, payment_date)" }, { status: 400 })
+      return NextResponse.json(
+        { error: "Faltan campos requeridos (payment_account_id, receipt_number, payment_date)" },
+        { status: 400 }
+      )
     }
 
-    // Validar que payment_account_id existe
     const { data: paymentAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
       .select("*")
       .eq("id", payment_account_id)
@@ -42,202 +56,228 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cuenta financiera no encontrada" }, { status: 404 })
     }
 
-    // Obtener tipo de cambio si es necesario (para USD)
+    const accountCurrency = paymentAccount.currency as "ARS" | "USD"
+    if (accountCurrency !== payment_currency) {
+      return NextResponse.json(
+        { error: `La cuenta debe estar en ${payment_currency}. Cuenta actual: ${accountCurrency}.` },
+        { status: 400 }
+      )
+    }
+
+    const accountingOnly = await isAccountingOnlyAccount(payment_account_id, supabase)
+    if (accountingOnly) {
+      return NextResponse.json(
+        { error: "No se puede usar una cuenta solo contable (Cuentas por Cobrar/Pagar) para pagos." },
+        { status: 400 }
+      )
+    }
+
     let exchangeRateValue: number | null = null
     if (payment_currency === "USD") {
       const rateDate = payment_date ? new Date(payment_date) : new Date()
       exchangeRateValue = await getExchangeRate(supabase, rateDate)
-      if (!exchangeRateValue) {
-        exchangeRateValue = await getLatestExchangeRate(supabase)
-      }
-      if (!exchangeRateValue) {
-        exchangeRateValue = 1000 // Fallback
-      }
-    } else if (exchange_rate) {
-      // Si se proporciona TC manual, usarlo
-      exchangeRateValue = parseFloat(exchange_rate)
+      if (!exchangeRateValue) exchangeRateValue = await getLatestExchangeRate(supabase)
+      if (!exchangeRateValue) exchangeRateValue = 1000
+    } else if (exchange_rate != null) {
+      exchangeRateValue = parseFloat(String(exchange_rate))
     }
 
-    // Procesar cada pago
-    const processedPayments = []
     const errors: string[] = []
+    const toProcess: ToProcessItem[] = []
+    let totalDebit = 0
 
     for (const paymentItem of payments) {
       const { operator_payment_id, operation_id, amount_to_pay } = paymentItem
 
-      if (!operator_payment_id || !operation_id || !amount_to_pay || amount_to_pay <= 0) {
+      if (!operator_payment_id || !operation_id || amount_to_pay == null || Number(amount_to_pay) <= 0) {
         errors.push(`Pago inválido: ${operator_payment_id}`)
         continue
       }
 
-      try {
-        // 1. Obtener operator_payment actual
-        const { data: operatorPayment, error: opError } = await (supabase.from("operator_payments") as any)
-          .select("*")
-          .eq("id", operator_payment_id)
-          .single()
+      const { data: operatorPayment, error: opError } = await (supabase.from("operator_payments") as any)
+        .select("*")
+        .eq("id", operator_payment_id)
+        .single()
 
-        if (opError || !operatorPayment) {
-          errors.push(`Pago de operador no encontrado: ${operator_payment_id}`)
+      if (opError || !operatorPayment) {
+        errors.push(`Pago de operador no encontrado: ${operator_payment_id}`)
+        continue
+      }
+
+      const paymentCurrency = operatorPayment.currency as "ARS" | "USD"
+      const amt = parseFloat(String(amount_to_pay))
+      let amountInPaymentCurrency = amt
+      let amountARS = 0
+
+      if (paymentCurrency !== payment_currency) {
+        if (!exchange_rate && !exchangeRateValue) {
+          errors.push(`Se requiere tipo de cambio para convertir ${paymentCurrency} a ${payment_currency} en ${operator_payment_id}`)
           continue
         }
-
-        // 2. Calcular nuevo paid_amount
-        const currentPaidAmount = parseFloat(operatorPayment.paid_amount || "0") || 0
-        const newPaidAmount = currentPaidAmount + parseFloat(amount_to_pay)
-        const totalAmount = parseFloat(operatorPayment.amount)
-        const paymentCurrency = operatorPayment.currency
-
-        // 3. Determinar si el pago está completo
-        const isFullyPaid = newPaidAmount >= totalAmount
-        const newStatus = isFullyPaid ? "PAID" : "PENDING"
-
-        // 4. Convertir amount_to_pay a la moneda del pago si es necesario
-        let amountInPaymentCurrency = parseFloat(amount_to_pay)
-        let amountARS = 0
-
-        if (paymentCurrency === payment_currency) {
-          // Misma moneda, no necesita conversión
-          amountInPaymentCurrency = parseFloat(amount_to_pay)
-        } else {
-          // Conversión necesaria usando exchange_rate
-          if (!exchange_rate || !exchangeRateValue) {
-            errors.push(`Se requiere tipo de cambio para convertir ${paymentCurrency} a ${payment_currency} en pago ${operator_payment_id}`)
-            continue
-          }
-
-          if (payment_currency === "USD" && paymentCurrency === "ARS") {
-            // Pago en USD, operación en ARS: convertir ARS a USD
-            amountInPaymentCurrency = parseFloat(amount_to_pay) / exchangeRateValue
-          } else if (payment_currency === "ARS" && paymentCurrency === "USD") {
-            // Pago en ARS, operación en USD: convertir USD a ARS
-            amountInPaymentCurrency = parseFloat(amount_to_pay) * exchangeRateValue
-          }
+        const rate = exchangeRateValue ?? parseFloat(String(exchange_rate))
+        if (payment_currency === "USD" && paymentCurrency === "ARS") {
+          amountInPaymentCurrency = amt / rate
+        } else if (payment_currency === "ARS" && paymentCurrency === "USD") {
+          amountInPaymentCurrency = amt * rate
         }
+      }
 
-        // Calcular equivalente en ARS para ledger
-        if (payment_currency === "USD") {
-          amountARS = amountInPaymentCurrency * (exchangeRateValue || 1000)
-        } else {
-          amountARS = amountInPaymentCurrency
-        }
+      amountInPaymentCurrency = roundMoney(amountInPaymentCurrency)
+      if (payment_currency === "USD") {
+        amountARS = roundMoney(amountInPaymentCurrency * (exchangeRateValue ?? 1000))
+      } else {
+        amountARS = amountInPaymentCurrency
+      }
 
-        // 5. Obtener datos de la operación
-        const { data: operation } = await (supabase.from("operations") as any)
-          .select("seller_id, operator_id, agency_id")
-          .eq("id", operation_id)
+      const currentPaidAmount = parseFloat(operatorPayment.paid_amount || "0") || 0
+      const newPaidAmount = roundMoney(currentPaidAmount + amt)
+      const totalAmount = parseFloat(operatorPayment.amount)
+      const isFullyPaid = newPaidAmount >= totalAmount
+
+      const { data: operation } = await (supabase.from("operations") as any)
+        .select("seller_id, operator_id, agency_id")
+        .eq("id", operation_id)
+        .single()
+
+      toProcess.push({
+        paymentItem: { operator_payment_id, operation_id, amount_to_pay },
+        operatorPayment,
+        amountInPaymentCurrency,
+        amountARS,
+        newPaidAmount,
+        isFullyPaid,
+        operation: operation || null,
+      })
+      totalDebit += amountInPaymentCurrency
+    }
+
+    totalDebit = roundMoney(totalDebit)
+
+    if (toProcess.length === 0) {
+      return NextResponse.json(
+        { error: "Ningún pago válido para procesar.", details: errors },
+        { status: 400 }
+      )
+    }
+
+    const balanceCheck = await validateSufficientBalance(
+      payment_account_id,
+      totalDebit,
+      payment_currency as "ARS" | "USD",
+      supabase
+    )
+    if (!balanceCheck.valid) {
+      return NextResponse.json(
+        { error: balanceCheck.error ?? "Saldo insuficiente en la cuenta para el total a pagar." },
+        { status: 400 }
+      )
+    }
+
+    let ledgerMethod: "CASH" | "BANK" | "MP" | "USD" | "OTHER" = "OTHER"
+    if (paymentAccount.type === "CASH_ARS" || paymentAccount.type === "CASH_USD") ledgerMethod = "CASH"
+    else if (paymentAccount.type === "CHECKING_ARS" || paymentAccount.type === "CHECKING_USD") ledgerMethod = "BANK"
+    else if (paymentAccount.type === "CREDIT_CARD") ledgerMethod = "MP"
+    else if (paymentAccount.type === "SAVINGS_ARS" || paymentAccount.type === "SAVINGS_USD") ledgerMethod = "USD"
+
+    const { data: costosChart } = await (supabase.from("chart_of_accounts") as any)
+      .select("id")
+      .eq("account_code", "4.2.01")
+      .eq("is_active", true)
+      .maybeSingle()
+
+    let costAccountId: string
+    if (costosChart) {
+      const { data: costosFA } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("chart_account_id", costosChart.id)
+        .eq("is_active", true)
+        .maybeSingle()
+      if (costosFA?.id) {
+        costAccountId = costosFA.id
+      } else {
+        const { data: newFA, error: insErr } = await (supabase.from("financial_accounts") as any)
+          .insert({
+            name: "Costo de Operadores",
+            type: "CASH_ARS",
+            currency: "ARS",
+            chart_account_id: costosChart.id,
+            initial_balance: 0,
+            is_active: true,
+            created_by: user.id,
+          })
+          .select("id")
           .single()
-
-        const sellerId = operation?.seller_id || null
-        const operatorId = operation?.operator_id || null
-
-        // 6. Determinar método de pago según tipo de cuenta
-        let ledgerMethod: "CASH" | "BANK" | "MP" | "USD" | "OTHER" = "OTHER"
-        if (paymentAccount.type === "CASH_ARS" || paymentAccount.type === "CASH_USD") {
-          ledgerMethod = "CASH"
-        } else if (paymentAccount.type === "CHECKING_ARS" || paymentAccount.type === "CHECKING_USD") {
-          ledgerMethod = "BANK"
-        } else if (paymentAccount.type === "CREDIT_CARD") {
-          ledgerMethod = "MP"
-        } else if (paymentAccount.type === "SAVINGS_ARS" || paymentAccount.type === "SAVINGS_USD") {
-          ledgerMethod = "USD"
+        if (insErr || !newFA?.id) {
+          costAccountId = await getOrCreateDefaultAccount("CASH", "ARS", user.id, supabase)
+        } else {
+          costAccountId = newFA.id
         }
+      }
+    } else {
+      costAccountId = await getOrCreateDefaultAccount("CASH", "ARS", user.id, supabase)
+    }
 
-        // 7. Crear ledger_movement en cuenta de origen (EXPENSE - salida)
+    const processedPayments: { operator_payment_id: string; amount_paid: number | string; new_status: string }[] = []
+
+    for (const item of toProcess) {
+      try {
+        const { operator_payment_id, operation_id, amount_to_pay } = item.paymentItem
+        const paymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
+        const sellerId = item.operation?.seller_id ?? null
+        const operatorId = item.operation?.operator_id ?? null
+
         const ledgerMovementResult = await createLedgerMovement(
           {
-            operation_id: operation_id,
+            operation_id,
             lead_id: null,
-            type: "EXPENSE", // Salida de dinero
+            type: "EXPENSE",
             concept: `Pago masivo a operador - Operación ${operation_id.slice(0, 8)}`,
             currency: payment_currency as "ARS" | "USD",
-            amount_original: amountInPaymentCurrency,
-            exchange_rate: payment_currency === "USD" ? exchangeRateValue : (exchange_rate ? exchangeRateValue : null),
-            amount_ars_equivalent: amountARS,
+            amount_original: item.amountInPaymentCurrency,
+            exchange_rate: payment_currency === "USD" ? exchangeRateValue : (exchange_rate != null ? exchangeRateValue : null),
+            amount_ars_equivalent: item.amountARS,
             method: ledgerMethod,
             account_id: payment_account_id,
             seller_id: sellerId,
             operator_id: operatorId,
-            receipt_number: receipt_number,
-            notes: notes || `Pago masivo - ${receipt_number}`,
+            receipt_number,
+            notes: notes ?? `Pago masivo - ${receipt_number}`,
             created_by: user.id,
           },
           supabase
         )
 
-        // 8. Crear ledger_movement en cuenta de RESULTADO (COSTO)
-        // Obtener cuenta de costo por operador (RESULTADO > COSTOS > "4.2.01")
-        const { data: costosChart } = await (supabase.from("chart_of_accounts") as any)
-          .select("id")
-          .eq("account_code", "4.2.01")
-          .eq("is_active", true)
-          .maybeSingle()
-        
-        let costAccountId: string
-        if (costosChart) {
-          let costosFinancialAccount = await (supabase.from("financial_accounts") as any)
-            .select("id")
-            .eq("chart_account_id", costosChart.id)
-            .eq("is_active", true)
-            .maybeSingle()
-          
-          if (!costosFinancialAccount) {
-            const { data: newFA } = await (supabase.from("financial_accounts") as any)
-              .insert({
-                name: "Costo de Operadores",
-                type: "CASH_ARS",
-                currency: paymentCurrency as "ARS" | "USD",
-                chart_account_id: costosChart.id,
-                initial_balance: 0,
-                is_active: true,
-                created_by: user.id,
-              })
-              .select("id")
-              .single()
-            costosFinancialAccount = newFA
-          }
-          costAccountId = costosFinancialAccount.id
-        } else {
-          // Fallback: usar cuenta por defecto
-          const accountType = paymentCurrency === "USD" ? "USD" : "CASH"
-          costAccountId = await getOrCreateDefaultAccount(
-            accountType,
-            paymentCurrency as "ARS" | "USD",
-            user.id,
-            supabase
-          )
-        }
+        const costAmount = parseFloat(String(amount_to_pay))
+        const costARS = paymentCurrency === "USD"
+          ? roundMoney(costAmount * (exchangeRateValue ?? 1000))
+          : costAmount
 
         await createLedgerMovement(
           {
-            operation_id: operation_id,
+            operation_id,
             lead_id: null,
-            type: "OPERATOR_PAYMENT", // Costo de operador
+            type: "OPERATOR_PAYMENT",
             concept: `Costo operador - Operación ${operation_id.slice(0, 8)}`,
-            currency: paymentCurrency as "ARS" | "USD",
-            amount_original: parseFloat(amount_to_pay), // Monto en moneda de la operación
-            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue || 1000) : null,
-            amount_ars_equivalent: paymentCurrency === "USD" 
-              ? parseFloat(amount_to_pay) * (exchangeRateValue || 1000)
-              : parseFloat(amount_to_pay),
+            currency: paymentCurrency,
+            amount_original: roundMoney(costAmount),
+            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue ?? 1000) : null,
+            amount_ars_equivalent: roundMoney(costARS),
             method: ledgerMethod,
             account_id: costAccountId,
             seller_id: sellerId,
             operator_id: operatorId,
-            receipt_number: receipt_number,
-            notes: notes || `Pago masivo - ${receipt_number}`,
+            receipt_number,
+            notes: notes ?? `Pago masivo - ${receipt_number}`,
             created_by: user.id,
           },
           supabase
         )
 
-        // 9. Actualizar operator_payment
         const updateData: any = {
-          paid_amount: newPaidAmount,
+          paid_amount: item.newPaidAmount,
           updated_at: new Date().toISOString(),
         }
-
-        if (isFullyPaid) {
+        if (item.isFullyPaid) {
           updateData.status = "PAID"
           updateData.ledger_movement_id = ledgerMovementResult.id
         }
@@ -247,31 +287,27 @@ export async function POST(request: Request) {
           .eq("id", operator_payment_id)
 
         if (updateError) {
-          errors.push(`Error actualizando pago ${operator_payment_id}: ${updateError.message}`)
+          errors.push(`Error actualizando ${operator_payment_id}: ${updateError.message}`)
           continue
         }
 
         processedPayments.push({
           operator_payment_id,
           amount_paid: amount_to_pay,
-          new_status: newStatus,
+          new_status: item.isFullyPaid ? "PAID" : "PENDING",
         })
-
-      } catch (error: any) {
-        console.error(`Error processing payment ${operator_payment_id}:`, error)
-        errors.push(`Error procesando pago ${operator_payment_id}: ${error.message}`)
+      } catch (e: any) {
+        errors.push(`Error procesando ${item.paymentItem.operator_payment_id}: ${e?.message ?? String(e)}`)
       }
     }
 
-    if (errors.length > 0 && processedPayments.length === 0) {
-      // Si todos fallaron, retornar error
+    if (processedPayments.length === 0) {
       return NextResponse.json(
-        { error: "Error al procesar pagos", details: errors },
+        { error: "No se pudo procesar ningún pago.", details: errors },
         { status: 500 }
       )
     }
 
-    // Si algunos fallaron pero otros se procesaron, retornar warning
     if (errors.length > 0) {
       return NextResponse.json({
         success: true,
@@ -286,11 +322,10 @@ export async function POST(request: Request) {
       processed: processedPayments,
       message: `Se procesaron ${processedPayments.length} pago(s) correctamente`,
     })
-
-  } catch (error: any) {
-    console.error("Error in POST /api/accounting/operator-payments/bulk:", error)
+  } catch (e: any) {
+    console.error("Error in POST /api/accounting/operator-payments/bulk:", e)
     return NextResponse.json(
-      { error: error.message || "Error al procesar pagos masivos" },
+      { error: e?.message ?? "Error al procesar pagos masivos" },
       { status: 500 }
     )
   }

@@ -13,7 +13,8 @@
     "db:generate": "supabase gen types typescript --local > lib/supabase/types.ts",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed:mock": "tsx scripts/seed-mock-data.ts",
-    "db:check": "tsx scripts/verify-tables.ts"
+    "db:check": "tsx scripts/verify-tables.ts",
+    "test:audit-fixes": "tsx scripts/test-audit-fixes.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

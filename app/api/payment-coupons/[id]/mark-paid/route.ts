@@ -4,8 +4,9 @@ import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 
 /**
- * Marca un cupón como pagado
- * Sincroniza con: Payments, Cash Movements, Cash Boxes
+ * Marca un cupón como pagado.
+ * Sincroniza con: Payments, Cash Movements, Cash Boxes.
+ * @deprecated payment_coupons sin UI. Ver docs/AUDITORIA_SISTEMA_FINANZAS_CONTABILIDAD.md.
  */
 export async function POST(
   request: Request,

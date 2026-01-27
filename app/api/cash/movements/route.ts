@@ -4,10 +4,11 @@ import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
-  getOrCreateDefaultAccount,
   validateSufficientBalance,
+  invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { roundMoney } from "@/lib/currency"
 
 export async function POST(request: Request) {
   try {
@@ -45,10 +46,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
     }
 
-    // Validar que la moneda de la cuenta coincide con la del movimiento
     if (financialAccount.currency !== currency) {
       return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
     }
+
+    const amountNum = roundMoney(Number(amount))
 
     // Get default cash box if not provided
     let finalCashBoxId = cash_box_id
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       type,
       category,
-      amount: Number(amount),
+      amount: amountNum,
       currency,
       movement_date,
       notes: notes || null,
@@ -134,17 +136,16 @@ export async function POST(request: Request) {
     }
     
     const amountARS = calculateARSEquivalent(
-      Number(amount),
+      amountNum,
       currency as "ARS" | "USD",
       exchangeRate
     )
 
     // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
     if (type === "EXPENSE") {
-      const amountToCheck = Number(amount)
       const balanceCheck = await validateSufficientBalance(
         accountId,
-        amountToCheck,
+        amountNum,
         currency as "ARS" | "USD",
         supabase
       )
@@ -167,18 +168,18 @@ export async function POST(request: Request) {
       COMMISSION: "CASH",
     }
     const method = methodMap[category] || "CASH"
+    const amountARSRounded = roundMoney(amountARS)
 
-    // Crear ledger movement
-    await createLedgerMovement(
+    const { id: ledgerMovementId } = await createLedgerMovement(
       {
         operation_id: operation_id || null,
         lead_id: null,
         type: ledgerType,
         concept: category,
         currency: currency as "ARS" | "USD",
-        amount_original: Number(amount),
+        amount_original: amountNum,
         exchange_rate: currency === "USD" ? exchangeRate : null,
-        amount_ars_equivalent: amountARS,
+        amount_ars_equivalent: amountARSRounded,
         method,
         account_id: accountId,
         seller_id: sellerId,
@@ -190,7 +191,13 @@ export async function POST(request: Request) {
       supabase
     )
 
-    return NextResponse.json({ movement })
+    if (ledgerMovementId) {
+      await (supabase.from("cash_movements") as any)
+        .update({ ledger_movement_id: ledgerMovementId })
+        .eq("id", movement.id)
+    }
+
+    return NextResponse.json({ movement: { ...movement, ledger_movement_id: ledgerMovementId ?? null } })
   } catch (error: any) {
     console.error("Error in POST /api/cash/movements:", error)
     return NextResponse.json(
@@ -323,9 +330,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para eliminar movimientos" }, { status: 403 })
     }
 
-    // Obtener el movimiento para verificar que existe
     const { data: movement, error: fetchError } = await (supabase.from("cash_movements") as any)
-      .select("id, operation_id, amount, currency, type, category, movement_date")
+      .select("id, operation_id, amount, currency, type, category, movement_date, ledger_movement_id")
       .eq("id", movementId)
       .single()
 
@@ -333,32 +339,41 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Movimiento no encontrado" }, { status: 404 })
     }
 
-    // Buscar y eliminar el ledger_movement asociado
-    // (buscamos por operation_id, amount, type y fecha similar)
-    try {
+    let accountIdToInvalidate: string | null = null
+
+    if (movement.ledger_movement_id) {
+      const { data: lm } = await (supabase.from("ledger_movements") as any)
+        .select("id, account_id")
+        .eq("id", movement.ledger_movement_id)
+        .single()
+      if (lm) {
+        accountIdToInvalidate = lm.account_id
+        const { error: delLm } = await (supabase.from("ledger_movements") as any)
+          .delete()
+          .eq("id", movement.ledger_movement_id)
+        if (!delLm) console.log(`✅ Ledger movement ${movement.ledger_movement_id} eliminado`)
+      }
+    } else {
       const ledgerType = movement.type === "INCOME" ? "INCOME" : "EXPENSE"
-      
-      // Buscar ledger_movement que coincida
-      const { data: ledgerMovements } = await (supabase.from("ledger_movements") as any)
-        .select("id")
-        .eq("operation_id", movement.operation_id)
+      let q = (supabase.from("ledger_movements") as any)
+        .select("id, account_id")
         .eq("type", ledgerType)
         .eq("amount_original", movement.amount)
         .eq("currency", movement.currency)
-      
-      if (ledgerMovements && ledgerMovements.length > 0) {
-        // Eliminar el primer movimiento que coincida
-        await (supabase.from("ledger_movements") as any)
-          .delete()
-          .eq("id", ledgerMovements[0].id)
-        console.log(`✅ Ledger movement ${ledgerMovements[0].id} eliminado`)
+      if (movement.operation_id != null) {
+        q = q.eq("operation_id", movement.operation_id)
+      } else {
+        q = q.is("operation_id", null)
       }
-    } catch (ledgerError) {
-      console.warn("Warning: Could not find/delete associated ledger movement:", ledgerError)
-      // Continuamos con la eliminación del cash_movement
+      const { data: ledgerRows } = await q.limit(2)
+      if (ledgerRows && ledgerRows.length > 0) {
+        const toDelete = ledgerRows[0]
+        accountIdToInvalidate = toDelete.account_id
+        await (supabase.from("ledger_movements") as any).delete().eq("id", toDelete.id)
+        console.log(`✅ Ledger movement ${toDelete.id} (fallback match) eliminado`)
+      }
     }
 
-    // Eliminar el cash_movement
     const { error: deleteError } = await (supabase.from("cash_movements") as any)
       .delete()
       .eq("id", movementId)
@@ -368,6 +383,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Error al eliminar movimiento" }, { status: 500 })
     }
 
+    if (accountIdToInvalidate) invalidateBalanceCache(accountIdToInvalidate)
     console.log(`✅ Cash movement ${movementId} eliminado`)
 
     return NextResponse.json({ 

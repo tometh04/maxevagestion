@@ -45,6 +45,7 @@ yarn-error.log*
 # backups
 *-backup-*.zip
 *-restore-temp/
+/backups/
 
 # debug
 npm-debug.log*

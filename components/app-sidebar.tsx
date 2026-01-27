@@ -118,6 +118,8 @@ const allNavigation: NavItem[] = [
           { title: "Resumen", url: "/cash/summary" },
           { title: "Ingresos", url: "/cash/income" },
           { title: "Egresos", url: "/cash/expenses" },
+          { title: "Movimientos", url: "/cash/movements" },
+          { title: "Pagos", url: "/cash/payments" },
         ],
       },
       // Contabilidad - Submenú con nivel 3

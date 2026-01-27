@@ -202,6 +202,16 @@ export function formatMultiCurrencyTotal(
 }
 
 /**
+ * Redondear montos monetarios a N decimales (default 2).
+ * Usar en persistencia de ledger, pagos, etc. para evitar drifting por floats.
+ */
+export function roundMoney(value: number, decimals: number = 2): number {
+  if (typeof value !== "number" || isNaN(value)) return 0
+  const factor = Math.pow(10, decimals)
+  return Math.round(value * factor) / factor
+}
+
+/**
  * Helper para obtener el exchange_rate de un objeto (payment, operation, etc.)
  */
 export function getExchangeRateFromObject(obj: any): number | null {

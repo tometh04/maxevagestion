@@ -2,7 +2,7 @@
 
 Este documento registra todas las mejoras, nuevas funcionalidades, correcciones y cambios realizados en la aplicación. Está diseñado para ser actualizado continuamente a medida que se implementan nuevas características o se solucionan problemas.
 
-**Última actualización:** 2025-01-19 (Tooltips Explicativos en Todo el Sistema)
+**Última actualización:** 2025-01-22 (Fixes post-auditoría finanzas y contabilidad)
 
 ---
 
@@ -1729,6 +1729,25 @@ Se mejoró completamente el módulo de Cuentas Socios para permitir creación de
 ---
 
 ## Correcciones de Errores
+
+### 2025-01-22
+
+#### Fixes post-auditoría (finanzas y contabilidad)
+**Contexto:** Tras la auditoría (`docs/AUDITORIA_SISTEMA_FINANZAS_CONTABILIDAD.md`) se aplicaron las correcciones prioritarias.
+
+**Cambios:**
+- **Pago masivo a operadores:** Validación de saldo (`validateSufficientBalance`) antes del batch; rechazo si la cuenta es CpC/CpP; total en moneda de la cuenta y redondeo con `roundMoney`.
+- **DELETE movimiento de caja:** Uso de `ledger_movement_id` cuando existe; fallback por `operation_id` con `is("operation_id", null)`; invalidación de caché de balances tras borrar.
+- **Migración 090:** Columna `ledger_movement_id` en `cash_movements`; el POST de movimientos la guarda y actualiza.
+- **Helper `roundMoney`** en `lib/currency`; uso en movimientos y bulk.
+- **Código muerto eliminado:** `calendar-01`, `calendar-04`, `data-table`, scripts `* 2.ts`.
+- **`.gitignore`:** Añadido `/backups/`.
+- **Sidebar Caja:** Enlaces a Movimientos y Pagos.
+- **Deprecación:** Comentarios `@deprecated` en APIs `payment-coupons` y `card-transactions`.
+
+**Testing:** `docs/WORKAROUND_TESTING_AUDITORIA.md` y `npm run test:audit-fixes`.
+
+---
 
 ### 2025-01-17
 

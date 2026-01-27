@@ -1,3 +1,7 @@
+/**
+ * @deprecated Sin UI asociada. Mantener solo si se planea usar cupones de pago.
+ * Ver docs/AUDITORIA_SISTEMA_FINANZAS_CONTABILIDAD.md.
+ */
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
