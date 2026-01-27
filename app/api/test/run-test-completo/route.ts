@@ -180,7 +180,7 @@ export async function GET() {
     steps.push(STEP("8. Cuenta financiera ARS", true))
 
     if (!financialAccountId) {
-      steps.push(STEP("Error: financialAccountId es null", false, 0, "No se pudo obtener cuenta financiera"))
+      steps.push(STEP("Error: financialAccountId es null", false, "No se pudo obtener cuenta financiera"))
       return NextResponse.json({ success: false, steps }, { status: 200 })
     }
 
