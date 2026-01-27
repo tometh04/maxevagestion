@@ -179,6 +179,11 @@ export async function GET() {
     financialAccountId = account.id
     steps.push(STEP("8. Cuenta financiera ARS", true))
 
+    if (!financialAccountId) {
+      steps.push(STEP("Error: financialAccountId es null", false, 0, "No se pudo obtener cuenta financiera"))
+      return NextResponse.json({ success: false, steps }, { status: 200 })
+    }
+
     const { getAccountBalance } = await import("@/lib/accounting/ledger")
     balanceBeforeIncome = await getAccountBalance(financialAccountId, supabase)
     invalidateBalanceCache(financialAccountId)
@@ -213,7 +218,7 @@ export async function GET() {
       ledger_movement_id: lmId,
       updated_at: new Date().toISOString(),
     }).eq("id", paymentId)
-    balanceAfterIncome = await getAccountBalance(financialAccountId, supabase)
+    balanceAfterIncome = await getAccountBalance(financialAccountId!, supabase)
     const incomeOk = balanceAfterIncome >= balanceBeforeIncome + incomeAmount - 0.01 && balanceAfterIncome <= balanceBeforeIncome + incomeAmount + 0.01
     steps.push(STEP("9. Marcar pago cliente (PAID) y crear ledger INCOME", incomeOk, incomeOk ? null : `Balance antes ${balanceBeforeIncome} después ${balanceAfterIncome}, esperado +${incomeAmount}`))
 
@@ -261,7 +266,7 @@ export async function GET() {
     )
     await markOperatorPaymentAsPaid(supabase, operatorPaymentId!, lmExpId)
     await (supabase.from("operator_payments") as any).update({ paid_amount: expenseAmount, updated_at: new Date().toISOString() }).eq("id", operatorPaymentId)
-    balanceAfterExpense = await getAccountBalance(financialAccountId, supabase)
+    balanceAfterExpense = await getAccountBalance(financialAccountId!, supabase)
     const expenseOk = balanceAfterExpense >= balanceAfterIncome - expenseAmount - 0.01 && balanceAfterExpense <= balanceAfterIncome - expenseAmount + 0.01
     steps.push(STEP("12. Pagar operador y crear ledger EXPENSE", expenseOk, expenseOk ? null : `Balance después ingreso ${balanceAfterIncome}, después egreso ${balanceAfterExpense}, esperado -${expenseAmount}`))
 
