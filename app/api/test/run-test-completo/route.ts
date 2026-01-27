@@ -220,7 +220,7 @@ export async function GET() {
     }).eq("id", paymentId)
     balanceAfterIncome = await getAccountBalance(financialAccountId!, supabase)
     const incomeOk = balanceAfterIncome >= balanceBeforeIncome + incomeAmount - 0.01 && balanceAfterIncome <= balanceBeforeIncome + incomeAmount + 0.01
-    steps.push(STEP("9. Marcar pago cliente (PAID) y crear ledger INCOME", incomeOk, incomeOk ? null : `Balance antes ${balanceBeforeIncome} después ${balanceAfterIncome}, esperado +${incomeAmount}`))
+    steps.push(STEP("9. Marcar pago cliente (PAID) y crear ledger INCOME", incomeOk, incomeOk ? undefined : `Balance antes ${balanceBeforeIncome} después ${balanceAfterIncome}, esperado +${incomeAmount}`))
 
     const dueDate = new Date()
     dueDate.setDate(dueDate.getDate() + 14)
