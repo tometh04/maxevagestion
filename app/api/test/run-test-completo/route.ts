@@ -268,7 +268,7 @@ export async function GET() {
     await (supabase.from("operator_payments") as any).update({ paid_amount: expenseAmount, updated_at: new Date().toISOString() }).eq("id", operatorPaymentId)
     balanceAfterExpense = await getAccountBalance(financialAccountId!, supabase)
     const expenseOk = balanceAfterExpense >= balanceAfterIncome - expenseAmount - 0.01 && balanceAfterExpense <= balanceAfterIncome - expenseAmount + 0.01
-    steps.push(STEP("12. Pagar operador y crear ledger EXPENSE", expenseOk, expenseOk ? null : `Balance después ingreso ${balanceAfterIncome}, después egreso ${balanceAfterExpense}, esperado -${expenseAmount}`))
+    steps.push(STEP("12. Pagar operador y crear ledger EXPENSE", expenseOk, expenseOk ? undefined : `Balance después ingreso ${balanceAfterIncome}, después egreso ${balanceAfterExpense}, esperado -${expenseAmount}`))
 
     steps.push(STEP("13. Saldos suben con ingreso y bajan con egreso", incomeOk && expenseOk))
   } catch (e: any) {
