@@ -1,0 +1,9 @@
+operation_file_code,operator_name,cost,cost_currency,notes
+OP-20240115-ABC123,Despegar,80000.00,ARS,Vuelo Buenos Aires - Cancún
+OP-20240115-ABC123,Hoteles.com,40000.00,ARS,Hotel 7 noches
+OP-20240210-DEF456,Latam Airlines,100000.00,ARS,Vuelo ida y vuelta
+OP-20240210-DEF456,Hoteles.com,45000.00,ARS,Hotel 10 noches
+OP-20240320-MNO345,Booking.com,120000.00,ARS,Vuelo
+OP-20240320-MNO345,Hoteles.com,40000.00,ARS,Hotel 10 noches
+OP-20240425-STU901,Copa Airlines,100000.00,ARS,Vuelo
+OP-20240425-STU901,Hoteles.com,75000.00,ARS,Hotel 10 noches

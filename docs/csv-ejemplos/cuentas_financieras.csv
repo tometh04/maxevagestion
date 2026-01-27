@@ -1,0 +1,8 @@
+name,type,currency,initial_balance,agency_name,account_number,bank_name,notes
+Caja Principal ARS,CASH_ARS,ARS,150000.00,Lozada Viajes,,,Caja física principal
+Caja Principal USD,CASH_USD,USD,5000.00,Lozada Viajes,,,Caja física dólares
+Banco Santander Cuenta Corriente,CHECKING_ARS,ARS,500000.00,Lozada Viajes,1234567890,Santander,Cuenta principal operativa
+Banco Santander Caja de Ahorro USD,SAVINGS_USD,USD,10000.00,Lozada Viajes,0987654321,Santander,Reserva en dólares
+Mercado Pago,SAVINGS_ARS,ARS,25000.50,Lozada Viajes,,,Cuenta Mercado Pago
+Banco Galicia Cuenta Corriente,CHECKING_ARS,ARS,200000.00,Lozada Viajes,1122334455,Galicia,Cuenta secundaria
+Banco BBVA Caja de Ahorro,SAVINGS_ARS,ARS,75000.00,Lozada Viajes,5544332211,BBVA,Cuenta de ahorro

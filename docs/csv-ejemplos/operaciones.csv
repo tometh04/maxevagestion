@@ -1,0 +1,9 @@
+file_code,customer_email,destination,departure_date,return_date,adults,children,infants,sale_amount,operator_cost,currency,status,seller_email,operator_name,type,origin,reservation_code_air,reservation_code_hotel
+OP-20240115-ABC123,juan.perez@email.com,Cancún,2024-06-15,2024-06-22,2,0,0,150000.00,120000.00,ARS,CONFIRMED,admin@lozada.com,Despegar,PACKAGE,Buenos Aires,ABC123XYZ,HTL456789
+OP-20240120-XYZ789,maria.gonzalez@email.com,París,2024-07-01,2024-07-15,1,0,0,5000.00,4000.00,USD,RESERVED,admin@lozada.com,Aerolíneas Argentinas,FLIGHT,Buenos Aires,XYZ789ABC,
+OP-20240210-DEF456,carlos.rodriguez@email.com,Roma,2024-08-10,2024-08-20,2,1,0,180000.00,145000.00,ARS,CONFIRMED,admin@lozada.com,Latam Airlines,PACKAGE,Buenos Aires,DEF456GHI,HTL789012
+OP-20240225-GHI789,ana.martinez@email.com,Madrid,2024-09-05,2024-09-12,1,0,0,6000.00,4800.00,USD,RESERVED,admin@lozada.com,Hoteles.com,HOTEL,Buenos Aires,,HTL345678
+OP-20240305-JKL012,luis.fernandez@email.com,New York,2024-10-01,2024-10-10,2,0,0,8000.00,6500.00,USD,CONFIRMED,admin@lozada.com,American Airlines,FLIGHT,Buenos Aires,JKL012MNO,
+OP-20240320-MNO345,pedro.sanchez@email.com,Barcelona,2024-11-15,2024-11-25,2,0,0,200000.00,160000.00,ARS,RESERVED,admin@lozada.com,Booking.com,PACKAGE,Buenos Aires,MNO345PQR,HTL901234
+OP-20240410-PQR678,laura.gomez@email.com,Tokio,2024-12-01,2024-12-15,1,0,0,10000.00,8000.00,USD,CONFIRMED,admin@lozada.com,Avianca,FLIGHT,Buenos Aires,PQR678STU,
+OP-20240425-STU901,roberto.diaz@email.com,Londres,2025-01-10,2025-01-20,2,1,0,220000.00,175000.00,ARS,RESERVED,admin@lozada.com,Copa Airlines,PACKAGE,Buenos Aires,STU901VWX,HTL567890

@@ -1,0 +1,9 @@
+first_name,last_name,phone,email,document_type,document_number,date_of_birth,nationality,instagram_handle,address,city
+Juan,Pérez,+5491123456789,juan.perez@email.com,DNI,12345678,1990-05-15,ARGENTINA,juanperez,Av. Corrientes 1234,Buenos Aires
+María,González,+5491123456790,maria.gonzalez@email.com,DNI,87654321,1985-08-20,ARGENTINA,maria_gonzalez,Av. Santa Fe 5678,Buenos Aires
+Carlos,Rodríguez,+5491123456791,carlos.rodriguez@email.com,DNI,11223344,1992-03-10,ARGENTINA,carlos_rodriguez,Av. Córdoba 9012,Córdoba
+Ana,Martínez,+5491123456792,ana.martinez@email.com,PASSPORT,AB123456,1988-11-25,ARGENTINA,ana_martinez,Av. Libertador 3456,Buenos Aires
+Luis,Fernández,+5491123456793,luis.fernandez@email.com,DNI,55667788,1995-07-05,ARGENTINA,luis_fernandez,Av. 9 de Julio 7890,Rosario
+Pedro,Sánchez,+5491123456794,pedro.sanchez@email.com,DNI,99887766,1991-12-18,ARGENTINA,pedro_sanchez,Av. San Martín 2345,Mendoza
+Laura,Gómez,+5491123456795,laura.gomez@email.com,DNI,44332211,1987-04-30,ARGENTINA,laura_gomez,Av. Belgrano 6789,La Plata
+Roberto,Díaz,+5491123456796,roberto.diaz@email.com,PASSPORT,CD789012,1993-09-12,ARGENTINA,roberto_diaz,Av. Rivadavia 1234,Buenos Aires

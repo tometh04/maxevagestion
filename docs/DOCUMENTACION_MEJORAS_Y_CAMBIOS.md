@@ -2060,6 +2060,67 @@ COMMENT ON COLUMN customers.procedure_number IS
 
 ---
 
+## Guía de Migración de Datos
+
+**Fecha:** 2025-01-22
+
+**Descripción:**
+Se creó una guía completa y detallada para migrar todos los datos históricos al sistema, incluyendo operaciones, clientes, pagos, cuentas financieras, y más.
+
+**Documentación Creada:**
+
+1. **`docs/GUIA_MIGRACION_DATOS.md`**
+   - Guía paso a paso completa para la migración
+   - Orden de importación con dependencias explicadas
+   - Instrucciones detalladas para cada entidad
+   - Validaciones y verificaciones post-migración
+   - Solución de problemas comunes
+   - Checklist final de verificación
+
+2. **`docs/csv-ejemplos/`** (Carpeta con archivos CSV de ejemplo)
+   - `operadores.csv`: Ejemplo para importar operadores/proveedores
+   - `clientes.csv`: Ejemplo para importar clientes/pasajeros
+   - `tipos_cambio.csv`: Ejemplo para importar tipos de cambio históricos
+   - `cuentas_financieras.csv`: Ejemplo para crear cuentas financieras
+   - `operaciones.csv`: Ejemplo para importar operaciones/ventas
+   - `operaciones_operadores.csv`: Ejemplo para relaciones múltiples operadores
+   - `pagos.csv`: Ejemplo para importar pagos históricos
+   - `README.md`: Documentación de cada archivo CSV
+
+**Características de la Guía:**
+
+- ✅ **Orden de importación claro**: Define el orden exacto considerando todas las dependencias
+- ✅ **Campos requeridos vs opcionales**: Identifica claramente qué campos son obligatorios
+- ✅ **Ejemplos realistas**: Todos los CSVs incluyen datos de ejemplo realistas
+- ✅ **Validaciones**: Incluye verificaciones post-importación para cada paso
+- ✅ **Solución de problemas**: Sección completa con errores comunes y sus soluciones
+- ✅ **Checklist final**: Lista de verificación completa antes de considerar la migración exitosa
+
+**Orden de Importación Definido:**
+
+1. Operadores (no depende de nada)
+2. Clientes (no depende de nada)
+3. Tipos de Cambio (opcional pero recomendado)
+4. Cuentas Financieras (necesario para pagos)
+5. Operaciones (depende de: agencias, vendedores, operadores, clientes)
+6. Relación Operaciones-Operadores (depende de: operaciones, operadores)
+7. Pagos (depende de: operaciones, cuentas financieras)
+
+**Importancia:**
+Esta guía es crítica para el éxito de la migración, ya que:
+- Define claramente las dependencias entre entidades
+- Previene errores comunes durante la importación
+- Proporciona ejemplos claros para cada tipo de dato
+- Incluye validaciones para asegurar la integridad de los datos
+
+**Resultado:**
+- ✅ Guía completa y detallada lista para usar
+- ✅ Archivos CSV de ejemplo con datos realistas
+- ✅ Documentación clara de cada campo y formato requerido
+- ✅ Proceso de migración estructurado y verificable
+
+---
+
 ## Pendientes / Roadmap
 
 ### En desarrollo / Pendientes de cliente
