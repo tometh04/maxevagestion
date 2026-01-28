@@ -1,10 +1,10 @@
 -- =====================================================
--- Migración 061: Función RPC para queries readonly del AI Companion
+-- Migración 091: Fix execute_readonly_query para queries multilínea
 -- =====================================================
--- Permite que el AI Companion ejecute queries SELECT de forma segura
--- Solo permite SELECT, valida SQL, y tiene rate limiting
+-- Corrige la validación de queries SELECT para manejar correctamente
+-- queries con saltos de línea y espacios al inicio
 
--- Función para ejecutar queries readonly de forma segura
+-- Actualizar función para manejar mejor queries multilínea
 CREATE OR REPLACE FUNCTION execute_readonly_query(query_text TEXT)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -28,7 +28,7 @@ BEGIN
   normalized_query := UPPER(REGEXP_REPLACE(TRIM(query_text), '^\s+', '', 'g'));
 
   -- Validar que solo sea SELECT (seguridad crítica)
-  -- Permitir espacios y saltos de línea después de SELECT
+  -- Permitir espacios y saltos de línea después de SELECT usando regex
   IF NOT normalized_query ~ '^SELECT\s' THEN
     RAISE EXCEPTION 'Solo se permiten queries SELECT. Query recibida: %', LEFT(REGEXP_REPLACE(query_text, '\s+', ' ', 'g'), 100);
   END IF;
@@ -80,11 +80,4 @@ END;
 $$;
 
 -- Comentarios
-COMMENT ON FUNCTION execute_readonly_query IS 'Ejecuta queries SELECT de forma segura para el AI Companion. Solo permite SELECT, valida SQL, y previene comandos peligrosos.';
-
--- Grant execute a authenticated users (todos los usuarios autenticados pueden usar esta función)
-GRANT EXECUTE ON FUNCTION execute_readonly_query(TEXT) TO authenticated;
-
--- Crear índice para mejorar performance de queries comunes
--- (Esto se hace en las migraciones de índices existentes)
-
+COMMENT ON FUNCTION execute_readonly_query IS 'Ejecuta queries SELECT de forma segura para el AI Companion. Solo permite SELECT, valida SQL, y previene comandos peligrosos. Maneja correctamente queries multilínea.';
