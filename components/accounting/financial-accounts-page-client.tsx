@@ -854,15 +854,15 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                     <Badge variant="secondary">{account.currency}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatCurrency(account.initial_balance || 0, account.currency)}
+                    {formatCurrency(account.initial_balance ?? 0, account.currency)}
                   </TableCell>
                   <TableCell className="text-right">
                     <span
                       className={`font-bold ${
-                        (account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"
+                        (account.current_balance ?? 0) >= 0 ? "text-amber-600" : "text-red-600"
                       }`}
                     >
-                      {formatCurrency(account.current_balance || 0, account.currency)}
+                      {formatCurrency(account.current_balance ?? 0, account.currency)}
                     </span>
                   </TableCell>
                   <TableCell>

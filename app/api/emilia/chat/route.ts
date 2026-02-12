@@ -100,19 +100,6 @@ export async function POST(request: Request) {
         const EMILIA_API_URL = process.env.EMILIA_API_URL || "https://api.vibook.ai/search"
         const EMILIA_API_KEY = process.env.EMILIA_API_KEY
 
-        // LOGS TEMPORALES PARA DEBUGGING
-        console.log("=== [Emilia API DEBUG] Inicio ===")
-        console.log("[Emilia API] URL:", EMILIA_API_URL)
-        console.log("[Emilia API] API Key presente:", !!EMILIA_API_KEY)
-        console.log("[Emilia API] API Key prefix:", EMILIA_API_KEY?.substring(0, 20) + "...")
-        console.log("[Emilia API] API Key length:", EMILIA_API_KEY?.length)
-        console.log("[Emilia API] Request host:", request.headers.get('host'))
-        console.log("[Emilia API] Request origin:", request.headers.get('origin'))
-        console.log("[Emilia API] Request referer:", request.headers.get('referer'))
-        console.log("[Emilia API] User ID:", user.id)
-        console.log("[Emilia API] Conversation ID:", conversationId)
-        console.log("[Emilia API] Message:", message.substring(0, 50))
-
         if (!EMILIA_API_KEY) {
             console.error("EMILIA_API_KEY no configurada en .env.local")
             return NextResponse.json(
@@ -136,9 +123,6 @@ export async function POST(request: Request) {
             external_conversation_ref: conversationId,
         }
 
-        console.log("[Emilia API] Payload:", JSON.stringify(apiPayload, null, 2))
-        console.log("[Emilia API] Enviando request a Vibook...")
-
         const response = await fetch(EMILIA_API_URL, {
             method: "POST",
             headers: {
@@ -150,34 +134,17 @@ export async function POST(request: Request) {
             body: JSON.stringify(apiPayload),
         })
 
-        console.log("[Emilia API] Response status:", response.status)
-        console.log("[Emilia API] Response headers:", Object.fromEntries(response.headers.entries()))
-
         if (!response.ok) {
             const errorText = await response.text()
-
-            // LOGS DETALLADOS DE ERROR
-            console.error("=== [Emilia API ERROR] ===")
-            console.error("[Emilia API] Status code:", response.status)
-            console.error("[Emilia API] Status text:", response.statusText)
-            console.error("[Emilia API] Error body:", errorText)
 
             let errorData: any
             try {
                 errorData = JSON.parse(errorText)
-                console.error("[Emilia API] Error JSON:", JSON.stringify(errorData, null, 2))
             } catch {
-                console.error("[Emilia API] Error no es JSON válido")
                 errorData = { message: errorText }
             }
 
-            console.error("[Emilia API] Resumen del request que falló:")
-            console.error("  - URL:", EMILIA_API_URL)
-            console.error("  - API Key prefix:", EMILIA_API_KEY?.substring(0, 25) + "...")
-            console.error("  - Host:", request.headers.get('host'))
-            console.error("  - Origin:", request.headers.get('origin'))
-            console.error("  - Referer:", request.headers.get('referer'))
-            console.error("=== [Fin Emilia API ERROR] ===")
+            console.error("[Emilia API] Error:", response.status, errorData?.message || errorText)
 
             if (response.status === 429) {
                 return NextResponse.json(
@@ -223,11 +190,9 @@ export async function POST(request: Request) {
         }
 
         const data = await response.json()
-        console.log("[Emilia API] Response data:", JSON.stringify(data, null, 2))
 
         // Manejar caso de información incompleta
         if (data.status === "incomplete" || data.request_type === "missing_info_request") {
-            console.log("[Emilia API] Incomplete request detected")
 
             // Guardar mensaje del asistente pidiendo más información
             const assistantClientId = generateClientId()

@@ -245,8 +245,8 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <span className={`font-semibold ${(account.current_balance || 0) >= 0 ? "text-amber-600" : "text-red-600"}`}>
-                                {account.currency === "USD" ? "US$" : "$"} {Math.round(account.current_balance || 0).toLocaleString("es-AR")}
+                              <span className={`font-semibold ${(account.current_balance ?? 0) >= 0 ? "text-amber-600" : "text-red-600"}`}>
+                                {account.currency === "USD" ? "US$" : "$"} {Math.round(account.current_balance ?? 0).toLocaleString("es-AR")}
                               </span>
                             </TableCell>
                           </TableRow>

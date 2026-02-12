@@ -187,27 +187,27 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const kpis = useMemo(() => {
     const efectivoARS = filteredAccounts
       .filter((acc) => acc.type === "CASH_ARS")
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const efectivoUSD = filteredAccounts
       .filter((acc) => acc.type === "CASH_USD")
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const cajaAhorroARS = filteredAccounts
       .filter((acc) => acc.type === "SAVINGS_ARS")
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const cajaAhorroUSD = filteredAccounts
       .filter((acc) => acc.type === "SAVINGS_USD")
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const bancosARS = filteredAccounts
       .filter((acc) => (acc.type === "CHECKING_ARS" || acc.type === "SAVINGS_ARS"))
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const bancosUSD = filteredAccounts
       .filter((acc) => (acc.type === "CHECKING_USD" || acc.type === "SAVINGS_USD"))
-      .reduce((sum, acc) => sum + (acc.current_balance || 0), 0)
+      .reduce((sum, acc) => sum + (acc.current_balance ?? 0), 0)
 
     const totalARS = efectivoARS + bancosARS
     const totalUSD = efectivoUSD + bancosUSD
@@ -398,7 +398,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                     {usdAccounts.map(account => (
                       <div key={account.id} className="flex items-center justify-between p-2 border rounded">
                         <span className="text-sm">{account.name}</span>
-                        <span className="font-medium">{formatCurrency(account.current_balance || 0, "USD")}</span>
+                        <span className="font-medium">{formatCurrency(account.current_balance ?? 0, "USD")}</span>
                       </div>
                     ))}
                     {usdAccounts.length === 0 && (
@@ -412,7 +412,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                     {arsAccounts.map(account => (
                       <div key={account.id} className="flex items-center justify-between p-2 border rounded">
                         <span className="text-sm">{account.name}</span>
-                        <span className="font-medium">{formatCurrency(account.current_balance || 0, "ARS")}</span>
+                        <span className="font-medium">{formatCurrency(account.current_balance ?? 0, "ARS")}</span>
                       </div>
                     ))}
                     {arsAccounts.length === 0 && (
@@ -454,7 +454,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <CardDescription>{account.type.replace("_", " ")}</CardDescription>
                         </div>
                         <Badge variant="outline" className="text-lg font-semibold">
-                          {formatCurrency(account.current_balance || 0, "USD")}
+                          {formatCurrency(account.current_balance ?? 0, "USD")}
                         </Badge>
                       </div>
           </CardHeader>
@@ -484,7 +484,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <div>
                             <p className="text-xs text-muted-foreground">Balance</p>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                              {formatCurrency(account.current_balance || 0, "USD")}
+                              {formatCurrency(account.current_balance ?? 0, "USD")}
                             </p>
                           </div>
                         </div>
@@ -589,7 +589,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <CardDescription>{account.type.replace("_", " ")}</CardDescription>
                         </div>
                         <Badge variant="outline" className="text-lg font-semibold">
-                          {formatCurrency(account.current_balance || 0, "ARS")}
+                          {formatCurrency(account.current_balance ?? 0, "ARS")}
                         </Badge>
                       </div>
                     </CardHeader>
@@ -619,7 +619,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <div>
                             <p className="text-xs text-muted-foreground">Balance</p>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                              {formatCurrency(account.current_balance || 0, "ARS")}
+                              {formatCurrency(account.current_balance ?? 0, "ARS")}
                             </p>
                           </div>
                         </div>

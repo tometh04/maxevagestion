@@ -4,6 +4,17 @@ import { getCurrentUser } from "@/lib/auth"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
+// Escapar HTML para prevenir XSS
+function escapeHtml(str: string | null | undefined): string {
+  if (!str) return ""
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -195,12 +206,12 @@ export async function GET(
 <body>
   <div class="header">
     <div>
-      <div class="agency-name">${customer.agencies?.name || "Agencia"}</div>
-      ${customer.agencies?.address ? `<div style="font-size: 11px; color: #666;">${customer.agencies.address}</div>` : ""}
+      <div class="agency-name">${escapeHtml(customer.agencies?.name) || "Agencia"}</div>
+      ${customer.agencies?.address ? `<div style="font-size: 11px; color: #666;">${escapeHtml(customer.agencies.address)}</div>` : ""}
     </div>
     <div class="agency-info">
-      ${customer.agencies?.phone ? `<div>Tel: ${customer.agencies.phone}</div>` : ""}
-      ${customer.agencies?.email ? `<div>${customer.agencies.email}</div>` : ""}
+      ${customer.agencies?.phone ? `<div>Tel: ${escapeHtml(customer.agencies.phone)}</div>` : ""}
+      ${customer.agencies?.email ? `<div>${escapeHtml(customer.agencies.email)}</div>` : ""}
     </div>
   </div>
   
@@ -214,19 +225,19 @@ export async function GET(
     <div class="info-grid">
       <div class="info-item">
         <span class="info-label">Nombre:</span>
-        <span class="info-value">${customer.first_name} ${customer.last_name}</span>
+        <span class="info-value">${escapeHtml(customer.first_name)} ${escapeHtml(customer.last_name)}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Email:</span>
-        <span class="info-value">${customer.email || "-"}</span>
+        <span class="info-value">${escapeHtml(customer.email) || "-"}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Teléfono:</span>
-        <span class="info-value">${customer.phone || "-"}</span>
+        <span class="info-value">${escapeHtml(customer.phone) || "-"}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Documento:</span>
-        <span class="info-value">${customer.document_type || ""} ${customer.document_number || "-"}</span>
+        <span class="info-value">${escapeHtml(customer.document_type)} ${escapeHtml(customer.document_number) || "-"}</span>
       </div>
     </div>
   </div>
@@ -268,8 +279,8 @@ export async function GET(
             return `
               <tr>
                 <td>${format(new Date(p.date_due), "dd/MM/yyyy")}</td>
-                <td>${p.description || (p.direction === "CUSTOMER_TO_AGENCY" ? "Pago cliente" : "Pago a operador")}</td>
-                <td>${p.operations?.destination || "-"}</td>
+                <td>${escapeHtml(p.description) || (p.direction === "CUSTOMER_TO_AGENCY" ? "Pago cliente" : "Pago a operador")}</td>
+                <td>${escapeHtml(p.operations?.destination) || "-"}</td>
                 <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
                 <td style="text-align: right; font-weight: 600;">${p.currency} ${p.amount?.toLocaleString("es-AR")}</td>
               </tr>

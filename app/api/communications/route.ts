@@ -47,8 +47,22 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const body = await request.json()
 
+    // Whitelist de campos permitidos (prevenir field injection)
+    const { customer_id, lead_id, operation_id, type, channel, subject, content, date, notes } = body
+
     const { data, error } = await (supabase.from("communications") as any)
-      .insert({ ...body, user_id: user.id })
+      .insert({
+        customer_id: customer_id || null,
+        lead_id: lead_id || null,
+        operation_id: operation_id || null,
+        type: type || "NOTE",
+        channel: channel || null,
+        subject: subject || null,
+        content: content || null,
+        date: date || new Date().toISOString(),
+        notes: notes || null,
+        user_id: user.id,
+      })
       .select()
       .single()
 

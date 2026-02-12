@@ -157,7 +157,7 @@ export function TransferAccountDialog({
   }
 
   const fromAccount = financialAccounts.find((acc) => acc.id === fromAccountId)
-  const fromBalance = fromAccount?.current_balance || 0
+  const fromBalance = fromAccount?.current_balance ?? 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,10 +196,10 @@ export function TransferAccountDialog({
                           <SelectItem key={account.id} value={account.id}>
                             {account.name} ({account.currency}) - Balance:{" "}
                             {account.currency === "USD"
-                              ? `US$ ${(account.current_balance || 0).toLocaleString("es-AR", {
+                              ? `US$ ${(account.current_balance ?? 0).toLocaleString("es-AR", {
                                   minimumFractionDigits: 2,
                                 })}`
-                              : `$ ${(account.current_balance || 0).toLocaleString("es-AR", {
+                              : `$ ${(account.current_balance ?? 0).toLocaleString("es-AR", {
                                   minimumFractionDigits: 2,
                                 })}`}
                           </SelectItem>

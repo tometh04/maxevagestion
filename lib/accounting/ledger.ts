@@ -180,17 +180,10 @@ export async function getAccountBalance(
   accountId: string,
   supabase: SupabaseClient<Database>
 ): Promise<number> {
-  // Obtener cuenta con su chart_account_id para determinar el tipo
+  // Obtener cuenta (query separada para chart_of_accounts — el JOIN de Supabase falla silenciosamente)
   const { data: account, error: accountError } = await (supabase
     .from("financial_accounts") as any)
-    .select(`
-      initial_balance,
-      currency,
-      chart_account_id,
-      chart_of_accounts:chart_account_id(
-        category
-      )
-    `)
+    .select("initial_balance, currency, chart_account_id")
     .eq("id", accountId)
     .single()
 
@@ -198,9 +191,19 @@ export async function getAccountBalance(
     throw new Error(`Cuenta financiera no encontrada: ${accountId}`)
   }
 
+  // Query separada para obtener categoría del plan de cuentas
+  let category: string | null = null
+  if (account.chart_account_id) {
+    const { data: chartAccount } = await (supabase
+      .from("chart_of_accounts") as any)
+      .select("category")
+      .eq("id", account.chart_account_id)
+      .maybeSingle()
+    category = chartAccount?.category || null
+  }
+
   const initialBalance = parseFloat(account.initial_balance || "0")
   const accountCurrency = account.currency as "ARS" | "USD"
-  const category = account.chart_of_accounts?.category
 
   // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
   // Aunque no podemos usar SUM() directamente con Supabase sin RPC, 
@@ -269,22 +272,31 @@ export async function getAccountBalancesBatch(
     return {}
   }
 
-  // Obtener todas las cuentas con su información necesaria
+  // Obtener todas las cuentas (query separada para chart_of_accounts — el JOIN falla silenciosamente)
   const { data: accounts, error: accountsError } = await (supabase
     .from("financial_accounts") as any)
-    .select(`
-      id,
-      initial_balance,
-      currency,
-      chart_account_id,
-      chart_of_accounts:chart_account_id(
-        category
-      )
-    `)
+    .select("id, initial_balance, currency, chart_account_id")
     .in("id", accountIds)
 
   if (accountsError || !accounts) {
     throw new Error(`Error obteniendo cuentas: ${accountsError?.message || "Unknown error"}`)
+  }
+
+  // Query separada batch para categorías del plan de cuentas
+  const chartAccountIds = Array.from(new Set(
+    accounts.map((a: any) => a.chart_account_id).filter(Boolean)
+  )) as string[]
+  const chartCategoryMap = new Map<string, string>()
+  if (chartAccountIds.length > 0) {
+    const { data: chartAccounts } = await (supabase
+      .from("chart_of_accounts") as any)
+      .select("id, category")
+      .in("id", chartAccountIds)
+    if (chartAccounts) {
+      for (const ca of chartAccounts) {
+        chartCategoryMap.set(ca.id, ca.category)
+      }
+    }
   }
 
   // Verificar caché primero
@@ -332,7 +344,9 @@ export async function getAccountBalancesBatch(
   for (const account of accountsToCalculate) {
     const initialBalance = parseFloat(account.initial_balance || "0")
     const accountCurrency = account.currency as "ARS" | "USD"
-    const category = account.chart_of_accounts?.category || "ACTIVO"
+    const category = account.chart_account_id
+      ? chartCategoryMap.get(account.chart_account_id) || "ACTIVO"
+      : "ACTIVO"
     const accountMovements = movementsByAccount.get(account.id) || []
 
     const movementsSum = accountMovements.reduce((sum: number, m: any) => {
@@ -640,12 +654,7 @@ export async function isAccountingOnlyAccount(
   supabase: SupabaseClient<Database>
 ): Promise<boolean> {
   const { data: account, error } = await (supabase.from("financial_accounts") as any)
-    .select(`
-      chart_account_id,
-      chart_of_accounts:chart_account_id(
-        account_code
-      )
-    `)
+    .select("chart_account_id")
     .eq("id", accountId)
     .single()
 
@@ -653,7 +662,13 @@ export async function isAccountingOnlyAccount(
     return false
   }
 
-  const accountCode = account.chart_of_accounts?.account_code
+  // Query separada para chart_of_accounts (el JOIN de Supabase falla silenciosamente)
+  const { data: chartAccount } = await (supabase.from("chart_of_accounts") as any)
+    .select("account_code")
+    .eq("id", account.chart_account_id)
+    .maybeSingle()
+
+  const accountCode = chartAccount?.account_code
   // Cuentas por Cobrar: 1.1.03, Cuentas por Pagar: 2.1.01
   return accountCode === "1.1.03" || accountCode === "2.1.01"
 }
