@@ -398,7 +398,7 @@ export async function POST(request: Request) {
           if (!saleExchangeRate) {
             saleExchangeRate = await getLatestExchangeRate(supabase)
           }
-          if (!saleExchangeRate) saleExchangeRate = 1000
+          if (!saleExchangeRate) saleExchangeRate = 1450
         }
         const saleAmountARS = calculateARSEquivalent(sale_amount_total, finalSaleCurrency as "ARS" | "USD", saleExchangeRate)
 

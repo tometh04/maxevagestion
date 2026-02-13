@@ -161,12 +161,11 @@ export async function GET(request: Request) {
         })
       } else if ((result.type === 'operations' || result.type === 'operations_by_passenger') && result.data) {
         const statusLabels: Record<string, string> = {
-          PRE_RESERVATION: "Pre-reserva",
           RESERVED: "Reservado",
           CONFIRMED: "Confirmado",
           CANCELLED: "Cancelado",
+          TRAVELLING: "En viaje",
           TRAVELLED: "Viajado",
-          CLOSED: "Cerrado",
         }
         result.data.forEach((o: any) => {
           // Evitar duplicados (si ya está en results)

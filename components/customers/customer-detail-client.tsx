@@ -32,12 +32,11 @@ import { CustomerInteractions } from "./customer-interactions"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
-  PRE_RESERVATION: "Pre-reserva",
   RESERVED: "Reservado",
   CONFIRMED: "Confirmado",
   CANCELLED: "Cancelado",
+  TRAVELLING: "En viaje",
   TRAVELLED: "Viajado",
-  CLOSED: "Cerrado",
 }
 
 const paymentStatusLabels: Record<string, string> = {
@@ -213,7 +212,7 @@ export function CustomerDetailClient({
                           if (p.currency === "USD") {
                             // Buscar el exchange_rate en el payment o usar tasa aproximada
                             // Los pagos pueden tener exchange_rate si se guardó al crear el pago
-                            const exchangeRate = p.exchange_rate || 1000 // Fallback si no hay tasa guardada
+                            const exchangeRate = p.exchange_rate || 1450 // Fallback si no hay tasa guardada
                             return sum + (amount * exchangeRate)
                           }
                           return sum + amount

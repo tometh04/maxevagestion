@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       const rateDate = payment_date ? new Date(payment_date) : new Date()
       exchangeRateValue = await getExchangeRate(supabase, rateDate)
       if (!exchangeRateValue) exchangeRateValue = await getLatestExchangeRate(supabase)
-      if (!exchangeRateValue) exchangeRateValue = 1000
+      if (!exchangeRateValue) exchangeRateValue = 1450
     } else if (exchange_rate != null) {
       exchangeRateValue = parseFloat(String(exchange_rate))
     }
@@ -124,7 +124,7 @@ export async function POST(request: Request) {
 
       amountInPaymentCurrency = roundMoney(amountInPaymentCurrency)
       if (payment_currency === "USD") {
-        amountARS = roundMoney(amountInPaymentCurrency * (exchangeRateValue ?? 1000))
+        amountARS = roundMoney(amountInPaymentCurrency * (exchangeRateValue ?? 1450))
       } else {
         amountARS = amountInPaymentCurrency
       }
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
 
         const costAmount = parseFloat(String(amount_to_pay))
         const costARS = paymentCurrency === "USD"
-          ? roundMoney(costAmount * (exchangeRateValue ?? 1000))
+          ? roundMoney(costAmount * (exchangeRateValue ?? 1450))
           : costAmount
 
         await createLedgerMovement(
@@ -260,7 +260,7 @@ export async function POST(request: Request) {
             concept: `Costo operador - Operación ${operation_id.slice(0, 8)}`,
             currency: paymentCurrency,
             amount_original: roundMoney(costAmount),
-            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue ?? 1000) : null,
+            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue ?? 1450) : null,
             amount_ars_equivalent: roundMoney(costARS),
             method: ledgerMethod,
             account_id: costAccountId,

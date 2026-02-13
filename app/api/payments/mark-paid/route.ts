@@ -203,19 +203,19 @@ export async function POST(request: Request) {
               }
               if (!exchangeRate) {
                 console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1000 // Fallback temporal
+                exchangeRate = 1450 // Fallback temporal
               }
             }
-            
+
             const amountARS = calculateARSEquivalent(
               parseFloat(paymentData.amount),
               paymentData.currency as "ARS" | "USD",
               exchangeRate
             )
-            
+
             // Obtener nombre del pasajero para el concepto
-            const passengerNameForCpC = paymentData.operation_id 
-              ? await getMainPassengerName(paymentData.operation_id, supabase) 
+            const passengerNameForCpC = paymentData.operation_id
+              ? await getMainPassengerName(paymentData.operation_id, supabase)
               : null
             const operationCodeForCpC = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : ""
 
@@ -279,10 +279,10 @@ export async function POST(request: Request) {
               }
               if (!exchangeRate) {
                 console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1000 // Fallback temporal
+                exchangeRate = 1450 // Fallback temporal
               }
             }
-            
+
             const amountARS = calculateARSEquivalent(
               parseFloat(paymentData.amount),
               paymentData.currency as "ARS" | "USD",
@@ -410,10 +410,10 @@ export async function POST(request: Request) {
           exchangeRate = await getLatestExchangeRate(supabase)
         }
         
-        // Fallback: si aún no hay tasa, usar 1000 como último recurso
+        // Fallback: si aún no hay tasa, usar 1450 como último recurso
         if (!exchangeRate) {
-          console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-          exchangeRate = 1000
+          console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
+          exchangeRate = 1450
         }
       } else if (paymentData.currency === "ARS" && exchange_rate) {
         // Si el pago es en ARS y se proporcionó TC, usarlo

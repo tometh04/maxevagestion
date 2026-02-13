@@ -178,10 +178,10 @@ export async function POST(request: Request) {
         exchangeRate = await getLatestExchangeRate(supabase)
       }
       
-      // Fallback: si aún no hay tasa, usar 1000 como último recurso
+      // Fallback: si aún no hay tasa, usar 1450 como último recurso
       if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-        exchangeRate = 1000
+        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
+        exchangeRate = 1450
       }
     }
 

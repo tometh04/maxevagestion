@@ -101,7 +101,7 @@ export async function POST(request: Request) {
         exchangeRate = await getLatestExchangeRate(supabase)
       }
       if (!exchangeRate) {
-        exchangeRate = 1000 // Fallback
+        exchangeRate = 1450 // Fallback
       }
     }
 

@@ -243,8 +243,8 @@ export async function PATCH(
               }
 
               if (!exchangeRate) {
-                console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1000`)
-                exchangeRate = 1000
+                console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
+                exchangeRate = 1450
               }
             }
 

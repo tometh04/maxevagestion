@@ -86,7 +86,7 @@ export async function getLatestExchangeRate(
 
   if (error || !data) {
     // No loguear warning - es esperado que no haya tasas de cambio si no se han cargado
-    // El sistema usa un fallback automáticamente (1000) en los endpoints que lo necesitan
+    // El sistema usa un fallback automáticamente (1450) en los endpoints que lo necesitan
     return null
   }
 

@@ -182,7 +182,7 @@ export async function autoCalculateFXForPayment(
   // Calcular ARS equivalentes
   const saleArsEquivalent = operation.sale_currency === "ARS"
     ? operation.sale_amount_total
-    : operation.sale_amount_total * (saleExchangeRate || 1000) // Fallback a 1000 si no hay rate
+    : operation.sale_amount_total * (saleExchangeRate || 1450) // Fallback TC aproximado si no hay rate
 
   // Para el pago, usar el exchange rate proporcionado o buscar uno
   let effectivePaymentRate = paymentExchangeRate
@@ -192,13 +192,13 @@ export async function autoCalculateFXForPayment(
       effectivePaymentRate = await getExchangeRate(supabase, latestPayment.date_paid)
     }
     if (!effectivePaymentRate) {
-      effectivePaymentRate = await getLatestExchangeRate(supabase) || 1000
+      effectivePaymentRate = await getLatestExchangeRate(supabase) || 1450
     }
   }
 
   const totalPaidArsEquivalent = paymentCurrency === "ARS"
     ? totalPaidInPaymentCurrency
-    : totalPaidInPaymentCurrency * (effectivePaymentRate || 1000)
+    : totalPaidInPaymentCurrency * (effectivePaymentRate || 1450)
 
   // Calcular diferencia
   const difference = saleArsEquivalent - totalPaidArsEquivalent

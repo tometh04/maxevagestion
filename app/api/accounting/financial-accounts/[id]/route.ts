@@ -104,7 +104,7 @@ export async function DELETE(
       if (account.currency === "USD") {
         exchangeRate = await getExchangeRate(supabase, new Date())
         if (!exchangeRate) exchangeRate = await getLatestExchangeRate(supabase)
-        if (!exchangeRate) exchangeRate = 1000
+        if (!exchangeRate) exchangeRate = 1450
       }
 
       const amountARS = account.currency === "ARS"
