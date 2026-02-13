@@ -41,7 +41,7 @@ const DATABASE_SCHEMA = `
 - type ('FLIGHT','HOTEL','PACKAGE','CRUISE','TRANSFER','MIXED')
 - origin, destination, departure_date, return_date
 - adults, children, infants
-- status ('PRE_RESERVATION','RESERVED','CONFIRMED','CANCELLED','TRAVELLED','CLOSED')
+- status ('RESERVED','CONFIRMED','CANCELLED','TRAVELLING','TRAVELLED')
 - sale_amount_total (venta total), sale_currency ('ARS','USD')
 - operator_cost (costo total), operator_cost_currency ('ARS','USD')
 - margin_amount (ganancia), margin_percentage (margen %)
@@ -191,11 +191,12 @@ const DATABASE_SCHEMA = `
 ### 💰 CÁLCULOS Y MÉTRICAS CLAVE
 
 #### Balance de Cuentas Financieras:
+IMPORTANTE: Para cuentas USD usar amount_original (que está en USD). Para cuentas ARS usar amount_ars_equivalent (que está en ARS). NUNCA usar amount_ars_equivalent para cuentas USD porque infla el balance por el tipo de cambio.
 \`\`\`sql
 SELECT fa.id, fa.name, fa.type, fa.currency, fa.initial_balance,
-  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as ingresos,
-  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as egresos,
-  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE 0 END), 0) as ingresos,
+  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE 0 END), 0) as egresos,
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE -(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) END), 0) as balance_actual
 FROM financial_accounts fa
 LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
 WHERE fa.is_active = true
@@ -203,16 +204,16 @@ GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.initial_balance
 \`\`\`
 
 #### Deudores por Ventas (Cuentas por Cobrar):
+NOTA: Si sale_currency = 'USD', la venta ya está en USD (no convertir). Si sale_currency = 'ARS', dividir por TC. Si exchange_rates está vacía, usar monthly_exchange_rates como fallback.
 \`\`\`sql
 SELECT o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency,
-  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as pagado_usd,
-  (o.sale_amount_total / COALESCE(er.rate, 1)) - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as deuda_usd
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) as pagado,
+  o.sale_amount_total - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) as deuda
 FROM operations o
-LEFT JOIN payments p ON p.operation_id = o.id
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+LEFT JOIN payments p ON p.operation_id = o.id AND p.currency = o.sale_currency
 WHERE o.status NOT IN ('CANCELLED')
-GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency, er.rate
-HAVING (o.sale_amount_total / COALESCE(er.rate, 1)) - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) > 0
+GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency
+HAVING o.sale_amount_total - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) > 0
 \`\`\`
 
 #### Deuda a Operadores (Cuentas por Pagar):
@@ -266,17 +267,21 @@ AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 
 ### ⚠️ NOTAS CRÍTICAS
 
-1. **Monedas:** Siempre convertir a USD usando exchange_rates. Si operation.sale_currency = 'USD', usar directamente. Si es 'ARS', dividir por exchange_rate.
+1. **Monedas:** Si operation.sale_currency = 'USD', usar directamente sale_amount_total. Si es 'ARS' y se necesita en USD, dividir por exchange_rate. IMPORTANTE: en ledger_movements, amount_original está en la moneda original (puede ser USD o ARS), y amount_ars_equivalent SIEMPRE está en ARS. Para balances de cuentas USD, usar amount_original. Para balances de cuentas ARS, usar amount_ars_equivalent.
 2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. Para fechas de operaciones usar departure_date o created_at según corresponda.
-3. **Payments:** La columna es date_due (NO due_date). Usar amount_usd para cálculos en USD. Todos los pagos requieren financial_account_id (cuenta financiera de origen/destino).
+3. **Payments:** La columna es date_due (NO due_date). Todos los pagos requieren financial_account_id (cuenta financiera de origen/destino).
+   - Métodos de pago: method puede ser 'CASH', 'BANK', 'MP', 'USD', 'OTHER'. 'BANK' = transferencia bancaria, 'MP' = Mercado Pago, 'CASH' = efectivo.
+   - Para encontrar a qué cuenta va un pago: JOIN financial_accounts fa ON fa.id = p.financial_account_id
+   - Para cobros totales en moneda original: usar p.amount (NO amount_usd si la operación es en USD)
 4. **Ledger Movements:** 
    - amount_ars_equivalent SIEMPRE está en ARS. Para USD, usar amount_original con exchange_rate.
    - El campo 'concept' muestra el nombre del pasajero principal: "Juan Pérez (OP-20260114)" en lugar de solo "Pago de cliente - Op. OP-20260114"
    - Para obtener el nombre del pasajero: JOIN operation_customers con role='MAIN' y customers
 5. **Operator Payments:** Usar (amount - paid_amount) para calcular pendiente. Status puede ser 'PENDING', 'PAID', 'OVERDUE'. La tabla muestra nombre completo del pasajero principal en la columna de operación.
-6. **Financial Accounts:** 
-   - Balance = initial_balance + SUM(ledger_movements.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
-   - Cada cuenta tiene una sola moneda (ARS o USD).
+6. **Financial Accounts:**
+   - PARA CUENTAS ARS: Balance = initial_balance + SUM(lm.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
+   - PARA CUENTAS USD: Balance = initial_balance + SUM(lm.amount_original) donde INCOME suma y EXPENSE resta. NUNCA usar amount_ars_equivalent para cuentas USD.
+   - Cada cuenta tiene una sola moneda (ARS o USD). Verificar fa.currency antes de decidir qué campo usar.
    - En la vista de Caja hay filtros por agencia y por cuenta individual (banco principal, Santander, etc.).
 7. **Margen:** margin_amount = sale_amount_total - operator_cost. margin_percentage = (margin_amount / sale_amount_total) * 100.
 8. **Múltiples Operadores:** Si una operación tiene operation_operators, sumar todos los costos para obtener el costo total.
@@ -353,20 +358,18 @@ JOIN operations o ON o.id = p.operation_id
 WHERE p.status = 'PENDING' AND p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER'
 ORDER BY p.date_due ASC LIMIT 20
 
--- Deudores por ventas (TOP 10)
-SELECT o.file_code, o.destination, 
+-- Deudores por ventas (TOP 10) - Compara venta vs pagos en la misma moneda
+SELECT o.file_code, o.destination,
   o.sale_amount_total as venta_total,
   o.sale_currency,
-  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as pagado_usd,
-  (o.sale_amount_total / COALESCE((SELECT rate FROM exchange_rates WHERE rate_date <= o.departure_date::date AND from_currency = 'USD' AND to_currency = 'ARS' ORDER BY rate_date DESC LIMIT 1), 1)) - 
-  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) as deuda_usd
+  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) as pagado,
+  o.sale_amount_total - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) as deuda
 FROM operations o
-LEFT JOIN payments p ON p.operation_id = o.id
+LEFT JOIN payments p ON p.operation_id = o.id AND p.currency = o.sale_currency
 WHERE o.status NOT IN ('CANCELLED')
-GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency, o.departure_date
-HAVING (o.sale_amount_total / COALESCE((SELECT rate FROM exchange_rates WHERE rate_date <= o.departure_date::date AND from_currency = 'USD' AND to_currency = 'ARS' ORDER BY rate_date DESC LIMIT 1), 1)) - 
-  COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount_usd ELSE 0 END), 0) > 0
-ORDER BY deuda_usd DESC LIMIT 10
+GROUP BY o.id, o.file_code, o.destination, o.sale_amount_total, o.sale_currency
+HAVING o.sale_amount_total - COALESCE(SUM(CASE WHEN p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID' THEN p.amount ELSE 0 END), 0) > 0
+ORDER BY deuda DESC LIMIT 10
 
 -- Deuda a operadores (TOP 10)
 SELECT opr.name as operador, 
@@ -381,11 +384,11 @@ AND (op.amount - op.paid_amount) > 0
 GROUP BY opr.name, op.currency
 ORDER BY total_pendiente DESC LIMIT 10
 
--- Balance de todas las cuentas financieras (con filtro opcional por agencia o cuenta)
+-- Balance de todas las cuentas financieras (USD usa amount_original, ARS usa amount_ars_equivalent)
 SELECT fa.name, fa.type, fa.currency, fa.agency_id, fa.initial_balance,
-  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as ingresos,
-  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN lm.amount_ars_equivalent ELSE 0 END), 0) as egresos,
-  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+  COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE 0 END), 0) as ingresos,
+  COALESCE(SUM(CASE WHEN lm.type = 'EXPENSE' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE 0 END), 0) as egresos,
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE -(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) END), 0) as balance_actual
 FROM financial_accounts fa
 LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
 WHERE fa.is_active = true
@@ -413,6 +416,32 @@ FROM operations o
 LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
 WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
 AND o.status NOT IN ('CANCELLED')
+
+-- Pagos agrupados por método de pago
+SELECT p.method, COUNT(*) as cantidad, SUM(p.amount) as total, p.currency
+FROM payments p
+WHERE p.status = 'PAID'
+GROUP BY p.method, p.currency
+ORDER BY cantidad DESC
+
+-- Pagos con su cuenta financiera de destino
+SELECT p.id, p.amount, p.currency, p.method, p.status, p.date_paid,
+  fa.name as cuenta_destino, fa.currency as cuenta_moneda,
+  o.file_code, o.destination
+FROM payments p
+JOIN financial_accounts fa ON fa.id = p.financial_account_id
+JOIN operations o ON o.id = p.operation_id
+ORDER BY p.date_paid DESC LIMIT 20
+
+-- Cobros a clientes este mes (ingresos)
+SELECT p.amount, p.currency, p.method, p.date_paid, fa.name as cuenta_destino,
+  o.file_code, o.destination
+FROM payments p
+JOIN financial_accounts fa ON fa.id = p.financial_account_id
+JOIN operations o ON o.id = p.operation_id
+WHERE p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID'
+AND p.date_paid >= date_trunc('month', CURRENT_DATE)
+ORDER BY p.date_paid DESC
 
 -- Gastos recurrentes pendientes
 SELECT rp.description, rp.amount, rp.currency, rp.next_due_date, opr.name as proveedor
@@ -489,10 +518,10 @@ WHERE op.status IN ('PENDING', 'OVERDUE')
 AND (op.amount - op.paid_amount) > 0
 ORDER BY op.due_date ASC LIMIT 20
 
--- Cuentas financieras filtradas por agencia o cuenta individual
+-- Cuentas financieras filtradas por agencia o cuenta individual (USD usa amount_original, ARS usa amount_ars_equivalent)
 SELECT fa.id, fa.name, fa.type, fa.currency, fa.agency_id,
   ag.name as agencia,
-  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN lm.amount_ars_equivalent ELSE -lm.amount_ars_equivalent END), 0) as balance_actual
+  fa.initial_balance + COALESCE(SUM(CASE WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) ELSE -(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) END), 0) as balance_actual
 FROM financial_accounts fa
 LEFT JOIN agencies ag ON ag.id = fa.agency_id
 LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
