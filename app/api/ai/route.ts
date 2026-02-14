@@ -451,16 +451,41 @@ WHERE rp.is_active = true
 AND rp.next_due_date <= CURRENT_DATE + INTERVAL '30 days'
 ORDER BY rp.next_due_date ASC
 
--- Operaciones por vendedor (este mes)
-SELECT u.name as vendedor, COUNT(o.id) as cantidad, 
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd
+-- Operaciones por vendedor (este mes) con margen y ganancias
+SELECT u.name as vendedor, COUNT(o.id) as cantidad,
+  SUM(o.sale_amount_total) as total_ventas,
+  SUM(o.operator_cost) as total_costo,
+  SUM(o.margin_amount) as total_margen,
+  ROUND(AVG(o.margin_percentage), 1) as margen_promedio_pct,
+  o.sale_currency as moneda
 FROM operations o
 JOIN users u ON u.id = o.seller_id
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND to_currency = 'ARS'
-WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+WHERE o.status NOT IN ('CANCELLED')
+GROUP BY u.name, o.sale_currency
+ORDER BY total_margen DESC
+
+-- Ventas y ganancias de UN vendedor específico (ej: Micaela)
+SELECT u.name as vendedor, COUNT(o.id) as cantidad_operaciones,
+  SUM(o.sale_amount_total) as total_ventas,
+  SUM(o.operator_cost) as total_costo_operadores,
+  SUM(o.margin_amount) as ganancia_total,
+  ROUND(AVG(o.margin_percentage), 1) as margen_promedio_pct,
+  o.sale_currency as moneda
+FROM operations o
+JOIN users u ON u.id = o.seller_id
+WHERE u.name ILIKE '%Micaela%'
 AND o.status NOT IN ('CANCELLED')
-GROUP BY u.name
-ORDER BY total_ventas_usd DESC
+GROUP BY u.name, o.sale_currency
+
+-- Viajes pendientes de salir de un vendedor
+SELECT o.file_code, o.destination, o.departure_date, o.return_date,
+  o.sale_amount_total, o.sale_currency, o.status
+FROM operations o
+JOIN users u ON u.id = o.seller_id
+WHERE u.name ILIKE '%nombre%'
+AND o.departure_date >= CURRENT_DATE
+AND o.status NOT IN ('CANCELLED', 'TRAVELLED')
+ORDER BY o.departure_date ASC
 
 -- Top destinos (este mes)
 SELECT destination, COUNT(*) as cantidad,
