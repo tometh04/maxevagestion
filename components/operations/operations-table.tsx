@@ -168,9 +168,10 @@ export function OperationsTable({
       if (response.ok) {
         const data = await response.json()
         setOperations(data.operations || [])
-        setTotal(data.total || 0)
-        setTotalPages(data.totalPages || 0)
-        setHasMore(data.hasMore || false)
+        const pag = data.pagination || {}
+        setTotal(pag.total || 0)
+        setTotalPages(pag.totalPages || 0)
+        setHasMore(pag.hasMore || false)
       }
     } catch (error) {
       console.error("Error fetching operations:", error)
