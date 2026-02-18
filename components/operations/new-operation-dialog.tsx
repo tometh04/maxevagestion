@@ -403,7 +403,7 @@ export function NewOperationDialog({
 
       // Agregar a la lista local y seleccionarlo
       setLocalOperators(prev => [...prev, newOperator])
-      form.setValue("operator_id", newOperator.id)
+      form.setValue("operator_id", newOperator.id, { shouldValidate: true, shouldDirty: true })
       
       toast({
         title: "Operador creado",
@@ -1334,7 +1334,7 @@ export function NewOperationDialog({
               first_name: customer.first_name,
               last_name: customer.last_name,
             }])
-            form.setValue("customer_id", customer.id)
+            form.setValue("customer_id", customer.id, { shouldValidate: true, shouldDirty: true })
             setShowNewCustomerDialog(false)
           }
         }}
