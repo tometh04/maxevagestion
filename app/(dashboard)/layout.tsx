@@ -1,6 +1,7 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import {
   SidebarInset,
   SidebarProvider,
@@ -46,6 +47,10 @@ export default async function DashboardLayout({
           </div>
         </div>
       </SidebarInset>
+      <TaskShortcutProvider
+        currentUserId={user.id}
+        agencyId={agencies[0]?.id || ""}
+      />
     </SidebarProvider>
   )
 }

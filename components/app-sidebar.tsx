@@ -176,6 +176,7 @@ const allNavigation: NavItem[] = [
     url: "/tools/cerebro",
     icon: Bot,
     items: [
+      { title: "Tareas", url: "/tools/tasks" },
       { title: "Cerebro", url: "/tools/cerebro" },
       { title: "Emilia", url: "/emilia" },
       { title: "Configuración", url: "/tools/settings" },

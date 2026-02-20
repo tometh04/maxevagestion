@@ -25,6 +25,7 @@ import {
   Search,
   Plus,
   Bell,
+  CheckSquare,
 } from "lucide-react"
 
 interface SearchResult {
@@ -277,6 +278,10 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
             <Bell className="mr-2 h-4 w-4" />
             Alertas
           </CommandItem>
+          <CommandItem onSelect={() => navigateTo("/tools/tasks")}>
+            <CheckSquare className="mr-2 h-4 w-4" />
+            Tareas
+          </CommandItem>
           <CommandItem onSelect={() => navigateTo("/settings")}>
             <Settings className="mr-2 h-4 w-4" />
             Configuración
@@ -298,6 +303,10 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
           <CommandItem onSelect={() => navigateTo("/sales?new=true")}>
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
+          </CommandItem>
+          <CommandItem onSelect={() => navigateTo("/tools/tasks?new=true")}>
+            <CheckSquare className="mr-2 h-4 w-4" />
+            Nueva Tarea
           </CommandItem>
         </CommandGroup>
       </CommandList>

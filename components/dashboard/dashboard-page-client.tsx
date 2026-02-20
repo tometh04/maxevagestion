@@ -11,6 +11,7 @@ import { CashflowChart } from "./cashflow-chart"
 import { PendingAlertsCard } from "./pending-alerts-card"
 import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
+import { PendingTasksCard } from "./pending-tasks-card"
 import { BirthdaysTodayCard } from "./birthdays-today-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -341,8 +342,9 @@ export function DashboardPageClient({
       {/* Cumpleaños del día */}
       <BirthdaysTodayCard />
 
-      {/* Alertas, Próximos Viajes y Top Vendedores */}
-      <div className="grid gap-3 grid-cols-1 lg:grid-cols-3">
+      {/* Tareas, Alertas, Próximos Viajes y Top Vendedores */}
+      <div className="grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4">
+        <PendingTasksCard />
         <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
