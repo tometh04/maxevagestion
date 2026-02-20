@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { createBrowserClient } from "@supabase/ssr"
-import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle } from "lucide-react"
+import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle, CheckSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -32,6 +32,7 @@ const alertTypeConfig: Record<string, { icon: any; color: string }> = {
   MISSING_DOCUMENT: { icon: FileText, color: "text-orange-500" },
   LOW_MARGIN: { icon: AlertTriangle, color: "text-red-500" },
   QUOTATION_EXPIRING: { icon: Bell, color: "text-purple-500" },
+  TASK_REMINDER: { icon: CheckSquare, color: "text-indigo-500" },
 }
 
 export function NotificationBell() {

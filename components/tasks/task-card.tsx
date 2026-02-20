@@ -26,10 +26,10 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 const PRIORITY_CONFIG = {
-  URGENT: { label: "Urgente", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
-  HIGH: { label: "Alta", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
-  MEDIUM: { label: "Media", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
-  LOW: { label: "Baja", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+  URGENT: { label: "Urgente", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", dot: "bg-red-500" },
+  HIGH: { label: "Alta", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", dot: "bg-orange-500" },
+  MEDIUM: { label: "Media", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", dot: "bg-blue-500" },
+  LOW: { label: "Baja", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400", dot: "bg-gray-400" },
 } as const
 
 const STATUS_ICONS = {
@@ -44,9 +44,17 @@ interface TaskCardProps {
   userRole: string
   onEdit: (task: any) => void
   onRefresh: () => void
+  variant?: "full" | "compact"
 }
 
-export function TaskCard({ task, currentUserId, userRole, onEdit, onRefresh }: TaskCardProps) {
+export function TaskCard({
+  task,
+  currentUserId,
+  userRole,
+  onEdit,
+  onRefresh,
+  variant = "full",
+}: TaskCardProps) {
   const [isToggling, setIsToggling] = useState(false)
 
   const priority = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.MEDIUM
@@ -90,6 +98,54 @@ export function TaskCard({ task, currentUserId, userRole, onEdit, onRefresh }: T
     }
   }
 
+  // Vista compacta para la grilla semanal
+  if (variant === "compact") {
+    return (
+      <div
+        onClick={() => onEdit(task)}
+        className={cn(
+          "group flex items-start gap-1.5 p-2 rounded-md border text-sm cursor-pointer transition-colors",
+          isDone && "opacity-50 bg-muted/30",
+          isOverdue && "border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20",
+          isDueToday && "border-orange-300 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20",
+          !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
+        )}
+      >
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleStatus()
+          }}
+          disabled={isToggling}
+          className={cn(
+            "mt-0.5 shrink-0 transition-colors",
+            isDone ? "text-green-600" : "text-muted-foreground hover:text-primary"
+          )}
+        >
+          {isToggling ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <StatusIcon className={cn("h-3.5 w-3.5", isDone && "fill-green-600")} />
+          )}
+        </button>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <div className={cn("h-1.5 w-1.5 rounded-full shrink-0", priority.dot)} />
+            <span className={cn("truncate text-xs font-medium", isDone && "line-through text-muted-foreground")}>
+              {task.title}
+            </span>
+          </div>
+          {task.assignee && (
+            <span className="text-[10px] text-muted-foreground truncate block mt-0.5">
+              {task.assignee.name}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // Vista completa
   return (
     <div
       className={cn(

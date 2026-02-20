@@ -85,6 +85,7 @@ const typeLabels: Record<string, string> = {
   PASSPORT_EXPIRY: "⚠️ Pasaporte",
   DESTINATION_REQUIREMENT: "📋 Requisito",
   BIRTHDAY: "🎂 Cumpleaños",
+  TASK_REMINDER: "📋 Tarea",
 }
 
 const statusLabels: Record<string, string> = {

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
+import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -68,7 +69,9 @@ const REMINDER_OPTIONS = [
   { value: "15", label: "15 minutos antes" },
   { value: "30", label: "30 minutos antes" },
   { value: "60", label: "1 hora antes" },
+  { value: "120", label: "2 horas antes" },
   { value: "1440", label: "1 día antes" },
+  { value: "2880", label: "2 días antes" },
 ]
 
 export function TaskDialog({
@@ -82,8 +85,8 @@ export function TaskDialog({
 }: TaskDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
-  const [operations, setOperations] = useState<{ id: string; label: string }[]>([])
-  const [customers, setCustomers] = useState<{ id: string; label: string }[]>([])
+  const [operationLabel, setOperationLabel] = useState("")
+  const [customerLabel, setCustomerLabel] = useState("")
 
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskSchema),
@@ -99,11 +102,10 @@ export function TaskDialog({
     },
   })
 
-  // Load users, operations, customers when dialog opens
+  // Load users when dialog opens
   useEffect(() => {
     if (!open) return
 
-    // Reset form for new task or set values for edit
     if (editTask) {
       form.reset({
         title: editTask.title || "",
@@ -115,6 +117,22 @@ export function TaskDialog({
         operation_id: editTask.operation_id || "",
         customer_id: editTask.customer_id || "",
       })
+      if (editTask.operations) {
+        const op = editTask.operations
+        setOperationLabel(
+          `${op.file_code || op.id?.slice(0, 8)} - ${op.destination || "Sin destino"}`
+        )
+      } else {
+        setOperationLabel("")
+      }
+      if (editTask.customers) {
+        const c = editTask.customers
+        setCustomerLabel(
+          `${c.first_name || ""} ${c.last_name || ""}`.trim() || "Sin nombre"
+        )
+      } else {
+        setCustomerLabel("")
+      }
     } else if (prefill) {
       form.reset({
         title: prefill.title || "",
@@ -126,6 +144,8 @@ export function TaskDialog({
         operation_id: prefill.operation_id || "",
         customer_id: prefill.customer_id || "",
       })
+      setOperationLabel("")
+      setCustomerLabel("")
     } else {
       form.reset({
         title: "",
@@ -137,9 +157,10 @@ export function TaskDialog({
         operation_id: "",
         customer_id: "",
       })
+      setOperationLabel("")
+      setCustomerLabel("")
     }
 
-    // Fetch users from agency
     fetch(`/api/settings/users?limit=100`)
       .then((r) => r.json())
       .then((data) => {
@@ -150,33 +171,44 @@ export function TaskDialog({
         setUsers(usersList)
       })
       .catch(() => {})
-
-    // Fetch recent operations
-    fetch(`/api/operations?limit=50&page=1`)
-      .then((r) => r.json())
-      .then((data) => {
-        const ops = (data.data || []).map((op: any) => ({
-          id: op.id,
-          label: `${op.file_code || op.id.slice(0, 8)} - ${op.destination || "Sin destino"}`,
-        }))
-        setOperations(ops)
-      })
-      .catch(() => {})
-
-    // Fetch recent customers
-    fetch(`/api/customers?limit=50&page=1`)
-      .then((r) => r.json())
-      .then((data) => {
-        const custs = (data.data || []).map((c: any) => ({
-          id: c.id,
-          label: `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.email || "Sin nombre",
-        }))
-        setCustomers(custs)
-      })
-      .catch(() => {})
   }, [open, editTask, prefill, currentUserId, form])
 
   const dueDate = form.watch("due_date")
+
+  const searchOperations = useCallback(async (q: string) => {
+    try {
+      const res = await fetch(
+        `/api/operations?search=${encodeURIComponent(q)}&limit=10&page=1`
+      )
+      const data = await res.json()
+      return (data.data || data.operations || []).map((op: any) => ({
+        value: op.id,
+        label: `${op.file_code || op.id.slice(0, 8)} - ${op.destination || "Sin destino"}`,
+        subtitle: op.status || undefined,
+      }))
+    } catch {
+      return []
+    }
+  }, [])
+
+  const searchCustomers = useCallback(async (q: string) => {
+    try {
+      const res = await fetch(
+        `/api/customers?search=${encodeURIComponent(q)}&limit=10`
+      )
+      const data = await res.json()
+      return (data.data || data.customers || []).map((c: any) => ({
+        value: c.id,
+        label:
+          `${c.first_name || ""} ${c.last_name || ""}`.trim() ||
+          c.email ||
+          "Sin nombre",
+        subtitle: c.email || undefined,
+      }))
+    } catch {
+      return []
+    }
+  }, [])
 
   async function onSubmit(values: TaskFormValues) {
     setIsLoading(true)
@@ -187,7 +219,10 @@ export function TaskDialog({
         priority: values.priority,
         assigned_to: values.assigned_to,
         due_date: values.due_date || null,
-        reminder_minutes: values.due_date && values.reminder_minutes ? parseInt(values.reminder_minutes) : null,
+        reminder_minutes:
+          values.due_date && values.reminder_minutes
+            ? parseInt(values.reminder_minutes)
+            : null,
         operation_id: values.operation_id || null,
         customer_id: values.customer_id || null,
         agency_id: agencyId,
@@ -341,7 +376,10 @@ export function TaskDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Recordatorio</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || ""}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Sin recordatorio" />
@@ -349,7 +387,10 @@ export function TaskDialog({
                         </FormControl>
                         <SelectContent>
                           {REMINDER_OPTIONS.map((r) => (
-                            <SelectItem key={r.value || "none"} value={r.value || "none"}>
+                            <SelectItem
+                              key={r.value || "none"}
+                              value={r.value || "none"}
+                            >
                               {r.label}
                             </SelectItem>
                           ))}
@@ -369,21 +410,17 @@ export function TaskDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Vincular a operación</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Ninguna" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Ninguna</SelectItem>
-                        {operations.map((op) => (
-                          <SelectItem key={op.id} value={op.id}>
-                            {op.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableCombobox
+                        value={field.value || ""}
+                        onChange={(val) => field.onChange(val)}
+                        searchFn={searchOperations}
+                        placeholder="Buscar operación..."
+                        searchPlaceholder="Código o destino..."
+                        emptyMessage="No se encontraron operaciones"
+                        initialLabel={operationLabel}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -395,21 +432,17 @@ export function TaskDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Vincular a cliente</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Ninguno" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Ninguno</SelectItem>
-                        {customers.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <SearchableCombobox
+                        value={field.value || ""}
+                        onChange={(val) => field.onChange(val)}
+                        searchFn={searchCustomers}
+                        placeholder="Buscar cliente..."
+                        searchPlaceholder="Nombre o email..."
+                        emptyMessage="No se encontraron clientes"
+                        initialLabel={customerLabel}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -425,7 +458,9 @@ export function TaskDialog({
                 Cancelar
               </Button>
               <Button type="submit" disabled={isLoading}>
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isLoading && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
                 {editTask ? "Guardar" : "Crear Tarea"}
               </Button>
             </DialogFooter>

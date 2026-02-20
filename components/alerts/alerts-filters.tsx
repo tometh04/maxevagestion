@@ -36,6 +36,7 @@ const typeOptions = [
   { value: "UPCOMING_TRIP", label: "Viaje Próximo" },
   { value: "MISSING_DOC", label: "Documento Faltante" },
   { value: "GENERIC", label: "Genérico" },
+  { value: "TASK_REMINDER", label: "Recordatorio de Tarea" },
 ]
 
 const statusOptions = [

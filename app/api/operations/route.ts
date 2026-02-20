@@ -833,6 +833,13 @@ export async function GET(request: Request) {
       query = query.lte("departure_date", dateTo)
     }
 
+    // Filtro de búsqueda por texto (file_code o destination)
+    const search = searchParams.get("search")
+    if (search && search.length >= 2) {
+      query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+      countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+    }
+
     // Filtros por fecha de cobro/pago
     const paymentDateFrom = searchParams.get("paymentDateFrom")
     const paymentDateTo = searchParams.get("paymentDateTo")
