@@ -749,6 +749,14 @@ async function importOperations(csvFilePath, dryRun, clearExisting) {
     const rowNum = i + 2 // +2 porque fila 1 es header y arrays empiezan en 0
 
     try {
+      // ─── Filas excluidas por datos incorrectos ─────────────────────────
+      const SKIP_ROWS = [7, 47, 175, 216, 252, 310, 311, 328, 329]
+      if (SKIP_ROWS.includes(rowNum)) {
+        stats.skipped++
+        results.push({ row: rowNum, status: 'skipped', message: `Excluida manualmente: ${row.nombre_del_cliente || 'sin nombre'} (datos incorrectos en CSV)` })
+        continue
+      }
+
       // ─── Validaciones básicas ─────────────────────────────────────────
 
       if (!row.destino && !row.nombre_del_cliente) {
