@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import {
   startOfWeek,
   endOfWeek,
@@ -62,8 +62,8 @@ export function TaskWeekView({
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [prefillDate, setPrefillDate] = useState<string>("")
 
-  const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 1 })
-  const days = eachDayOfInterval({ start: currentWeekStart, end: weekEnd })
+  const weekEnd = useMemo(() => endOfWeek(currentWeekStart, { weekStartsOn: 1 }), [currentWeekStart])
+  const days = useMemo(() => eachDayOfInterval({ start: currentWeekStart, end: weekEnd }), [currentWeekStart, weekEnd])
 
   // Cargar usuarios
   useEffect(() => {
