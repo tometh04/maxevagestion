@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
+import { sendPushToUser } from "@/lib/push"
 
 export async function GET() {
   try {
@@ -53,6 +54,19 @@ export async function GET() {
             .update({ reminder_sent: true })
             .eq("id", task.id)
           created++
+
+          // Enviar push notification al usuario asignado
+          if (task.assigned_to) {
+            try {
+              await sendPushToUser(supabase, task.assigned_to, {
+                title: "📋 Recordatorio de Tarea",
+                body: task.title,
+                url: "/tools/tasks",
+              })
+            } catch (pushError) {
+              console.error("Error enviando push para tarea:", task.id, pushError)
+            }
+          }
         } else {
           console.error("Error creating alert for task:", task.id, alertError)
         }

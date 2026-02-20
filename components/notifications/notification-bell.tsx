@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from "react"
 import { createBrowserClient } from "@supabase/ssr"
-import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle, CheckSquare } from "lucide-react"
+import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle, CheckSquare, BellRing, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -11,10 +11,16 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Separator } from "@/components/ui/separator"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
 import { toast } from "sonner"
+import {
+  isPushSubscribed,
+  requestPushPermission,
+  removePushSubscription,
+} from "@/components/notifications/push-notification-manager"
 
 interface Alert {
   id: string
@@ -39,6 +45,9 @@ export function NotificationBell() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [open, setOpen] = useState(false)
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushSupported, setPushSupported] = useState(false)
+  const [pushLoading, setPushLoading] = useState(false)
   const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
 
   useEffect(() => {
@@ -47,8 +56,19 @@ export function NotificationBell() {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
     )
-    
+
     fetchAlerts()
+
+    // Check push support & status
+    const checkPush = async () => {
+      const supported = typeof window !== "undefined" && "serviceWorker" in navigator && "PushManager" in window
+      setPushSupported(supported)
+      if (supported) {
+        const subscribed = await isPushSubscribed()
+        setPushEnabled(subscribed)
+      }
+    }
+    checkPush()
   }, [])
 
   // Supabase Realtime subscription
@@ -112,14 +132,14 @@ export function NotificationBell() {
   const markAsDone = async (alertId: string, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     try {
       await fetch("/api/alerts/mark-done", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alertId }),
       })
-      
+
       setAlerts((prev) => prev.filter(a => a.id !== alertId))
       setUnreadCount((prev) => Math.max(0, prev - 1))
     } catch (error) {
@@ -131,14 +151,48 @@ export function NotificationBell() {
     return alertTypeConfig[type] || { icon: Bell, color: "text-gray-500" }
   }
 
+  const handleTogglePush = async () => {
+    setPushLoading(true)
+    try {
+      if (pushEnabled) {
+        // Desactivar push
+        const success = await removePushSubscription()
+        if (success) {
+          setPushEnabled(false)
+          toast.success("Notificaciones push desactivadas")
+        } else {
+          toast.error("Error al desactivar notificaciones")
+        }
+      } else {
+        // Activar push
+        const success = await requestPushPermission()
+        if (success) {
+          setPushEnabled(true)
+          toast.success("Notificaciones push activadas")
+        } else {
+          if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+            toast.error("Las notificaciones están bloqueadas en tu navegador. Desbloqueálas desde la configuración del sitio.")
+          } else {
+            toast.error("No se pudieron activar las notificaciones")
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling push:", error)
+      toast.error("Error al cambiar notificaciones")
+    } finally {
+      setPushLoading(false)
+    }
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <Badge 
-              variant="destructive" 
+            <Badge
+              variant="destructive"
               className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
             >
               {unreadCount > 9 ? "9+" : unreadCount}
@@ -156,7 +210,7 @@ export function NotificationBell() {
             </Button>
           </Link>
         </div>
-        
+
         <ScrollArea className="h-[300px]">
           {alerts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
@@ -168,7 +222,7 @@ export function NotificationBell() {
               {alerts.map((alert) => {
                 const config = getAlertConfig(alert.type)
                 const Icon = config.icon
-                
+
                 return (
                   <div
                     key={alert.id}
@@ -181,9 +235,9 @@ export function NotificationBell() {
                           {alert.description}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {formatDistanceToNow(new Date(alert.created_at), { 
+                          {formatDistanceToNow(new Date(alert.created_at), {
                             addSuffix: true,
-                            locale: es 
+                            locale: es
                           })}
                         </p>
                       </div>
@@ -198,7 +252,7 @@ export function NotificationBell() {
                       </Button>
                     </div>
                     {alert.operation_id && (
-                      <Link 
+                      <Link
                         href={`/operations/${alert.operation_id}`}
                         onClick={() => setOpen(false)}
                         className="text-xs text-primary hover:underline ml-7 mt-1 block"
@@ -212,8 +266,39 @@ export function NotificationBell() {
             </div>
           )}
         </ScrollArea>
+
+        {/* Push notifications toggle */}
+        {pushSupported && (
+          <>
+            <Separator />
+            <div className="p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                {pushEnabled ? (
+                  <BellRing className="h-3.5 w-3.5 text-green-500" />
+                ) : (
+                  <BellOff className="h-3.5 w-3.5" />
+                )}
+                <span>
+                  Push {pushEnabled ? "activadas" : "desactivadas"}
+                </span>
+              </div>
+              <Button
+                variant={pushEnabled ? "outline" : "default"}
+                size="sm"
+                className="h-7 text-xs px-3"
+                onClick={handleTogglePush}
+                disabled={pushLoading}
+              >
+                {pushLoading
+                  ? "..."
+                  : pushEnabled
+                    ? "Desactivar"
+                    : "Activar push"}
+              </Button>
+            </div>
+          </>
+        )}
       </PopoverContent>
     </Popover>
   )
 }
-

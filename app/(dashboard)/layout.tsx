@@ -2,6 +2,7 @@ import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
+import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import {
   SidebarInset,
   SidebarProvider,
@@ -51,6 +52,7 @@ export default async function DashboardLayout({
         currentUserId={user.id}
         agencyId={agencies[0]?.id || ""}
       />
+      <PushNotificationManager userId={user.id} />
     </SidebarProvider>
   )
 }
