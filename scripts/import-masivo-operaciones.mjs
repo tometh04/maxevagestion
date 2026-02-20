@@ -824,7 +824,11 @@ async function importOperations(csvFilePath, dryRun, clearExisting) {
         }
       }
 
-      const calculatedOperatorCost = operatorsList.reduce((sum, op) => sum + op.cost, 0)
+      const sumOfIndividualCosts = operatorsList.reduce((sum, op) => sum + op.cost, 0)
+      // Usar columna M (Monto Operador) como costo real total.
+      // La suma de costos individuales (Q+S+U) puede ser menor que M.
+      // Si M > suma individual, M es la fuente de verdad.
+      const calculatedOperatorCost = operatorCostTotal > 0 ? operatorCostTotal : sumOfIndividualCosts
 
       // ─── Cliente ──────────────────────────────────────────────────────
 
@@ -933,12 +937,13 @@ async function importOperations(csvFilePath, dryRun, clearExisting) {
       }
 
       // 3. OPERATION_OPERATORS
+      // Si hay 1 solo operador, asignarle el costo total (columna M)
       if (operatorsList.length > 0) {
         await (supabase.from('operation_operators'))
-          .insert(operatorsList.map(op => ({
+          .insert(operatorsList.map((op, idx) => ({
             operation_id: operationId,
             operator_id: op.operator_id,
-            cost: op.cost,
+            cost: operatorsList.length === 1 ? calculatedOperatorCost : op.cost,
             cost_currency: currency,
           })))
       }
@@ -984,18 +989,30 @@ async function importOperations(csvFilePath, dryRun, clearExisting) {
       }
 
       // 8. OPERATOR PAYMENTS (deuda con cada operador)
-      for (const op of operatorsList) {
-        if (op.cost > 0) {
-          const dueDate = departureDate // Default: fecha de salida
+      // Si hay 1 solo operador, su costo real es el total (columna M).
+      // Si hay múltiples, cada uno tiene su costo individual (Q, S, U).
+      for (let opIdx = 0; opIdx < operatorsList.length; opIdx++) {
+        const op = operatorsList[opIdx]
+        // Si es el único operador, usar el costo total (M) como amount
+        const opAmount = operatorsList.length === 1 ? calculatedOperatorCost : op.cost
+        if (opAmount > 0) {
+          const dueDate = departureDate
+          // Distribuir pagos proporcionalmente si hay múltiples operadores
+          let opPaidAmount = 0
+          if (operatorsList.length === 1) {
+            opPaidAmount = paidToOperator
+          } else if (calculatedOperatorCost > 0) {
+            opPaidAmount = Math.round((op.cost / calculatedOperatorCost) * paidToOperator * 100) / 100
+          }
           await (supabase.from('operator_payments'))
             .insert({
               operation_id: operationId,
               operator_id: op.operator_id,
-              amount: op.cost,
+              amount: opAmount,
               currency,
               due_date: dueDate,
               status: paidToOperator >= calculatedOperatorCost ? 'PAID' : 'PENDING',
-              paid_amount: operatorsList.length === 1 ? paidToOperator : 0,
+              paid_amount: opPaidAmount,
               notes: 'Generado por importación masiva',
             })
         }
@@ -1059,8 +1076,8 @@ async function importOperations(csvFilePath, dryRun, clearExisting) {
         stats.paymentsCreated++
       }
 
-      // 12. PAYMENT: Pendiente a operador
-      const pendingToOperator = calculatedOperatorCost - paidToOperator
+      // 12. PAYMENT: Pendiente a operador (usando costo total de columna M)
+      const pendingToOperator = operatorCostTotal - paidToOperator
       if (pendingToOperator > 0) {
         await (supabase.from('payments'))
           .insert({
