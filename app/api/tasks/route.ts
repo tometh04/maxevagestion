@@ -2,6 +2,31 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 
+const TASK_SELECT = `
+  *,
+  creator:created_by(id, name, email),
+  assignee:assigned_to(id, name, email),
+  operations:operation_id(id, destination, file_code),
+  customers:customer_id(id, first_name, last_name)
+`
+
+// Construir filtro de rol como string para PostgREST .or()
+async function getRoleFilter(user: any): Promise<{ type: "or" | "eq" | "none"; value: string }> {
+  const role = String(user.role)
+  if (role === "SELLER" || role === "CONTABLE" || role === "VIEWER") {
+    return { type: "or", value: `assigned_to.eq.${user.id},created_by.eq.${user.id}` }
+  } else if (role === "ADMIN") {
+    const userAgencies = await getUserAgencies(user.id)
+    const agencyIds = userAgencies.map((ua) => ua.agency_id)
+    if (agencyIds.length > 0) {
+      const orFilter = agencyIds.map((id) => `agency_id.eq.${id}`).join(",")
+      return { type: "or", value: orFilter }
+    }
+  }
+  // SUPER_ADMIN ve todo
+  return { type: "none", value: "" }
+}
+
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -19,100 +44,55 @@ export async function GET(request: Request) {
     const limit = Math.min(parseInt(searchParams.get("limit") || "50"), 200)
     const offset = (page - 1) * limit
 
-    // Helper para construir base query con role filtering
-    const buildBaseQuery = () => {
-      let q = (supabase
-        .from("tasks" as any) as any)
-        .select(
-          `
-          *,
-          creator:created_by(id, name, email),
-          assignee:assigned_to(id, name, email),
-          operations:operation_id(id, destination, file_code),
-          customers:customer_id(id, first_name, last_name)
-        `,
-          { count: "exact" }
-        )
-      return q
-    }
+    // Pre-calcular filtro de rol
+    const roleFilter = await getRoleFilter(user)
 
-    const applyRoleFilter = async (q: any) => {
-      const role = user.role as string
-      if (role === "SELLER" || role === "CONTABLE" || role === "VIEWER") {
-        q = q.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`)
-      } else if (role === "ADMIN") {
-        const userAgencies = await getUserAgencies(user.id)
-        const agencyIds = userAgencies.map((ua) => ua.agency_id)
-        if (agencyIds.length > 0) {
-          // Usar .or() en vez de .in() porque .in() no funciona con cast as any
-          const orFilter = agencyIds.map((id) => `agency_id.eq.${id}`).join(",")
-          q = q.or(orFilter)
-        }
-      }
-      return q
-    }
-
-    const applyStatusFilter = (q: any) => {
-      if (status && status !== "ALL") {
-        if (status === "ACTIVE") {
-          q = q.or("status.eq.PENDING,status.eq.IN_PROGRESS")
-        } else {
-          q = q.eq("status", status)
-        }
-      }
-      return q
-    }
-
-    const applyCommonFilters = (q: any) => {
-      if (priority && priority !== "ALL") {
-        q = q.eq("priority", priority)
-      }
-      if (assignedTo && assignedTo !== "ALL") {
-        q = q.eq("assigned_to", assignedTo)
-      }
-      if (operationId) {
-        q = q.eq("operation_id", operationId)
-      }
-      return q
-    }
-
-    // Si hay filtro semanal, hacer 2 queries: tareas con fecha en rango + tareas sin fecha
+    // ========================================
+    // Con filtro semanal: 2 queries separadas
+    // ========================================
     if (weekStart && weekEnd) {
-      // Query 1: Tareas con due_date en el rango de la semana
-      let datedQuery = buildBaseQuery()
-      datedQuery = await applyRoleFilter(datedQuery)
-      datedQuery = applyStatusFilter(datedQuery)
-      datedQuery = applyCommonFilters(datedQuery)
-      datedQuery = datedQuery
-        .gte("due_date", weekStart)
-        .lte("due_date", weekEnd)
-        .order("due_date", { ascending: true })
-        .order("created_at", { ascending: false })
-        .range(0, limit - 1)
+      // Query 1: Tareas con due_date en el rango
+      const datedResult = await buildAndExecuteQuery(supabase, {
+        roleFilter,
+        status,
+        priority,
+        assignedTo,
+        operationId,
+        dateFilter: { type: "range", start: weekStart, end: weekEnd },
+        orderBy: [
+          { column: "due_date", ascending: true },
+          { column: "created_at", ascending: false },
+        ],
+        rangeStart: 0,
+        rangeEnd: limit - 1,
+      })
 
-      const { data: datedTasks, error: datedError } = await datedQuery
-
-      if (datedError) {
-        console.error("Error fetching dated tasks:", datedError)
-        return NextResponse.json({ error: "Error al obtener tareas", detail: datedError.message, code: datedError.code }, { status: 500 })
+      if (datedResult.error) {
+        console.error("Error fetching dated tasks:", datedResult.error)
+        return NextResponse.json(
+          { error: "Error al obtener tareas", detail: datedResult.error.message },
+          { status: 500 }
+        )
       }
 
-      let allTasks = datedTasks || []
+      let allTasks = datedResult.data || []
 
-      // Query 2: Tareas sin fecha (si includeUndated)
+      // Query 2: Tareas sin fecha
       if (includeUndated) {
-        let undatedQuery = buildBaseQuery()
-        undatedQuery = await applyRoleFilter(undatedQuery)
-        undatedQuery = applyStatusFilter(undatedQuery)
-        undatedQuery = applyCommonFilters(undatedQuery)
-        undatedQuery = undatedQuery
-          .is("due_date", null)
-          .order("created_at", { ascending: false })
-          .range(0, 50)
+        const undatedResult = await buildAndExecuteQuery(supabase, {
+          roleFilter,
+          status,
+          priority,
+          assignedTo,
+          operationId,
+          dateFilter: { type: "null" },
+          orderBy: [{ column: "created_at", ascending: false }],
+          rangeStart: 0,
+          rangeEnd: 50,
+        })
 
-        const { data: undatedTasks } = await undatedQuery
-        if (undatedTasks) {
-          allTasks = [...allTasks, ...undatedTasks]
+        if (undatedResult.data) {
+          allTasks = [...allTasks, ...undatedResult.data]
         }
       }
 
@@ -127,38 +107,130 @@ export async function GET(request: Request) {
       })
     }
 
-    // Sin filtro semanal: query normal con paginación
-    let query = buildBaseQuery()
-    query = await applyRoleFilter(query)
-    query = applyStatusFilter(query)
-    query = applyCommonFilters(query)
+    // ========================================
+    // Sin filtro semanal: query con paginación
+    // ========================================
+    const result = await buildAndExecuteQuery(supabase, {
+      roleFilter,
+      status,
+      priority,
+      assignedTo,
+      operationId,
+      dateFilter: null,
+      orderBy: [
+        { column: "status", ascending: true },
+        { column: "due_date", ascending: true, nullsFirst: false },
+        { column: "created_at", ascending: false },
+      ],
+      rangeStart: offset,
+      rangeEnd: offset + limit - 1,
+      withCount: true,
+    })
 
-    query = query
-      .order("status", { ascending: true })
-      .order("due_date", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    const { data: tasks, error, count } = await query
-
-    if (error) {
-      console.error("Error fetching tasks:", error)
-      return NextResponse.json({ error: "Error al obtener tareas" }, { status: 500 })
+    if (result.error) {
+      console.error("Error fetching tasks:", result.error)
+      return NextResponse.json(
+        { error: "Error al obtener tareas", detail: result.error.message },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
-      data: tasks || [],
+      data: result.data || [],
       pagination: {
         page,
         limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit),
+        total: result.count || 0,
+        totalPages: Math.ceil((result.count || 0) / limit),
       },
     })
   } catch (error: any) {
     console.error("Error in GET /api/tasks:", error)
-    return NextResponse.json({ error: "Error al obtener tareas", detail: error?.message || String(error) }, { status: 500 })
+    return NextResponse.json(
+      { error: "Error al obtener tareas", detail: error?.message || String(error) },
+      { status: 500 }
+    )
   }
+}
+
+// Función que construye y ejecuta un query completo en una sola cadena
+// para evitar romper el query builder de Supabase con reasignaciones
+async function buildAndExecuteQuery(
+  supabase: any,
+  opts: {
+    roleFilter: { type: "or" | "eq" | "none"; value: string }
+    status: string | null
+    priority: string | null
+    assignedTo: string | null
+    operationId: string | null
+    dateFilter: { type: "range"; start: string; end: string } | { type: "null" } | null
+    orderBy: { column: string; ascending: boolean; nullsFirst?: boolean }[]
+    rangeStart: number
+    rangeEnd: number
+    withCount?: boolean
+  }
+) {
+  // Construir array de filtros PostgREST como strings para .or() combinado
+  // o como condiciones individuales
+  const filters: { method: string; args: any[] }[] = []
+
+  // Filtro de rol
+  if (opts.roleFilter.type === "or") {
+    filters.push({ method: "or", args: [opts.roleFilter.value] })
+  }
+
+  // Filtro de estado
+  if (opts.status && opts.status !== "ALL") {
+    if (opts.status === "ACTIVE") {
+      filters.push({ method: "or", args: ["status.eq.PENDING,status.eq.IN_PROGRESS"] })
+    } else {
+      filters.push({ method: "eq", args: ["status", opts.status] })
+    }
+  }
+
+  // Filtros comunes
+  if (opts.priority && opts.priority !== "ALL") {
+    filters.push({ method: "eq", args: ["priority", opts.priority] })
+  }
+  if (opts.assignedTo && opts.assignedTo !== "ALL") {
+    filters.push({ method: "eq", args: ["assigned_to", opts.assignedTo] })
+  }
+  if (opts.operationId) {
+    filters.push({ method: "eq", args: ["operation_id", opts.operationId] })
+  }
+
+  // Filtro de fecha
+  if (opts.dateFilter) {
+    if (opts.dateFilter.type === "range") {
+      filters.push({ method: "gte", args: ["due_date", opts.dateFilter.start] })
+      filters.push({ method: "lte", args: ["due_date", opts.dateFilter.end] })
+    } else if (opts.dateFilter.type === "null") {
+      filters.push({ method: "is", args: ["due_date", null] })
+    }
+  }
+
+  // Construir query en una sola cadena
+  // Nota: "tasks" as any para evitar error de tipos ya que tasks no está en Database types
+  let query = (supabase as any)
+    .from("tasks")
+    .select(TASK_SELECT, opts.withCount ? { count: "exact" } : undefined)
+
+  // Aplicar filtros secuencialmente
+  for (const f of filters) {
+    query = query[f.method](...f.args)
+  }
+
+  // Aplicar ordenamiento
+  for (const o of opts.orderBy) {
+    const orderOpts: any = { ascending: o.ascending }
+    if (o.nullsFirst !== undefined) orderOpts.nullsFirst = o.nullsFirst
+    query = query.order(o.column, orderOpts)
+  }
+
+  // Aplicar rango
+  query = query.range(opts.rangeStart, opts.rangeEnd)
+
+  return await query
 }
 
 export async function POST(request: Request) {
@@ -196,18 +268,10 @@ export async function POST(request: Request) {
       agency_id,
     }
 
-    const { data: task, error } = await (supabase
-      .from("tasks" as any) as any)
+    const { data: task, error } = await (supabase as any)
+      .from("tasks")
       .insert(taskData)
-      .select(
-        `
-        *,
-        creator:created_by(id, name, email),
-        assignee:assigned_to(id, name, email),
-        operations:operation_id(id, destination, file_code),
-        customers:customer_id(id, first_name, last_name)
-      `
-      )
+      .select(TASK_SELECT)
       .single()
 
     if (error) {
