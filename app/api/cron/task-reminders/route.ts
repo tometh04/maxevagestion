@@ -36,7 +36,6 @@ export async function GET() {
           .from("alerts")
           .insert({
             user_id: task.assigned_to,
-            agency_id: task.agency_id,
             operation_id: task.operation_id || null,
             customer_id: task.customer_id || null,
             type: "TASK_REMINDER",
@@ -44,7 +43,7 @@ export async function GET() {
             date_due: task.due_date,
             status: "PENDING",
             priority: "MEDIUM",
-            metadata: { task_id: task.id, source: "task_reminder" },
+            metadata: { task_id: task.id },
           })
 
         if (!alertError) {
