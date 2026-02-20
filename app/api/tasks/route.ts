@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     const applyStatusFilter = (q: any) => {
       if (status && status !== "ALL") {
         if (status === "ACTIVE") {
-          q = q.in("status", ["PENDING", "IN_PROGRESS"])
+          q = q.or("status.eq.PENDING,status.eq.IN_PROGRESS")
         } else {
           q = q.eq("status", status)
         }
