@@ -115,7 +115,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
                 const totalPax = op.adults + op.children + op.infants
 
                 return (
-                  <Link key={op.id} href={`/operations/${op.id}`}>
+                  <Link key={op.id} href={`/operations/${op.id}`} prefetch={false}>
                     <div className="p-2 rounded-md border hover:bg-muted/50 transition-colors cursor-pointer text-xs">
                       <div className="flex items-center gap-2">
                         <div className={`p-1.5 rounded-full ${getUrgencyColor(daysUntil)} text-white shrink-0`}>

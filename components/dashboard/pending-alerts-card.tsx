@@ -181,7 +181,7 @@ export function PendingAlertsCard({ agencyId, sellerId }: PendingAlertsCardProps
                 const dueDate = formatDueDate(alert.date_due)
 
                 return (
-                  <Link key={alert.id} href={getAlertLink()}>
+                  <Link key={alert.id} href={getAlertLink()} prefetch={false}>
                     <div
                       className="p-2 rounded border border-amber-500/50 bg-amber-500/5 dark:border-amber-500/30 dark:bg-amber-500/10 hover:bg-amber-500/10 dark:hover:bg-amber-500/20 transition-colors cursor-pointer group"
                     >

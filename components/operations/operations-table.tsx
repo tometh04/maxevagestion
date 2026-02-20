@@ -276,7 +276,7 @@ export function OperationsTable({
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
                 <DropdownMenuItem asChild>
-                  <Link href={`/operations/${operation.id}`}>
+                  <Link href={`/operations/${operation.id}`} prefetch={false}>
                     <Eye className="mr-2 h-4 w-4" />
                     Ver detalles
                   </Link>
