@@ -92,7 +92,7 @@ export async function GET(request: Request) {
 
       if (datedError) {
         console.error("Error fetching dated tasks:", datedError)
-        return NextResponse.json({ error: "Error al obtener tareas" }, { status: 500 })
+        return NextResponse.json({ error: "Error al obtener tareas", detail: datedError.message, code: datedError.code }, { status: 500 })
       }
 
       let allTasks = datedTasks || []
@@ -153,9 +153,9 @@ export async function GET(request: Request) {
         totalPages: Math.ceil((count || 0) / limit),
       },
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in GET /api/tasks:", error)
-    return NextResponse.json({ error: "Error al obtener tareas" }, { status: 500 })
+    return NextResponse.json({ error: "Error al obtener tareas", detail: error?.message || String(error) }, { status: 500 })
   }
 }
 
