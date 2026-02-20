@@ -8,6 +8,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 import { Button } from "@/components/ui/button"
 import { Search } from "lucide-react"
 import { CommandMenu } from "@/components/command-menu"
+import { NotificationBell } from "@/components/notifications/notification-bell"
 
 const getPageTitle = (pathname: string): string => {
   const routes: Record<string, string> = {
@@ -33,6 +34,7 @@ const getPageTitle = (pathname: string): string => {
     "/my/commissions": "Mis Comisiones",
     "/settings": "Configuración",
     "/tools/cerebro": "Cerebro",
+    "/tools/tasks": "Tareas",
     "/emilia": "Emilia",
   }
 
@@ -71,6 +73,7 @@ export function SiteHeader() {
             >
               <Search className="h-4 w-4" />
             </Button>
+            <NotificationBell />
             <ThemeToggle />
           </div>
         </div>
