@@ -37,12 +37,14 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
   async function fetchTasks() {
     try {
       const res = await fetch("/api/tasks?status=PENDING&limit=5")
+      if (!res.ok) { setTasks([]); return }
       const data = await res.json()
 
       let taskList = data.data || []
 
       // Also get IN_PROGRESS
       const res2 = await fetch("/api/tasks?status=IN_PROGRESS&limit=5")
+      if (!res2.ok) { setTasks([]); return }
       const data2 = await res2.json()
       taskList = [...taskList, ...(data2.data || [])]
 

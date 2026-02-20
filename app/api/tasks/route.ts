@@ -44,7 +44,9 @@ export async function GET(request: Request) {
         const userAgencies = await getUserAgencies(user.id)
         const agencyIds = userAgencies.map((ua) => ua.agency_id)
         if (agencyIds.length > 0) {
-          q = q.in("agency_id", agencyIds)
+          // Usar .or() en vez de .in() porque .in() no funciona con cast as any
+          const orFilter = agencyIds.map((id) => `agency_id.eq.${id}`).join(",")
+          q = q.or(orFilter)
         }
       }
       return q

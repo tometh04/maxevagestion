@@ -95,6 +95,12 @@ export function TaskWeekView({
       if (assignedFilter !== "ALL") params.set("assignedTo", assignedFilter)
 
       const res = await fetch(`/api/tasks?${params}`)
+      if (!res.ok) {
+        console.error("Error fetching tasks:", res.status)
+        setTasks([])
+        setUndatedTasks([])
+        return
+      }
       const data = await res.json()
       const allTasks = data.data || []
 
