@@ -21,13 +21,27 @@ interface DatePickerProps {
   disabled?: boolean
 }
 
+/** Parsea "YYYY-MM-DD" como fecha local (no UTC) */
+function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("T")[0].split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
+/** Formatea Date local a "YYYY-MM-DD" sin desfase UTC */
+function formatLocalDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
+}
+
 export function DatePicker({
   value,
   onChange,
   placeholder = "Seleccionar fecha",
   disabled = false,
 }: DatePickerProps) {
-  const date = value ? new Date(value) : undefined
+  const date = value ? parseLocalDate(value) : undefined
 
   return (
     <Popover>
@@ -50,7 +64,7 @@ export function DatePicker({
           selected={date}
           onSelect={(selectedDate) => {
             if (selectedDate) {
-              onChange(selectedDate.toISOString().split("T")[0])
+              onChange(formatLocalDate(selectedDate))
             }
           }}
           initialFocus

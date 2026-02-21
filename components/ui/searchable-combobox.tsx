@@ -51,12 +51,40 @@ export function SearchableCombobox({
   const [options, setOptions] = React.useState<ComboboxOption[]>([])
   const [loading, setLoading] = React.useState(false)
   const [selectedLabel, setSelectedLabel] = React.useState(initialLabel || "")
+  const [initialLoaded, setInitialLoaded] = React.useState(false)
   const debouncedQuery = useDebounce(query, 300)
+
+  // Cargar opciones iniciales cuando se abre el popover
+  React.useEffect(() => {
+    if (!open || initialLoaded) return
+    let cancelled = false
+    setLoading(true)
+    searchFn("")
+      .then((results) => {
+        if (!cancelled) {
+          setOptions(results)
+          setLoading(false)
+          setInitialLoaded(true)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOptions([])
+          setLoading(false)
+          setInitialLoaded(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, initialLoaded, searchFn])
 
   // Buscar cuando cambia el query debounced
   React.useEffect(() => {
     if (!debouncedQuery || debouncedQuery.length < 2) {
-      setOptions([])
+      // Si no hay query, no resetear — las opciones iniciales se mantienen
+      if (debouncedQuery.length === 0 && initialLoaded) return
+      if (debouncedQuery.length > 0 && debouncedQuery.length < 2) return
       return
     }
     let cancelled = false
@@ -77,7 +105,7 @@ export function SearchableCombobox({
     return () => {
       cancelled = true
     }
-  }, [debouncedQuery, searchFn])
+  }, [debouncedQuery, searchFn, initialLoaded])
 
   // Actualizar label inicial
   React.useEffect(() => {
@@ -89,8 +117,7 @@ export function SearchableCombobox({
   const handleSelect = (option: ComboboxOption) => {
     onChange(option.value)
     setSelectedLabel(option.label)
-    setOpen(false)
-    setQuery("")
+    handleOpenChange(false)
   }
 
   const handleClear = (e: React.MouseEvent) => {
@@ -98,12 +125,22 @@ export function SearchableCombobox({
     onChange("")
     setSelectedLabel("")
     setQuery("")
+    setInitialLoaded(false)
+  }
+
+  // Resetear cuando se cierra para recargar la próxima vez
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen)
+    if (!isOpen) {
+      setQuery("")
+      setInitialLoaded(false)
+    }
   }
 
   const displayLabel = value ? selectedLabel || "Seleccionado" : ""
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -132,6 +169,9 @@ export function SearchableCombobox({
       <PopoverContent
         className="w-[var(--radix-popover-trigger-width)] p-0"
         align="start"
+        side="bottom"
+        sideOffset={4}
+        avoidCollisions={false}
       >
         <Command shouldFilter={false}>
           <CommandInput
@@ -145,12 +185,12 @@ export function SearchableCombobox({
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Buscando...
               </div>
-            ) : query.length > 0 && query.length < 2 ? (
-              <div className="p-4 text-center text-sm text-muted-foreground">
-                Escribí al menos 2 caracteres
-              </div>
-            ) : options.length === 0 && debouncedQuery.length >= 2 ? (
+            ) : options.length === 0 && (debouncedQuery.length >= 2 || initialLoaded) ? (
               <CommandEmpty>{emptyMessage}</CommandEmpty>
+            ) : options.length === 0 && query.length > 0 && query.length < 2 ? (
+              <div className="p-4 text-center text-sm text-muted-foreground">
+                Seguí escribiendo para buscar...
+              </div>
             ) : (
               <CommandGroup>
                 {options.map((option) => (

@@ -4,22 +4,13 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  ShoppingCart,
+  // ShoppingCart, // OCULTO temporalmente (CRM Ventas)
   Users,
   Building2,
   DollarSign,
-  FileText,
-  Settings,
-  AlertCircle,
   Plane,
-  Calculator,
   GalleryVerticalEnd,
-  Calendar as CalendarIcon,
-  MessageSquare,
   Bot,
-  MessageCircle,
-  Wallet,
-  Coins,
   BookOpen,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
@@ -91,18 +82,18 @@ const allNavigation: NavItem[] = [
       { title: "Estadísticas", url: "/customers/statistics" },
     ],
   },
-  // CRM Ventas - Colapsable (renamed from "Ventas")
-  {
-    title: "CRM Ventas",
-    url: "/sales/leads",
-    icon: ShoppingCart,
-    module: "leads",
-    items: [
-      { title: "Leads", url: "/sales/leads" },
-      { title: "CRM Manychat", url: "/sales/crm-manychat" },
-      { title: "Estadísticas", url: "/sales/statistics" },
-    ],
-  },
+  // CRM Ventas - OCULTO temporalmente
+  // {
+  //   title: "CRM Ventas",
+  //   url: "/sales/leads",
+  //   icon: ShoppingCart,
+  //   module: "leads",
+  //   items: [
+  //     { title: "Leads", url: "/sales/leads" },
+  //     { title: "CRM Manychat", url: "/sales/crm-manychat" },
+  //     { title: "Estadísticas", url: "/sales/statistics" },
+  //   ],
+  // },
   // Finanzas - Colapsable (con submenús anidados)
   {
     title: "Finanzas",
@@ -178,8 +169,6 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Tareas", url: "/tools/tasks" },
       { title: "Cerebro", url: "/tools/cerebro" },
-      { title: "Emilia", url: "/emilia" },
-      { title: "Configuración", url: "/tools/settings" },
     ],
   },
 ]

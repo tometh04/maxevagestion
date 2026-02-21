@@ -30,9 +30,10 @@ interface PaymentReminder {
 }
 
 /**
- * Calcular el tipo de recordatorio según los días restantes hasta el vencimiento
+ * Calcular el tipo de recordatorio según los días restantes hasta el vencimiento.
+ * configuredDays = días antes del vencimiento para alertar (ej: 30 = alerta cuando faltan 30 días)
  */
-function calculateReminderType(dueDate: Date, today: Date): ReminderType | null {
+function calculateReminderType(dueDate: Date, today: Date, configuredDays: number): ReminderType | null {
   const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
 
   if (daysUntilDue < 0) {
@@ -43,8 +44,8 @@ function calculateReminderType(dueDate: Date, today: Date): ReminderType | null 
     return "3_DAYS"
   } else if (daysUntilDue === 7) {
     return "7_DAYS"
-  } else if (daysUntilDue === 30) {
-    return "30_DAYS"
+  } else if (daysUntilDue === configuredDays) {
+    return "30_DAYS" // Usamos el mismo tipo pero con los días configurados
   }
 
   return null
@@ -55,7 +56,8 @@ function calculateReminderType(dueDate: Date, today: Date): ReminderType | null 
  */
 async function generateCustomerPaymentReminders(
   supabase: SupabaseClient<Database>,
-  today: Date
+  today: Date,
+  configuredDays: number = 30
 ): Promise<PaymentReminder[]> {
   const reminders: PaymentReminder[] = []
 
@@ -90,7 +92,7 @@ async function generateCustomerPaymentReminders(
 
   for (const payment of (payments || []) as any[]) {
     const dueDate = new Date(payment.date_due)
-    const reminderType = calculateReminderType(dueDate, today)
+    const reminderType = calculateReminderType(dueDate, today, configuredDays)
 
     if (!reminderType) {
       continue
@@ -126,7 +128,8 @@ async function generateCustomerPaymentReminders(
  */
 async function generateOperatorPaymentReminders(
   supabase: SupabaseClient<Database>,
-  today: Date
+  today: Date,
+  configuredDays: number = 30
 ): Promise<PaymentReminder[]> {
   const reminders: PaymentReminder[] = []
 
@@ -163,7 +166,7 @@ async function generateOperatorPaymentReminders(
 
   for (const payment of (operatorPayments || []) as any[]) {
     const dueDate = new Date(payment.due_date)
-    const reminderType = calculateReminderType(dueDate, today)
+    const reminderType = calculateReminderType(dueDate, today, configuredDays)
 
     if (!reminderType) {
       continue
@@ -212,13 +215,14 @@ function formatCurrency(amount: number, currency: string): string {
  */
 async function createReminderAlert(
   supabase: SupabaseClient<Database>,
-  reminder: PaymentReminder
+  reminder: PaymentReminder,
+  configuredDays: number = 30
 ): Promise<boolean> {
   const alertType = reminder.paymentType === "CUSTOMER" ? "PAYMENT_DUE" : "OPERATOR_DUE"
-  
+
   // Etiquetas de recordatorio para buscar en descripción
   const reminderLabels: Record<ReminderType, string> = {
-    "30_DAYS": "Vence en 30 días",
+    "30_DAYS": `Vence en ${configuredDays} días`,
     "7_DAYS": "Vence en 7 días",
     "3_DAYS": "Vence en 3 días",
     DUE_TODAY: "Vence hoy",
@@ -257,7 +261,7 @@ async function createReminderAlert(
 
   // Agregar información del recordatorio en la descripción (con emojis)
   const reminderLabelsWithEmojis: Record<ReminderType, string> = {
-    "30_DAYS": "📅 Vence en 30 días",
+    "30_DAYS": `📅 Vence en ${configuredDays} días`,
     "7_DAYS": "⏰ Vence en 7 días",
     "3_DAYS": "⚠️ Vence en 3 días",
     DUE_TODAY: "🔴 Vence hoy",
@@ -305,10 +309,20 @@ async function createReminderAlert(
 }
 
 /**
+ * Configuración de alertas de pago, leída de operation_settings
+ */
+export interface PaymentAlertSettings {
+  paymentDueDays: number    // Días antes para alertar pago de cliente (default 30)
+  operatorPaymentDays: number // Días antes para alertar pago a operador (default 30)
+  paymentDueEnabled: boolean
+  operatorPaymentEnabled: boolean
+}
+
+/**
  * Generar todos los recordatorios de pagos
  * Esta función debe ejecutarse diariamente
  */
-export async function generatePaymentReminders(): Promise<{
+export async function generatePaymentReminders(alertSettings?: PaymentAlertSettings): Promise<{
   created: number
   customerReminders: number
   operatorReminders: number
@@ -318,46 +332,64 @@ export async function generatePaymentReminders(): Promise<{
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalizar a inicio del día
 
+  const settings: PaymentAlertSettings = alertSettings || {
+    paymentDueDays: 30,
+    operatorPaymentDays: 30,
+    paymentDueEnabled: true,
+    operatorPaymentEnabled: true,
+  }
+
   console.log(`🔄 Generando recordatorios de pagos para ${today.toISOString().split("T")[0]}...`)
+  console.log(`   Config: cliente=${settings.paymentDueDays}d (${settings.paymentDueEnabled ? 'ON' : 'OFF'}), operador=${settings.operatorPaymentDays}d (${settings.operatorPaymentEnabled ? 'ON' : 'OFF'})`)
 
   const errors: string[] = []
   let created = 0
 
   try {
     // Generar recordatorios para pagos de clientes
-    console.log("📊 Procesando pagos de clientes...")
-    const customerReminders = await generateCustomerPaymentReminders(supabase, today)
-    console.log(`   Encontrados ${customerReminders.length} recordatorios de clientes`)
+    let customerReminders: PaymentReminder[] = []
+    if (settings.paymentDueEnabled) {
+      console.log("📊 Procesando pagos de clientes...")
+      customerReminders = await generateCustomerPaymentReminders(supabase, today, settings.paymentDueDays)
+      console.log(`   Encontrados ${customerReminders.length} recordatorios de clientes`)
 
-    for (const reminder of customerReminders) {
-      try {
-        const success = await createReminderAlert(supabase, reminder)
-        if (success) {
-          created++
+      for (const reminder of customerReminders) {
+        try {
+          const success = await createReminderAlert(supabase, reminder, settings.paymentDueDays)
+          if (success) {
+            created++
+          }
+        } catch (error: any) {
+          const errorMsg = `Error creando recordatorio de cliente ${reminder.paymentId}: ${error.message}`
+          console.error(errorMsg)
+          errors.push(errorMsg)
         }
-      } catch (error: any) {
-        const errorMsg = `Error creando recordatorio de cliente ${reminder.paymentId}: ${error.message}`
-        console.error(errorMsg)
-        errors.push(errorMsg)
       }
+    } else {
+      console.log("📊 Alertas de pago de cliente DESACTIVADAS")
     }
 
     // Generar recordatorios para pagos a operadores
-    console.log("📊 Procesando pagos a operadores...")
-    const operatorReminders = await generateOperatorPaymentReminders(supabase, today)
-    console.log(`   Encontrados ${operatorReminders.length} recordatorios de operadores`)
+    let operatorReminders: PaymentReminder[] = []
+    if (settings.operatorPaymentEnabled) {
+      console.log("📊 Procesando pagos a operadores...")
+      operatorReminders = await generateOperatorPaymentReminders(supabase, today, settings.operatorPaymentDays)
+      console.log(`   Encontrados ${operatorReminders.length} recordatorios de operadores`)
 
-    for (const reminder of operatorReminders) {
-      try {
-        const success = await createReminderAlert(supabase, reminder)
-        if (success) {
-          created++
+      for (const reminder of operatorReminders) {
+        try {
+          const success = await createReminderAlert(supabase, reminder, settings.operatorPaymentDays)
+          if (success) {
+            created++
+          }
+        } catch (error: any) {
+          const errorMsg = `Error creando recordatorio de operador ${reminder.paymentId}: ${error.message}`
+          console.error(errorMsg)
+          errors.push(errorMsg)
         }
-      } catch (error: any) {
-        const errorMsg = `Error creando recordatorio de operador ${reminder.paymentId}: ${error.message}`
-        console.error(errorMsg)
-        errors.push(errorMsg)
       }
+    } else {
+      console.log("📊 Alertas de pago a operador DESACTIVADAS")
     }
 
     console.log(`✅ Recordatorios generados: ${created} creados`)

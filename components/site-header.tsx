@@ -35,7 +35,6 @@ const getPageTitle = (pathname: string): string => {
     "/settings": "Configuración",
     "/tools/cerebro": "Cerebro",
     "/tools/tasks": "Tareas",
-    "/emilia": "Emilia",
   }
 
   // Buscar coincidencia exacta o parcial

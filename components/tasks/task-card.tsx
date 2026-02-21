@@ -25,6 +25,13 @@ import {
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
+/** Parsea fecha ISO como local para evitar desfase UTC */
+function parseLocalDate(dateStr: string): Date {
+  const d = dateStr.split("T")[0]
+  const [year, month, day] = d.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 const PRIORITY_CONFIG = {
   URGENT: { label: "Urgente", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", dot: "bg-red-500" },
   HIGH: { label: "Alta", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", dot: "bg-orange-500" },
@@ -60,8 +67,9 @@ export function TaskCard({
   const priority = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.MEDIUM
   const StatusIcon = STATUS_ICONS[task.status as keyof typeof STATUS_ICONS] || Circle
   const isDone = task.status === "DONE"
-  const isOverdue = task.due_date && !isDone && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date))
-  const isDueToday = task.due_date && !isDone && isToday(new Date(task.due_date))
+  const parsedDueDate = task.due_date ? parseLocalDate(task.due_date) : null
+  const isOverdue = parsedDueDate && !isDone && isPast(parsedDueDate) && !isToday(parsedDueDate)
+  const isDueToday = parsedDueDate && !isDone && isToday(parsedDueDate)
 
   const canDelete =
     task.created_by === currentUserId ||
@@ -210,7 +218,7 @@ export function TaskCard({
               <Clock className="h-3 w-3" />
               {isOverdue && "Vencida · "}
               {isDueToday && "Hoy · "}
-              {format(new Date(task.due_date), "dd MMM yyyy", { locale: es })}
+              {format(parsedDueDate!, "dd MMM yyyy", { locale: es })}
             </span>
           )}
           {task.operations && (

@@ -3,28 +3,50 @@ import {
   generateAllAccountingAlerts,
   generateMissingDocsAlert,
 } from "./accounting-alerts"
-import { generatePaymentReminders } from "./payment-reminders"
+import { generatePaymentReminders, type PaymentAlertSettings } from "./payment-reminders"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 
 /**
- * Genera alertas de viajes próximos (48-72h antes)
+ * Configuración leída de operation_settings
  */
-export async function generateUpcomingTripAlerts(): Promise<void> {
+export interface AlertGenerationSettings {
+  paymentDueDays: number
+  paymentDueEnabled: boolean
+  operatorPaymentDays: number
+  operatorPaymentEnabled: boolean
+  upcomingTripDays: number
+  upcomingTripEnabled: boolean
+}
+
+const DEFAULT_SETTINGS: AlertGenerationSettings = {
+  paymentDueDays: 30,
+  paymentDueEnabled: true,
+  operatorPaymentDays: 30,
+  operatorPaymentEnabled: true,
+  upcomingTripDays: 7,
+  upcomingTripEnabled: true,
+}
+
+/**
+ * Genera alertas de viajes próximos (según días configurados)
+ */
+export async function generateUpcomingTripAlerts(tripDays: number = 7): Promise<void> {
   const supabase = await createServerClient()
   const today = new Date()
-  const twoDaysFromNow = new Date(today)
-  twoDaysFromNow.setDate(today.getDate() + 2)
-  const threeDaysFromNow = new Date(today)
-  threeDaysFromNow.setDate(today.getDate() + 3)
+  // Ventana: desde mañana hasta tripDays días desde hoy
+  const tomorrow = new Date(today)
+  tomorrow.setDate(today.getDate() + 1)
+  const limitDate = new Date(today)
+  limitDate.setDate(today.getDate() + tripDays)
 
-  // Get operations with departure_date in 48-72h range
+  // Get operations with departure_date within the configured window
   const { data: operations, error } = await supabase
     .from("operations")
     .select("*")
     .in("status", ["RESERVED", "CONFIRMED"])
-    .gte("departure_date", twoDaysFromNow.toISOString().split("T")[0])
-    .lte("departure_date", threeDaysFromNow.toISOString().split("T")[0])
+    .gte("departure_date", tomorrow.toISOString().split("T")[0])
+    .lte("departure_date", limitDate.toISOString().split("T")[0])
 
   if (error) {
     console.error("Error fetching operations for trip alerts:", error)
@@ -119,19 +141,35 @@ export async function generateMissingDocumentAlerts(): Promise<void> {
 
 /**
  * Ejecuta todas las funciones de generación de alertas
+ * Recibe settings opcionales de operation_settings
  */
-export async function generateAllAlerts(): Promise<void> {
+export async function generateAllAlerts(settings?: AlertGenerationSettings): Promise<void> {
   const supabase = await createServerClient()
-  
-  console.log("🔄 Generating payment reminders (7 days, 3 days, today, overdue)...")
-  const reminderResult = await generatePaymentReminders()
+  const cfg = settings || DEFAULT_SETTINGS
+
+  console.log("📋 Alert settings:", JSON.stringify(cfg))
+
+  // Payment reminders
+  const paymentSettings: PaymentAlertSettings = {
+    paymentDueDays: cfg.paymentDueDays,
+    operatorPaymentDays: cfg.operatorPaymentDays,
+    paymentDueEnabled: cfg.paymentDueEnabled,
+    operatorPaymentEnabled: cfg.operatorPaymentEnabled,
+  }
+
+  console.log("🔄 Generating payment reminders...")
+  const reminderResult = await generatePaymentReminders(paymentSettings)
   console.log(`   ✅ Created ${reminderResult.created} payment reminders`)
   if (reminderResult.errors.length > 0) {
     console.log(`   ⚠️ ${reminderResult.errors.length} errors`)
   }
 
-  console.log("🔄 Generating upcoming trip alerts...")
-  await generateUpcomingTripAlerts()
+  if (cfg.upcomingTripEnabled) {
+    console.log(`🔄 Generating upcoming trip alerts (${cfg.upcomingTripDays} days window)...`)
+    await generateUpcomingTripAlerts(cfg.upcomingTripDays)
+  } else {
+    console.log("🔄 Upcoming trip alerts DISABLED")
+  }
 
   console.log("🔄 Generating missing document alerts...")
   await generateMissingDocumentAlerts()

@@ -35,6 +35,17 @@ import { cn } from "@/lib/utils"
 import { TaskCard } from "./task-card"
 import { TaskDialog } from "./task-dialog"
 
+/**
+ * Parsea una fecha ISO (ej: "2026-02-17" o "2026-02-17T00:00:00Z")
+ * como fecha LOCAL para evitar el desfase de timezone.
+ * new Date("2026-02-17") crea UTC medianoche, que en UTC-3 es el día anterior.
+ */
+function parseLocalDate(dateStr: string): Date {
+  const d = dateStr.split("T")[0] // tomar solo "YYYY-MM-DD"
+  const [year, month, day] = d.split("-").map(Number)
+  return new Date(year, month - 1, day)
+}
+
 interface TaskWeekViewProps {
   currentUserId: string
   agencyId: string
@@ -122,11 +133,11 @@ export function TaskWeekView({
     fetchTasks()
   }, [fetchTasks])
 
-  // Agrupar tareas por día
+  // Agrupar tareas por día (parseando como fecha local para evitar desfase UTC)
   const tasksByDay = days.map((day) => ({
     date: day,
     tasks: tasks.filter(
-      (t) => t.due_date && isSameDay(new Date(t.due_date), day)
+      (t) => t.due_date && isSameDay(parseLocalDate(t.due_date), day)
     ),
   }))
 
@@ -280,26 +291,23 @@ export function TaskWeekView({
                   </div>
                 </CardHeader>
                 <CardContent className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[300px]">
-                  {dayTasks.length === 0 ? (
-                    <button
-                      onClick={() => handleNewTask(date)}
-                      className="w-full h-full min-h-[40px] flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-muted/30 rounded transition-colors"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
-                  ) : (
-                    dayTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        currentUserId={currentUserId}
-                        userRole={userRole}
-                        onEdit={handleEditTask}
-                        onRefresh={fetchTasks}
-                        variant="compact"
-                      />
-                    ))
-                  )}
+                  {dayTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      currentUserId={currentUserId}
+                      userRole={userRole}
+                      onEdit={handleEditTask}
+                      onRefresh={fetchTasks}
+                      variant="compact"
+                    />
+                  ))}
+                  <button
+                    onClick={() => handleNewTask(date)}
+                    className="w-full min-h-[32px] flex items-center justify-center text-muted-foreground/30 hover:text-muted-foreground/60 hover:bg-muted/30 rounded transition-colors"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </button>
                 </CardContent>
               </Card>
             ))}
@@ -329,25 +337,31 @@ export function TaskWeekView({
                     </span>
                   )}
                 </div>
-                {dayTasks.length === 0 ? (
-                  <div className="text-xs text-muted-foreground px-2 pb-2">
-                    Sin tareas
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    {dayTasks.map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        currentUserId={currentUserId}
-                        userRole={userRole}
-                        onEdit={handleEditTask}
-                        onRefresh={fetchTasks}
-                        variant="compact"
-                      />
-                    ))}
-                  </div>
-                )}
+                <div className="space-y-1">
+                  {dayTasks.length === 0 && (
+                    <div className="text-xs text-muted-foreground px-2">
+                      Sin tareas
+                    </div>
+                  )}
+                  {dayTasks.map((task) => (
+                    <TaskCard
+                      key={task.id}
+                      task={task}
+                      currentUserId={currentUserId}
+                      userRole={userRole}
+                      onEdit={handleEditTask}
+                      onRefresh={fetchTasks}
+                      variant="compact"
+                    />
+                  ))}
+                  <button
+                    onClick={() => handleNewTask(date)}
+                    className="w-full h-8 flex items-center justify-center text-muted-foreground/40 hover:text-muted-foreground/70 hover:bg-muted/30 rounded transition-colors text-xs gap-1"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Agregar tarea
+                  </button>
+                </div>
               </div>
             ))}
           </div>

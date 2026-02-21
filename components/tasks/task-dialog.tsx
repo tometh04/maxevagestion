@@ -177,8 +177,9 @@ export function TaskDialog({
 
   const searchOperations = useCallback(async (q: string) => {
     try {
+      const searchParam = q ? `search=${encodeURIComponent(q)}&` : ""
       const res = await fetch(
-        `/api/operations?search=${encodeURIComponent(q)}&limit=10&page=1`
+        `/api/operations?${searchParam}limit=10&page=1`
       )
       const data = await res.json()
       return (data.data || data.operations || []).map((op: any) => ({
@@ -193,8 +194,9 @@ export function TaskDialog({
 
   const searchCustomers = useCallback(async (q: string) => {
     try {
+      const searchParam = q ? `search=${encodeURIComponent(q)}&` : ""
       const res = await fetch(
-        `/api/customers?search=${encodeURIComponent(q)}&limit=10`
+        `/api/customers?${searchParam}limit=10`
       )
       const data = await res.json()
       return (data.data || data.customers || []).map((c: any) => ({
