@@ -85,6 +85,14 @@ export function DataTable<TData, TValue>({
       columnVisibility,
       rowSelection,
     },
+    // Cuando showPagination=false (paginación server-side), mostrar todas las filas
+    ...(!showPagination && {
+      initialState: {
+        pagination: {
+          pageSize: 999,
+        },
+      },
+    }),
   })
 
   // Actualizar filtro cuando cambie el valor debounced
