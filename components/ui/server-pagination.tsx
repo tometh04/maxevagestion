@@ -37,7 +37,7 @@ export function ServerPagination({
   limitOptions = [25, 50, 100, 200],
 }: ServerPaginationProps) {
   const canGoPrevious = page > 1
-  const canGoNext = hasMore && page < totalPages
+  const canGoNext = page < totalPages
 
   return (
     <div className="flex flex-col gap-4 px-2 sm:flex-row sm:items-center sm:justify-between">
@@ -56,8 +56,10 @@ export function ServerPagination({
           <Select
             value={`${limit}`}
             onValueChange={(value) => {
-              onLimitChange(Number(value))
-              onPageChange(1) // Resetear a página 1 cuando cambia el límite
+              const newLimit = Number(value)
+              if (newLimit !== limit) {
+                onLimitChange(newLimit)
+              }
             }}
           >
             <SelectTrigger className="h-8 w-[70px]">
