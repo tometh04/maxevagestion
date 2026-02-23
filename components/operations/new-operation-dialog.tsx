@@ -44,6 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -620,25 +621,34 @@ export function NewOperationDialog({
                   <FormItem>
                     <FormLabel>Cliente {settings?.require_customer && <span className="text-red-500">*</span>}</FormLabel>
                     <div className="flex gap-2">
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
-                        disabled={loadingCustomers}
-                    >
-                      <FormControl>
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder={loadingCustomers ? "Cargando..." : "Sin cliente"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                          <SelectItem value="none">Sin cliente</SelectItem>
-                          {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
-                              {customer.first_name} {customer.last_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      <div className="flex-1">
+                        <SearchableCombobox
+                          value={field.value || ""}
+                          onChange={(value) => field.onChange(value || null)}
+                          placeholder="Buscar cliente..."
+                          searchPlaceholder="Escribí el nombre..."
+                          emptyMessage="No se encontró el cliente"
+                          disabled={loadingCustomers}
+                          initialLabel={
+                            field.value
+                              ? customers.find(c => c.id === field.value)
+                                ? `${customers.find(c => c.id === field.value)!.first_name} ${customers.find(c => c.id === field.value)!.last_name}`
+                                : ""
+                              : ""
+                          }
+                          searchFn={async (query) => {
+                            const filtered = query
+                              ? customers.filter(c =>
+                                  `${c.first_name} ${c.last_name}`.toLowerCase().includes(query.toLowerCase())
+                                )
+                              : customers
+                            return filtered.slice(0, 50).map(c => ({
+                              value: c.id,
+                              label: `${c.first_name} ${c.last_name}`,
+                            }))
+                          }}
+                        />
+                      </div>
                       <Button
                         type="button"
                         variant="outline"
@@ -738,8 +748,9 @@ export function NewOperationDialog({
                         </Button>
                       </div>
                       
-                      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                        <div className="md:col-span-2">
+                      <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                        {/* Fila 1: Operador + Tipo */}
+                        <div>
                           <label className="text-xs font-medium mb-1.5 block">Operador *</label>
                           <div className="flex gap-2">
                         <Select
@@ -789,9 +800,9 @@ export function NewOperationDialog({
                           </Select>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs font-medium mb-1.5 block">Costo</label>
+                        {/* Fila 2: Costo + Moneda - más espacio */}
+                        <div>
+                            <label className="text-xs font-medium mb-1.5 block">Costo *</label>
                       <Input
                         type="number"
                         step="0.01"
@@ -799,7 +810,7 @@ export function NewOperationDialog({
                         value={op.cost || 0}
                         onChange={(e) => updateOperator(index, "cost", Number(e.target.value))}
                         placeholder="0.00"
-                              className="h-9"
+                              className="h-9 text-base font-medium"
                       />
                     </div>
                     <div>
@@ -817,7 +828,6 @@ export function NewOperationDialog({
                         </SelectContent>
                       </Select>
                     </div>
-                        </div>
                       </div>
                   </div>
                 ))}

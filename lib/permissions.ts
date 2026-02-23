@@ -86,8 +86,8 @@ const PERMISSIONS: Record<UserRole, RolePermissions> = {
   SELLER: {
     dashboard: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus datos
     leads: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Solo sus leads asignados
-    operations: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo sus operaciones
-    customers: { read: true, write: false, delete: false, export: false, ownDataOnly: true }, // Solo clientes de sus operaciones
+    operations: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Puede crear operaciones, solo ve las suyas
+    customers: { read: true, write: true, delete: false, export: false, ownDataOnly: true }, // Puede crear clientes desde operaciones
     operators: { read: false, write: false, delete: false, export: false }, // No ve operadores
     cash: { read: false, write: false, delete: false, export: false }, // No ve caja
     accounting: { read: false, write: false, delete: false, export: false }, // No ve contabilidad
