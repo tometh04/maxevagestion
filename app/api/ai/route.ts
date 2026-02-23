@@ -40,6 +40,7 @@ const DATABASE_SCHEMA = `
 - id, file_code, agency_id, seller_id, operator_id, lead_id
 - type ('FLIGHT','HOTEL','PACKAGE','CRUISE','TRANSFER','MIXED')
 - origin, destination, departure_date, return_date
+- operation_date (fecha en que se vendió/creó la operación, ej: '2025-09-01' = venta de septiembre 2025)
 - adults, children, infants
 - status ('RESERVED','CONFIRMED','CANCELLED','TRAVELLING','TRAVELLED')
 - sale_amount_total (venta total), sale_currency ('ARS','USD')
@@ -47,6 +48,7 @@ const DATABASE_SCHEMA = `
 - margin_amount (ganancia), margin_percentage (margen %)
 - reservation_code_air, reservation_code_hotel (códigos de reserva)
 - created_at, updated_at
+- NOTA: Para "ventas de un mes" usar operation_date (fecha de venta), NO departure_date (fecha del viaje) ni created_at (fecha de carga en sistema)
 
 #### operation_customers (Relación Operaciones-Clientes)
 - id, operation_id, customer_id, role ('MAIN','COMPANION')
@@ -298,7 +300,7 @@ GROUP BY fa.currency
 ### ⚠️ NOTAS CRÍTICAS
 
 1. **Monedas:** Si operation.sale_currency = 'USD', usar directamente sale_amount_total. Si es 'ARS' y se necesita en USD, dividir por exchange_rate. IMPORTANTE: en ledger_movements, amount_original está en la moneda original (puede ser USD o ARS), y amount_ars_equivalent SIEMPRE está en ARS. Para balances de cuentas USD, usar amount_original. Para balances de cuentas ARS, usar amount_ars_equivalent.
-2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. Para fechas de operaciones usar departure_date o created_at según corresponda.
+2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. IMPORTANTE: Para "ventas de un mes" o "cuántas operaciones en septiembre" usar operation_date (fecha de venta). departure_date es la fecha del VIAJE (no la venta). created_at es la fecha de carga en el sistema (no la venta).
 3. **Payments:** La columna es date_due (NO due_date). Todos los pagos requieren financial_account_id (cuenta financiera de origen/destino).
    - Métodos de pago: method puede ser 'CASH', 'BANK', 'MP', 'USD', 'OTHER'. 'BANK' = transferencia bancaria, 'MP' = Mercado Pago, 'CASH' = efectivo.
    - Para encontrar a qué cuenta va un pago: JOIN financial_accounts fa ON fa.id = p.financial_account_id
@@ -438,15 +440,24 @@ WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD')
 -- El concepto ya incluye: "Nombre Pasajero (OP-XXXXXX)"
 ORDER BY lm.created_at DESC LIMIT 50
 
--- Ventas del mes actual (en USD)
-SELECT 
+-- Ventas del mes actual (en USD) - USAR operation_date para filtrar por mes de venta
+SELECT
   COUNT(*) as cantidad_operaciones,
   SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd,
   SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, 1) END) as total_margen_usd
 FROM operations o
 LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
-WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
+AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
+
+-- Ventas de un mes específico (ej: septiembre 2025)
+SELECT COUNT(*) as cantidad,
+  SUM(o.sale_amount_total) as total_ventas, o.sale_currency
+FROM operations o
+WHERE o.operation_date >= '2025-09-01' AND o.operation_date < '2025-10-01'
+AND o.status NOT IN ('CANCELLED')
+GROUP BY o.sale_currency
 
 -- Pagos agrupados por método de pago
 SELECT p.method, COUNT(*) as cantidad, SUM(p.amount) as total, p.currency
