@@ -238,31 +238,61 @@ WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
 AND o.status NOT IN ('CANCELLED')
 \`\`\`
 
-#### Posición Contable Mensual (Activo = Pasivo + Patrimonio Neto):
+#### Posición Financiera (¿Estoy positivo o negativo?):
+IMPORTANTE: NO usar chart_of_accounts para esto (chart_account_id puede estar NULL). Usar este enfoque práctico:
 \`\`\`sql
--- ACTIVO CORRIENTE
-SELECT SUM(COALESCE(lm.amount_ars_equivalent, 0)) as activo_corriente
-FROM ledger_movements lm
-JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
-WHERE coa.category = 'ACTIVO' AND coa.subcategory = 'CORRIENTE'
-AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+-- PASO 1: Balance de todas las cuentas financieras (lo que TENGO en caja/banco/MP)
+SELECT fa.name, fa.currency,
+  fa.initial_balance + COALESCE(SUM(CASE
+    WHEN lm.type = 'INCOME' THEN (CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END)
+    ELSE -(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END)
+  END), 0) as balance
+FROM financial_accounts fa
+LEFT JOIN ledger_movements lm ON lm.account_id = fa.id
+WHERE fa.is_active = true
+GROUP BY fa.id, fa.name, fa.currency, fa.initial_balance
 
--- PASIVO CORRIENTE
-SELECT SUM(COALESCE(lm.amount_ars_equivalent, 0)) as pasivo_corriente
-FROM ledger_movements lm
-JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
-WHERE coa.category = 'PASIVO' AND coa.subcategory = 'CORRIENTE'
-AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+-- PASO 2: Lo que me DEBEN los clientes (cuentas por cobrar)
+SELECT o.sale_currency as currency,
+  SUM(o.sale_amount_total - COALESCE(pagado.total, 0)) as total_por_cobrar
+FROM operations o
+LEFT JOIN (
+  SELECT p.operation_id, SUM(p.amount) as total
+  FROM payments p WHERE p.direction = 'INCOME' AND p.payer_type = 'CUSTOMER' AND p.status = 'PAID'
+  GROUP BY p.operation_id
+) pagado ON pagado.operation_id = o.id
+WHERE o.status NOT IN ('CANCELLED')
+AND o.sale_amount_total - COALESCE(pagado.total, 0) > 0
+GROUP BY o.sale_currency
 
--- RESULTADO DEL MES (Ingresos - Costos - Gastos)
-SELECT 
-  SUM(CASE WHEN coa.subcategory = 'INGRESOS' THEN lm.amount_ars_equivalent ELSE 0 END) as ingresos,
-  SUM(CASE WHEN coa.subcategory = 'COSTOS' THEN lm.amount_ars_equivalent ELSE 0 END) as costos,
-  SUM(CASE WHEN coa.subcategory = 'GASTOS' THEN lm.amount_ars_equivalent ELSE 0 END) as gastos
+-- PASO 3: Lo que DEBO a operadores (cuentas por pagar)
+SELECT op.currency, SUM(op.amount - op.paid_amount) as total_por_pagar
+FROM operator_payments op
+WHERE op.status IN ('PENDING', 'OVERDUE') AND (op.amount - op.paid_amount) > 0
+GROUP BY op.currency
+
+-- RESUMEN: ACTIVO = balances cuentas + por cobrar. PASIVO = por pagar. RESULTADO = ACTIVO - PASIVO
+\`\`\`
+
+#### Resultado del Mes (Ingresos vs Egresos del mes actual):
+\`\`\`sql
+-- Ingresos del mes (cobros recibidos)
+SELECT SUM(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) as ingresos,
+  fa.currency
 FROM ledger_movements lm
-JOIN chart_of_accounts coa ON coa.id = lm.chart_account_id
-WHERE coa.category = 'RESULTADO'
-AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
+JOIN financial_accounts fa ON fa.id = lm.account_id
+WHERE lm.type = 'INCOME'
+AND lm.created_at >= date_trunc('month', CURRENT_DATE)
+GROUP BY fa.currency
+
+-- Egresos del mes (pagos realizados)
+SELECT SUM(CASE WHEN fa.currency = 'USD' THEN lm.amount_original ELSE lm.amount_ars_equivalent END) as egresos,
+  fa.currency
+FROM ledger_movements lm
+JOIN financial_accounts fa ON fa.id = lm.account_id
+WHERE lm.type = 'EXPENSE'
+AND lm.created_at >= date_trunc('month', CURRENT_DATE)
+GROUP BY fa.currency
 \`\`\`
 
 ### ⚠️ NOTAS CRÍTICAS
@@ -287,7 +317,8 @@ AND DATE_TRUNC('month', lm.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 8. **Múltiples Operadores:** Si una operación tiene operation_operators, sumar todos los costos para obtener el costo total.
 9. **Partner Accounts:** Los retiros aparecen en ledger_movements tipo EXPENSE. Las asignaciones están en partner_profit_allocations.
 10. **Monthly Exchange Rates:** Cada mes/año tiene su propio TC. Si no hay TC para un mes, buscar en exchange_rates la más cercana anterior.
-11. **Caja y Movimientos:**
+11. **chart_of_accounts:** La tabla existe pero chart_account_id en ledger_movements puede estar NULL. NUNCA uses JOIN chart_of_accounts para calcular activo/pasivo/resultado. Usá el enfoque práctico: balance de cuentas financieras + deudores - deudas a operadores.
+12. **Caja y Movimientos:**
     - La vista de Caja permite filtrar por agencia y por cuenta financiera individual.
     - Los movimientos muestran nombre del pasajero principal en el concepto, con código de operación entre paréntesis.
     - Para obtener nombre del pasajero: SELECT c.first_name, c.last_name FROM operation_customers oc JOIN customers c ON c.id = oc.customer_id WHERE oc.operation_id = ? AND oc.role = 'MAIN'
