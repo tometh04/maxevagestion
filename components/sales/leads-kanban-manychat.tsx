@@ -326,20 +326,18 @@ export function LeadsKanbanManychat({
     }, [leads, listOrder])
 
   // Ordenar listas según el orden guardado en manychat_list_order
-  // Si una lista no está en el orden guardado, agregarla al final
+  // Mostrar TODAS las listas guardadas (incluso vacías) + listas extra con leads
   const orderedListNames = useMemo(() => {
     const savedListNames = new Set(listOrder.map(l => l.name))
     const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
-    
-    // Primero las listas guardadas en orden (solo las que tienen leads)
-    const ordered: string[] = listOrder
-      .map(l => l.name)
-      .filter(name => actualListNames.has(name))
-    
-    // Luego las listas que no están en el orden guardado (agregadas al final)
+
+    // Primero TODAS las listas guardadas en orden (incluso vacías)
+    const ordered: string[] = listOrder.map(l => l.name)
+
+    // Luego las listas que no están en el orden guardado pero tienen leads (agregadas al final)
     const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
     ordered.push(...additionalLists.sort()) // Orden alfabético para las nuevas
-    
+
     return ordered
   }, [listOrder, leadsByListName])
 

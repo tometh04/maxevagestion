@@ -225,11 +225,11 @@ export function CRMManychatPageClient({
     () => leads.filter((lead) => lead.list_name),
     [leads]
   )
-  const hasLeadsWithListName = leadsWithListName.length > 0
-  const effectiveAgencyId = selectedAgencyId !== "ALL" 
-    ? selectedAgencyId 
+  const effectiveAgencyId = selectedAgencyId !== "ALL"
+    ? selectedAgencyId
     : (leadsWithListName[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
-  const shouldUseManychatKanban = hasLeadsWithListName && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
+  // Mostrar Kanban siempre que haya agencia seleccionada (las columnas se muestran vacías)
+  const shouldUseManychatKanban = !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
     <div className="space-y-6">
