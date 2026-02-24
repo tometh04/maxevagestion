@@ -221,7 +221,7 @@ export function NewOperationDialog({
   const loadCustomers = async () => {
     setLoadingCustomers(true)
     try {
-      const response = await fetch('/api/customers?limit=200')
+      const response = await fetch('/api/customers?limit=200&context=selector')
       if (response.ok) {
         const data = await response.json()
         setCustomers((data.customers || []).map((c: any) => ({

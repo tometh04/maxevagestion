@@ -25,9 +25,10 @@ export async function GET(request: Request) {
     let query = supabase.from("customers")
 
     // Apply role-based filters FIRST (before select)
+    const context = searchParams.get("context") || undefined
     try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase)
-      console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters`)
+      query = await applyCustomersFilters(query, user, agencyIds, supabase, context)
+      console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters (context: ${context || 'default'})`)
     } catch (error: any) {
       console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })

@@ -122,7 +122,8 @@ export async function applyCustomersFilters(
   query: any,
   user: { role: string; id: string },
   agencyIds: string[],
-  supabase: SupabaseClient<Database>
+  supabase: SupabaseClient<Database>,
+  context?: string
 ): Promise<any> {
   const userRole = user.role as UserRole
 
@@ -137,7 +138,13 @@ export async function applyCustomersFilters(
     throw new Error("No tiene permiso para ver clientes")
   }
 
-  // SELLER solo ve clientes de sus operaciones
+  // SELLER: en contexto de selector (crear operación), ver todos los clientes
+  // para poder asignar cualquier cliente existente a una nueva operación
+  if (userRole === "SELLER" && context === "selector") {
+    return query
+  }
+
+  // SELLER en vista normal: solo ve clientes de sus operaciones
   if (userRole === "SELLER") {
     // Primero obtener las operaciones del vendedor
     const { data: operations } = await supabase
