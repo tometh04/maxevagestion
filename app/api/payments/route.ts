@@ -534,3 +534,294 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Error al eliminar pago" }, { status: 500 })
   }
 }
+
+/**
+ * PATCH /api/payments
+ * Editar un pago existente y actualizar movimientos contables asociados.
+ * Solo ADMIN, SUPER_ADMIN y CONTABLE pueden editar.
+ *
+ * Campos editables: amount, currency, method, date_paid, exchange_rate, financial_account_id, notes
+ * NO editables: operation_id, payer_type, direction (definen la naturaleza del pago)
+ */
+export async function PATCH(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
+
+    // Validar rol
+    const allowedRoles = ["ADMIN", "SUPER_ADMIN", "CONTABLE"]
+    if (!allowedRoles.includes(user.role)) {
+      return NextResponse.json({ error: "No tienes permisos para editar pagos" }, { status: 403 })
+    }
+
+    const body = await request.json()
+    const {
+      paymentId,
+      amount,
+      currency,
+      method,
+      date_paid,
+      exchange_rate: providedExchangeRate,
+      financial_account_id,
+      notes,
+    } = body
+
+    if (!paymentId) {
+      return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
+    }
+
+    // 1. Obtener pago actual
+    const { data: existingPayment, error: fetchError } = await (supabase.from("payments") as any)
+      .select("*")
+      .eq("id", paymentId)
+      .single()
+
+    if (fetchError || !existingPayment) {
+      return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+    }
+
+    // Determinar valores finales (usar nuevos si se proporcionan, o mantener existentes)
+    const finalAmount = amount !== undefined ? parseFloat(amount) : parseFloat(existingPayment.amount)
+    const finalCurrency = currency || existingPayment.currency
+    const finalMethod = method || existingPayment.method
+    const finalDatePaid = date_paid || existingPayment.date_paid
+    const finalExchangeRate = providedExchangeRate !== undefined ? (providedExchangeRate ? parseFloat(providedExchangeRate) : null) : (existingPayment.exchange_rate ? parseFloat(existingPayment.exchange_rate) : null)
+    const finalAccountId = financial_account_id || null
+    const finalNotes = notes !== undefined ? notes : existingPayment.reference
+
+    // Validaciones
+    if (finalAmount <= 0) {
+      return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
+    }
+
+    if (finalDatePaid) {
+      const paidDate = new Date(finalDatePaid)
+      paidDate.setHours(0, 0, 0, 0)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (paidDate > today) {
+        return NextResponse.json({ error: "La fecha de pago no puede ser futura" }, { status: 400 })
+      }
+    }
+
+    // Validar cuenta financiera si se proporcionó una nueva
+    if (finalAccountId) {
+      const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
+        .select("id, currency, is_active, name")
+        .eq("id", finalAccountId)
+        .eq("is_active", true)
+        .single()
+
+      if (accountError || !financialAccount) {
+        return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
+      }
+
+      if (financialAccount.currency !== finalCurrency) {
+        return NextResponse.json({ error: `La cuenta financiera debe estar en ${finalCurrency}` }, { status: 400 })
+      }
+    }
+
+    // Calcular amount_usd
+    let amountUsd: number | null = null
+    if (finalCurrency === "USD") {
+      amountUsd = finalAmount
+    } else if (finalCurrency === "ARS" && finalExchangeRate) {
+      amountUsd = finalAmount / finalExchangeRate
+    }
+
+    // 2. Si el pago está PAID y tiene ledger_movement_id, reversar movimientos contables
+    const wasPaid = existingPayment.status === "PAID" && existingPayment.ledger_movement_id
+
+    if (wasPaid) {
+      // 2a. Revertir operator_payment a PENDING si aplica
+      await (supabase.from("operator_payments") as any)
+        .update({
+          status: "PENDING",
+          ledger_movement_id: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+
+      // 2b. Eliminar cash_movement vinculado
+      await (supabase.from("cash_movements") as any)
+        .delete()
+        .eq("payment_id", paymentId)
+
+      // 2c. Eliminar ledger_movement viejo
+      await (supabase.from("ledger_movements") as any)
+        .delete()
+        .eq("id", existingPayment.ledger_movement_id)
+    }
+
+    // 3. Actualizar registro del pago
+    const updateData: any = {
+      amount: finalAmount,
+      currency: finalCurrency,
+      method: finalMethod,
+      date_paid: finalDatePaid,
+      exchange_rate: finalExchangeRate,
+      amount_usd: amountUsd,
+      reference: finalNotes || null,
+      ledger_movement_id: null, // Se re-linkea después si es PAID
+      updated_at: new Date().toISOString(),
+    }
+
+    const { error: updateError } = await (supabase.from("payments") as any)
+      .update(updateData)
+      .eq("id", paymentId)
+
+    if (updateError) {
+      console.error("Error updating payment:", updateError)
+      return NextResponse.json({ error: `Error al actualizar pago: ${updateError.message}` }, { status: 500 })
+    }
+
+    // 4. Si el pago estaba PAID, recrear movimientos contables con valores nuevos
+    if (wasPaid && finalAccountId) {
+      try {
+        // Obtener datos de la operación
+        let sellerId: string | null = null
+        let operatorId: string | null = null
+
+        if (existingPayment.operation_id) {
+          const { data: operation } = await (supabase.from("operations") as any)
+            .select("seller_id, operator_id, agency_id")
+            .eq("id", existingPayment.operation_id)
+            .single()
+
+          sellerId = operation?.seller_id || null
+          operatorId = operation?.operator_id || null
+        }
+
+        // Calcular tasa de cambio para ARS equivalent
+        let exchangeRate: number | null = null
+        if (finalCurrency === "USD") {
+          const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
+          exchangeRate = await getExchangeRate(supabase, rateDate)
+          if (!exchangeRate) {
+            exchangeRate = await getLatestExchangeRate(supabase)
+          }
+          if (!exchangeRate) exchangeRate = 1450
+        } else if (finalCurrency === "ARS" && finalExchangeRate) {
+          exchangeRate = finalExchangeRate
+        }
+
+        const amountARS = finalCurrency === "ARS"
+          ? finalAmount
+          : calculateARSEquivalent(finalAmount, "USD", exchangeRate)
+
+        // Validar saldo suficiente para egresos
+        if (existingPayment.direction === "EXPENSE" || existingPayment.payer_type === "OPERATOR") {
+          const balanceCheck = await validateSufficientBalance(
+            finalAccountId,
+            finalAmount,
+            finalCurrency as "ARS" | "USD",
+            supabase
+          )
+          if (!balanceCheck.valid) {
+            return NextResponse.json(
+              { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
+              { status: 400 }
+            )
+          }
+        }
+
+        // Obtener nombre de cuenta financiera
+        const { data: accountInfo } = await (supabase.from("financial_accounts") as any)
+          .select("name")
+          .eq("id", finalAccountId)
+          .single()
+
+        // Mapear método
+        const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
+          "Transferencia": "BANK",
+          "Efectivo": "CASH",
+          "Tarjeta Crédito": "OTHER",
+          "Tarjeta Débito": "OTHER",
+          "MercadoPago": "MP",
+          "PayPal": "OTHER",
+          "Otro": "OTHER",
+        }
+        const ledgerMethod = methodMap[finalMethod || "Otro"] || "OTHER"
+
+        const ledgerType = existingPayment.direction === "INCOME"
+          ? "INCOME"
+          : (existingPayment.payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
+
+        const passengerName = existingPayment.operation_id
+          ? await getMainPassengerName(existingPayment.operation_id, supabase)
+          : null
+        const operationCode = existingPayment.operation_id ? existingPayment.operation_id.slice(0, 8) : "N/A"
+
+        // Crear nuevo ledger movement
+        const { id: newLedgerMovementId } = await createLedgerMovement(
+          {
+            operation_id: existingPayment.operation_id,
+            lead_id: null,
+            type: ledgerType,
+            concept: existingPayment.direction === "INCOME"
+              ? passengerName
+                ? `${passengerName} (${operationCode})`
+                : `Pago de cliente recibido - Op. ${operationCode}`
+              : passengerName
+                ? `Pago a operador - ${passengerName} (${operationCode})`
+                : `Pago a operador - Op. ${operationCode}`,
+            currency: finalCurrency as "ARS" | "USD",
+            amount_original: finalAmount,
+            exchange_rate: exchangeRate,
+            amount_ars_equivalent: amountARS,
+            method: ledgerMethod,
+            account_id: finalAccountId,
+            seller_id: sellerId,
+            operator_id: existingPayment.payer_type === "OPERATOR" ? operatorId : null,
+            receipt_number: null,
+            notes: `Cuenta: ${accountInfo?.name || finalAccountId} - ${finalNotes || ""} (editado)`,
+            created_by: user.id,
+          },
+          supabase
+        )
+
+        // Vincular nuevo ledger_movement al pago
+        await (supabase.from("payments") as any)
+          .update({ ledger_movement_id: newLedgerMovementId })
+          .eq("id", paymentId)
+
+        // Marcar operator_payment como PAID si aplica
+        if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
+          const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
+            .select("id")
+            .eq("operation_id", existingPayment.operation_id)
+            .eq("status", "PENDING")
+            .limit(1)
+            .maybeSingle()
+
+          if (operatorPayment) {
+            await (supabase.from("operator_payments") as any)
+              .update({
+                status: "PAID",
+                ledger_movement_id: newLedgerMovementId,
+                updated_at: new Date().toISOString()
+              })
+              .eq("id", operatorPayment.id)
+          }
+        }
+
+        console.log(`✅ Pago ${paymentId} editado. Nuevo ledger_movement: ${newLedgerMovementId}`)
+
+      } catch (accountingError) {
+        console.error("Error recreating accounting movements:", accountingError)
+        return NextResponse.json({
+          payment: { ...existingPayment, ...updateData },
+          warning: "Pago actualizado pero hubo error en movimientos contables"
+        })
+      }
+    }
+
+    // Invalidar caché
+    revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    return NextResponse.json({ success: true, message: "Pago editado correctamente" })
+  } catch (error) {
+    console.error("Error in PATCH /api/payments:", error)
+    return NextResponse.json({ error: "Error al editar pago" }, { status: 500 })
+  }
+}

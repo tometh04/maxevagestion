@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -71,6 +71,22 @@ const paymentSchema = z.object({
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
+
+const editPaymentSchema = z.object({
+  payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
+  direction: z.enum(["INCOME", "EXPENSE"]),
+  method: z.string().min(1, "Método es requerido"),
+  amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
+  currency: z.enum(["ARS", "USD"]),
+  financial_account_id: z.string().optional(), // Opcional en edición (requerido solo si PAID)
+  exchange_rate: z.coerce.number().optional(),
+  date_paid: z.date({
+    required_error: "Fecha de pago es requerida",
+  }),
+  notes: z.string().optional(),
+})
+
+type EditPaymentFormValues = z.infer<typeof editPaymentSchema>
 
 const paymentMethods = [
   { value: "Transferencia", label: "Transferencia Bancaria" },
@@ -108,10 +124,12 @@ export function OperationPaymentsSection({
   const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [sendingReceiptId, setSendingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editingPayment, setEditingPayment] = useState<any>(null)
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
-    if (incomeDialogOpen || expenseDialogOpen) {
+    if (incomeDialogOpen || expenseDialogOpen || editDialogOpen) {
       const fetchFinancialAccounts = async () => {
         try {
           const response = await fetch("/api/accounting/financial-accounts?excludeAccountingOnly=true")
@@ -128,7 +146,7 @@ export function OperationPaymentsSection({
       }
       fetchFinancialAccounts()
     }
-  }, [incomeDialogOpen, expenseDialogOpen])
+  }, [incomeDialogOpen, expenseDialogOpen, editDialogOpen])
 
   // Pagos pendientes (los auto-generados que nunca se pagaron)
   const pendingPayments = payments.filter(p => p.status === "PENDING")
@@ -571,6 +589,87 @@ export function OperationPaymentsSection({
     },
   })
 
+  const editForm = useForm<EditPaymentFormValues>({
+    resolver: zodResolver(editPaymentSchema),
+    defaultValues: {
+      payer_type: "CUSTOMER",
+      direction: "INCOME",
+      method: "Transferencia",
+      amount: 0,
+      currency: "USD",
+      financial_account_id: "",
+      exchange_rate: undefined,
+      date_paid: new Date(),
+      notes: "",
+    },
+  })
+
+  const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
+
+  const handleOpenEditDialog = (payment: any) => {
+    setEditingPayment(payment)
+    editForm.reset({
+      payer_type: payment.payer_type,
+      direction: payment.direction,
+      method: payment.method || "Transferencia",
+      amount: Number(payment.amount),
+      currency: payment.currency || "USD",
+      financial_account_id: "", // Se selecciona de nuevo
+      exchange_rate: payment.exchange_rate ? Number(payment.exchange_rate) : undefined,
+      date_paid: payment.date_paid ? new Date(payment.date_paid + "T12:00:00") : new Date(),
+      notes: payment.reference || "",
+    })
+    setEditDialogOpen(true)
+  }
+
+  const onSubmitEdit = async (values: EditPaymentFormValues) => {
+    if (!editingPayment) return
+
+    // Si es PAID necesita cuenta financiera
+    if (editingPayment.status === "PAID" && !values.financial_account_id) {
+      alert("Debe seleccionar una cuenta financiera para pagos ya pagados")
+      return
+    }
+
+    if (values.currency === "ARS" && !values.exchange_rate) {
+      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const response = await fetch("/api/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: editingPayment.id,
+          amount: values.amount,
+          currency: values.currency,
+          method: values.method,
+          date_paid: values.date_paid.toISOString().split("T")[0],
+          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          financial_account_id: values.financial_account_id || null,
+          notes: values.notes,
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al editar pago")
+      }
+
+      setEditDialogOpen(false)
+      setEditingPayment(null)
+      editForm.reset()
+      router.refresh()
+    } catch (error) {
+      console.error("Error editing payment:", error)
+      alert(error instanceof Error ? error.message : "Error al editar pago")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   // Calcular totales EN USD
   // Si el pago tiene amount_usd, usarlo directamente
   // Si no, convertir: USD = amount, ARS = amount / exchange_rate (o 0 si no hay tasa)
@@ -884,6 +983,18 @@ export function OperationPaymentsSection({
                             </Button>
                           </>
                         )}
+                        {/* Botón de editar - solo ADMIN/SUPER_ADMIN/CONTABLE */}
+                        {canEditPayments && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-amber-500 hover:text-amber-700 hover:bg-amber-100"
+                            onClick={() => handleOpenEditDialog(payment)}
+                            title="Editar pago"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        )}
                         {/* Botón de eliminar */}
                         <Button
                           variant="ghost"
@@ -1122,6 +1233,228 @@ export function OperationPaymentsSection({
       </Dialog>
 
       {/* Dialog para registrar pago a operador (EXPENSE) - Solo ADMIN/SUPER_ADMIN */}
+      {/* Dialog para editar pago - Solo ADMIN/SUPER_ADMIN/CONTABLE */}
+      {canEditPayments && (
+        <Dialog open={editDialogOpen} onOpenChange={(open) => {
+          setEditDialogOpen(open)
+          if (!open) setEditingPayment(null)
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Editar Pago</DialogTitle>
+              <DialogDescription>
+                Modifica los datos del pago. Los movimientos contables se actualizarán automáticamente.
+              </DialogDescription>
+            </DialogHeader>
+
+            <Form {...editForm}>
+              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4">
+                <FormField
+                  control={editForm.control}
+                  name="method"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Método de Pago</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.value} value={method.value}>
+                              {method.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={editForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" min="0" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={editForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {editForm.watch("currency") === "ARS" && (
+                  <FormField
+                    control={editForm.control}
+                    name="exchange_rate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Ej: 1200"
+                            {...field}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          {field.value && editForm.watch("amount")
+                            ? `Equivale a USD ${(editForm.watch("amount") / field.value).toFixed(2)}`
+                            : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                          }
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={editForm.control}
+                  name="date_paid"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Fecha del Pago</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value ? (
+                                format(field.value, "PPP", { locale: es })
+                              ) : (
+                                <span>Seleccionar fecha</span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Cuenta financiera - solo si el pago está PAID */}
+                {editingPayment?.status === "PAID" && (
+                  <FormField
+                    control={editForm.control}
+                    name="financial_account_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Financiera *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cuenta" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {financialAccounts
+                              .filter((acc) => acc.currency === editForm.watch("currency"))
+                              .map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  {account.name} ({account.currency})
+                                  {account.current_balance !== undefined && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                        style: "currency",
+                                        currency: account.currency,
+                                      })}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={editForm.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notas (opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Referencia, comprobante, etc." {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => {
+                    setEditDialogOpen(false)
+                    setEditingPayment(null)
+                  }}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isLoading}>
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Guardando...
+                      </>
+                    ) : (
+                      "Guardar Cambios"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
           <DialogContent className="max-w-md">
