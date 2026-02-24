@@ -4,7 +4,7 @@ import * as React from "react"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
-  // ShoppingCart, // OCULTO temporalmente (CRM Ventas)
+  ShoppingCart,
   Users,
   Building2,
   DollarSign,
@@ -82,18 +82,18 @@ const allNavigation: NavItem[] = [
       { title: "Estadísticas", url: "/customers/statistics" },
     ],
   },
-  // CRM Ventas - OCULTO temporalmente
-  // {
-  //   title: "CRM Ventas",
-  //   url: "/sales/leads",
-  //   icon: ShoppingCart,
-  //   module: "leads",
-  //   items: [
-  //     { title: "Leads", url: "/sales/leads" },
-  //     { title: "CRM Manychat", url: "/sales/crm-manychat" },
-  //     { title: "Estadísticas", url: "/sales/statistics" },
-  //   ],
-  // },
+  // CRM Ventas
+  {
+    title: "CRM Ventas",
+    url: "/sales/leads",
+    icon: ShoppingCart,
+    module: "leads",
+    items: [
+      { title: "Leads", url: "/sales/leads" },
+      { title: "CRM Manychat", url: "/sales/crm-manychat" },
+      { title: "Estadísticas", url: "/sales/statistics" },
+    ],
+  },
   // Finanzas - Colapsable (con submenús anidados)
   {
     title: "Finanzas",
