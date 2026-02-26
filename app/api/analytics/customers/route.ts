@@ -117,17 +117,23 @@ export async function GET(request: Request) {
     }
 
     // Build exchange rate map for ARS operations
-    const arsOps = operationsData
-      .filter((oc: any) => {
-        const op = oc.operations as any
-        return op && (op.sale_currency || op.currency || "USD") === "ARS"
-      })
-      .map((oc: any) => {
-        const op = oc.operations as any
-        return op.departure_date || op.created_at
-      })
-    const getRate = await buildExchangeRateMap(supabase, arsOps)
-    const fallbackRate = await getLatestExchangeRate(supabase) || 1000
+    let getRate: (date: any) => number | null = () => null
+    let fallbackRate = 1200
+    try {
+      const arsOps = operationsData
+        .filter((oc: any) => {
+          const op = oc.operations as any
+          return op && (op.sale_currency || op.currency || "USD") === "ARS"
+        })
+        .map((oc: any) => {
+          const op = oc.operations as any
+          return op.departure_date || op.created_at
+        })
+      getRate = await buildExchangeRateMap(supabase, arsOps)
+      fallbackRate = await getLatestExchangeRate(supabase) || 1200
+    } catch (err) {
+      console.error("Error building exchange rate map for customers:", err)
+    }
 
     // Agregar datos de operaciones (convertidos a USD)
     const inactiveThreshold = subMonths(new Date(), inactiveMonths)

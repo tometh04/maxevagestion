@@ -70,11 +70,17 @@ export async function GET(request: Request) {
       const operationsArray = (operations || []) as any[]
 
       // Build exchange rate map for ARS operations
-      const arsDates = operationsArray
-        .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
-        .map((op: any) => op.departure_date || op.created_at)
-      const getRate = await buildExchangeRateMap(supabase, arsDates)
-      const fallbackRate = await getLatestExchangeRate(supabase) || 1000
+      let getRate: (date: any) => number | null = () => null
+      let fallbackRate = 1200
+      try {
+        const arsDates = operationsArray
+          .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
+          .map((op: any) => op.departure_date || op.created_at)
+        getRate = await buildExchangeRateMap(supabase, arsDates)
+        fallbackRate = await getLatestExchangeRate(supabase) || 1200
+      } catch (err) {
+        console.error("Error building exchange rate map for destinations:", err)
+      }
 
       // Group by destination, converting ARS to USD
       const destinationStats = operationsArray.reduce((acc: any, op: any) => {
