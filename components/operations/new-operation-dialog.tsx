@@ -69,6 +69,7 @@ const operationSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
   seller_id: z.string().min(1, "El vendedor es requerido"),
   seller_secondary_id: z.string().optional().nullable(),
+  commission_split: z.coerce.number().min(0).max(100).optional().nullable(),
   operator_id: z.string().optional().nullable(),
   operators: z.array(operatorSchema).optional(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
@@ -171,6 +172,7 @@ interface NewOperationDialogProps {
   defaultAgencyId?: string
   defaultSellerId?: string
   lead?: LeadData // Prop opcional para convertir lead a operación
+  userRole?: string
 }
 
 export function NewOperationDialog({
@@ -183,6 +185,7 @@ export function NewOperationDialog({
   defaultAgencyId,
   defaultSellerId,
   lead,
+  userRole,
 }: NewOperationDialogProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -280,6 +283,7 @@ export function NewOperationDialog({
       seller_id: lead?.assigned_seller_id || defaultSellerId || "",
       operator_id: null,
       seller_secondary_id: null,
+      commission_split: 50,
       type: "PACKAGE",
       customer_id: null,
       origin: "Rosario", // Por defecto Rosario
@@ -309,6 +313,7 @@ export function NewOperationDialog({
         seller_id: lead.assigned_seller_id || defaultSellerId || "",
         operator_id: null,
         seller_secondary_id: null,
+        commission_split: 50,
         type: "PACKAGE",
         customer_id: null,
         origin: "Rosario",
@@ -440,6 +445,7 @@ export function NewOperationDialog({
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
         operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
+        commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
         origin: values.origin || null,
         customer_id: values.customer_id || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
@@ -694,6 +700,42 @@ export function NewOperationDialog({
                 )}
               />
             </div>
+
+            {/* Split de comisión - solo visible con vendedor secundario */}
+            {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (
+              <div className="grid gap-4 md:grid-cols-2">
+                {["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "") ? (
+                  <FormField
+                    control={form.control}
+                    name="commission_split"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Split comisión (% vendedor principal)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={field.value ?? 50}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Principal: {field.value ?? 50}% · Secundario: {100 - (field.value ?? 50)}%
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="text-xs text-muted-foreground pt-2">
+                    Split comisión: {form.watch("commission_split") ?? 50}% / {100 - (form.watch("commission_split") ?? 50)}%
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Toggle entre operador único y múltiples operadores */}
             <div className="flex items-center gap-2 mb-2">

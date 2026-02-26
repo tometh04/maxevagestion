@@ -50,6 +50,7 @@ export async function POST(request: Request) {
       sale_currency,
       operator_cost_currency, // Compatibilidad hacia atrás
       commission_percentage, // Porcentaje de comisión del vendedor
+      commission_split, // Split de comisión entre vendedor principal y secundario
       reservation_code_air,
       reservation_code_hotel,
     } = body
@@ -189,6 +190,7 @@ export async function POST(request: Request) {
       lead_id: lead_id || null,
       seller_id,
       seller_secondary_id: seller_secondary_id || null,
+      commission_split: seller_secondary_id ? (commission_split ?? 50) : null,
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,

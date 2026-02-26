@@ -156,6 +156,7 @@ export function OperationsPageClient({
         operators={operators}
         defaultAgencyId={defaultAgencyId}
         defaultSellerId={defaultSellerId}
+        userRole={userRole}
       />
     </div>
   )
