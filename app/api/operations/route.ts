@@ -1017,45 +1017,89 @@ export async function GET(request: Request) {
     // Obtener TODOS los pagos de estas operaciones para calcular montos (sin filtros de fecha)
     const { data: payments } = await supabase
       .from("payments")
-      .select("operation_id, amount, currency, status, direction, payer_type")
+      .select("operation_id, amount, currency, status, direction, payer_type, exchange_rate, amount_usd")
       .in("operation_id", operationIds)
-    
-    // Agrupar pagos por operación y calcular montos
-    const paymentsByOperation: Record<string, { 
+
+    // Construir mapa de moneda de venta y costo por operación
+    const operationCurrencyMap: Record<string, { sale_currency: string; operator_cost_currency: string }> = {}
+    for (const op of (operations || []) as any[]) {
+      operationCurrencyMap[op.id] = {
+        sale_currency: op.sale_currency || op.currency || "USD",
+        operator_cost_currency: op.operator_cost_currency || op.currency || "USD",
+      }
+    }
+
+    // Función para convertir monto de pago a la moneda de la operación
+    const convertPaymentAmount = (payment: any, targetCurrency: string): number => {
+      const paymentAmount = Number(payment.amount) || 0
+      const paymentCurrency = payment.currency || "ARS"
+
+      // Si coinciden las monedas, devolver directo
+      if (paymentCurrency === targetCurrency) return paymentAmount
+
+      // Si la operación es USD y el pago es ARS → convertir ARS a USD
+      if (targetCurrency === "USD" && paymentCurrency === "ARS") {
+        // Usar amount_usd si está disponible
+        if (payment.amount_usd && Number(payment.amount_usd) > 0) {
+          return Number(payment.amount_usd)
+        }
+        // Si no, usar exchange_rate del pago
+        const rate = Number(payment.exchange_rate) || 0
+        if (rate > 0) return paymentAmount / rate
+        // Fallback: no podemos convertir sin TC, devolver 0 para no inflar
+        return 0
+      }
+
+      // Si la operación es ARS y el pago es USD → convertir USD a ARS
+      if (targetCurrency === "ARS" && paymentCurrency === "USD") {
+        const rate = Number(payment.exchange_rate) || 0
+        if (rate > 0) return paymentAmount * rate
+        return 0
+      }
+
+      return paymentAmount
+    }
+
+    // Agrupar pagos por operación y calcular montos (convertidos a moneda de la operación)
+    const paymentsByOperation: Record<string, {
       customer_paid: number
       customer_pending: number
       operator_paid: number
       operator_pending: number
-      currency: string 
+      currency: string
     }> = {}
-    
+
     if (payments) {
       const paymentsArray = (payments || []) as any[]
       for (const payment of paymentsArray) {
         const opId = payment.operation_id
+        const opCurrencies = operationCurrencyMap[opId] || { sale_currency: "USD", operator_cost_currency: "USD" }
+
         if (!paymentsByOperation[opId]) {
-          paymentsByOperation[opId] = { 
+          paymentsByOperation[opId] = {
             customer_paid: 0,
             customer_pending: 0,
             operator_paid: 0,
             operator_pending: 0,
-            currency: payment.currency || "ARS" 
+            currency: opCurrencies.sale_currency
           }
         }
-        
+
         if (payment.direction === "INCOME") {
-          // Cobros de clientes
+          // Cobros de clientes → convertir a moneda de venta
+          const converted = convertPaymentAmount(payment, opCurrencies.sale_currency)
           if (payment.status === "PAID") {
-            paymentsByOperation[opId].customer_paid += Number(payment.amount) || 0
+            paymentsByOperation[opId].customer_paid += converted
           } else {
-            paymentsByOperation[opId].customer_pending += Number(payment.amount) || 0
+            paymentsByOperation[opId].customer_pending += converted
           }
         } else if (payment.direction === "EXPENSE") {
-          // Pagos a operadores
+          // Pagos a operadores → convertir a moneda de costo
+          const converted = convertPaymentAmount(payment, opCurrencies.operator_cost_currency)
           if (payment.status === "PAID") {
-            paymentsByOperation[opId].operator_paid += Number(payment.amount) || 0
+            paymentsByOperation[opId].operator_paid += converted
           } else {
-            paymentsByOperation[opId].operator_pending += Number(payment.amount) || 0
+            paymentsByOperation[opId].operator_pending += converted
           }
         }
       }

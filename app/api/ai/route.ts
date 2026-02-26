@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth"
 import OpenAI from "openai"
 import { createServerClient } from "@/lib/supabase/server"
 
-// Esquema COMPLETO de la base de datos - ACTUALIZADO 2025-01-19
+// Esquema COMPLETO de la base de datos - ACTUALIZADO 2026-02-26
 const DATABASE_SCHEMA = `
 ## ESQUEMA COMPLETO DE BASE DE DATOS - MAXEVA GESTION
 
@@ -37,8 +37,9 @@ const DATABASE_SCHEMA = `
 - created_at, updated_at
 
 #### operations (Operaciones/Ventas) ⭐ TABLA PRINCIPAL
-- id, file_code, agency_id, seller_id, operator_id, lead_id
-- type ('FLIGHT','HOTEL','PACKAGE','CRUISE','TRANSFER','MIXED')
+- id, file_code, agency_id, seller_id, seller_secondary_id (vendedor secundario, nullable), operator_id, lead_id
+- commission_split (NUMERIC 0-100, default 50: % de comisión para el vendedor principal cuando hay vendedor secundario. El secundario recibe 100-commission_split%)
+- type ('FLIGHT','HOTEL','PACKAGE','CRUISE','TRANSFER','MIXED','ASSISTANCE')
 - origin, destination, departure_date, return_date
 - operation_date (fecha en que se vendió/creó la operación, ej: '2025-09-01' = venta de septiembre 2025)
 - adults, children, infants
@@ -49,6 +50,7 @@ const DATABASE_SCHEMA = `
 - reservation_code_air, reservation_code_hotel (códigos de reserva)
 - created_at, updated_at
 - NOTA: Para "ventas de un mes" usar operation_date (fecha de venta), NO departure_date (fecha del viaje) ni created_at (fecha de carga en sistema)
+- NOTA: Si seller_secondary_id != NULL, la comisión se reparte según commission_split (ej: 50 = 50%/50%, 70 = 70% principal / 30% secundario)
 
 #### operation_customers (Relación Operaciones-Clientes)
 - id, operation_id, customer_id, role ('MAIN','COMPANION')
@@ -67,11 +69,14 @@ const DATABASE_SCHEMA = `
 - status ('PENDING','PAID','OVERDUE'), reference, financial_account_id
 - created_at, updated_at
 
-#### financial_accounts (Cuentas Financieras) - Caja, Bancos, Mercado Pago
-- id, name, type ('CASH','BANK','MP','USD'), currency ('ARS','USD')
+#### financial_accounts (Cuentas Financieras) - Caja, Bancos, Socios
+- id, name, type, currency ('ARS','USD')
+- TIPOS: 'CASH_ARS' (caja efectivo pesos), 'CASH_USD' (caja efectivo dólares), 'SAVINGS_ARS' (caja de ahorro ARS), 'SAVINGS_USD' (caja de ahorro USD), 'CHECKING_ARS' (cuenta corriente ARS), 'CHECKING_USD' (cuenta corriente USD), 'CREDIT_CARD' (tarjeta de crédito), 'ASSETS' (activos/vouchers), 'PARTNER' (cuenta de socio para retiros)
 - initial_balance (saldo inicial), current_balance (saldo actual calculado)
 - chart_account_id (relación con plan de cuentas), is_active
+- agency_id (puede estar NULL para cuentas globales)
 - created_at, created_by, notes
+- NOTA: Las cuentas PARTNER se usan para registrar retiros de socios. Las transferencias entre cuentas de distinta moneda (ej: ARS→USD) se hacen con tipo de cambio (compra/venta de dólares)
 
 #### ledger_movements (Movimientos Contables) - CORAZÓN CONTABLE ⭐
 - id, operation_id, lead_id, type ('INCOME','EXPENSE','FX_GAIN','FX_LOSS','COMMISSION','OPERATOR_PAYMENT')
@@ -311,16 +316,21 @@ GROUP BY fa.currency
    - Para obtener el nombre del pasajero: JOIN operation_customers con role='MAIN' y customers
 5. **Operator Payments:** Usar (amount - paid_amount) para calcular pendiente. Status puede ser 'PENDING', 'PAID', 'OVERDUE'. La tabla muestra nombre completo del pasajero principal en la columna de operación.
 6. **Financial Accounts:**
+   - TIPOS VÁLIDOS: CASH_ARS, CASH_USD, SAVINGS_ARS, SAVINGS_USD, CHECKING_ARS, CHECKING_USD, CREDIT_CARD, ASSETS, PARTNER
    - PARA CUENTAS ARS: Balance = initial_balance + SUM(lm.amount_ars_equivalent) donde INCOME suma y EXPENSE resta.
    - PARA CUENTAS USD: Balance = initial_balance + SUM(lm.amount_original) donde INCOME suma y EXPENSE resta. NUNCA usar amount_ars_equivalent para cuentas USD.
    - Cada cuenta tiene una sola moneda (ARS o USD). Verificar fa.currency antes de decidir qué campo usar.
-   - En la vista de Caja hay filtros por agencia y por cuenta individual (banco principal, Santander, etc.).
+   - En la vista de Caja hay filtros por agencia y por cuenta individual.
+   - Las cuentas tipo PARTNER son para registrar retiros de socios.
+   - Las transferencias cross-currency generan 2 movimientos: EXPENSE en la cuenta origen e INCOME en la cuenta destino, con el tipo de cambio registrado.
 7. **Margen:** margin_amount = sale_amount_total - operator_cost. margin_percentage = (margin_amount / sale_amount_total) * 100.
 8. **Múltiples Operadores:** Si una operación tiene operation_operators, sumar todos los costos para obtener el costo total.
 9. **Partner Accounts:** Los retiros aparecen en ledger_movements tipo EXPENSE. Las asignaciones están en partner_profit_allocations.
 10. **Monthly Exchange Rates:** Cada mes/año tiene su propio TC. Si no hay TC para un mes, buscar en exchange_rates la más cercana anterior.
 11. **chart_of_accounts:** La tabla existe pero chart_account_id en ledger_movements puede estar NULL. NUNCA uses JOIN chart_of_accounts para calcular activo/pasivo/resultado. Usá el enfoque práctico: balance de cuentas financieras + deudores - deudas a operadores.
-12. **Caja y Movimientos:**
+12. **Commission Split:** Si una operación tiene seller_secondary_id, la comisión se reparte. commission_split es el % del principal (default 50). Ej: split=70 → principal 70%, secundario 30%. Si no hay vendedor secundario, commission_split es NULL.
+13. **Ganancia Financiera:** Los pagos masivos a operadores pueden incluir bonificación por depósito (ganancia financiera). Se registra como INCOME en una cuenta separada tipo CASH. El concepto incluye "Ganancia financiera por depósito".
+14. **Caja y Movimientos:**
     - La vista de Caja permite filtrar por agencia y por cuenta financiera individual.
     - Los movimientos muestran nombre del pasajero principal en el concepto, con código de operación entre paréntesis.
     - Para obtener nombre del pasajero: SELECT c.first_name, c.last_name FROM operation_customers oc JOIN customers c ON c.id = oc.customer_id WHERE oc.operation_id = ? AND oc.role = 'MAIN'
@@ -340,20 +350,33 @@ GROUP BY fa.currency
 - IVA de ventas y compras
 - Comisiones calculadas
 - Operaciones por destino, vendedor, estado
+- Operaciones con vendedor secundario y split de comisión
 - Leads por estado, región, fuente
+- Transferencias cross-currency (compra/venta de dólares)
+- Retiros de socios (cuentas PARTNER)
+- Ganancia financiera por depósitos
 
-### 🆕 FUNCIONALIDADES RECIENTES (2025-01-22)
+### 🆕 FUNCIONALIDADES RECIENTES (2026-02-26)
 
-1. **Concepto de Movimientos:** El campo 'concept' en ledger_movements ahora muestra el nombre completo del pasajero principal, con el código de operación entre paréntesis. Ejemplo: "Juan Pérez (OP-20260114)" en lugar de solo "Pago de cliente - Op. OP-20260114"
+1. **Concepto de Movimientos:** El campo 'concept' en ledger_movements muestra el nombre completo del pasajero principal, con el código de operación entre paréntesis. Ejemplo: "Juan Pérez (OP-20260114)"
 
-2. **Filtros en Caja:** La vista de Caja permite filtrar por:
-   - Agencia (todas o una específica)
-   - Cuenta financiera individual (banco principal, Santander, etc.)
-   - Ambos filtros funcionan en conjunto
+2. **Filtros en Caja:** La vista de Caja permite filtrar por agencia y cuenta financiera individual
 
-3. **Pago Operadores:** La tabla de pagos a operadores muestra el nombre completo del pasajero principal en la columna de operación (además del código y destino)
+3. **Pago Operadores:** La tabla de pagos a operadores muestra el nombre del pasajero principal en la columna de operación
 
-4. **Selección de Cuenta:** Todos los pagos (cobros, pagos a operadores, gastos recurrentes, etc.) requieren seleccionar una cuenta financiera, mostrando el saldo disponible al momento de elegir
+4. **Selección de Cuenta:** Todos los pagos requieren seleccionar una cuenta financiera, mostrando el saldo disponible
+
+5. **Transferencias Cross-Currency:** Se pueden hacer transferencias entre cuentas de distinta moneda (ej: ARS→USD = "Comprar Dólares", USD→ARS = "Vender Dólares"). Se registran con tipo de cambio. En ledger_movements aparecen como EXPENSE en la cuenta origen e INCOME en la cuenta destino, con conceptos como "Transferencia a Caja USD (TC: 1200)" o "Compra de dólares (TC: 1200)".
+
+6. **Cuentas PARTNER (Socios):** Nuevo tipo de cuenta financiera para registrar retiros de socios. Las transferencias hacia cuentas PARTNER representan retiros de socios. Se pueden consultar con: SELECT fa.name, ... FROM financial_accounts fa WHERE fa.type = 'PARTNER'
+
+7. **Pago Masivo a Operadores:** En el pago masivo se muestra el nombre del cliente (main_passenger_name) en vez de solo el código de operación. Hay buscador para filtrar por cliente, destino o código.
+
+8. **Ganancia Financiera por Depósito:** Cuando se paga a operadores por depósito bancario, se puede registrar una bonificación (default 1.45%). Esto crea un INCOME adicional en una cuenta separada de "Ganancia Financiera". En ledger_movements aparece como tipo INCOME con concepto "Ganancia financiera por depósito".
+
+9. **Split de Comisión:** Cuando una operación tiene vendedor secundario (seller_secondary_id), la comisión se divide según commission_split (default 50%). Ej: commission_split=70 → vendedor principal 70%, secundario 30%. Para consultar: SELECT o.file_code, u1.name as principal, u2.name as secundario, o.commission_split FROM operations o JOIN users u1 ON u1.id = o.seller_id LEFT JOIN users u2 ON u2.id = o.seller_secondary_id WHERE o.seller_secondary_id IS NOT NULL
+
+10. **Tipo de Operación ASSISTANCE:** Se agregó 'ASSISTANCE' (Asistencia al Viajero) como tipo de operación válido
 `
 
 const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de MAXEVA GESTION para agencias de viajes.
@@ -436,7 +459,7 @@ SELECT lm.id, lm.concept, lm.type, lm.amount_original, lm.currency,
 FROM ledger_movements lm
 JOIN financial_accounts fa ON fa.id = lm.account_id
 LEFT JOIN operations o ON o.id = lm.operation_id
-WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD')
+WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD', 'CHECKING_ARS', 'CHECKING_USD')
 -- El concepto ya incluye: "Nombre Pasajero (OP-XXXXXX)"
 ORDER BY lm.created_at DESC LIMIT 50
 
@@ -568,7 +591,7 @@ SELECT lm.id, lm.concept, lm.type, lm.amount_original, lm.currency,
 FROM ledger_movements lm
 JOIN financial_accounts fa ON fa.id = lm.account_id
 LEFT JOIN operations o ON o.id = lm.operation_id
-WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD')
+WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD', 'CHECKING_ARS', 'CHECKING_USD')
 -- Filtrar por agencia: AND fa.agency_id = 'xxx'
 -- Filtrar por cuenta específica: AND fa.id = 'xxx'
 ORDER BY lm.created_at DESC LIMIT 50
