@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfMonth, endOfMonth, subMonths, format, getMonth, getYear } from "date-fns"
 import { es } from "date-fns/locale"
+import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -26,9 +27,9 @@ export async function GET(request: Request) {
     const startDate = startOfMonth(subMonths(new Date(), months - 1))
     const endDate = endOfMonth(new Date())
 
-    // Query base
+    // Query base - include sale_currency for conversion
     let query = (supabase.from("operations") as any)
-      .select("sale_amount_total, margin_amount, currency, departure_date, created_at")
+      .select("sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at")
       .in("status", ["CONFIRMED", "TRAVELLED", "CLOSED"])
       .gte("created_at", startDate.toISOString())
       .lte("created_at", endDate.toISOString())
@@ -46,6 +47,15 @@ export async function GET(request: Request) {
       console.error("Error fetching operations:", error)
       return NextResponse.json({ error: "Error al obtener datos" }, { status: 500 })
     }
+
+    const operationsArray = (operations || []) as any[]
+
+    // Build exchange rate map for ARS operations
+    const arsDates = operationsArray
+      .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
+      .map((op: any) => op.departure_date || op.created_at)
+    const getRate = await buildExchangeRateMap(supabase, arsDates)
+    const fallbackRate = await getLatestExchangeRate(supabase) || 1000
 
     // Generar estructura de meses
     const monthsData: Record<string, {
@@ -71,13 +81,27 @@ export async function GET(request: Request) {
       }
     }
 
-    // Agregar datos de operaciones
-    for (const op of operations || []) {
+    // Agregar datos de operaciones (convertidos a USD)
+    for (const op of operationsArray) {
       const date = new Date(op.created_at)
       const key = format(date, "yyyy-MM")
       if (monthsData[key]) {
-        monthsData[key].sales += op.sale_amount_total || 0
-        monthsData[key].margin += op.margin_amount || 0
+        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const marginAmount = parseFloat(op.margin_amount || "0")
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+
+        let saleAmountUsd = saleAmount
+        let marginAmountUsd = marginAmount
+
+        if (saleCurrency === "ARS") {
+          const operationDate = op.departure_date || op.created_at
+          const exchangeRate = getRate(operationDate) || fallbackRate
+          saleAmountUsd = saleAmount / exchangeRate
+          marginAmountUsd = marginAmount / exchangeRate
+        }
+
+        monthsData[key].sales += saleAmountUsd
+        monthsData[key].margin += marginAmountUsd
         monthsData[key].operationCount += 1
       }
     }
@@ -98,11 +122,11 @@ export async function GET(request: Request) {
     const recent3 = monthlyData.slice(-3)
     const previous3 = monthlyData.slice(-6, -3)
     const recent3Avg = recent3.reduce((sum, m) => sum + m.sales, 0) / 3
-    const previous3Avg = previous3.length > 0 
-      ? previous3.reduce((sum, m) => sum + m.sales, 0) / previous3.length 
+    const previous3Avg = previous3.length > 0
+      ? previous3.reduce((sum, m) => sum + m.sales, 0) / previous3.length
       : recent3Avg
-    const trendPercentage = previous3Avg > 0 
-      ? ((recent3Avg - previous3Avg) / previous3Avg) * 100 
+    const trendPercentage = previous3Avg > 0
+      ? ((recent3Avg - previous3Avg) / previous3Avg) * 100
       : 0
 
     return NextResponse.json({
@@ -130,4 +154,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-

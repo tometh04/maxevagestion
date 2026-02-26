@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfMonth, endOfMonth, subMonths, format } from "date-fns"
+import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -25,9 +26,9 @@ export async function GET(request: Request) {
     const startDate = startOfMonth(subMonths(new Date(), months - 1))
     const endDate = endOfMonth(new Date())
 
-    // Query base
+    // Query base - include sale_currency for conversion
     let query = (supabase.from("operations") as any)
-      .select("destination, sale_amount_total, operator_cost, margin_amount, margin_percentage, currency, departure_date")
+      .select("destination, sale_amount_total, sale_currency, operator_cost, margin_amount, margin_percentage, currency, departure_date, created_at")
       .in("status", ["CONFIRMED", "TRAVELLED", "CLOSED"])
       .gte("departure_date", startDate.toISOString())
       .lte("departure_date", endDate.toISOString())
@@ -46,7 +47,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener datos" }, { status: 500 })
     }
 
-    // Agrupar por destino
+    const operationsArray = (operations || []) as any[]
+
+    // Build exchange rate map for ARS operations
+    const arsDates = operationsArray
+      .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
+      .map((op: any) => op.departure_date || op.created_at)
+    const getRate = await buildExchangeRateMap(supabase, arsDates)
+    const fallbackRate = await getLatestExchangeRate(supabase) || 1000
+
+    // Agrupar por destino (convertido a USD)
     const byDestination: Record<string, {
       destination: string
       totalSales: number
@@ -56,7 +66,7 @@ export async function GET(request: Request) {
       avgMarginPercentage: number
     }> = {}
 
-    for (const op of operations || []) {
+    for (const op of operationsArray) {
       const dest = op.destination || "Sin destino"
       if (!byDestination[dest]) {
         byDestination[dest] = {
@@ -68,9 +78,27 @@ export async function GET(request: Request) {
           avgMarginPercentage: 0,
         }
       }
-      byDestination[dest].totalSales += op.sale_amount_total || 0
-      byDestination[dest].totalCost += op.operator_cost || 0
-      byDestination[dest].totalMargin += op.margin_amount || 0
+
+      const saleAmount = parseFloat(op.sale_amount_total || "0")
+      const costAmount = parseFloat(op.operator_cost || "0")
+      const marginAmount = parseFloat(op.margin_amount || "0")
+      const saleCurrency = op.sale_currency || op.currency || "USD"
+
+      let saleUsd = saleAmount
+      let costUsd = costAmount
+      let marginUsd = marginAmount
+
+      if (saleCurrency === "ARS") {
+        const operationDate = op.departure_date || op.created_at
+        const exchangeRate = getRate(operationDate) || fallbackRate
+        saleUsd = saleAmount / exchangeRate
+        costUsd = costAmount / exchangeRate
+        marginUsd = marginAmount / exchangeRate
+      }
+
+      byDestination[dest].totalSales += saleUsd
+      byDestination[dest].totalCost += costUsd
+      byDestination[dest].totalMargin += marginUsd
       byDestination[dest].operationCount += 1
     }
 
@@ -116,4 +144,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 }
-

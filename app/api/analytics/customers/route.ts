@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { subMonths, format } from "date-fns"
+import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -53,8 +54,10 @@ export async function GET(request: Request) {
           operations:operation_id (
             id,
             sale_amount_total,
+            sale_currency,
             currency,
             departure_date,
+            created_at,
             status,
             agency_id
           )
@@ -113,23 +116,46 @@ export async function GET(request: Request) {
       }
     }
 
-    // Agregar datos de operaciones
+    // Build exchange rate map for ARS operations
+    const arsOps = operationsData
+      .filter((oc: any) => {
+        const op = oc.operations as any
+        return op && (op.sale_currency || op.currency || "USD") === "ARS"
+      })
+      .map((oc: any) => {
+        const op = oc.operations as any
+        return op.departure_date || op.created_at
+      })
+    const getRate = await buildExchangeRateMap(supabase, arsOps)
+    const fallbackRate = await getLatestExchangeRate(supabase) || 1000
+
+    // Agregar datos de operaciones (convertidos a USD)
     const inactiveThreshold = subMonths(new Date(), inactiveMonths)
-    
+
     for (const oc of operationsData) {
       const op = oc.operations as any
       if (!op || !customerStats[oc.customer_id]) continue
 
       const stats = customerStats[oc.customer_id]
-      
+
       if (["CONFIRMED", "TRAVELLED", "CLOSED"].includes(op.status)) {
+        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+
+        let saleAmountUsd = saleAmount
+        if (saleCurrency === "ARS") {
+          const operationDate = op.departure_date || op.created_at
+          const exchangeRate = getRate(operationDate) || fallbackRate
+          saleAmountUsd = saleAmount / exchangeRate
+        }
+
         stats.totalOperations += 1
-        stats.totalSpent += op.sale_amount_total || 0
-        
+        stats.totalSpent += saleAmountUsd
+
         if (!stats.lastOperationDate || new Date(op.departure_date) > new Date(stats.lastOperationDate)) {
           stats.lastOperationDate = op.departure_date
         }
-        
+
         if (new Date(op.departure_date) > inactiveThreshold) {
           stats.isInactive = false
         }

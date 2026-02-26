@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -40,10 +41,10 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
     }
 
-    // First, get operations without the relation to avoid potential issues
+    // Select sale_currency and departure_date for currency conversion
       let query = supabase
         .from("operations")
-      .select("sale_amount_total, margin_amount, seller_id")
+      .select("sale_amount_total, sale_currency, margin_amount, currency, seller_id, departure_date, created_at")
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -73,8 +74,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener datos de vendedores", details: error.message }, { status: 500 })
     }
 
+    const operationsArray = (operations || []) as any[]
+
+    // Build exchange rate map for ARS operations
+    const arsDates = operationsArray
+      .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
+      .map((op: any) => op.departure_date || op.created_at)
+    const getRate = await buildExchangeRateMap(supabase, arsDates)
+    const fallbackRate = await getLatestExchangeRate(supabase) || 1000
+
     // Get unique seller IDs
-    const sellerIds = Array.from(new Set((operations || []).map((op: any) => op.seller_id).filter(Boolean)))
+    const sellerIds = Array.from(new Set(operationsArray.map((op: any) => op.seller_id).filter(Boolean)))
 
     // Fetch seller data separately
     let sellersData: Record<string, any> = {}
@@ -86,22 +96,16 @@ export async function GET(request: Request) {
 
       if (sellersError) {
         console.error("Error fetching sellers:", sellersError)
-        // Continue without seller data rather than failing completely
       } else {
-        console.log(`[Sellers API] Found ${sellers?.length || 0} sellers with IDs:`, sellerIds)
         sellersData = (sellers || []).reduce((acc: any, seller: any) => {
-          console.log(`[Sellers API] Seller ${seller.id}: name="${seller.name}"`)
           acc[seller.id] = seller
           return acc
         }, {})
-        if (sellerIds.length > 0 && (!sellers || sellers.length === 0)) {
-          console.warn(`[Sellers API] WARNING: No sellers found for IDs:`, sellerIds)
-        }
       }
       }
 
-      // Group by seller
-      const sellerStats = (operations || []).reduce((acc: any, op: any) => {
+      // Group by seller, converting ARS to USD
+      const sellerStats = operationsArray.reduce((acc: any, op: any) => {
         const sellerId = op.seller_id
       if (!sellerId) return acc
 
@@ -118,8 +122,22 @@ export async function GET(request: Request) {
           }
         }
 
-        acc[sellerId].totalSales += op.sale_amount_total || 0
-        acc[sellerId].totalMargin += op.margin_amount || 0
+        const saleAmount = parseFloat(op.sale_amount_total || "0")
+        const marginAmount = parseFloat(op.margin_amount || "0")
+        const saleCurrency = op.sale_currency || op.currency || "USD"
+
+        let saleAmountUsd = saleAmount
+        let marginAmountUsd = marginAmount
+
+        if (saleCurrency === "ARS") {
+          const operationDate = op.departure_date || op.created_at
+          const exchangeRate = getRate(operationDate) || fallbackRate
+          saleAmountUsd = saleAmount / exchangeRate
+          marginAmountUsd = marginAmount / exchangeRate
+        }
+
+        acc[sellerId].totalSales += saleAmountUsd
+        acc[sellerId].totalMargin += marginAmountUsd
         acc[sellerId].operationsCount += 1
 
         return acc
@@ -143,4 +161,3 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message || "Error al obtener datos de vendedores" }, { status: 500 })
   }
 }
-
