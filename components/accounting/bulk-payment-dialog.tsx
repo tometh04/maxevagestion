@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, AlertCircle, ChevronRight, CheckCircle2 } from "lucide-react"
+import { Loader2, AlertCircle, ChevronRight, CheckCircle2, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -60,6 +60,7 @@ interface OperatorPayment {
     id: string
     file_code: string | null
     destination: string | null
+    main_passenger_name?: string | null
   }
   operators?: {
     id: string
@@ -102,6 +103,7 @@ export function BulkPaymentDialog({
   const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set())
   const [paymentAmounts, setPaymentAmounts] = useState<Record<string, number>>({})
   const [loadingPayments, setLoadingPayments] = useState(false)
+  const [debtSearch, setDebtSearch] = useState("")
   
   // Paso 4: Información del pago
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
@@ -122,6 +124,7 @@ export function BulkPaymentDialog({
       setPendingPayments([])
       setSelectedPayments(new Set())
       setPaymentAmounts({})
+      setDebtSearch("")
       setPaymentAccountId("")
       setPaymentCurrency("USD")
       setExchangeRate("")
@@ -520,6 +523,17 @@ export function BulkPaymentDialog({
                   </AlertDescription>
                 </Alert>
               ) : (
+                <div className="space-y-2">
+                  {/* Filtro de búsqueda */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por cliente, destino o código..."
+                      value={debtSearch}
+                      onChange={(e) => setDebtSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
                 <div className="border rounded-lg">
                   <Table>
                     <TableHeader>
@@ -539,7 +553,16 @@ export function BulkPaymentDialog({
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pendingPayments.map((payment) => {
+                      {pendingPayments
+                        .filter((p) => {
+                          if (!debtSearch.trim()) return true
+                          const s = debtSearch.toLowerCase().trim()
+                          const code = (p.operations?.file_code || "").toLowerCase()
+                          const dest = (p.operations?.destination || "").toLowerCase()
+                          const client = (p.operations?.main_passenger_name || "").toLowerCase()
+                          return code.includes(s) || dest.includes(s) || client.includes(s)
+                        })
+                        .map((payment) => {
                         const paidAmount = payment.paid_amount || 0
                         const remaining = payment.amount - paidAmount
                         const isSelected = selectedPayments.has(payment.id)
@@ -556,12 +579,21 @@ export function BulkPaymentDialog({
                               />
                             </TableCell>
                             <TableCell>
-                              <div className="space-y-1">
-                                <div className="font-mono text-xs font-medium">
-                                  {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {payment.operations?.destination || "Sin destino"}
+                              <div className="space-y-0.5">
+                                {payment.operations?.main_passenger_name && (
+                                  <div className="text-sm font-medium">
+                                    {payment.operations.main_passenger_name}
+                                  </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-xs text-muted-foreground">
+                                    {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
+                                  </span>
+                                  {payment.operations?.destination && (
+                                    <span className="text-xs text-muted-foreground">
+                                      · {payment.operations.destination}
+                                    </span>
+                                  )}
                                 </div>
                                 {isPartial && (
                                   <Badge variant="secondary" className="text-xs">
@@ -630,6 +662,7 @@ export function BulkPaymentDialog({
                       })}
                     </TableBody>
                   </Table>
+                </div>
                 </div>
               )}
             </div>
