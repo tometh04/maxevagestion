@@ -122,6 +122,7 @@ export async function POST(request: Request) {
       "CASH_USD",
       "CREDIT_CARD",
       "ASSETS",
+      "PARTNER",
     ]
     if (!validTypes.includes(type)) {
       return NextResponse.json({ error: "Tipo de cuenta inválido" }, { status: 400 })
@@ -137,6 +138,7 @@ export async function POST(request: Request) {
       SAVINGS_ARS: "1.1.02", // Caja de Ahorro → Bancos
       SAVINGS_USD: "1.1.02", // Caja de Ahorro USD → Bancos
       ASSETS: "1.1.05", // Activos en Stock
+      PARTNER: "3.1.01", // Cuenta Particular del Socio
     }
 
     // Obtener chart_account_id según el tipo de cuenta

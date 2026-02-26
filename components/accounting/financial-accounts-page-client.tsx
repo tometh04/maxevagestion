@@ -60,6 +60,7 @@ const accountTypeLabels: Record<string, string> = {
   CASH_USD: "Caja efectivo USD",
   CREDIT_CARD: "Tarjeta de crédito",
   ASSETS: "Activos",
+  PARTNER: "Cuenta de Socio",
 }
 
 const accountTypes = [
@@ -71,6 +72,7 @@ const accountTypes = [
   { value: "CASH_USD", label: "Caja efectivo USD" },
   { value: "CREDIT_CARD", label: "Tarjeta de crédito" },
   { value: "ASSETS", label: "Activos" },
+  { value: "PARTNER", label: "Cuenta de Socio" },
 ]
 
 const assetTypes = [
@@ -190,6 +192,9 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     } else if (formData.type === "ASSETS") {
       // Para activos, la moneda puede ser ARS o USD
       currency = formData.currency || "ARS"
+    } else if (formData.type === "PARTNER") {
+      // Para socios, la moneda puede ser ARS o USD
+      currency = formData.currency || "USD"
     }
 
     // Preparar datos según tipo
@@ -593,6 +598,8 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         ? "Ej: Tarjeta Principal"
                         : formData.type === "ASSETS"
                         ? "Ej: Vouchers Brasil 2025"
+                        : formData.type === "PARTNER"
+                        ? "Ej: Cuenta Socio Juan"
                         : "Ej: Caja Principal"
                     }
                     required
@@ -678,6 +685,28 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                       />
                     </div>
                   </>
+                )}
+
+                {/* Campos específicos para cuenta de socio */}
+                {formData.type === "PARTNER" && (
+                  <div>
+                    <Label>Moneda *</Label>
+                    <Select
+                      value={formData.currency}
+                      onValueChange={(value) => setFormData({ ...formData, currency: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ARS">ARS</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Los retiros del socio se registran como transferencias a esta cuenta
+                    </p>
+                  </div>
                 )}
 
                 {/* Campos específicos para activos */}
