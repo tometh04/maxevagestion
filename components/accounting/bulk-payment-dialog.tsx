@@ -116,6 +116,11 @@ export function BulkPaymentDialog({
   
   const [submitting, setSubmitting] = useState(false)
 
+  // Bonificación por depósito
+  const [depositBonus, setDepositBonus] = useState(false)
+  const [bonusPercentage, setBonusPercentage] = useState("1.45")
+  const [bonusAccountId, setBonusAccountId] = useState("")
+
   // Reset cuando se cierra el dialog
   useEffect(() => {
     if (!open) {
@@ -125,6 +130,9 @@ export function BulkPaymentDialog({
       setSelectedPayments(new Set())
       setPaymentAmounts({})
       setDebtSearch("")
+      setDepositBonus(false)
+      setBonusPercentage("1.45")
+      setBonusAccountId("")
       setPaymentAccountId("")
       setPaymentCurrency("USD")
       setExchangeRate("")
@@ -371,6 +379,15 @@ export function BulkPaymentDialog({
       return
     }
 
+    if (depositBonus && !bonusAccountId) {
+      toast({
+        title: "Error",
+        description: "Debe seleccionar la cuenta destino para la ganancia financiera",
+        variant: "destructive",
+      })
+      return
+    }
+
     setSubmitting(true)
     try {
       const payments = Array.from(selectedPayments).map(paymentId => {
@@ -393,6 +410,15 @@ export function BulkPaymentDialog({
           receipt_number: receiptNumber,
           payment_date: paymentDate,
           notes: notes || null,
+          ...(depositBonus && bonusPercentage && bonusAccountId
+            ? {
+                deposit_bonus: {
+                  enabled: true,
+                  percentage: parseFloat(bonusPercentage),
+                  bonus_account_id: bonusAccountId,
+                },
+              }
+            : {}),
         }),
       })
 
@@ -752,6 +778,72 @@ export function BulkPaymentDialog({
                     placeholder="Notas adicionales"
                   />
                 </div>
+              </div>
+
+              {/* Bonificación por depósito */}
+              <div className="border rounded-lg p-3 space-y-3">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="deposit-bonus"
+                    checked={depositBonus}
+                    onCheckedChange={(checked) => setDepositBonus(checked === true)}
+                  />
+                  <Label htmlFor="deposit-bonus" className="text-sm font-medium cursor-pointer">
+                    Pago por depósito (ganancia financiera)
+                  </Label>
+                </div>
+
+                {depositBonus && (
+                  <div className="grid gap-3 md:grid-cols-2 pl-6">
+                    <div>
+                      <Label className="text-xs">Porcentaje de bonificación (%)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={bonusPercentage}
+                        onChange={(e) => setBonusPercentage(e.target.value)}
+                        placeholder="1.45"
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Cuenta destino ganancia *</Label>
+                      <Select value={bonusAccountId} onValueChange={setBonusAccountId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cuenta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {financialAccounts
+                            .filter((acc) => acc.id !== paymentAccountId)
+                            .map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name} ({account.currency})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {totalPaymentAmount > 0 && parseFloat(bonusPercentage) > 0 && (
+                      <div className="md:col-span-2 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded p-2">
+                        <div className="text-sm text-green-700 dark:text-green-400">
+                          <span className="font-medium">Ganancia financiera: </span>
+                          {formatCurrency(
+                            totalPaymentAmount - totalPaymentAmount / (1 + parseFloat(bonusPercentage) / 100),
+                            selectedCurrency
+                          )}
+                        </div>
+                        <div className="text-xs text-green-600 dark:text-green-500 mt-1">
+                          Sale de caja:{" "}
+                          {formatCurrency(
+                            totalPaymentAmount / (1 + parseFloat(bonusPercentage) / 100),
+                            selectedCurrency
+                          )}{" "}
+                          · Cancela deuda: {formatCurrency(totalPaymentAmount, selectedCurrency)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Resumen */}

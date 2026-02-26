@@ -34,7 +34,10 @@ export async function POST(request: Request) {
       receipt_number,
       payment_date,
       notes,
+      deposit_bonus,
     } = body
+
+    const hasDepositBonus = deposit_bonus?.enabled && deposit_bonus?.percentage > 0 && deposit_bonus?.bonus_account_id
 
     if (!payments || !Array.isArray(payments) || payments.length === 0) {
       return NextResponse.json({ error: "Debe especificar al menos un pago" }, { status: 400 })
@@ -160,9 +163,17 @@ export async function POST(request: Request) {
       )
     }
 
+    // Si hay bonificación por depósito, el monto real que sale de caja es menor
+    let bonusTotal = 0
+    if (hasDepositBonus) {
+      const pct = deposit_bonus.percentage
+      bonusTotal = roundMoney(totalDebit - totalDebit / (1 + pct / 100))
+    }
+    const actualDebitFromAccount = roundMoney(totalDebit - bonusTotal)
+
     const balanceCheck = await validateSufficientBalance(
       payment_account_id,
-      totalDebit,
+      actualDebitFromAccount,
       payment_currency as "ARS" | "USD",
       supabase
     )
@@ -226,16 +237,31 @@ export async function POST(request: Request) {
         const sellerId = item.operation?.seller_id ?? null
         const operatorId = item.operation?.operator_id ?? null
 
+        // Calcular el monto real que sale de caja (descontando bonificación proporcional)
+        let expenseAmount = item.amountInPaymentCurrency
+        let expenseARS = item.amountARS
+        if (hasDepositBonus && totalDebit > 0) {
+          const pct = deposit_bonus.percentage
+          expenseAmount = roundMoney(item.amountInPaymentCurrency / (1 + pct / 100))
+          if (payment_currency === "USD") {
+            expenseARS = roundMoney(expenseAmount * (exchangeRateValue ?? 1450))
+          } else {
+            expenseARS = expenseAmount
+          }
+        }
+
         const ledgerMovementResult = await createLedgerMovement(
           {
             operation_id,
             lead_id: null,
             type: "EXPENSE",
-            concept: `Pago masivo a operador - Operación ${operation_id.slice(0, 8)}`,
+            concept: hasDepositBonus
+              ? `Pago por depósito a operador - Operación ${operation_id.slice(0, 8)}`
+              : `Pago masivo a operador - Operación ${operation_id.slice(0, 8)}`,
             currency: payment_currency as "ARS" | "USD",
-            amount_original: item.amountInPaymentCurrency,
+            amount_original: expenseAmount,
             exchange_rate: payment_currency === "USD" ? exchangeRateValue : (exchange_rate != null ? exchangeRateValue : null),
-            amount_ars_equivalent: item.amountARS,
+            amount_ars_equivalent: expenseARS,
             method: ledgerMethod,
             account_id: payment_account_id,
             seller_id: sellerId,
@@ -306,6 +332,35 @@ export async function POST(request: Request) {
         { error: "No se pudo procesar ningún pago.", details: errors },
         { status: 500 }
       )
+    }
+
+    // Crear INCOME de ganancia financiera por depósito
+    if (hasDepositBonus && bonusTotal > 0 && processedPayments.length > 0) {
+      try {
+        const bonusARS = payment_currency === "USD"
+          ? roundMoney(bonusTotal * (exchangeRateValue ?? 1450))
+          : bonusTotal
+
+        await createLedgerMovement(
+          {
+            operation_id: null,
+            lead_id: null,
+            type: "INCOME",
+            concept: `Ganancia financiera por depósito - ${receipt_number}`,
+            currency: payment_currency as "ARS" | "USD",
+            amount_original: bonusTotal,
+            exchange_rate: payment_currency === "USD" ? exchangeRateValue : null,
+            amount_ars_equivalent: bonusARS,
+            method: ledgerMethod,
+            account_id: deposit_bonus.bonus_account_id,
+            notes: `Bonificación ${deposit_bonus.percentage}% por depósito - ${processedPayments.length} pago(s)`,
+            created_by: user.id,
+          },
+          supabase
+        )
+      } catch (bonusErr: any) {
+        errors.push(`Error registrando ganancia financiera: ${bonusErr?.message ?? String(bonusErr)}`)
+      }
     }
 
     if (errors.length > 0) {
