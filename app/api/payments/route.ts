@@ -662,8 +662,11 @@ export async function PATCH(request: Request) {
       exchange_rate: finalExchangeRate,
       amount_usd: amountUsd,
       reference: finalNotes || null,
-      ledger_movement_id: null, // Se re-linkea después si es PAID
       updated_at: new Date().toISOString(),
+    }
+    // Solo resetear ledger_movement_id si el pago tenía uno (evita error de schema cache)
+    if (wasPaid && existingPayment.ledger_movement_id) {
+      updateData.ledger_movement_id = null
     }
 
     const { error: updateError } = await (supabase.from("payments") as any)

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
+import { sendPushToUser } from "@/lib/push"
 
 const TASK_SELECT = `
   *,
@@ -277,6 +278,34 @@ export async function POST(request: Request) {
     if (error) {
       console.error("Error creating task:", error)
       return NextResponse.json({ error: "Error al crear tarea" }, { status: 500 })
+    }
+
+    // Notificar al usuario asignado (si no es el creador)
+    if (assigned_to && assigned_to !== user.id) {
+      try {
+        // 1. Crear alerta → dispara realtime en bell automáticamente
+        await (supabase as any)
+          .from("alerts")
+          .insert({
+            user_id: assigned_to,
+            operation_id: operation_id || null,
+            customer_id: customer_id || null,
+            type: "TASK_ASSIGNED",
+            description: `Nueva tarea asignada: ${title.trim()}`,
+            date_due: due_date || new Date().toISOString().split("T")[0],
+            status: "PENDING",
+          })
+
+        // 2. Enviar push notification
+        await sendPushToUser(supabase, assigned_to, {
+          title: "📋 Nueva tarea asignada",
+          body: title.trim(),
+          url: "/tools/tasks",
+        })
+      } catch (notifError) {
+        // No fallar la creación de tarea si la notificación falla
+        console.error("Error sending task assignment notification:", notifError)
+      }
     }
 
     return NextResponse.json({ task })

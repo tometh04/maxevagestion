@@ -83,6 +83,7 @@ export default async function DashboardPage() {
       agencies={agencies}
       sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))}
       defaultFilters={defaultFilters}
+      userRole={userRole}
     />
   )
 }

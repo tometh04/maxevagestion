@@ -39,6 +39,7 @@ const alertTypeConfig: Record<string, { icon: any; color: string }> = {
   LOW_MARGIN: { icon: AlertTriangle, color: "text-red-500" },
   QUOTATION_EXPIRING: { icon: Bell, color: "text-purple-500" },
   TASK_REMINDER: { icon: CheckSquare, color: "text-indigo-500" },
+  TASK_ASSIGNED: { icon: CheckSquare, color: "text-green-500" },
 }
 
 export function NotificationBell() {

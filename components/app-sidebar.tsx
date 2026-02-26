@@ -164,7 +164,7 @@ const allNavigation: NavItem[] = [
   // Herramientas - Colapsable
   {
     title: "Herramientas",
-    url: "/tools/cerebro",
+    url: "/tools/tasks",
     icon: Bot,
     items: [
       { title: "Tareas", url: "/tools/tasks" },
@@ -204,6 +204,11 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
               if (!shouldShowInSidebar(userRole, subItem.module)) {
                 return null
               }
+            }
+
+            // Ocultar Cerebro para SELLER
+            if (userRole === "SELLER" && subItem.url === "/tools/cerebro") {
+              return null
             }
 
             // Si el subitem tiene items (nivel 3), mantenerlos todos

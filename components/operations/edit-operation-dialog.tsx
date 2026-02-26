@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2, Plus } from "lucide-react"
+import { CalendarIcon, Loader2, Plus, Trash2 } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
@@ -39,7 +39,7 @@ const operationSchema = z.object({
   seller_id: z.string().min(1, "El vendedor es requerido"),
   seller_secondary_id: z.string().optional().nullable(),
   operator_id: z.string().optional().nullable(),
-  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]),
+  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
   origin: z.string().optional(),
   destination: z.string().min(1, "El destino es requerido"),
   departure_date: z.date({
@@ -66,6 +66,7 @@ const operationTypeOptions = [
   { value: "CRUISE", label: "Crucero" },
   { value: "TRANSFER", label: "Transfer" },
   { value: "MIXED", label: "Mixto" },
+  { value: "ASSISTANCE", label: "Asistencia al Viajero" },
 ]
 
 const standardStatusOptions = [
@@ -120,7 +121,7 @@ export function EditOperationDialog({
   operators,
 }: EditOperationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
-  
+
   // Estado para crear nuevo operador
   const [showNewOperatorDialog, setShowNewOperatorDialog] = useState(false)
   const [newOperatorName, setNewOperatorName] = useState("")
@@ -128,6 +129,12 @@ export function EditOperationDialog({
   const [creatingOperator, setCreatingOperator] = useState(false)
   const [localOperators, setLocalOperators] = useState(operators)
   const [customStatuses, setCustomStatuses] = useState<Array<{ value: string; label: string; color?: string }>>([])
+
+  // Estado para múltiples operadores
+  type OperatorEntry = { operator_id: string; cost: number; cost_currency: "ARS" | "USD"; product_type?: string; notes?: string; id?: string }
+  const [useMultipleOperators, setUseMultipleOperators] = useState(false)
+  const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
+  const [operatorsLoaded, setOperatorsLoaded] = useState(false)
 
   // Cargar estados personalizados
   useEffect(() => {
@@ -156,6 +163,45 @@ export function EditOperationDialog({
   useEffect(() => {
     setLocalOperators(operators)
   }, [operators])
+
+  // Cargar operation_operators existentes al abrir el dialog
+  useEffect(() => {
+    if (!open || operatorsLoaded) return
+    const loadOperators = async () => {
+      try {
+        const res = await fetch(`/api/operations/${operation.id}`)
+        if (res.ok) {
+          const data = await res.json()
+          const opOps = data.operation?.operation_operators || []
+          if (opOps.length > 0) {
+            const mapped: OperatorEntry[] = opOps.map((oo: any) => ({
+              id: oo.id,
+              operator_id: oo.operator_id || "",
+              cost: Number(oo.cost || 0),
+              cost_currency: (oo.cost_currency || "USD") as "ARS" | "USD",
+              product_type: oo.product_type || undefined,
+              notes: oo.notes || undefined,
+            }))
+            setOperatorList(mapped)
+            setUseMultipleOperators(true)
+          }
+        }
+      } catch (err) {
+        console.error("Error loading operation operators:", err)
+      }
+      setOperatorsLoaded(true)
+    }
+    loadOperators()
+  }, [open, operation.id, operatorsLoaded])
+
+  // Reset operatorsLoaded when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setOperatorsLoaded(false)
+      setOperatorList([])
+      setUseMultipleOperators(false)
+    }
+  }, [open])
 
   const form = useForm<OperationFormValues>({
     resolver: zodResolver(operationSchema) as any,
@@ -223,6 +269,32 @@ export function EditOperationDialog({
     }
   }, [saleAmount, operatorCost])
 
+  // Funciones de múltiples operadores
+  const addOperator = () => {
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "USD", product_type: undefined }])
+  }
+
+  const removeOperator = (index: number) => {
+    setOperatorList(operatorList.filter((_, i) => i !== index))
+  }
+
+  const updateOperatorField = (index: number, field: string, value: any) => {
+    const updated = [...operatorList]
+    updated[index] = { ...updated[index], [field]: value }
+    setOperatorList(updated)
+  }
+
+  const totalOperatorCost = useMemo(() => {
+    return operatorList.reduce((sum, op) => sum + (op.cost || 0), 0)
+  }, [operatorList])
+
+  // Actualizar operator_cost del form cuando cambia totalOperatorCost
+  useEffect(() => {
+    if (useMultipleOperators && operatorList.length > 0) {
+      form.setValue("operator_cost", totalOperatorCost)
+    }
+  }, [totalOperatorCost, useMultipleOperators, operatorList.length, form])
+
   // Función para crear nuevo operador
   const handleCreateOperator = async () => {
     if (!newOperatorName.trim()) {
@@ -270,17 +342,33 @@ export function EditOperationDialog({
   const onSubmit = async (values: OperationFormValues) => {
     setIsLoading(true)
     try {
+      // Preparar payload con operadores si estamos en modo multi
+      const payload: any = {
+        ...values,
+        operator_id: values.operator_id || null,
+        seller_secondary_id: values.seller_secondary_id || null,
+        origin: values.origin || null,
+        return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
+        departure_date: values.departure_date.toISOString().split("T")[0],
+      }
+
+      if (useMultipleOperators && operatorList.length > 0) {
+        payload.operators = operatorList.map(op => ({
+          operator_id: op.operator_id,
+          cost: op.cost,
+          cost_currency: op.cost_currency || "USD",
+          product_type: op.product_type || null,
+          notes: op.notes || null,
+        }))
+        // El operador principal es el primero de la lista
+        payload.operator_id = operatorList[0].operator_id || null
+        payload.operator_cost = totalOperatorCost
+      }
+
       const response = await fetch(`/api/operations/${operation.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...values,
-          operator_id: values.operator_id || null,
-          seller_secondary_id: values.seller_secondary_id || null,
-          origin: values.origin || null,
-          return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
-          departure_date: values.departure_date.toISOString().split("T")[0],
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
@@ -396,47 +484,204 @@ export function EditOperationDialog({
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="operator_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Operador</FormLabel>
-                    <div className="flex gap-2">
-                      <Select
-                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                        value={field.value || "none"}
-                      >
-                        <FormControl>
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Sin operador" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="none">Sin operador</SelectItem>
-                          {localOperators.map((operator) => (
-                            <SelectItem key={operator.id} value={operator.id}>
-                              {operator.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setShowNewOperatorDialog(true)}
-                        title="Crear nuevo operador"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
+            {/* Toggle múltiples operadores */}
+            <div className="flex items-center gap-2 mb-2">
+              <input
+                type="checkbox"
+                id="editUseMultipleOperators"
+                checked={useMultipleOperators}
+                onChange={(e) => {
+                  setUseMultipleOperators(e.target.checked)
+                  if (!e.target.checked) {
+                    setOperatorList([])
+                  }
+                }}
+                className="rounded"
               />
+              <label htmlFor="editUseMultipleOperators" className="text-sm font-medium cursor-pointer">
+                Usar múltiples operadores
+              </label>
+            </div>
 
+            {useMultipleOperators ? (
+              <div className="space-y-4 border rounded-lg p-5 mb-4 bg-muted/30">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">Operadores</h4>
+                    <p className="text-xs text-muted-foreground mt-1">Agrega operadores y especifica el tipo de producto para cada uno</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addOperator}
+                  >
+                    <Plus className="h-4 w-4 mr-1" />
+                    Agregar Operador
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  {operatorList.map((op, index) => (
+                    <div key={index} className="bg-background border rounded-lg p-4 space-y-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-muted-foreground">Operador #{index + 1}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeOperator(index)}
+                          className="text-red-600 hover:text-red-700 h-7 w-7 p-0"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+
+                      <div className="grid gap-3 grid-cols-1 md:grid-cols-2">
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Operador *</label>
+                          <div className="flex gap-2">
+                            <Select
+                              value={op.operator_id}
+                              onValueChange={(value) => updateOperatorField(index, "operator_id", value)}
+                            >
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Seleccionar operador" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {localOperators.map((operator) => (
+                                  <SelectItem key={operator.id} value={operator.id}>
+                                    {operator.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              className="shrink-0"
+                              onClick={() => setShowNewOperatorDialog(true)}
+                              title="Crear nuevo operador"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Tipo de Producto</label>
+                          <Select
+                            value={op.product_type || ""}
+                            onValueChange={(value) => updateOperatorField(index, "product_type", value)}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar tipo" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {operationTypeOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Costo *</label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={op.cost || ""}
+                            onChange={(e) => updateOperatorField(index, "cost", e.target.value === "" ? 0 : Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                            placeholder="0.00"
+                            className="h-9 text-base font-medium"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium mb-1.5 block">Moneda</label>
+                          <Select
+                            value={op.cost_currency || "USD"}
+                            onValueChange={(value) => updateOperatorField(index, "cost_currency", value as "ARS" | "USD")}
+                          >
+                            <SelectTrigger className="h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {operatorList.length > 0 && (
+                  <div className="pt-4 mt-4 border-t bg-background/50 rounded-md p-3">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="font-medium text-muted-foreground">Costo Total de Operadores:</span>
+                      <span className="font-bold">{form.watch("currency")} {totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                )}
+
+                {operatorList.length === 0 && (
+                  <div className="text-center py-8 border-2 border-dashed rounded-lg">
+                    <p className="text-sm text-muted-foreground">No hay operadores agregados</p>
+                    <p className="text-xs text-muted-foreground mt-1">Haz clic en &quot;Agregar Operador&quot; para comenzar</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="operator_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Operador</FormLabel>
+                      <div className="flex gap-2">
+                        <Select
+                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                          value={field.value || "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Sin operador" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Sin operador</SelectItem>
+                            {localOperators.map((operator) => (
+                              <SelectItem key={operator.id} value={operator.id}>
+                                {operator.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowNewOperatorDialog(true)}
+                          title="Crear nuevo operador"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="type"
@@ -654,7 +899,9 @@ export function EditOperationDialog({
                         step="0.01"
                         min="0"
                         {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
                       />
                     </FormControl>
                     <FormMessage />
@@ -662,25 +909,42 @@ export function EditOperationDialog({
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="operator_cost"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Costo de Operador *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {useMultipleOperators ? (
+                <div>
+                  <label className="text-sm font-medium">Costo Total (Calculado)</label>
+                  <Input
+                    type="text"
+                    value={totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    disabled
+                    className="bg-muted mt-2"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Suma automática de todos los operadores
+                  </p>
+                </div>
+              ) : (
+                <FormField
+                  control={form.control}
+                  name="operator_cost"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Costo de Operador *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          {...field}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             {/* Códigos de Reserva */}

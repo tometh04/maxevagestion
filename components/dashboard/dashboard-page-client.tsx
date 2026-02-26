@@ -39,6 +39,7 @@ interface DashboardPageClientProps {
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   defaultFilters: DashboardFiltersState
+  userRole: string
 }
 
 interface KPIs {
@@ -83,7 +84,9 @@ export function DashboardPageClient({
   agencies,
   sellers,
   defaultFilters,
+  userRole,
 }: DashboardPageClientProps) {
+  const isSeller = userRole === "SELLER"
   const [filters, setFilters] = useState(defaultFilters)
   const [loading, setLoading] = useState(false)
   const [kpis, setKpis] = useState<KPIs>({
@@ -347,21 +350,25 @@ export function DashboardPageClient({
         <PendingTasksCard />
         <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
-        <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+        {!isSeller && (
+          <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+        )}
       </div>
 
       {/* Charts */}
       <div className="grid gap-3 grid-cols-1 lg:grid-cols-2">
-        <SalesBySellerChart data={sellersData} />
+        {!isSeller && <SalesBySellerChart data={sellersData} />}
         <DestinationsChart data={destinationsData} />
       </div>
 
       <div className="grid gap-3 grid-cols-1 md:grid-cols-2 lg:grid-cols-4">
         <DestinationsPieChart data={destinationsAllData} />
         <RegionsRadarChart data={destinationsAllData} />
-        <div className="md:col-span-2 lg:col-span-2">
-          <CashflowChart data={cashflowData} />
-        </div>
+        {!isSeller && (
+          <div className="md:col-span-2 lg:col-span-2">
+            <CashflowChart data={cashflowData} />
+          </div>
+        )}
       </div>
     </div>
   )

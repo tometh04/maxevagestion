@@ -833,11 +833,39 @@ export async function GET(request: Request) {
       query = query.lte("departure_date", dateTo)
     }
 
-    // Filtro de búsqueda por texto (file_code o destination)
+    // Filtro de búsqueda por texto (file_code, destination, o nombre de cliente)
     const search = searchParams.get("search")
     if (search && search.length >= 2) {
-      query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
-      countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+      // Buscar también por nombre de cliente
+      let operationIdsByCustomer: string[] = []
+      try {
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`)
+          .limit(50)
+
+        if (matchingCustomers && matchingCustomers.length > 0) {
+          const customerIds = matchingCustomers.map((c: any) => c.id)
+          const { data: opCustomers } = await supabase
+            .from("operation_customers")
+            .select("operation_id")
+            .in("customer_id", customerIds)
+
+          operationIdsByCustomer = (opCustomers || []).map((oc: any) => oc.operation_id)
+        }
+      } catch (err) {
+        console.error("Error searching customers for operations:", err)
+      }
+
+      if (operationIdsByCustomer.length > 0) {
+        const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
+      } else {
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+      }
     }
 
     // Filtros por fecha de cobro/pago

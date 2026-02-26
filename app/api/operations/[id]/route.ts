@@ -164,13 +164,16 @@ export async function PATCH(
     const newCurrency = body.currency || body.sale_currency || oldCurrency
     const currencyChanged = oldCurrency !== newCurrency
 
+    // Extraer operators del body para no enviarlo a la tabla operations
+    const { operators: incomingOperators, ...bodyWithoutOperators } = body
+
     // Calculate margin if amounts changed
-    let updateData: any = { ...body }
+    let updateData: any = { ...bodyWithoutOperators }
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
     const newSaleAmount = body.sale_amount_total ?? oldSaleAmount
     const newOperatorCost = body.operator_cost ?? oldOperatorCost
-    
+
     if (body.sale_amount_total !== undefined || body.operator_cost !== undefined) {
       updateData.margin_amount = newSaleAmount - newOperatorCost
       updateData.margin_percentage = newSaleAmount > 0 ? (updateData.margin_amount / newSaleAmount) * 100 : 0
@@ -205,6 +208,41 @@ export async function PATCH(
         // cuando cambia la moneda de una operación
       } catch (error) {
         console.error("Error handling currency change:", error)
+      }
+    }
+
+    // ============================================
+    // ACTUALIZAR OPERATION_OPERATORS SI SE ENVIARON
+    // ============================================
+    if (incomingOperators && Array.isArray(incomingOperators)) {
+      try {
+        // Eliminar operadores existentes
+        await (supabase.from("operation_operators") as any)
+          .delete()
+          .eq("operation_id", operationId)
+
+        // Insertar nuevos operadores
+        if (incomingOperators.length > 0) {
+          const operationOperatorsData = incomingOperators.map((opData: any) => ({
+            operation_id: operationId,
+            operator_id: opData.operator_id,
+            cost: opData.cost || 0,
+            cost_currency: opData.cost_currency || "USD",
+            product_type: opData.product_type || null,
+            notes: opData.notes || null,
+          }))
+
+          const { error: opOpError } = await (supabase.from("operation_operators") as any)
+            .insert(operationOperatorsData)
+
+          if (opOpError) {
+            console.error("Error inserting operation operators:", opOpError)
+          } else {
+            console.log(`✅ Actualizados ${incomingOperators.length} operation_operators para operación ${operationId}`)
+          }
+        }
+      } catch (error) {
+        console.error("Error updating operation operators:", error)
       }
     }
 

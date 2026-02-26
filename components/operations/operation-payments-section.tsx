@@ -670,35 +670,43 @@ export function OperationPaymentsSection({
     }
   }
 
-  // Calcular totales EN USD
-  // Si el pago tiene amount_usd, usarlo directamente
-  // Si no, convertir: USD = amount, ARS = amount / exchange_rate (o 0 si no hay tasa)
+  // Calcular totales en la MONEDA de la operación (no siempre USD)
+  const opCurrency = currency || "USD"
+  const currencySymbol = opCurrency === "ARS" ? "$" : "USD"
+
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
   const operatorPayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
-  
-  const calculateUsdAmount = (p: any): number => {
-    // Si ya tiene amount_usd calculado, usarlo
-    if (p.amount_usd != null) {
-      return Number(p.amount_usd)
+
+  // Convierte un pago a la moneda de la operación
+  const calculateAmountInOpCurrency = (p: any): number => {
+    const paymentAmount = Number(p.amount)
+    const paymentCurrency = p.currency || "USD"
+    const exchangeRate = Number(p.exchange_rate) || 0
+
+    // Si el pago ya está en la moneda de la operación, usar directo
+    if (paymentCurrency === opCurrency) {
+      return paymentAmount
     }
-    // Si es USD, usar el amount directamente
-    if (p.currency === "USD") {
-      return Number(p.amount)
+
+    // Conversión entre monedas usando el tipo de cambio del pago
+    if (opCurrency === "USD" && paymentCurrency === "ARS") {
+      // Operación en USD, pago en ARS → dividir por TC
+      if (p.amount_usd != null) return Number(p.amount_usd)
+      return exchangeRate > 0 ? paymentAmount / exchangeRate : 0
     }
-    // Si es ARS y tiene exchange_rate, convertir
-    if (p.currency === "ARS" && p.exchange_rate) {
-      return Number(p.amount) / Number(p.exchange_rate)
+    if (opCurrency === "ARS" && paymentCurrency === "USD") {
+      // Operación en ARS, pago en USD → multiplicar por TC
+      return exchangeRate > 0 ? paymentAmount * exchangeRate : paymentAmount
     }
-    // Fallback: si es ARS sin exchange_rate, no podemos convertir correctamente
-    // Mostrar 0 o el amount (esto no debería pasar con pagos nuevos)
-    return 0
+
+    return paymentAmount
   }
-  
-  const totalPaidByCustomerUsd = customerPayments.reduce((sum, p) => sum + calculateUsdAmount(p), 0)
-  const totalPaidToOperatorUsd = operatorPayments.reduce((sum, p) => sum + calculateUsdAmount(p), 0)
-  
-  const customerDebt = saleAmount - totalPaidByCustomerUsd
-  const operatorDebt = operatorCost - totalPaidToOperatorUsd
+
+  const totalPaidByCustomer = customerPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalPaidToOperator = operatorPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+
+  const customerDebt = saleAmount - totalPaidByCustomer
+  const operatorDebt = operatorCost - totalPaidToOperator
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar cuenta financiera
@@ -803,16 +811,16 @@ export function OperationPaymentsSection({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Deuda del Cliente (USD)
+              Deuda del Cliente ({opCurrency})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              USD {customerDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {currencySymbol} {customerDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Pagado: USD {totalPaidByCustomerUsd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
-              {" / "} Total: USD {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              Pagado: {currencySymbol} {totalPaidByCustomer.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {" / "} Total: {currencySymbol} {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {customerDebt <= 0 && (
               <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
@@ -824,16 +832,16 @@ export function OperationPaymentsSection({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Pendiente a Operador (USD)
+              Pendiente a Operador ({opCurrency})
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              USD {operatorDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {currencySymbol} {operatorDebt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              Pagado: USD {totalPaidToOperatorUsd.toLocaleString("es-AR", { minimumFractionDigits: 2 })} 
-              {" / "} Total: USD {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              Pagado: {currencySymbol} {totalPaidToOperator.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {" / "} Total: {currencySymbol} {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {operatorDebt <= 0 && (
               <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
@@ -1181,7 +1189,7 @@ export function OperationPaymentsSection({
                           .map((account) => (
                             <SelectItem key={account.id} value={account.id}>
                               {account.name} ({account.currency})
-                              {account.current_balance !== undefined && (
+                              {account.current_balance !== undefined && userRole !== "SELLER" && (
                                 <span className="text-xs text-muted-foreground ml-2">
                                   - Balance: {account.current_balance.toLocaleString("es-AR", {
                                     style: "currency",

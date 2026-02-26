@@ -216,7 +216,7 @@ export interface Database {
           lead_id: string | null
           seller_id: string
           operator_id: string | null
-          type: 'FLIGHT' | 'HOTEL' | 'PACKAGE' | 'CRUISE' | 'TRANSFER' | 'MIXED'
+          type: 'FLIGHT' | 'HOTEL' | 'PACKAGE' | 'CRUISE' | 'TRANSFER' | 'MIXED' | 'ASSISTANCE'
           origin: string | null
           destination: string
           departure_date: string
@@ -249,7 +249,7 @@ export interface Database {
           lead_id?: string | null
           seller_id: string
           operator_id?: string | null
-          type: 'FLIGHT' | 'HOTEL' | 'PACKAGE' | 'CRUISE' | 'TRANSFER' | 'MIXED'
+          type: 'FLIGHT' | 'HOTEL' | 'PACKAGE' | 'CRUISE' | 'TRANSFER' | 'MIXED' | 'ASSISTANCE'
           origin?: string | null
           destination: string
           departure_date: string

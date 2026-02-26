@@ -162,3 +162,75 @@ export async function getExchangeRatesInRange(
   return (data || []) as ExchangeRate[]
 }
 
+/**
+ * Construye un mapa de tasas de cambio en memoria para un conjunto de fechas.
+ * Hace UNA sola query para obtener todas las tasas en el rango, más la más reciente como fallback.
+ * Retorna una función getRate(date) que NO hace queries a la BD.
+ *
+ * Uso: reemplaza múltiples llamadas a getExchangeRate() dentro de un loop (N+1 → 2 queries).
+ */
+export async function buildExchangeRateMap(
+  supabase: SupabaseClient<Database>,
+  dates: (string | Date | null | undefined)[],
+  fromCurrency: "USD" = "USD",
+  toCurrency: "ARS" = "ARS"
+): Promise<(date: string | Date | null | undefined) => number | null> {
+  // Filtrar y normalizar fechas
+  const dateStrings = dates
+    .filter((d): d is string | Date => d != null)
+    .map(d => typeof d === "string" ? d.split("T")[0] : d.toISOString().split("T")[0])
+
+  if (dateStrings.length === 0) {
+    // Sin fechas ARS, solo devolver latestRate como fallback
+    const latestRate = await getLatestExchangeRate(supabase, fromCurrency, toCurrency)
+    return () => latestRate
+  }
+
+  // Encontrar rango min/max
+  const sorted = Array.from(new Set(dateStrings)).sort()
+  const minDate = sorted[0]
+  const maxDate = sorted[sorted.length - 1]
+
+  // Extender 60 días antes del min para cubrir fechas sin tasa exacta
+  const extendedMin = new Date(minDate)
+  extendedMin.setDate(extendedMin.getDate() - 60)
+  const extendedMinStr = extendedMin.toISOString().split("T")[0]
+
+  // 2 queries en paralelo: rango completo + tasa más reciente como fallback
+  const [ratesInRange, latestRate] = await Promise.all([
+    getExchangeRatesInRange(supabase, extendedMinStr, maxDate, fromCurrency, toCurrency),
+    getLatestExchangeRate(supabase, fromCurrency, toCurrency),
+  ])
+
+  // Construir array ordenado ascendente para búsqueda
+  const rateEntries = ratesInRange
+    .map(r => ({ date: r.rate_date, rate: parseFloat(String(r.rate)) }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  // Mapa para lookup exacto rápido
+  const ratesByDate = new Map<string, number>()
+  for (const entry of rateEntries) {
+    ratesByDate.set(entry.date, entry.rate)
+  }
+
+  return (date: string | Date | null | undefined): number | null => {
+    if (!date) return latestRate
+
+    const dateStr = typeof date === "string" ? date.split("T")[0] : date.toISOString().split("T")[0]
+
+    // Lookup exacto
+    const exact = ratesByDate.get(dateStr)
+    if (exact !== undefined) return exact
+
+    // Buscar tasa más cercana anterior (búsqueda inversa)
+    for (let i = rateEntries.length - 1; i >= 0; i--) {
+      if (rateEntries[i].date <= dateStr) {
+        return rateEntries[i].rate
+      }
+    }
+
+    // Fallback: tasa más reciente disponible
+    return latestRate
+  }
+}
+

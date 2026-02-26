@@ -21,6 +21,8 @@ import {
   Inbox,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -72,6 +74,7 @@ export function TaskWeekView({
   const [editingTask, setEditingTask] = useState<any | null>(null)
   const [users, setUsers] = useState<{ id: string; name: string }[]>([])
   const [prefillDate, setPrefillDate] = useState<string>("")
+  const [calendarOpen, setCalendarOpen] = useState(false)
 
   const weekEnd = useMemo(() => endOfWeek(currentWeekStart, { weekStartsOn: 1 }), [currentWeekStart])
   const days = useMemo(() => eachDayOfInterval({ start: currentWeekStart, end: weekEnd }), [currentWeekStart, weekEnd])
@@ -168,13 +171,34 @@ export function TaskWeekView({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold whitespace-nowrap">
-              {format(currentWeekStart, "d MMM", { locale: es })} –{" "}
-              {format(weekEnd, "d MMM yyyy", { locale: es })}
-            </h2>
-          </div>
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className="flex items-center gap-2 h-8 px-2 hover:bg-muted"
+              >
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold whitespace-nowrap">
+                  {format(currentWeekStart, "d MMM", { locale: es })} –{" "}
+                  {format(weekEnd, "d MMM yyyy", { locale: es })}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={currentWeekStart}
+                onSelect={(date) => {
+                  if (date) {
+                    setCurrentWeekStart(startOfWeek(date, { weekStartsOn: 1 }))
+                    setCalendarOpen(false)
+                  }
+                }}
+                locale={es}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
           <Button
             variant="outline"
             size="icon"

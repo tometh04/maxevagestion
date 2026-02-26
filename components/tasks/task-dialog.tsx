@@ -182,11 +182,37 @@ export function TaskDialog({
         `/api/operations?${searchParam}limit=10&page=1`
       )
       const data = await res.json()
-      return (data.data || data.operations || []).map((op: any) => ({
-        value: op.id,
-        label: `${op.file_code || op.id.slice(0, 8)} - ${op.destination || "Sin destino"}`,
-        subtitle: op.status || undefined,
-      }))
+      return (data.data || data.operations || []).map((op: any) => {
+        const customerNames = (op.operation_customers || [])
+          .map((oc: any) => {
+            const c = oc.customers
+            return c ? `${c.first_name || ""} ${c.last_name || ""}`.trim() : null
+          })
+          .filter(Boolean)
+          .slice(0, 2)
+          .join(", ")
+
+        const date = op.departure_date
+          ? new Date(op.departure_date + "T12:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" })
+          : null
+
+        const amount = op.sale_amount_total
+          ? `${(op.sale_currency || op.currency) === "ARS" ? "$" : "U$D"} ${Number(op.sale_amount_total).toLocaleString("es-AR")}`
+          : null
+
+        const subtitleParts = [
+          op.destination || null,
+          date,
+          customerNames || null,
+          amount,
+        ].filter(Boolean)
+
+        return {
+          value: op.id,
+          label: op.file_code || op.id.slice(0, 8),
+          subtitle: subtitleParts.join(" · ") || op.status || undefined,
+        }
+      })
     } catch {
       return []
     }
@@ -418,7 +444,7 @@ export function TaskDialog({
                         onChange={(val) => field.onChange(val)}
                         searchFn={searchOperations}
                         placeholder="Buscar operación..."
-                        searchPlaceholder="Código o destino..."
+                        searchPlaceholder="Código, destino o cliente..."
                         emptyMessage="No se encontraron operaciones"
                         initialLabel={operationLabel}
                       />

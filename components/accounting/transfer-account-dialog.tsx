@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
@@ -25,7 +25,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { toast } from "sonner"
-import { Loader2 } from "lucide-react"
+import { ArrowRight, Loader2 } from "lucide-react"
 
 interface FinancialAccount {
   id: string
@@ -41,6 +41,7 @@ const transferSchema = z.object({
   to_account_id: z.string().min(1, "Debe seleccionar cuenta destino"),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
+  exchange_rate: z.coerce.number().optional(),
   transfer_date: z.date({
     required_error: "La fecha es requerida",
   }),
@@ -70,6 +71,7 @@ export function TransferAccountDialog({
       to_account_id: "",
       amount: 0,
       currency: "USD",
+      exchange_rate: undefined,
       transfer_date: new Date(),
       notes: "",
     },
@@ -101,6 +103,10 @@ export function TransferAccountDialog({
 
   // Auto-detectar moneda cuando se selecciona cuenta origen
   const fromAccountId = form.watch("from_account_id")
+  const toAccountId = form.watch("to_account_id")
+  const watchAmount = form.watch("amount")
+  const watchExchangeRate = form.watch("exchange_rate")
+
   useEffect(() => {
     if (fromAccountId) {
       const account = financialAccounts.find((acc) => acc.id === fromAccountId)
@@ -110,14 +116,39 @@ export function TransferAccountDialog({
     }
   }, [fromAccountId, financialAccounts, form])
 
-  // Filtrar cuentas destino por moneda y excluir cuenta origen
+  const fromAccount = financialAccounts.find((acc) => acc.id === fromAccountId)
+  const toAccount = financialAccounts.find((acc) => acc.id === toAccountId)
+  const fromBalance = fromAccount?.current_balance ?? 0
+
+  // Detectar cross-currency
+  const isCrossCurrency = fromAccount && toAccount && fromAccount.currency !== toAccount.currency
+
+  // Filtrar cuentas destino: todas las activas excepto la origen
   const filteredToAccounts = financialAccounts.filter(
-    (acc) => acc.id !== fromAccountId && acc.currency === form.watch("currency") && acc.is_active !== false
+    (acc) => acc.id !== fromAccountId && acc.is_active !== false
   )
+
+  // Calcular monto convertido para preview
+  const convertedAmount = useMemo(() => {
+    if (!isCrossCurrency || !watchAmount || !watchExchangeRate || watchExchangeRate <= 0) return null
+    if (fromAccount?.currency === "ARS" && toAccount?.currency === "USD") {
+      return watchAmount / watchExchangeRate
+    }
+    if (fromAccount?.currency === "USD" && toAccount?.currency === "ARS") {
+      return watchAmount * watchExchangeRate
+    }
+    return null
+  }, [isCrossCurrency, watchAmount, watchExchangeRate, fromAccount?.currency, toAccount?.currency])
 
   const onSubmit = async (values: TransferFormValues) => {
     if (values.from_account_id === values.to_account_id) {
       toast.error("La cuenta origen y destino no pueden ser la misma")
+      return
+    }
+
+    // Validar exchange_rate si es cross-currency
+    if (isCrossCurrency && (!values.exchange_rate || values.exchange_rate <= 0)) {
+      toast.error("El tipo de cambio es obligatorio para transferencias entre distintas monedas")
       return
     }
 
@@ -135,6 +166,7 @@ export function TransferAccountDialog({
           currency: values.currency,
           transfer_date: values.transfer_date.toISOString().split("T")[0],
           notes: values.notes || null,
+          ...(isCrossCurrency ? { exchange_rate: values.exchange_rate } : {}),
         }),
       })
 
@@ -156,8 +188,10 @@ export function TransferAccountDialog({
     }
   }
 
-  const fromAccount = financialAccounts.find((acc) => acc.id === fromAccountId)
-  const fromBalance = fromAccount?.current_balance ?? 0
+  const formatCurrency = (val: number, cur: "ARS" | "USD") =>
+    cur === "USD"
+      ? `USD ${val.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+      : `$ ${val.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -165,7 +199,7 @@ export function TransferAccountDialog({
         <DialogHeader>
           <DialogTitle>Transferir entre Cuentas Financieras</DialogTitle>
           <DialogDescription>
-            Transfiere dinero de una cuenta financiera a otra. Ambas cuentas deben estar en la misma moneda.
+            Transfiere dinero entre cuentas financieras. Soporta misma moneda y cambio de moneda con tipo de cambio.
           </DialogDescription>
         </DialogHeader>
 
@@ -181,7 +215,8 @@ export function TransferAccountDialog({
                     value={field.value}
                     onValueChange={(value) => {
                       field.onChange(value)
-                      form.setValue("to_account_id", "") // Reset destino al cambiar origen
+                      form.setValue("to_account_id", "")
+                      form.setValue("exchange_rate", undefined)
                     }}
                   >
                     <FormControl>
@@ -195,13 +230,7 @@ export function TransferAccountDialog({
                         .map((account) => (
                           <SelectItem key={account.id} value={account.id}>
                             {account.name} ({account.currency}) - Balance:{" "}
-                            {account.currency === "USD"
-                              ? `US$ ${(account.current_balance ?? 0).toLocaleString("es-AR", {
-                                  minimumFractionDigits: 2,
-                                })}`
-                              : `$ ${(account.current_balance ?? 0).toLocaleString("es-AR", {
-                                  minimumFractionDigits: 2,
-                                })}`}
+                            {formatCurrency(account.current_balance ?? 0, account.currency)}
                           </SelectItem>
                         ))}
                     </SelectContent>
@@ -209,10 +238,7 @@ export function TransferAccountDialog({
                   <FormMessage />
                   {fromAccount && (
                     <p className="text-xs text-muted-foreground">
-                      Saldo disponible:{" "}
-                      {fromAccount.currency === "USD"
-                        ? `US$ ${fromBalance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-                        : `$ ${fromBalance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
+                      Saldo disponible: {formatCurrency(fromBalance, fromAccount.currency)}
                     </p>
                   )}
                 </FormItem>
@@ -227,7 +253,10 @@ export function TransferAccountDialog({
                   <FormLabel>Cuenta Destino *</FormLabel>
                   <Select
                     value={field.value}
-                    onValueChange={field.onChange}
+                    onValueChange={(value) => {
+                      field.onChange(value)
+                      form.setValue("exchange_rate", undefined)
+                    }}
                     disabled={!fromAccountId}
                   >
                     <FormControl>
@@ -238,12 +267,13 @@ export function TransferAccountDialog({
                     <SelectContent>
                       {filteredToAccounts.length === 0 ? (
                         <SelectItem value="no-accounts" disabled>
-                          No hay cuentas disponibles en {form.watch("currency")}
+                          No hay cuentas disponibles
                         </SelectItem>
                       ) : (
                         filteredToAccounts.map((account) => (
                           <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.currency})
+                            {account.name} ({account.currency}) - Balance:{" "}
+                            {formatCurrency(account.current_balance ?? 0, account.currency)}
                           </SelectItem>
                         ))
                       )}
@@ -254,7 +284,7 @@ export function TransferAccountDialog({
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isCrossCurrency ? "grid-cols-3" : "grid-cols-2"}`}>
               <FormField
                 control={form.control}
                 name="amount"
@@ -268,15 +298,13 @@ export function TransferAccountDialog({
                         placeholder="0.00"
                         {...field}
                         onChange={(e) => field.onChange(e.target.value)}
+                        onFocus={(e) => e.target.select()}
                       />
                     </FormControl>
                     <FormMessage />
-                    {fromAccount && form.watch("amount") > fromBalance && (
+                    {fromAccount && watchAmount > fromBalance && (
                       <p className="text-xs text-red-600">
-                        Saldo insuficiente. Disponible:{" "}
-                        {fromAccount.currency === "USD"
-                          ? `US$ ${fromBalance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-                          : `$ ${fromBalance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`}
+                        Saldo insuficiente. Disponible: {formatCurrency(fromBalance, fromAccount.currency)}
                       </p>
                     )}
                   </FormItem>
@@ -292,7 +320,7 @@ export function TransferAccountDialog({
                     <Select
                       value={field.value}
                       onValueChange={field.onChange}
-                      disabled={true} // Auto-detectada desde cuenta origen
+                      disabled={true}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -306,12 +334,57 @@ export function TransferAccountDialog({
                     </Select>
                     <FormMessage />
                     <p className="text-xs text-muted-foreground">
-                      Se detecta automáticamente desde la cuenta origen
+                      Auto-detectada desde cuenta origen
                     </p>
                   </FormItem>
                 )}
               />
+
+              {isCrossCurrency && (
+                <FormField
+                  control={form.control}
+                  name="exchange_rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Cambio *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Ej: 1450"
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          onFocus={(e) => e.target.select()}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      <p className="text-xs text-muted-foreground">
+                        1 USD = X ARS
+                      </p>
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
+
+            {/* Preview de conversión cross-currency */}
+            {isCrossCurrency && watchAmount > 0 && convertedAmount !== null && convertedAmount > 0 && (
+              <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
+                <p className="text-sm font-medium">Resumen de la operación:</p>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-red-600 font-medium">
+                    Sale: {formatCurrency(watchAmount, fromAccount!.currency)}
+                  </span>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-green-600 font-medium">
+                    Entra: {formatCurrency(convertedAmount, toAccount!.currency)}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {fromAccount!.currency === "ARS" ? "Compra de dólares" : "Venta de dólares"} - TC: {watchExchangeRate}
+                </p>
+              </div>
+            )}
 
             <FormField
               control={form.control}
@@ -363,6 +436,8 @@ export function TransferAccountDialog({
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Transfiriendo...
                   </>
+                ) : isCrossCurrency ? (
+                  fromAccount?.currency === "ARS" ? "Comprar Dólares" : "Vender Dólares"
                 ) : (
                   "Realizar Transferencia"
                 )}

@@ -60,7 +60,7 @@ const operatorSchema = z.object({
   operator_id: z.string().min(1, "El operador es requerido"),
   cost: z.coerce.number().min(0, "El costo debe ser mayor o igual a 0"),
   cost_currency: z.enum(["ARS", "USD"]).default("USD").optional(),
-  product_type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]).optional(),
+  product_type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]).optional(),
   notes: z.string().optional(),
 })
 
@@ -71,7 +71,7 @@ const operationSchema = z.object({
   seller_secondary_id: z.string().optional().nullable(),
   operator_id: z.string().optional().nullable(),
   operators: z.array(operatorSchema).optional(),
-  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED"]),
+  type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
   customer_id: z.string().optional().nullable(),
   origin: z.string().optional(),
   destination: z.string().optional(), // Validación dinámica en backend
@@ -99,6 +99,7 @@ const operationTypeOptions = [
   { value: "CRUISE", label: "Crucero" },
   { value: "TRANSFER", label: "Transfer" },
   { value: "MIXED", label: "Mixto" },
+  { value: "ASSISTANCE", label: "Asistencia al Viajero" },
 ]
 
 // Estados de leads que NO son destinos
@@ -807,8 +808,9 @@ export function NewOperationDialog({
                         type="number"
                         step="0.01"
                         min="0"
-                        value={op.cost || 0}
-                        onChange={(e) => updateOperator(index, "cost", Number(e.target.value))}
+                        value={op.cost || ""}
+                        onChange={(e) => updateOperator(index, "cost", e.target.value === "" ? 0 : Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
                         placeholder="0.00"
                               className="h-9 text-base font-medium"
                       />
@@ -1213,7 +1215,9 @@ export function NewOperationDialog({
                         step="0.01"
                         min="0"
                         {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        value={field.value || ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                        onFocus={(e) => e.target.select()}
                       />
                     </FormControl>
                     <FormMessage />
@@ -1234,7 +1238,9 @@ export function NewOperationDialog({
                           step="0.01"
                           min="0"
                           {...field}
-                          onChange={(e) => field.onChange(Number(e.target.value))}
+                          value={field.value || ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                          onFocus={(e) => e.target.select()}
                         />
                       </FormControl>
                       <FormMessage />

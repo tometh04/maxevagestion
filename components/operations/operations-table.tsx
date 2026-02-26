@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { ColumnDef } from "@tanstack/react-table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,9 @@ import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
-import { MoreHorizontal, Pencil, Eye, Trash2 } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { useDebounce } from "@/hooks/use-debounce"
+import { MoreHorizontal, Pencil, Eye, Trash2, Search } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -104,6 +106,10 @@ export function OperationsTable({
   const [deleting, setDeleting] = useState(false)
   const { toast } = useToast()
   
+  // Estado de búsqueda server-side
+  const [searchInput, setSearchInput] = useState("")
+  const debouncedSearch = useDebounce(searchInput, 500)
+
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(50)
@@ -159,7 +165,12 @@ export function OperationsTable({
       if (filters.paymentDateFrom) params.append("paymentDateFrom", filters.paymentDateFrom)
       if (filters.paymentDateTo) params.append("paymentDateTo", filters.paymentDateTo)
       if (filters.paymentDateType) params.append("paymentDateType", filters.paymentDateType)
-      
+
+      // Búsqueda server-side
+      if (debouncedSearch && debouncedSearch.length >= 2) {
+        params.append("search", debouncedSearch)
+      }
+
       // Agregar parámetros de paginación
       params.append("page", page.toString())
       params.append("limit", limit.toString())
@@ -178,7 +189,7 @@ export function OperationsTable({
     } finally {
       setLoading(false)
     }
-  }, [filters, page, limit])
+  }, [filters, page, limit, debouncedSearch])
 
   const handleDeleteClick = useCallback((operation: Operation) => {
     setDeletingOperation(operation)
@@ -229,6 +240,16 @@ export function OperationsTable({
     setPage(1) // Resetear a página 1 cuando cambian los filtros
   }, [initialFilters])
 
+  // Resetear a página 1 cuando cambia la búsqueda
+  const isFirstSearch = useRef(true)
+  useEffect(() => {
+    if (isFirstSearch.current) {
+      isFirstSearch.current = false
+      return
+    }
+    setPage(1)
+  }, [debouncedSearch])
+
   // Escuchar eventos de refresh desde el componente padre
   useEffect(() => {
     const handleRefresh = () => {
@@ -244,20 +265,6 @@ export function OperationsTable({
 
   const columns: ColumnDef<Operation>[] = useMemo(
     () => [
-      {
-        id: "searchText",
-        accessorFn: (row) => {
-          // Texto de búsqueda que incluye destino, cliente, códigos de reserva y otros campos
-          const destination = row.destination || row.leads?.destination || ""
-          const customerName = row.customer_name || row.leads?.contact_name || ""
-          const trelloUrl = row.leads?.trello_url || ""
-          const reservationAir = row.reservation_code_air || ""
-          const reservationHotel = row.reservation_code_hotel || ""
-          return `${destination} ${customerName} ${trelloUrl} ${reservationAir} ${reservationHotel}`.toLowerCase()
-        },
-        enableHiding: false,
-        enableSorting: false,
-      },
       {
         id: "actions",
         header: "Acciones",
@@ -565,11 +572,19 @@ export function OperationsTable({
   return (
     <>
       <div className="space-y-4">
-        <DataTable 
-          columns={columns} 
-          data={operations} 
-          searchKey="searchText" 
-          searchPlaceholder="Buscar por destino o card..."
+        {/* Búsqueda server-side */}
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por destino, cliente, código..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        <DataTable
+          columns={columns}
+          data={operations}
           showPagination={false}
         />
         

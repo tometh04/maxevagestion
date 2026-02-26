@@ -167,11 +167,10 @@ export function SearchableCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="min-w-[var(--radix-popover-trigger-width)] w-[380px] max-w-[90vw] p-0"
         align="start"
         side="bottom"
         sideOffset={4}
-        avoidCollisions={false}
       >
         <Command shouldFilter={false}>
           <CommandInput
@@ -179,7 +178,7 @@ export function SearchableCombobox({
             value={query}
             onValueChange={setQuery}
           />
-          <CommandList className="max-h-[200px]">
+          <CommandList className="max-h-[260px]">
             {loading ? (
               <div className="flex items-center justify-center gap-2 p-4 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />

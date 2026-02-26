@@ -13,12 +13,12 @@ import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchang
 /**
  * POST /api/accounting/financial-accounts/transfer
  * Transferir dinero entre dos cuentas financieras
- * 
+ *
  * Reglas:
- * - Siempre misma moneda (ARS→ARS, USD→USD)
- * - Dos movimientos: EXPENSE en origen, INCOME en destino
+ * - Soporta misma moneda (ARS→ARS, USD→USD) y cross-currency (ARS→USD, USD→ARS)
+ * - Cross-currency requiere exchange_rate del cliente
+ * - Dos movimientos: EXPENSE en origen (moneda origen), INCOME en destino (moneda destino)
  * - Validar saldo suficiente en cuenta origen
- * - Montos exactamente iguales
  */
 export async function POST(request: Request) {
   try {
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       currency,
       transfer_date,
       notes,
+      exchange_rate: clientExchangeRate,
     } = body
 
     // Validar campos requeridos
@@ -70,18 +71,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Una o ambas cuentas están inactivas" }, { status: 400 })
     }
 
-    // Validar que la moneda coincida con ambas cuentas
-    if (fromAccount.currency !== currency || toAccount.currency !== currency) {
+    const isCrossCurrency = fromAccount.currency !== toAccount.currency
+
+    // Validar moneda del body vs cuenta origen
+    if (fromAccount.currency !== currency) {
       return NextResponse.json({
-        error: `Todas las cuentas deben estar en la misma moneda (${currency})`,
+        error: `La moneda debe coincidir con la cuenta origen (${fromAccount.currency})`,
       }, { status: 400 })
     }
 
-    // Validar saldo suficiente en cuenta origen (NUNCA permitir saldo negativo)
+    // Si es cross-currency, exchange_rate es obligatorio
+    if (isCrossCurrency && (!clientExchangeRate || clientExchangeRate <= 0)) {
+      return NextResponse.json({
+        error: "El tipo de cambio es obligatorio para transferencias entre distintas monedas",
+      }, { status: 400 })
+    }
+
+    // Validar saldo suficiente en cuenta origen
     const balanceCheck = await validateSufficientBalance(
       from_account_id,
       amount,
-      currency as "ARS" | "USD",
+      fromAccount.currency as "ARS" | "USD",
       supabase
     )
 
@@ -92,82 +102,156 @@ export async function POST(request: Request) {
       )
     }
 
-    // Calcular tipo de cambio si es USD
-    let exchangeRate: number | null = null
-    if (currency === "USD") {
-      const rateDate = transfer_date ? new Date(transfer_date) : new Date()
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-      if (!exchangeRate) {
-        exchangeRate = await getLatestExchangeRate(supabase)
-      }
-      if (!exchangeRate) {
-        exchangeRate = 1450 // Fallback
-      }
-    }
-
-    const amountARS = currency === "ARS"
-      ? amount
-      : calculateARSEquivalent(amount, "USD", exchangeRate)
-
     const method = "BANK"
-    const concept = `Transferencia de "${fromAccount.name}" a "${toAccount.name}"`
 
-    // Crear dos movimientos: EXPENSE en origen, INCOME en destino
-    await createLedgerMovement(
-      {
-        operation_id: null,
-        lead_id: null,
-        type: "EXPENSE",
-        concept: `${concept}`,
-        currency: currency as "ARS" | "USD",
-        amount_original: amount,
-        exchange_rate: currency === "USD" ? exchangeRate : null,
-        amount_ars_equivalent: amountARS,
-        method,
-        account_id: from_account_id,
-        notes: notes || `Transferencia a cuenta ${toAccount.name}`,
-        created_by: user.id,
-      },
-      supabase
-    )
+    if (isCrossCurrency) {
+      // --- CROSS-CURRENCY TRANSFER ---
+      const tc = Number(clientExchangeRate)
+      let expenseAmount: number
+      let expenseCurrency: "ARS" | "USD"
+      let incomeAmount: number
+      let incomeCurrency: "ARS" | "USD"
+      let concept: string
+      let expenseARS: number
+      let incomeARS: number
 
-    await createLedgerMovement(
-      {
-        operation_id: null,
-        lead_id: null,
-        type: "INCOME",
-        concept: `${concept}`,
-        currency: currency as "ARS" | "USD",
-        amount_original: amount,
-        exchange_rate: currency === "USD" ? exchangeRate : null,
-        amount_ars_equivalent: amountARS,
-        method,
-        account_id: to_account_id,
-        notes: notes || `Transferencia desde cuenta ${fromAccount.name}`,
-        created_by: user.id,
-      },
-      supabase
-    )
+      if (fromAccount.currency === "ARS" && toAccount.currency === "USD") {
+        // Compra de dólares: sale ARS, entra USD
+        expenseAmount = amount
+        expenseCurrency = "ARS"
+        incomeAmount = amount / tc
+        incomeCurrency = "USD"
+        concept = `Compra de dólares - ${fromAccount.name} → ${toAccount.name}`
+        expenseARS = amount
+        incomeARS = amount // equivalente ARS = monto original en ARS
+      } else {
+        // Venta de dólares: sale USD, entra ARS
+        expenseAmount = amount
+        expenseCurrency = "USD"
+        incomeAmount = amount * tc
+        incomeCurrency = "ARS"
+        concept = `Venta de dólares - ${fromAccount.name} → ${toAccount.name}`
+        expenseARS = amount * tc
+        incomeARS = amount * tc
+      }
 
-    // Verificar balances después de la transferencia
-    const fromBalance = await getAccountBalance(from_account_id, supabase)
-    const toBalance = await getAccountBalance(to_account_id, supabase)
+      // EXPENSE en cuenta origen
+      await createLedgerMovement(
+        {
+          operation_id: null,
+          lead_id: null,
+          type: "EXPENSE",
+          concept,
+          currency: expenseCurrency,
+          amount_original: expenseAmount,
+          exchange_rate: tc,
+          amount_ars_equivalent: expenseARS,
+          method,
+          account_id: from_account_id,
+          notes: notes || `${concept} (TC: ${tc})`,
+          created_by: user.id,
+        },
+        supabase
+      )
 
-    console.log(`✅ Transferencia completada:`, {
-      from: fromAccount.name,
-      to: toAccount.name,
-      amount,
-      currency,
-      fromBalance,
-      toBalance,
-    })
+      // INCOME en cuenta destino
+      await createLedgerMovement(
+        {
+          operation_id: null,
+          lead_id: null,
+          type: "INCOME",
+          concept,
+          currency: incomeCurrency,
+          amount_original: incomeAmount,
+          exchange_rate: tc,
+          amount_ars_equivalent: incomeARS,
+          method,
+          account_id: to_account_id,
+          notes: notes || `${concept} (TC: ${tc})`,
+          created_by: user.id,
+        },
+        supabase
+      )
 
-    return NextResponse.json({
-      success: true,
-      message: `Transferencia de ${amount} ${currency} de "${fromAccount.name}" a "${toAccount.name}" completada`,
-      fromBalance,
-      toBalance,
-    }, { status: 201 })
+      const fromBalance = await getAccountBalance(from_account_id, supabase)
+      const toBalance = await getAccountBalance(to_account_id, supabase)
+
+      const fromSymbol = fromAccount.currency === "USD" ? "USD" : "$"
+      const toSymbol = toAccount.currency === "USD" ? "USD" : "$"
+
+      return NextResponse.json({
+        success: true,
+        message: `${concept}: ${fromSymbol} ${expenseAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} → ${toSymbol} ${incomeAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+        fromBalance,
+        toBalance,
+      }, { status: 201 })
+
+    } else {
+      // --- SAME-CURRENCY TRANSFER ---
+      let exchangeRate: number | null = null
+      if (currency === "USD") {
+        const rateDate = transfer_date ? new Date(transfer_date) : new Date()
+        exchangeRate = await getExchangeRate(supabase, rateDate)
+        if (!exchangeRate) {
+          exchangeRate = await getLatestExchangeRate(supabase)
+        }
+        if (!exchangeRate) {
+          exchangeRate = 1450
+        }
+      }
+
+      const amountARS = currency === "ARS"
+        ? amount
+        : calculateARSEquivalent(amount, "USD", exchangeRate)
+
+      const concept = `Transferencia de "${fromAccount.name}" a "${toAccount.name}"`
+
+      await createLedgerMovement(
+        {
+          operation_id: null,
+          lead_id: null,
+          type: "EXPENSE",
+          concept,
+          currency: currency as "ARS" | "USD",
+          amount_original: amount,
+          exchange_rate: currency === "USD" ? exchangeRate : null,
+          amount_ars_equivalent: amountARS,
+          method,
+          account_id: from_account_id,
+          notes: notes || `Transferencia a cuenta ${toAccount.name}`,
+          created_by: user.id,
+        },
+        supabase
+      )
+
+      await createLedgerMovement(
+        {
+          operation_id: null,
+          lead_id: null,
+          type: "INCOME",
+          concept,
+          currency: currency as "ARS" | "USD",
+          amount_original: amount,
+          exchange_rate: currency === "USD" ? exchangeRate : null,
+          amount_ars_equivalent: amountARS,
+          method,
+          account_id: to_account_id,
+          notes: notes || `Transferencia desde cuenta ${fromAccount.name}`,
+          created_by: user.id,
+        },
+        supabase
+      )
+
+      const fromBalance = await getAccountBalance(from_account_id, supabase)
+      const toBalance = await getAccountBalance(to_account_id, supabase)
+
+      return NextResponse.json({
+        success: true,
+        message: `Transferencia de ${amount} ${currency} de "${fromAccount.name}" a "${toAccount.name}" completada`,
+        fromBalance,
+        toBalance,
+      }, { status: 201 })
+    }
   } catch (e: any) {
     console.error("POST /api/accounting/financial-accounts/transfer:", e)
     return NextResponse.json({ error: e?.message || "Error al realizar transferencia" }, { status: 500 })

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
@@ -86,7 +86,11 @@ export async function GET(request: Request) {
             })
           }
 
-          // Obtener tasa de cambio más reciente como fallback
+          // Batch: construir mapa de tasas de cambio en memoria (2 queries en vez de N)
+          const arsDates = filteredOperations
+            .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
+            .map((op: any) => op.departure_date || op.created_at)
+          const getRate = await buildExchangeRateMap(supabase, arsDates)
           const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
 
           // Calcular deuda para cada operación
@@ -99,10 +103,7 @@ export async function GET(request: Request) {
             let saleAmountUsd = saleAmount
             if (saleCurrency === "ARS") {
               const operationDate = op.departure_date || op.created_at
-              let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
-              if (!exchangeRate) {
-                exchangeRate = latestExchangeRate
-              }
+              const exchangeRate = getRate(operationDate) || latestExchangeRate
               saleAmountUsd = saleAmount / exchangeRate
             }
 

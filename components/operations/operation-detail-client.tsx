@@ -183,7 +183,9 @@ export function OperationDetailClient({
           <TabsTrigger value="customers">Clientes ({customers.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
           <TabsTrigger value="payments">Pagos ({payments?.length || 0})</TabsTrigger>
-          <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
+          {userRole !== "SELLER" && (
+            <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
+          )}
           <TabsTrigger value="alerts">Alertas ({alerts?.length || 0})</TabsTrigger>
         </TabsList>
 
@@ -392,15 +394,17 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
-        <TabsContent value="accounting" className="space-y-4">
-          <OperationAccountingSection 
-            operationId={operation.id}
-            saleAmount={operation.sale_amount_total || 0}
-            operatorCost={operation.operator_cost || 0}
-            currency={operation.currency || "USD"}
-            commissionPercent={10}
-          />
-        </TabsContent>
+        {userRole !== "SELLER" && (
+          <TabsContent value="accounting" className="space-y-4">
+            <OperationAccountingSection
+              operationId={operation.id}
+              saleAmount={operation.sale_amount_total || 0}
+              operatorCost={operation.operator_cost || 0}
+              currency={operation.currency || "USD"}
+              commissionPercent={10}
+            />
+          </TabsContent>
+        )}
 
         <TabsContent value="alerts" className="space-y-4">
           <Card>
