@@ -16,6 +16,7 @@ interface Operation {
   agency_id: string
   seller_id: string
   seller_secondary_id?: string | null
+  commission_split?: number | null
   destination: string
   status: string
   sale_amount_total: number
@@ -124,10 +125,12 @@ export async function calculateCommission(operation: Operation): Promise<{
 
   totalCommission = Math.round(totalCommission * 100) / 100 // Redondear a 2 decimales
 
-  // Si hay seller_secondary, dividir la comisión (50/50 por defecto, se puede configurar)
+  // Si hay seller_secondary, dividir la comisión según commission_split (50/50 por defecto)
   const hasSecondary = !!operation.seller_secondary_id
-  const primaryCommission = hasSecondary ? Math.round((totalCommission * 0.5) * 100) / 100 : totalCommission
-  const secondaryCommission = hasSecondary ? Math.round((totalCommission * 0.5) * 100) / 100 : null
+  const splitPrimary = (operation.commission_split ?? 50) / 100
+  const splitSecondary = 1 - splitPrimary
+  const primaryCommission = hasSecondary ? Math.round((totalCommission * splitPrimary) * 100) / 100 : totalCommission
+  const secondaryCommission = hasSecondary ? Math.round((totalCommission * splitSecondary) * 100) / 100 : null
 
   return {
     totalCommission,

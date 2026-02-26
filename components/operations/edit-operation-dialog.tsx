@@ -38,6 +38,7 @@ const operationSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
   seller_id: z.string().min(1, "El vendedor es requerido"),
   seller_secondary_id: z.string().optional().nullable(),
+  commission_split: z.coerce.number().min(0).max(100).optional().nullable(),
   operator_id: z.string().optional().nullable(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
   origin: z.string().optional(),
@@ -82,6 +83,7 @@ interface Operation {
   agency_id: string
   seller_id: string
   seller_secondary_id?: string | null
+  commission_split?: number | null
   operator_id?: string | null
   type: string
   origin?: string | null
@@ -109,6 +111,7 @@ interface EditOperationDialogProps {
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
+  userRole?: string
 }
 
 export function EditOperationDialog({
@@ -119,6 +122,7 @@ export function EditOperationDialog({
   agencies,
   sellers,
   operators,
+  userRole,
 }: EditOperationDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
 
@@ -209,6 +213,7 @@ export function EditOperationDialog({
       agency_id: operation.agency_id || "",
       seller_id: operation.seller_id || "",
       seller_secondary_id: operation.seller_secondary_id || null,
+      commission_split: operation.commission_split ?? 50,
       operator_id: operation.operator_id || null,
       type: (operation.type as any) || "PACKAGE",
       origin: operation.origin || "",
@@ -234,6 +239,7 @@ export function EditOperationDialog({
         agency_id: operation.agency_id || "",
         seller_id: operation.seller_id || "",
         seller_secondary_id: operation.seller_secondary_id || null,
+        commission_split: operation.commission_split ?? 50,
         operator_id: operation.operator_id || null,
         type: (operation.type as any) || "PACKAGE",
         origin: operation.origin || "",
@@ -347,6 +353,7 @@ export function EditOperationDialog({
         ...values,
         operator_id: values.operator_id || null,
         seller_secondary_id: values.seller_secondary_id || null,
+        commission_split: values.commission_split ?? 50,
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
@@ -482,6 +489,40 @@ export function EditOperationDialog({
                   </FormItem>
                 )}
               />
+
+              {/* Split de comisión - solo visible con vendedor secundario y para roles permitidos */}
+              {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (
+                ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "") ? (
+                  <FormField
+                    control={form.control}
+                    name="commission_split"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Split comisión (% vendedor principal)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            step={1}
+                            value={field.value ?? 50}
+                            onChange={(e) => field.onChange(Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                          />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground">
+                          Principal: {field.value ?? 50}% · Secundario: {100 - (field.value ?? 50)}%
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <div className="text-xs text-muted-foreground">
+                    Split comisión: {form.watch("commission_split") ?? 50}% / {100 - (form.watch("commission_split") ?? 50)}%
+                  </div>
+                )
+              )}
             </div>
 
             {/* Toggle múltiples operadores */}

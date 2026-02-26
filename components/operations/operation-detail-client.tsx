@@ -497,6 +497,7 @@ export function OperationDetailClient({
         agencies={agencies}
         sellers={sellers}
         operators={operators}
+        userRole={userRole}
       />
     </div>
   )
