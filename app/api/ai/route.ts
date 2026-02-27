@@ -235,12 +235,13 @@ ORDER BY op.due_date ASC
 
 #### Ventas del Mes (en USD):
 \`\`\`sql
-SELECT 
+SELECT
   COUNT(*) as cantidad,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / er.rate END) as total_usd,
-  SUM(o.margin_amount / COALESCE(er.rate, 1)) as margen_usd
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_usd,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as margen_usd
 FROM operations o
 LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
 WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
 AND o.status NOT IN ('CANCELLED')
 \`\`\`
@@ -466,10 +467,11 @@ ORDER BY lm.created_at DESC LIMIT 50
 -- Ventas del mes actual (en USD) - USAR operation_date para filtrar por mes de venta
 SELECT
   COUNT(*) as cantidad_operaciones,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, 1) END) as total_margen_usd
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_margen_usd
 FROM operations o
 LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
 WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
 AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
@@ -554,9 +556,10 @@ ORDER BY o.departure_date ASC
 
 -- Top destinos (este mes)
 SELECT destination, COUNT(*) as cantidad,
-  SUM(CASE WHEN sale_currency = 'USD' THEN sale_amount_total ELSE sale_amount_total / COALESCE(er.rate, 1) END) as total_ventas_usd
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd
 FROM operations o
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND to_currency = 'ARS'
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
 WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
 AND o.status NOT IN ('CANCELLED')
 GROUP BY destination
@@ -620,6 +623,14 @@ WHERE fa.is_active = true
 -- Filtrar por cuenta específica: AND fa.id = 'xxx'
 GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.agency_id, ag.name, fa.initial_balance
 ORDER BY fa.currency, balance_actual DESC
+
+⚠️ CONVERSIÓN ARS→USD CRÍTICA:
+- NUNCA usar COALESCE(er.rate, 1) porque si no hay tipo de cambio, montos ARS se dividen por 1 y parecen USD (ej: 2,500,000 ARS se vería como $2,500,000 USD)
+- SIEMPRE usar el patrón de doble JOIN con fallback:
+  LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+  LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
+- Y luego: COALESCE(er.rate, mer.usd_to_ars_rate, 1200) como divisor
+- Solo dividir si sale_currency = 'ARS'. Si sale_currency = 'USD', el monto ya está en USD
 
 🔍 SI UNA QUERY FALLA:
 - Intenta con una versión más simple (menos JOINs, sin subqueries complejas)

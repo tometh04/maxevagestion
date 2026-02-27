@@ -92,6 +92,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
   const [withdrawalDescription, setWithdrawalDescription] = useState("")
   const [withdrawalAccountId, setWithdrawalAccountId] = useState("")
   const [withdrawalExchangeRate, setWithdrawalExchangeRate] = useState("")
+  const [movementType, setMovementType] = useState<"WITHDRAWAL" | "DEPOSIT">("WITHDRAWAL")
   const [financialAccounts, setFinancialAccounts] = useState<Array<{ id: string; name: string; currency: string; type: string; current_balance?: number }>>([])
 
   const fetchPartners = useCallback(async () => {
@@ -232,6 +233,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           account_id: withdrawalAccountId,
           description: withdrawalDescription.trim() || null,
           exchange_rate: needsExchangeRate ? parseFloat(withdrawalExchangeRate) : null,
+          movement_type: movementType,
         }),
       })
 
@@ -243,14 +245,16 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
         throw new Error(errorMessage)
       }
 
-      toast.success(data.message || "Retiro registrado correctamente")
+      const successMsg = movementType === "DEPOSIT" ? "Aporte registrado correctamente" : "Retiro registrado correctamente"
+      toast.success(data.message || successMsg)
       setNewWithdrawalOpen(false)
       resetWithdrawalForm()
       fetchPartners()
       fetchWithdrawals()
     } catch (error: any) {
       console.error("Error in handleCreateWithdrawal:", error)
-      toast.error(error.message || "Error al registrar retiro. Verifica que la cuenta financiera esté configurada correctamente.")
+      const errorMsg = movementType === "DEPOSIT" ? "Error al registrar aporte." : "Error al registrar retiro."
+      toast.error(error.message || `${errorMsg} Verifica que la cuenta financiera esté configurada correctamente.`)
     } finally {
       setSubmitting(false)
     }
@@ -287,6 +291,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setWithdrawalDescription("")
     setWithdrawalAccountId("")
     setWithdrawalExchangeRate("")
+    setMovementType("WITHDRAWAL")
   }
 
   // Calcular totales
@@ -375,17 +380,31 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
             <DialogTrigger asChild>
               <Button disabled={partners.length === 0}>
                 <ArrowDownCircle className="h-4 w-4 mr-2" />
-                Registrar Retiro
+                Registrar Movimiento
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Registrar Retiro de Socio</DialogTitle>
+                <DialogTitle>{movementType === "DEPOSIT" ? "Registrar Aporte de Socio" : "Registrar Retiro de Socio"}</DialogTitle>
                 <DialogDescription>
-                  Registra un retiro de fondos realizado por el socio seleccionado
+                  {movementType === "DEPOSIT"
+                    ? "Registra un aporte de fondos realizado por el socio seleccionado"
+                    : "Registra un retiro de fondos realizado por el socio seleccionado"}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
+                <div>
+                  <Label>Tipo de Movimiento</Label>
+                  <Select value={movementType} onValueChange={(v) => setMovementType(v as "WITHDRAWAL" | "DEPOSIT")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WITHDRAWAL">Retiro (el socio retira fondos)</SelectItem>
+                      <SelectItem value="DEPOSIT">Aporte (el socio ingresa fondos)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div>
                   <Label>Socio</Label>
                   <Select value={selectedPartnerId} onValueChange={setSelectedPartnerId}>
@@ -427,7 +446,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                   </div>
                 </div>
                 <div>
-                  <Label>Fecha del Retiro</Label>
+                  <Label>{movementType === "DEPOSIT" ? "Fecha del Aporte" : "Fecha del Retiro"}</Label>
                   <Input
                     type="date"
                     value={withdrawalDate}
@@ -499,7 +518,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                   <Textarea
                     value={withdrawalDescription}
                     onChange={(e) => setWithdrawalDescription(e.target.value)}
-                    placeholder="Motivo del retiro..."
+                    placeholder={movementType === "DEPOSIT" ? "Motivo del aporte..." : "Motivo del retiro..."}
                   />
                 </div>
               </div>
@@ -512,7 +531,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                 </Button>
                 <Button onClick={handleCreateWithdrawal} disabled={submitting}>
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                  Registrar Retiro
+                  {movementType === "DEPOSIT" ? "Registrar Aporte" : "Registrar Retiro"}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -592,7 +611,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
           <TabsTrigger value="partners">Socios</TabsTrigger>
-          <TabsTrigger value="withdrawals">Historial de Retiros</TabsTrigger>
+          <TabsTrigger value="withdrawals">Historial de Movimientos</TabsTrigger>
         </TabsList>
 
         <TabsContent value="partners" className="space-y-4">
@@ -659,21 +678,22 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
         <TabsContent value="withdrawals">
           <Card>
             <CardHeader>
-              <CardTitle>Historial de Retiros</CardTitle>
+              <CardTitle>Historial de Movimientos</CardTitle>
               <CardDescription>
-                Todos los retiros registrados ordenados por fecha
+                Todos los retiros y aportes registrados ordenados por fecha
               </CardDescription>
             </CardHeader>
             <CardContent>
               {withdrawals.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
-                  No hay retiros registrados
+                  No hay movimientos registrados
                 </p>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
+                      <TableHead>Tipo</TableHead>
                       <TableHead>Socio</TableHead>
                       <TableHead>Monto</TableHead>
                       <TableHead>Descripción</TableHead>
@@ -682,13 +702,20 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {withdrawals.map((w) => (
+                    {withdrawals.map((w) => {
+                      const isDeposit = (w as any).movement_type === "DEPOSIT"
+                      return (
                       <TableRow key={w.id}>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-muted-foreground" />
                             {format(new Date(w.withdrawal_date + "T12:00:00"), "dd/MM/yyyy", { locale: es })}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={isDeposit ? "default" : "destructive"} className={isDeposit ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : ""}>
+                            {isDeposit ? "Aporte" : "Retiro"}
+                          </Badge>
                         </TableCell>
                         <TableCell className="font-medium">
                           {w.partner?.partner_name || "-"}
@@ -717,7 +744,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                           </TableCell>
                         )}
                       </TableRow>
-                    ))}
+                    )})}
                   </TableBody>
                 </Table>
               )}

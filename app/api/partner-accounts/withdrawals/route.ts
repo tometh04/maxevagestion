@@ -67,15 +67,22 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     
-    // Solo SUPER_ADMIN y CONTABLE pueden registrar retiros
+    // Solo SUPER_ADMIN y CONTABLE pueden registrar retiros/aportes
     if (!["SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
-      return NextResponse.json({ error: "No autorizado para registrar retiros" }, { status: 403 })
+      return NextResponse.json({ error: "No autorizado para registrar movimientos de socios" }, { status: 403 })
     }
 
     const supabase = await createServerClient()
     const body = await request.json()
 
-    const { partner_id, amount, currency, withdrawal_date, account_id, description, exchange_rate } = body
+    const { partner_id, amount, currency, withdrawal_date, account_id, description, exchange_rate, movement_type = "WITHDRAWAL" } = body
+
+    // Validar movement_type
+    if (!["WITHDRAWAL", "DEPOSIT"].includes(movement_type)) {
+      return NextResponse.json({ error: "Tipo de movimiento debe ser WITHDRAWAL o DEPOSIT" }, { status: 400 })
+    }
+
+    const isDeposit = movement_type === "DEPOSIT"
 
     // Validaciones
     if (!partner_id) {
@@ -192,29 +199,35 @@ export async function POST(request: Request) {
       exchangeRate
     )
 
-    // Validar saldo suficiente (NUNCA permitir saldo negativo)
-    const balanceCheck = await validateSufficientBalance(
-      account_id,
-      withdrawalAmountInAccountCurrency,
-      accountCurrency,
-      supabase
-    )
-    
-    if (!balanceCheck.valid) {
-      return NextResponse.json(
-        { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el retiro" },
-        { status: 400 }
+    // Validar saldo suficiente (solo para retiros, no para aportes)
+    if (!isDeposit) {
+      const balanceCheck = await validateSufficientBalance(
+        account_id,
+        withdrawalAmountInAccountCurrency,
+        accountCurrency,
+        supabase
       )
+
+      if (!balanceCheck.valid) {
+        return NextResponse.json(
+          { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el retiro" },
+          { status: 400 }
+        )
+      }
     }
 
     // Crear movimiento en ledger usando la función centralizada
     // IMPORTANTE: Usar la moneda de la cuenta, no la del retiro
+    // Para aportes: INCOME (ingresa dinero a la cuenta)
+    // Para retiros: EXPENSE (sale dinero de la cuenta)
+    const ledgerType = isDeposit ? "INCOME" : "EXPENSE"
+    const conceptPrefix = isDeposit ? "Aporte socio" : "Retiro socio"
     const { id: ledgerMovementId } = await createLedgerMovement(
       {
         operation_id: null,
         lead_id: null,
-        type: "EXPENSE",
-        concept: `Retiro socio: ${partner.partner_name}${description ? ` - ${description}` : ""}`,
+        type: ledgerType,
+        concept: `${conceptPrefix}: ${partner.partner_name}${description ? ` - ${description}` : ""}`,
         currency: accountCurrency, // Usar moneda de la cuenta
         amount_original: withdrawalAmountInAccountCurrency, // Monto en moneda de la cuenta
         exchange_rate: exchangeRate,
@@ -243,6 +256,7 @@ export async function POST(request: Request) {
         ledger_movement_id: ledgerMovementId,
         description: description || null,
         created_by: user.id,
+        movement_type: movement_type,
       })
       .select(`
         *,

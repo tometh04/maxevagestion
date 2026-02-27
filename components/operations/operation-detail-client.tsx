@@ -75,6 +75,7 @@ interface OperationDetailClientProps {
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string
+  commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
 }
 
 export function OperationDetailClient({
@@ -87,6 +88,7 @@ export function OperationDetailClient({
   sellers,
   operators,
   userRole,
+  commissionRecords = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -401,7 +403,11 @@ export function OperationDetailClient({
               saleAmount={operation.sale_amount_total || 0}
               operatorCost={operation.operator_cost || 0}
               currency={operation.currency || "USD"}
-              commissionPercent={10}
+              commissionPercent={
+                commissionRecords.length > 0 && commissionRecords[0]?.percentage
+                  ? commissionRecords[0].percentage
+                  : 10
+              }
             />
           </TabsContent>
         )}

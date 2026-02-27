@@ -87,7 +87,6 @@ export async function POST(request: Request) {
           agency_id: agencyId,
           seller_id: sellerId || user.id,
           operator_id: operatorId,
-          customer_id: customerId,
           type: "PACKAGE" as const,
           product_type: "PAQUETE",
           destination: row.destination,
@@ -119,23 +118,51 @@ export async function POST(request: Request) {
             errors++
             details.push(`Error actualizando ${row.file_code || row.destination}: ${error.message}`)
           } else {
+            // Vincular cliente si existe y no está vinculado
+            if (customerId) {
+              const { data: existingLink } = await (supabase.from("operation_customers") as any)
+                .select("id")
+                .eq("operation_id", (existingOperation as any).id)
+                .eq("customer_id", customerId)
+                .maybeSingle()
+
+              if (!existingLink) {
+                await (supabase.from("operation_customers") as any)
+                  .insert({
+                    operation_id: (existingOperation as any).id,
+                    customer_id: customerId,
+                    role: "MAIN",
+                  })
+              }
+            }
             warnings++
             details.push(`Actualizado: ${row.file_code || row.destination}`)
           }
         } else {
           // Crear nueva operación
           const fileCode = row.file_code || generateFileCode()
-          
-          const { error } = await (supabase.from("operations") as any)
+
+          const { data: newOperation, error } = await (supabase.from("operations") as any)
             .insert({
               ...operationData,
               file_code: fileCode,
             })
+            .select("id")
+            .single()
 
           if (error) {
             errors++
             details.push(`Error creando ${row.destination}: ${error.message}`)
           } else {
+            // Vincular cliente a la operación
+            if (customerId && newOperation?.id) {
+              await (supabase.from("operation_customers") as any)
+                .insert({
+                  operation_id: newOperation.id,
+                  customer_id: customerId,
+                  role: "MAIN",
+                })
+            }
             success++
           }
         }

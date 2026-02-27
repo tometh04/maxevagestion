@@ -93,6 +93,12 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("date_due", { ascending: true })
 
+  // Get commission records for this operation
+  const { data: commissionRecords } = await (supabase
+    .from("commission_records") as any)
+    .select("percentage, seller_id, amount")
+    .eq("operation_id", id)
+
   // Get agencies for edit dialog
   let agencies: Array<{ id: string; name: string }> = []
   if (userRole === "SUPER_ADMIN") {
@@ -135,6 +141,7 @@ export default async function OperationDetailPage({
       sellers={sellers}
       operators={operators}
       userRole={userRole}
+      commissionRecords={commissionRecords || []}
     />
   )
 }
