@@ -839,12 +839,20 @@ export async function GET(request: Request) {
     const search = searchParams.get("search")
     if (search && search.length >= 2) {
       // Buscar también por nombre de cliente
+      // Busca por first_name, last_name, y también por cada palabra individual
+      // para que "Lo Bianco" matchee con first_name="Lo" last_name="Bianco"
       let operationIdsByCustomer: string[] = []
       try {
+        const searchWords = search.trim().split(/\s+/).filter(w => w.length >= 2)
+        const orConditions = [`first_name.ilike.%${search}%`, `last_name.ilike.%${search}%`]
+        for (const word of searchWords) {
+          orConditions.push(`first_name.ilike.%${word}%`)
+          orConditions.push(`last_name.ilike.%${word}%`)
+        }
         const { data: matchingCustomers } = await supabase
           .from("customers")
           .select("id")
-          .or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%`)
+          .or(orConditions.join(","))
           .limit(50)
 
         if (matchingCustomers && matchingCustomers.length > 0) {
