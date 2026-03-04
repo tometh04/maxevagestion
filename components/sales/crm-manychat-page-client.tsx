@@ -130,71 +130,99 @@ export function CRMManychatPageClient({
     }
   }, [])
 
-  // 🔄 SUPABASE REALTIME - Actualización automática sin recargar
+  // Ref para debounce de realtime events
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const pendingRealtimeEventsRef = useRef<Array<RealtimePostgresChangesPayload<Lead>>>([])
+  const selectedAgencyIdRef = useRef(selectedAgencyId)
+
+  // Mantener ref actualizado sin re-crear canal
+  useEffect(() => {
+    selectedAgencyIdRef.current = selectedAgencyId
+  }, [selectedAgencyId])
+
+  // 🔄 SUPABASE REALTIME - Suscripción a TODOS los leads (no solo Manychat)
+  // para que cambios de list_name, assigned_seller_id, etc. se reflejen entre sesiones
   useEffect(() => {
     const supabase = supabaseRef.current
     if (!supabase) return
 
-    console.log("🔌 Conectando a Supabase Realtime para Manychat...")
+    console.log("🔌 Conectando a Supabase Realtime para leads...")
 
-    // Suscribirse a cambios en la tabla leads (Manychat + Trello con list_name)
-    // Manychat: nuevos leads en tiempo real
-    // Trello: leads con list_name (migración visual)
+    const processRealtimeEvents = () => {
+      const events = [...pendingRealtimeEventsRef.current]
+      pendingRealtimeEventsRef.current = []
+      if (events.length === 0) return
+
+      setLeads((prev) => {
+        let updated = [...prev]
+        const existingIds = new Set(prev.map(l => l.id))
+
+        for (const payload of events) {
+          if (payload.eventType === 'INSERT') {
+            const newLead = payload.new as Lead
+            const agencyId = selectedAgencyIdRef.current
+            const shouldAdd = (agencyId === "ALL" || newLead.agency_id === agencyId)
+            if (shouldAdd && !existingIds.has(newLead.id)) {
+              updated = [newLead, ...updated]
+              existingIds.add(newLead.id)
+              toast.success(`Nuevo lead: ${newLead.contact_name}`, { duration: 3000 })
+            }
+          } else if (payload.eventType === 'UPDATE') {
+            const updatedLead = payload.new as Lead
+            const exists = existingIds.has(updatedLead.id)
+            if (exists) {
+              // Merge: mantener datos de joins (users, agencies) que realtime no incluye
+              updated = updated.map((lead) =>
+                lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
+              )
+            } else {
+              // Lead nuevo que ahora tiene list_name (podría ser recién asignado a una lista)
+              const agencyId = selectedAgencyIdRef.current
+              const shouldAdd = (agencyId === "ALL" || updatedLead.agency_id === agencyId)
+              if (shouldAdd && updatedLead.list_name) {
+                updated = [updatedLead, ...updated]
+                existingIds.add(updatedLead.id)
+              }
+            }
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id
+            if (deletedId) {
+              updated = updated.filter((lead) => lead.id !== deletedId)
+            }
+          }
+        }
+        return updated
+      })
+    }
+
     const channel = supabase
-      .channel('crm-manychat-leads-realtime')
+      .channel('crm-leads-realtime')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'leads',
-          // Escuchar leads de Manychat Y leads de Trello con list_name
         },
         (payload: RealtimePostgresChangesPayload<Lead>) => {
-          console.log('📥 Cambio en tiempo real (Manychat):', payload.eventType, payload.new || payload.old)
-          
-          if (payload.eventType === 'INSERT') {
-            const newLead = payload.new as Lead
-            const shouldAdd = (selectedAgencyId === "ALL" || newLead.agency_id === selectedAgencyId)
-            
-            if (shouldAdd) {
-              setLeads((prev) => {
-                if (prev.some(l => l.id === newLead.id)) return prev
-                const sourceLabel = newLead.source === "Manychat" ? "Manychat" : "Trello"
-                toast.success(`🆕 Nuevo lead de ${sourceLabel}: ${newLead.contact_name}`, { duration: 3000 })
-                return [newLead, ...prev]
-              })
-            }
-          } else if (payload.eventType === 'UPDATE') {
-            const updatedLead = payload.new as Lead
-            setLeads((prev) => 
-              prev.map((lead) => 
-                lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
-              )
-            )
-          } else if (payload.eventType === 'DELETE') {
-            const deletedId = (payload.old as any)?.id
-            if (deletedId) {
-              setLeads((prev) => prev.filter((lead) => lead.id !== deletedId))
-              toast.info(`🗑️ Lead eliminado`, { duration: 2000 })
-            }
-          }
+          // Debounce: acumular eventos y procesar cada 200ms (más rápido que antes)
+          pendingRealtimeEventsRef.current.push(payload)
+          if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current)
+          realtimeDebounceRef.current = setTimeout(processRealtimeEvents, 200)
         }
       )
       .subscribe((status: string) => {
-        console.log('📡 Estado de Realtime (Manychat):', status)
+        console.log('📡 Realtime:', status)
         setRealtimeConnected(status === 'SUBSCRIBED')
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Conectado a Supabase Realtime para Manychat')
-        }
       })
 
     return () => {
-      console.log('🔌 Desconectando de Supabase Realtime...')
+      console.log('🔌 Desconectando Realtime...')
+      if (realtimeDebounceRef.current) clearTimeout(realtimeDebounceRef.current)
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgencyId, loadLeads])
+  }, [])
 
   // Cargar leads cuando cambia la agencia seleccionada
   useEffect(() => {
@@ -220,6 +248,11 @@ export function CRMManychatPageClient({
     await loadLeads(selectedAgencyId)
   }
 
+  // Optimistic update handler: actualiza un lead sin recargar todo
+  const handleUpdateLead = useCallback((leadId: string, updates: Partial<Lead>) => {
+    setLeads(prev => prev.map(lead => lead.id === leadId ? { ...lead, ...updates } : lead))
+  }, [])
+
   // Filtrar leads que tienen list_name asignado (Manychat + Trello migrados)
   const leadsWithListName = useMemo(
     () => leads.filter((lead) => lead.list_name),
@@ -232,7 +265,20 @@ export function CRMManychatPageClient({
   const shouldUseManychatKanban = !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
-    <div className="space-y-6">
+    <div
+      className="relative -m-6 md:-m-8 p-6 md:p-8 min-h-[calc(100vh-3rem)]"
+      style={{
+        backgroundImage: `url('/beach-bg.jpg')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
+      {/* Overlay para legibilidad del contenido */}
+      <div className="absolute inset-0 bg-white/60 dark:bg-gray-950/70 pointer-events-none" />
+
+      {/* Contenido */}
+      <div className="relative space-y-6">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -329,13 +375,14 @@ export function CRMManychatPageClient({
               <p className="text-muted-foreground">Cargando leads...</p>
             </div>
           ) : shouldUseManychatKanban ? (
-            <LeadsKanbanManychat 
-              leads={leadsWithListName as any} 
+            <LeadsKanbanManychat
+              leads={leadsWithListName as any}
               agencyId={effectiveAgencyId!}
               agencies={agencies}
               sellers={sellers}
               operators={operators}
               onRefresh={handleRefresh}
+              onUpdateLead={handleUpdateLead}
               currentUserId={currentUserId}
               currentUserRole={currentUserRole}
             />
@@ -366,6 +413,7 @@ export function CRMManychatPageClient({
         defaultAgencyId={selectedAgencyId !== "ALL" ? selectedAgencyId : defaultAgencyId}
         defaultSellerId={defaultSellerId}
       />
+      </div>
     </div>
   )
 }

@@ -100,6 +100,7 @@ interface LeadsKanbanManychatProps {
   sellers?: Array<{ id: string; name: string }>
   operators?: Array<{ id: string; name: string }>
   onRefresh?: () => void
+  onUpdateLead?: (leadId: string, updates: Partial<Lead>) => void
   currentUserId?: string
   currentUserRole?: string
 }
@@ -146,6 +147,7 @@ export function LeadsKanbanManychat({
   sellers = [],
   operators = [],
   onRefresh,
+  onUpdateLead,
   currentUserId,
   currentUserRole
 }: LeadsKanbanManychatProps) {
@@ -223,23 +225,36 @@ export function LeadsKanbanManychat({
       patchBody.assigned_seller_id = targetList.seller_id
     }
 
+    // Guardar estado previo para rollback
+    const previousListName = lead.list_name
+    const previousSellerId = lead.assigned_seller_id
+    const movedLeadId = draggedLead
+
+    // OPTIMISTIC: Actualizar UI inmediatamente
+    onUpdateLead?.(movedLeadId, {
+      list_name: targetListName,
+      ...(targetList?.seller_id ? { assigned_seller_id: targetList.seller_id } : {}),
+    })
+    setDraggedLead(null)
+    toast.success(`Lead movido a "${targetListName}"`)
+
+    // API call en background
     try {
-      const response = await fetch(`/api/leads/${draggedLead}`, {
+      const response = await fetch(`/api/leads/${movedLeadId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patchBody),
       })
-      const data = await response.json()
-      if (response.ok && data.success) {
-        toast.success(`Lead movido a "${targetListName}"`)
-        onRefresh?.()
-      } else {
+      if (!response.ok) {
+        const data = await response.json()
+        // Rollback
+        onUpdateLead?.(movedLeadId, { list_name: previousListName, assigned_seller_id: previousSellerId })
         toast.error(data.error || "Error al mover lead")
       }
     } catch (error) {
+      // Rollback
+      onUpdateLead?.(movedLeadId, { list_name: previousListName, assigned_seller_id: previousSellerId })
       toast.error("Error al mover lead")
-    } finally {
-      setDraggedLead(null)
     }
   }
 
@@ -258,7 +273,6 @@ export function LeadsKanbanManychat({
       if (response.ok && data.success) {
         toast.success(`Lista "${listName}" creada`)
         fetchListOrder()
-        onRefresh?.()
       } else {
         toast.error(data.error || "Error al crear lista")
       }
@@ -297,7 +311,12 @@ export function LeadsKanbanManychat({
         setEditingListName(null)
         setNewListNameValue("")
         fetchListOrder()
-        onRefresh?.()
+        // Actualizar leads localmente que tenían ese list_name
+        leads.forEach(lead => {
+          if (lead.list_name === oldListName) {
+            onUpdateLead?.(lead.id, { list_name: newListNameValue.trim() })
+          }
+        })
       } else {
         toast.error(data.error || "Error al renombrar lista")
       }
@@ -313,7 +332,6 @@ export function LeadsKanbanManychat({
       if (response.ok && data.success) {
         toast.success(`Lista "${listName}" eliminada`)
         fetchListOrder()
-        onRefresh?.()
       } else {
         toast.error(data.error || "Error al eliminar lista")
       }
@@ -325,6 +343,16 @@ export function LeadsKanbanManychat({
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
     e.stopPropagation()
     setClaimingLeadId(leadId)
+
+    // OPTIMISTIC: Asignar inmediatamente en la UI
+    if (currentUserId) {
+      const sellerName = sellers.find(s => s.id === currentUserId)?.name || "Tú"
+      onUpdateLead?.(leadId, {
+        assigned_seller_id: currentUserId,
+        users: { name: sellerName, email: "" },
+      })
+    }
+
     try {
       const response = await fetch("/api/leads/claim", {
         method: "POST",
@@ -332,11 +360,17 @@ export function LeadsKanbanManychat({
         body: JSON.stringify({ leadId }),
       })
       const data = await response.json()
-      if (!response.ok) { toast.error(data.error || "Error al agarrar el lead"); return }
+      if (!response.ok) {
+        // Rollback
+        onUpdateLead?.(leadId, { assigned_seller_id: null, users: null })
+        toast.error(data.error || "Error al agarrar el lead")
+        return
+      }
       toast.success(data.message || "Lead asignado!")
       if (data.warning) toast.warning(data.warning, { duration: 5000 })
-      onRefresh?.()
     } catch (error) {
+      // Rollback
+      onUpdateLead?.(leadId, { assigned_seller_id: null, users: null })
       toast.error("Error al agarrar el lead")
     } finally {
       setClaimingLeadId(null)
@@ -679,7 +713,12 @@ export function LeadsKanbanManychat({
           onDelete={onRefresh}
           onConvert={onRefresh}
           canClaimLeads={canClaimLeads}
-          onClaim={onRefresh}
+          onClaim={() => {
+            if (currentUserId) {
+              const sellerName = sellers.find(s => s.id === currentUserId)?.name || "Tú"
+              onUpdateLead?.(selectedLead.id, { assigned_seller_id: currentUserId, users: { name: sellerName, email: "" } })
+            }
+          }}
           agencies={agencies}
           sellers={sellers}
           operators={operators}
