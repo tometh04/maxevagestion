@@ -18,24 +18,39 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
 
-    // Obtener orden de listas ordenado por posición
-    const { data: listOrder, error } = await (supabase
+    // Obtener orden de listas ordenado por posición, incluyendo seller info
+    let listQuery = (supabase
       .from("manychat_list_order") as any)
-      .select("list_name, position")
+      .select("list_name, position, seller_id, seller:seller_id(id, name)")
       .eq("agency_id", agencyId)
       .order("position", { ascending: true })
+
+    // SELLER solo ve sus listas + listas compartidas (sin seller)
+    if (user.role === "SELLER") {
+      listQuery = listQuery.or(`seller_id.eq.${user.id},seller_id.is.null`)
+    }
+
+    const { data: listOrder, error } = await listQuery
 
     if (error) {
       console.error("Error fetching manychat list order:", error)
       return NextResponse.json({ error: "Error al obtener orden de listas" }, { status: 500 })
     }
 
-    // Retornar solo los nombres de las listas en orden
+    // Retornar nombres de listas en orden + info de seller
     const orderedListNames = ((listOrder || []) as Array<{ list_name: string; position: number }>).map(item => item.list_name)
 
-    return NextResponse.json({ 
+    // Mapear info completa con seller
+    const orderWithSeller = ((listOrder || []) as any[]).map(item => ({
+      list_name: item.list_name,
+      position: item.position,
+      seller_id: item.seller_id || null,
+      seller_name: item.seller?.name || null,
+    }))
+
+    return NextResponse.json({
       listNames: orderedListNames,
-      order: listOrder || []
+      order: orderWithSeller
     })
   } catch (error: any) {
     console.error("Error in GET /api/manychat/list-order:", error)
@@ -70,6 +85,20 @@ export async function PUT(request: Request) {
       )
     }
 
+    // Actualizar posiciones sin perder seller_id
+    // Obtener listas actuales para preservar seller_id
+    const { data: currentLists } = await (supabase
+      .from("manychat_list_order") as any)
+      .select("list_name, seller_id")
+      .eq("agency_id", agencyId)
+
+    const sellerMap: Record<string, string | null> = {}
+    if (currentLists) {
+      for (const list of currentLists) {
+        sellerMap[list.list_name] = list.seller_id || null
+      }
+    }
+
     // Eliminar orden anterior
     const { error: deleteError } = await (supabase
       .from("manychat_list_order") as any)
@@ -84,11 +113,12 @@ export async function PUT(request: Request) {
       )
     }
 
-    // Insertar nuevo orden
+    // Insertar nuevo orden preservando seller_id
     const orderData = listNames.map((listName: string, index: number) => ({
       agency_id: agencyId,
       list_name: listName.trim(),
       position: index,
+      seller_id: sellerMap[listName.trim()] || null,
     }))
 
     const { error: insertError } = await (supabase

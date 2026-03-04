@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useEffect, useMemo, useCallback } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, DollarSign, UserPlus, Loader2, Settings2, Plus } from "lucide-react"
+import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -15,18 +14,52 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Skeleton } from "@/components/ui/skeleton"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 import { EditListOrderDialog } from "@/components/sales/edit-list-order-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable"
+import { CSS } from "@dnd-kit/utilities"
 
-const regionColors: Record<string, string> = {
+// Colores de borde izquierdo por región
+const regionBorderColors: Record<string, string> = {
+  ARGENTINA: "border-l-blue-500",
+  CARIBE: "border-l-cyan-500",
+  BRASIL: "border-l-green-500",
+  EUROPA: "border-l-purple-500",
+  EEUU: "border-l-red-500",
+  OTROS: "border-l-gray-400",
+  CRUCEROS: "border-l-orange-500",
+}
+
+const regionDotColors: Record<string, string> = {
   ARGENTINA: "bg-blue-500",
   CARIBE: "bg-cyan-500",
   BRASIL: "bg-green-500",
   EUROPA: "bg-purple-500",
   EEUU: "bg-red-500",
-  OTROS: "bg-gray-500",
+  OTROS: "bg-gray-400",
   CRUCEROS: "bg-orange-500",
 }
 
@@ -55,7 +88,9 @@ interface Lead {
 
 interface ListInfo {
   name: string
-  id: string // ID temporal para referencia visual
+  id: string
+  seller_id: string | null
+  seller_name: string | null
 }
 
 interface LeadsKanbanManychatProps {
@@ -69,15 +104,50 @@ interface LeadsKanbanManychatProps {
   currentUserRole?: string
 }
 
-export function LeadsKanbanManychat({ 
-  leads, 
-  agencyId, 
-  agencies = [], 
-  sellers = [], 
-  operators = [], 
-  onRefresh, 
-  currentUserId, 
-  currentUserRole 
+// Wrapper sortable para cada columna del Kanban
+function SortableColumn({
+  id,
+  children,
+  isAdmin,
+  dragHandleProps,
+}: {
+  id: string
+  children: (handleProps: any) => React.ReactNode
+  isAdmin: boolean
+  dragHandleProps?: any
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+    scale: isDragging ? '0.98' : '1',
+  }
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex-shrink-0 w-80 transition-transform">
+      {children(isAdmin ? { ...attributes, ...listeners } : null)}
+    </div>
+  )
+}
+
+export function LeadsKanbanManychat({
+  leads,
+  agencyId,
+  agencies = [],
+  sellers = [],
+  operators = [],
+  onRefresh,
+  currentUserId,
+  currentUserRole
 }: LeadsKanbanManychatProps) {
   const [listOrder, setListOrder] = useState<ListInfo[]>([])
   const [loading, setLoading] = useState(true)
@@ -87,61 +157,93 @@ export function LeadsKanbanManychat({
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
   const [editOrderDialogOpen, setEditOrderDialogOpen] = useState(false)
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
+  const [dragOverColumn, setDragOverColumn] = useState<string | null>(null)
   const [editingListName, setEditingListName] = useState<string | null>(null)
   const [newListNameValue, setNewListNameValue] = useState("")
+  const [columnOrder, setColumnOrder] = useState<string[]>([])
+  const [createListDialogOpen, setCreateListDialogOpen] = useState(false)
+  const [newListName, setNewListName] = useState("")
+  const [newListSellerId, setNewListSellerId] = useState<string>("none")
 
-  // Determinar si el usuario puede "agarrar" leads
+  const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
+  const isSeller = currentUserRole === "SELLER"
+  const canCreateLists = isAdmin || isSeller
+
+  // Sensors para drag de columnas
+  const columnSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 10 },
+    })
+  )
+
+  const handleColumnDragEnd = useCallback(async (event: DragEndEvent) => {
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+
+    const oldIndex = columnOrder.indexOf(active.id as string)
+    const newIndex = columnOrder.indexOf(over.id as string)
+    if (oldIndex === -1 || newIndex === -1) return
+
+    const newOrder = arrayMove(columnOrder, oldIndex, newIndex)
+    setColumnOrder(newOrder)
+
+    try {
+      const response = await fetch("/api/manychat/list-order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agencyId, listNames: newOrder }),
+      })
+      if (!response.ok) throw new Error("Error al guardar orden")
+      toast.success("Orden actualizado")
+    } catch (error) {
+      console.error("Error saving column order:", error)
+      toast.error("Error al guardar el orden")
+      setColumnOrder(arrayMove(newOrder, newIndex, oldIndex))
+    }
+  }, [columnOrder, agencyId])
+
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
 
-  // Drag and drop de leads entre listas
   const handleDragStart = (leadId: string) => {
     setDraggedLead(leadId)
   }
 
   const handleDrop = async (targetListName: string) => {
+    setDragOverColumn(null)
     if (!draggedLead) return
 
-    // Encontrar el lead
     const lead = leads.find((l) => l.id === draggedLead)
-    if (!lead) {
-      setDraggedLead(null)
-      return
+    if (!lead) { setDraggedLead(null); return }
+    if (lead.list_name === targetListName) { setDraggedLead(null); return }
+
+    // Si la lista destino tiene seller, auto-asignar
+    const targetList = listOrder.find(l => l.name === targetListName)
+    const patchBody: any = { list_name: targetListName }
+    if (targetList?.seller_id) {
+      patchBody.assigned_seller_id = targetList.seller_id
     }
 
-    // No hacer nada si se suelta en la misma lista
-    if (lead.list_name === targetListName) {
-      setDraggedLead(null)
-      return
-    }
-
-    // Actualizar list_name del lead (solo para Manychat - independiente de Trello)
     try {
       const response = await fetch(`/api/leads/${draggedLead}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ list_name: targetListName }),
+        body: JSON.stringify(patchBody),
       })
-
       const data = await response.json()
-
       if (response.ok && data.success) {
         toast.success(`Lead movido a "${targetListName}"`)
-        if (onRefresh) {
-          onRefresh()
-        }
+        onRefresh?.()
       } else {
-        console.error("Error moviendo lead:", data.error)
         toast.error(data.error || "Error al mover lead")
       }
     } catch (error) {
-      console.error("Error updating lead list:", error)
       toast.error("Error al mover lead")
     } finally {
       setDraggedLead(null)
     }
   }
 
-  const handleCreateList = async (listName: string) => {
+  const handleCreateList = async (listName: string, sellerId?: string) => {
     try {
       const response = await fetch("/api/manychat/lists", {
         method: "POST",
@@ -149,25 +251,32 @@ export function LeadsKanbanManychat({
         body: JSON.stringify({
           agencyId,
           listName,
+          sellerId: sellerId && sellerId !== "none" ? sellerId : undefined,
         }),
       })
-
       const data = await response.json()
-
       if (response.ok && data.success) {
-        toast.success(`Lista "${listName}" creada correctamente`)
-        // Recargar orden de listas
+        toast.success(`Lista "${listName}" creada`)
         fetchListOrder()
-        if (onRefresh) {
-          onRefresh()
-        }
+        onRefresh?.()
       } else {
         toast.error(data.error || "Error al crear lista")
       }
-    } catch (error: any) {
-      console.error("Error creating list:", error)
+    } catch (error) {
       toast.error("Error al crear lista")
     }
+  }
+
+  const handleSubmitCreateList = () => {
+    if (!newListName.trim()) {
+      toast.error("Ingrese un nombre para la lista")
+      return
+    }
+    const sellerId = isSeller ? currentUserId : (newListSellerId !== "none" ? newListSellerId : undefined)
+    handleCreateList(newListName.trim(), sellerId)
+    setCreateListDialogOpen(false)
+    setNewListName("")
+    setNewListSellerId("none")
   }
 
   const handleSaveListName = async (oldListName: string) => {
@@ -176,66 +285,45 @@ export function LeadsKanbanManychat({
       setNewListNameValue("")
       return
     }
-
     try {
       const response = await fetch("/api/manychat/lists", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agencyId,
-          oldListName,
-          newListName: newListNameValue.trim(),
-        }),
+        body: JSON.stringify({ agencyId, oldListName, newListName: newListNameValue.trim() }),
       })
-
       const data = await response.json()
-
       if (response.ok && data.success) {
         toast.success(`Lista renombrada a "${newListNameValue.trim()}"`)
         setEditingListName(null)
         setNewListNameValue("")
-        // Recargar orden de listas
         fetchListOrder()
-        if (onRefresh) {
-          onRefresh()
-        }
+        onRefresh?.()
       } else {
         toast.error(data.error || "Error al renombrar lista")
       }
-    } catch (error: any) {
-      console.error("Error renaming list:", error)
+    } catch (error) {
       toast.error("Error al renombrar lista")
     }
   }
 
   const handleDeleteList = async (listName: string) => {
     try {
-      const response = await fetch(`/api/manychat/lists?agencyId=${agencyId}&listName=${encodeURIComponent(listName)}`, {
-        method: "DELETE",
-      })
-
+      const response = await fetch(`/api/manychat/lists?agencyId=${agencyId}&listName=${encodeURIComponent(listName)}`, { method: "DELETE" })
       const data = await response.json()
-
       if (response.ok && data.success) {
-        toast.success(`Lista "${listName}" eliminada correctamente`)
-        // Recargar orden de listas
+        toast.success(`Lista "${listName}" eliminada`)
         fetchListOrder()
-        if (onRefresh) {
-          onRefresh()
-        }
+        onRefresh?.()
       } else {
         toast.error(data.error || "Error al eliminar lista")
       }
-    } catch (error: any) {
-      console.error("Error deleting list:", error)
+    } catch (error) {
       toast.error("Error al eliminar lista")
     }
   }
 
-  // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    
     setClaimingLeadId(leadId)
     try {
       const response = await fetch("/api/leads/claim", {
@@ -243,127 +331,99 @@ export function LeadsKanbanManychat({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadId }),
       })
-
       const data = await response.json()
-
-      if (!response.ok) {
-        toast.error(data.error || "Error al agarrar el lead")
-        return
-      }
-
-      toast.success(data.message || "¡Lead asignado!")
-      
-      if (data.warning) {
-        toast.warning(data.warning, { duration: 5000 })
-      }
-
-      if (onRefresh) {
-        onRefresh()
-      }
+      if (!response.ok) { toast.error(data.error || "Error al agarrar el lead"); return }
+      toast.success(data.message || "Lead asignado!")
+      if (data.warning) toast.warning(data.warning, { duration: 5000 })
+      onRefresh?.()
     } catch (error) {
-      console.error("Error claiming lead:", error)
       toast.error("Error al agarrar el lead")
     } finally {
       setClaimingLeadId(null)
     }
   }
 
-  // Función para cargar el orden de listas (reutilizable)
   const fetchListOrder = useCallback(async () => {
     try {
       const response = await fetch(`/api/manychat/list-order?agencyId=${agencyId}`)
       const data = await response.json()
-      if (data.listNames && Array.isArray(data.listNames)) {
-        // Mapear nombres de listas a ListInfo
+      if (data.order && Array.isArray(data.order)) {
+        const listsInfo: ListInfo[] = data.order.map((item: any, index: number) => ({
+          name: item.list_name,
+          id: `manychat-${index}`,
+          seller_id: item.seller_id || null,
+          seller_name: item.seller_name || null,
+        }))
+        setListOrder(listsInfo)
+      } else if (data.listNames && Array.isArray(data.listNames)) {
         const listsInfo: ListInfo[] = data.listNames.map((name: string, index: number) => ({
-          name: name,
-          id: `manychat-${index}`, // ID temporal, no se usa pero lo necesitamos para el tipo
+          name, id: `manychat-${index}`,
+          seller_id: null,
+          seller_name: null,
         }))
         setListOrder(listsInfo)
       } else {
-        console.warn("⚠️ No se encontró orden de listas. Usando orden alfabético.")
-        // Si no hay orden, usar orden alfabético como fallback
         setListOrder([])
       }
     } catch (error) {
-      console.error("❌ Error fetching manychat list order:", error)
+      console.error("Error fetching manychat list order:", error)
     } finally {
       setLoading(false)
     }
   }, [agencyId])
 
-  // Obtener orden de listas desde manychat_list_order (INDEPENDIENTE de Trello)
   useEffect(() => {
-    if (agencyId) {
-      fetchListOrder()
-    } else {
-      console.error("❌ No hay agencyId para obtener orden de listas")
-      setLoading(false)
-    }
+    if (agencyId) fetchListOrder()
+    else setLoading(false)
   }, [agencyId, fetchListOrder])
 
-    // Agrupar leads por list_name (Manychat - independiente de Trello)
-    const leadsByListName = useMemo(() => {
-      const grouped: Record<string, Lead[]> = {}
-      
-      // Inicializar con todas las listas del orden guardado (para mantener el orden)
-      listOrder.forEach(list => {
-        grouped[list.name] = []
-      })
-      
-      // Agrupar leads por list_name
-      leads.forEach(lead => {
-        if (lead.list_name) {
-          const listName = lead.list_name.trim()
-          if (!grouped[listName]) {
-            grouped[listName] = []
-          }
-          grouped[listName].push(lead)
-        }
-      })
-      
-      return grouped
-    }, [leads, listOrder])
+  const leadsByListName = useMemo(() => {
+    const grouped: Record<string, Lead[]> = {}
+    listOrder.forEach(list => { grouped[list.name] = [] })
+    leads.forEach(lead => {
+      if (lead.list_name) {
+        const listName = lead.list_name.trim()
+        if (!grouped[listName]) grouped[listName] = []
+        grouped[listName].push(lead)
+      }
+    })
+    return grouped
+  }, [leads, listOrder])
 
-  // Ordenar listas según el orden guardado en manychat_list_order
-  // Mostrar TODAS las listas guardadas (incluso vacías) + listas extra con leads
   const orderedListNames = useMemo(() => {
     const savedListNames = new Set(listOrder.map(l => l.name))
     const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
-
-    // Primero TODAS las listas guardadas en orden (incluso vacías)
     const ordered: string[] = listOrder.map(l => l.name)
-
-    // Luego las listas que no están en el orden guardado pero tienen leads (agregadas al final)
     const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
-    ordered.push(...additionalLists.sort()) // Orden alfabético para las nuevas
-
+    ordered.push(...additionalLists.sort())
     return ordered
   }, [listOrder, leadsByListName])
 
-  // Filtrar listas según el selector
+  useEffect(() => { setColumnOrder(orderedListNames) }, [orderedListNames])
+
+  const displayListNames = columnOrder.length > 0 ? columnOrder : orderedListNames
   const filteredListNames = selectedListName === "ALL"
-    ? orderedListNames
-    : orderedListNames.filter(name => name === selectedListName)
+    ? displayListNames
+    : displayListNames.filter(name => name === selectedListName)
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
-      {/* Selector de lista y botones de gestión */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <Label htmlFor="list-select" className="text-sm font-medium">
-            Filtrar por lista:
+      {/* ── Barra de filtros ── */}
+      <div className="flex items-center justify-between gap-4 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-xl p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Label htmlFor="list-select" className="text-sm font-medium text-muted-foreground">
+            Filtrar:
           </Label>
           <Select value={selectedListName} onValueChange={setSelectedListName}>
-            <SelectTrigger id="list-select" className="w-[200px]">
+            <SelectTrigger id="list-select" className="w-[220px] bg-white/80 dark:bg-gray-800/80">
               <SelectValue placeholder="Todas las listas" />
             </SelectTrigger>
             <SelectContent>
@@ -376,245 +436,239 @@ export function LeadsKanbanManychat({
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
-          {(currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN") && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const newListName = prompt("Nombre de la nueva lista:")
-                  if (newListName && newListName.trim()) {
-                    handleCreateList(newListName.trim())
-                  }
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva Lista
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditOrderDialogOpen(true)}
-              >
-                <Settings2 className="mr-2 h-4 w-4" />
-                Editar Orden
-              </Button>
-            </>
-          )}
-        </div>
+        {canCreateLists && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-800"
+              onClick={() => {
+                setNewListName("")
+                setNewListSellerId(isSeller && currentUserId ? currentUserId : "none")
+                setCreateListDialogOpen(true)
+              }}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva Lista
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Kanban Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
-        {filteredListNames.map((listName) => {
-          const listLeads = leadsByListName[listName] || []
-          
-          return (
-            <div key={listName} className="flex-shrink-0 w-80">
-              <Card className="h-full">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-2 flex-1">
-                      {editingListName === listName ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <input
-                            type="text"
-                            value={newListNameValue}
-                            onChange={(e) => setNewListNameValue(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                handleSaveListName(listName)
-                              } else if (e.key === "Escape") {
-                                setEditingListName(null)
-                                setNewListNameValue("")
-                              }
-                            }}
-                            className="flex-1 px-2 py-1 text-sm border rounded"
-                            autoFocus
-                          />
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2"
-                            onClick={() => handleSaveListName(listName)}
-                          >
-                            Guardar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-2"
-                            onClick={() => {
-                              setEditingListName(null)
-                              setNewListNameValue("")
-                            }}
-                          >
-                            Cancelar
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <h3 className="font-semibold text-sm">{listName}</h3>
-                          {(currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN") && (
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setEditingListName(listName)
-                                  setNewListNameValue(listName)
-                                }}
-                                title="Editar nombre"
-                              >
-                                <Settings2 className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 text-destructive hover:text-destructive"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  if (confirm(`¿Eliminar la lista "${listName}"? Esto solo eliminará la lista si no tiene leads.`)) {
-                                    handleDeleteList(listName)
+      {/* ── Kanban Board ── */}
+      <DndContext sensors={columnSensors} collisionDetection={closestCenter} onDragEnd={handleColumnDragEnd}>
+        <SortableContext items={filteredListNames} strategy={horizontalListSortingStrategy}>
+          <div className="flex gap-5 overflow-x-auto pb-4">
+            {filteredListNames.map((listName) => {
+              const listLeads = leadsByListName[listName] || []
+              const isDragOver = dragOverColumn === listName
+
+              return (
+                <SortableColumn key={listName} id={listName} isAdmin={isAdmin}>
+                  {(handleProps: any) => (
+                    <div className={`
+                      group rounded-xl transition-all duration-200
+                      bg-white/55 dark:bg-gray-900/55 backdrop-blur-sm
+                      ${isDragOver ? 'ring-2 ring-primary/50 bg-white/70 dark:bg-gray-900/70 shadow-lg' : 'shadow-sm hover:shadow-md'}
+                    `}>
+                      {/* ── Header de columna ── */}
+                      <div className="p-4 pb-3">
+                        {editingListName === listName ? (
+                          /* Modo edición */
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={newListNameValue}
+                              onChange={(e) => setNewListNameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") handleSaveListName(listName)
+                                else if (e.key === "Escape") { setEditingListName(null); setNewListNameValue("") }
+                              }}
+                              className="flex-1 px-3 py-1.5 text-sm bg-white/90 dark:bg-gray-800/90 border border-primary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                              autoFocus
+                            />
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleSaveListName(listName)}>
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:bg-muted/50" onClick={() => { setEditingListName(null); setNewListNameValue("") }}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          /* Modo normal */
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              {/* Drag handle integrado en el header */}
+                              {isAdmin && handleProps && (
+                                <div {...handleProps} className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity" title="Arrastrar columna">
+                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                </div>
+                              )}
+                              <div className="flex flex-col min-w-0">
+                                <h3 className="font-semibold text-sm truncate">{listName}</h3>
+                                {(() => {
+                                  const listInfo = listOrder.find(l => l.name === listName)
+                                  if (listInfo?.seller_name) {
+                                    return (
+                                      <span className="flex items-center gap-1 text-[10px] text-muted-foreground mt-0.5">
+                                        <User className="h-2.5 w-2.5" />
+                                        {listInfo.seller_name}
+                                      </span>
+                                    )
                                   }
-                                }}
-                                title="Eliminar lista"
-                              >
-                                ×
-                              </Button>
+                                  return null
+                                })()}
+                              </div>
                             </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                    <Badge variant="secondary">{listLeads.length}</Badge>
-                  </div>
-                  
-                  <ScrollArea className="h-[calc(100vh-250px)]">
-                    <div
-                      className="space-y-2"
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault()
-                        handleDrop(listName)
-                      }}
-                    >
-                      {listLeads.length === 0 ? (
-                        <div className="text-center text-muted-foreground text-sm py-8">
-                          Sin leads
-                        </div>
-                      ) : (
-                        listLeads.map((lead) => (
-                          <Card
-                            key={lead.id}
-                            className="cursor-pointer hover:shadow-md transition-shadow"
-                            draggable
-                            onDragStart={() => handleDragStart(lead.id)}
-                            onClick={() => {
-                              if (!draggedLead) {
-                                setSelectedLead(lead)
-                                setDialogOpen(true)
-                              }
-                            }}
-                          >
-                            <CardContent className="p-3">
-                              <div className="space-y-2">
-                                <div className="flex items-start justify-between">
-                                  <div className="flex-1">
-                                    <p className="font-medium text-sm line-clamp-1">
-                                      {lead.contact_name}
-                                    </p>
+                            <div className="flex items-center gap-1.5">
+                              {/* Controls — aparecen en hover (admin = todas, seller = solo las suyas) */}
+                              {(() => {
+                                const listInfo = listOrder.find(l => l.name === listName)
+                                const canEditThisList = isAdmin || (isSeller && listInfo?.seller_id === currentUserId)
+                                if (!canEditThisList) return null
+                                return (
+                                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                                      onClick={(e) => { e.stopPropagation(); setEditingListName(listName); setNewListNameValue(listName) }}
+                                      title="Editar nombre"
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost" size="sm"
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (confirm(`¿Eliminar la lista "${listName}"?`)) handleDeleteList(listName)
+                                      }}
+                                      title="Eliminar lista"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                )
+                              })()}
+                              <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                                {listLeads.length}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* ── Área de leads ── */}
+                      <ScrollArea className="h-[calc(100vh-300px)]">
+                        <div
+                          className="px-3 pb-3 space-y-2.5"
+                          onDragOver={(e) => { e.preventDefault(); setDragOverColumn(listName) }}
+                          onDragLeave={() => setDragOverColumn(null)}
+                          onDrop={(e) => { e.preventDefault(); handleDrop(listName) }}
+                        >
+                          {listLeads.length === 0 ? (
+                            /* Estado vacío */
+                            <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/50">
+                              <Inbox className="h-8 w-8 mb-2" />
+                              <span className="text-xs">Sin leads</span>
+                            </div>
+                          ) : (
+                            listLeads.map((lead) => (
+                              /* ── Lead Card ── */
+                              <div
+                                key={lead.id}
+                                draggable
+                                onDragStart={() => handleDragStart(lead.id)}
+                                onClick={() => { if (!draggedLead) { setSelectedLead(lead); setDialogOpen(true) } }}
+                                className={`
+                                  cursor-pointer rounded-xl border-l-4
+                                  ${regionBorderColors[lead.region] || "border-l-gray-300"}
+                                  bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm
+                                  shadow-sm hover:shadow-lg hover:-translate-y-0.5
+                                  transition-all duration-200 p-3.5
+                                `}
+                              >
+                                {/* Nombre + Claim button */}
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-sm truncate">{lead.contact_name}</p>
                                     {lead.destination && (
-                                      <p className="text-xs text-muted-foreground line-clamp-1">
-                                        {lead.destination}
-                                      </p>
+                                      <div className="flex items-center gap-1 mt-0.5">
+                                        <MapPin className="h-3 w-3 text-muted-foreground/60 flex-shrink-0" />
+                                        <p className="text-xs text-muted-foreground truncate">{lead.destination}</p>
+                                      </div>
                                     )}
                                   </div>
                                   {canClaimLeads && !lead.assigned_seller_id && (
                                     <Button
-                                      size="sm"
-                                      variant="ghost"
+                                      size="sm" variant="ghost"
                                       onClick={(e) => handleClaimLead(lead.id, e)}
                                       disabled={claimingLeadId === lead.id}
-                                      className="ml-2 h-6 w-6 p-0"
+                                      className="h-7 w-7 p-0 rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex-shrink-0"
                                     >
                                       {claimingLeadId === lead.id ? (
-                                        <Loader2 className="h-3 w-3 animate-spin" />
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                       ) : (
-                                        <UserPlus className="h-3 w-3" />
+                                        <UserPlus className="h-3.5 w-3.5" />
                                       )}
                                     </Button>
                                   )}
                                 </div>
 
-                                <div className="flex items-center gap-2 flex-wrap">
+                                {/* Contacto */}
+                                <div className="flex items-center gap-3 mt-2.5 text-muted-foreground">
                                   {lead.contact_phone && (
-                                    <Badge variant="outline" className="text-xs">
-                                      📱 {lead.contact_phone}
-                                    </Badge>
+                                    <div className="flex items-center gap-1">
+                                      <Phone className="h-3 w-3" />
+                                      <span className="text-xs truncate max-w-[100px]">{lead.contact_phone}</span>
+                                    </div>
                                   )}
                                   {lead.contact_instagram && (
-                                    <Badge variant="outline" className="text-xs">
-                                      📷 @{lead.contact_instagram}
-                                    </Badge>
+                                    <div className="flex items-center gap-1">
+                                      <Instagram className="h-3 w-3" />
+                                      <span className="text-xs truncate max-w-[80px]">@{lead.contact_instagram}</span>
+                                    </div>
                                   )}
                                 </div>
 
-                                {lead.region && (
-                                  <div className="flex items-center gap-1">
-                                    <div
-                                      className={`w-2 h-2 rounded-full ${
-                                        regionColors[lead.region] || "bg-gray-500"
-                                      }`}
-                                    />
-                                    <span className="text-xs text-muted-foreground">
-                                      {lead.region}
-                                    </span>
+                                {/* Footer: region + seller + deposit */}
+                                <div className="flex items-center justify-between mt-2.5">
+                                  <div className="flex items-center gap-2">
+                                    {lead.region && (
+                                      <div className="flex items-center gap-1">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-gray-400"}`} />
+                                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{lead.region}</span>
+                                      </div>
+                                    )}
+                                    {lead.has_deposit && (
+                                      <span className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                        <DollarSign className="h-2.5 w-2.5" />
+                                        {lead.deposit_amount} {lead.deposit_currency}
+                                      </span>
+                                    )}
                                   </div>
-                                )}
 
-                                {lead.assigned_seller_id && lead.users && (
-                                  <div className="flex items-center gap-2 pt-1">
-                                    <Avatar className="h-5 w-5">
-                                      <AvatarFallback className="text-xs">
-                                        {lead.users.name
-                                          .split(" ")
-                                          .map((n) => n[0])
-                                          .join("")
-                                          .toUpperCase()
-                                          .slice(0, 2)}
+                                  {lead.assigned_seller_id && lead.users && (
+                                    <Avatar className="h-5 w-5 ring-2 ring-primary/20">
+                                      <AvatarFallback className="text-[9px] font-medium bg-primary/10 text-primary">
+                                        {lead.users.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                                       </AvatarFallback>
                                     </Avatar>
-                                    <span className="text-xs text-muted-foreground">
-                                      {lead.users.name}
-                                    </span>
-                                  </div>
-                                )}
-
-                                {lead.has_deposit && (
-                                  <div className="flex items-center gap-1 pt-1">
-                                    <DollarSign className="h-3 w-3 text-green-600" />
-                                    <span className="text-xs text-green-600 font-medium">
-                                      Depósito: {lead.deposit_amount} {lead.deposit_currency}
-                                    </span>
-                                  </div>
-                                )}
+                                  )}
+                                </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))
-                      )}
+                            ))
+                          )}
+                        </div>
+                      </ScrollArea>
                     </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-          )
-        })}
-      </div>
+                  )}
+                </SortableColumn>
+              )
+            })}
+          </div>
+        </SortableContext>
+      </DndContext>
 
       {/* Dialog de detalle */}
       {selectedLead && (
@@ -638,13 +692,62 @@ export function LeadsKanbanManychat({
         onOpenChange={setEditOrderDialogOpen}
         agencyId={agencyId}
         currentListNames={orderedListNames}
-        onSuccess={() => {
-          // Recargar el orden de listas
-          fetchListOrder()
-          onRefresh?.()
-        }}
+        onSuccess={() => { fetchListOrder(); onRefresh?.() }}
       />
+
+      {/* Dialog de crear lista con vendedor */}
+      <Dialog open={createListDialogOpen} onOpenChange={setCreateListDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Nueva Lista</DialogTitle>
+            <DialogDescription>
+              Crea una nueva lista para el Kanban{isSeller ? "" : ". Opcionalmente asígnala a un vendedor."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="new-list-name">Nombre de la lista</Label>
+              <Input
+                id="new-list-name"
+                placeholder="Ej: Leads - Santiago"
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSubmitCreateList() }}
+                autoFocus
+              />
+            </div>
+            {isAdmin && sellers.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="new-list-seller">Vendedor (opcional)</Label>
+                <Select value={newListSellerId} onValueChange={setNewListSellerId}>
+                  <SelectTrigger id="new-list-seller">
+                    <SelectValue placeholder="Sin asignar (compartida)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin asignar (compartida)</SelectItem>
+                    {sellers.map((seller) => (
+                      <SelectItem key={seller.id} value={seller.id}>
+                        {seller.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Si asignas un vendedor, solo ese vendedor verá esta lista.
+                </p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateListDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSubmitCreateList} disabled={!newListName.trim()}>
+              Crear Lista
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-

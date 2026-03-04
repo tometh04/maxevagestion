@@ -7,6 +7,7 @@ import {
   getOrCreateDefaultAccount,
   validateSufficientBalance,
   getMainPassengerName,
+  invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
 import {
   getExchangeRate,
@@ -290,9 +291,21 @@ export async function POST(request: Request) {
         })
 
         // 8. Actualizar payment con referencia al ledger_movement
-        await (supabase.from("payments") as any)
+        const { error: linkError } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
           .eq("id", payment.id)
+
+        if (linkError) {
+          console.error("⚠️ CRITICAL: Failed to link ledger_movement_id to payment:", linkError)
+          console.error("  Payment ID:", payment.id, "Ledger Movement ID:", ledgerMovementId)
+          // Intentar con retry
+          const { error: retryError } = await (supabase.from("payments") as any)
+            .update({ ledger_movement_id: ledgerMovementId })
+            .eq("id", payment.id)
+          if (retryError) {
+            console.error("⚠️ RETRY FAILED: ledger_movement_id NOT linked to payment. Orphan risk!")
+          }
+        }
 
         // NOTA: Solo creamos UN movimiento contable usando la cuenta financiera seleccionada
         // El movimiento ya fue creado arriba (línea 203-224) usando accountId = financial_account_id
@@ -490,23 +503,54 @@ export async function DELETE(request: Request) {
     }
 
     // 3. Si hay ledger_movement_id, eliminar el movimiento del libro mayor
-    if (payment.ledger_movement_id) {
-      // Primero, desmarcar operator_payment si existe
+    let ledgerMovementId = payment.ledger_movement_id
+
+    // Fallback: si no hay ledger_movement_id pero el pago era PAID con operation_id,
+    // buscar ledger movement huérfano por operation_id + monto + tipo
+    if (!ledgerMovementId && payment.status === "PAID" && payment.operation_id) {
+      const expectedType = payment.direction === "INCOME" ? "INCOME" : "OPERATOR_PAYMENT"
+      const { data: orphaned } = await (supabase.from("ledger_movements") as any)
+        .select("id")
+        .eq("operation_id", payment.operation_id)
+        .eq("type", expectedType)
+        .eq("amount_original", payment.amount)
+        .eq("currency", payment.currency)
+        .limit(1)
+        .maybeSingle()
+
+      if (orphaned) {
+        console.warn(`⚠️ Found orphaned ledger movement ${orphaned.id} for payment ${paymentId} (ledger_movement_id was null)`)
+        ledgerMovementId = orphaned.id
+      }
+    }
+
+    if (ledgerMovementId) {
+      // Obtener account_id antes de eliminar para invalidar cache
+      const { data: ledgerMovement } = await (supabase.from("ledger_movements") as any)
+        .select("account_id")
+        .eq("id", ledgerMovementId)
+        .single()
+
+      // Desmarcar operator_payment si existe
       await (supabase.from("operator_payments") as any)
-        .update({ 
+        .update({
           status: "PENDING",
           ledger_movement_id: null,
           updated_at: new Date().toISOString()
         })
-        .eq("ledger_movement_id", payment.ledger_movement_id)
+        .eq("ledger_movement_id", ledgerMovementId)
 
       // Eliminar el ledger movement
       const { error: ledgerError } = await (supabase.from("ledger_movements") as any)
         .delete()
-        .eq("id", payment.ledger_movement_id)
+        .eq("id", ledgerMovementId)
 
       if (ledgerError) {
-        console.warn("Warning: Could not delete ledger movement:", ledgerError)
+        console.error("ERROR: Could not delete ledger movement:", ledgerError)
+        return NextResponse.json({ error: "Error al eliminar movimiento contable asociado. El pago NO fue eliminado." }, { status: 500 })
+      } else if (ledgerMovement?.account_id) {
+        // Invalidar cache de balance de la cuenta afectada
+        invalidateBalanceCache(ledgerMovement.account_id)
       }
     }
 
@@ -564,6 +608,7 @@ export async function PATCH(request: Request) {
       exchange_rate: providedExchangeRate,
       financial_account_id,
       notes,
+      markAsPaid,
     } = body
 
     if (!paymentId) {
@@ -664,6 +709,10 @@ export async function PATCH(request: Request) {
       reference: finalNotes || null,
       updated_at: new Date().toISOString(),
     }
+    // Marcar como PAID si se solicita
+    if (markAsPaid) {
+      updateData.status = "PAID"
+    }
     // Solo resetear ledger_movement_id si el pago tenía uno (evita error de schema cache)
     if (wasPaid && existingPayment.ledger_movement_id) {
       updateData.ledger_movement_id = null
@@ -678,8 +727,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: `Error al actualizar pago: ${updateError.message}` }, { status: 500 })
     }
 
-    // 4. Si el pago estaba PAID, recrear movimientos contables con valores nuevos
-    if (wasPaid && finalAccountId) {
+    // 4. Si el pago estaba PAID o se está marcando como PAID, crear/recrear movimientos contables
+    if ((wasPaid || markAsPaid) && finalAccountId) {
       try {
         // Obtener datos de la operación
         let sellerId: string | null = null
@@ -791,20 +840,38 @@ export async function PATCH(request: Request) {
         // Marcar operator_payment como PAID si aplica
         if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
           const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-            .select("id")
+            .select("id, paid_amount, amount")
             .eq("operation_id", existingPayment.operation_id)
-            .eq("status", "PENDING")
+            .in("status", ["PENDING", "OVERDUE"])
             .limit(1)
             .maybeSingle()
 
           if (operatorPayment) {
-            await (supabase.from("operator_payments") as any)
-              .update({
-                status: "PAID",
-                ledger_movement_id: newLedgerMovementId,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", operatorPayment.id)
+            if (markAsPaid) {
+              // Incrementar paid_amount con el monto del pago
+              const currentPaid = parseFloat(operatorPayment.paid_amount || "0")
+              const newPaid = currentPaid + finalAmount
+              const totalAmount = parseFloat(operatorPayment.amount)
+              const isFullyPaid = newPaid >= totalAmount
+
+              await (supabase.from("operator_payments") as any)
+                .update({
+                  paid_amount: newPaid,
+                  status: isFullyPaid ? "PAID" : "PENDING",
+                  ledger_movement_id: isFullyPaid ? newLedgerMovementId : null,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", operatorPayment.id)
+            } else {
+              // Caso existente: re-marcar como PAID (edición de pago ya pagado)
+              await (supabase.from("operator_payments") as any)
+                .update({
+                  status: "PAID",
+                  ledger_movement_id: newLedgerMovementId,
+                  updated_at: new Date().toISOString()
+                })
+                .eq("id", operatorPayment.id)
+            }
           }
         }
 

@@ -6,6 +6,7 @@ import {
   createLedgerMovement,
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
+  invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 import {
@@ -176,6 +177,19 @@ export async function PATCH(
       delete updateData.trello_list_id
     }
 
+    // Auto-asignar seller cuando se mueve a una lista con dueño
+    if (body.list_name && body.list_name !== lead.list_name) {
+      const { data: targetList } = await (supabase.from("manychat_list_order") as any)
+        .select("seller_id")
+        .eq("list_name", body.list_name)
+        .eq("agency_id", lead.agency_id)
+        .maybeSingle()
+
+      if (targetList?.seller_id) {
+        updateData.assigned_seller_id = targetList.seller_id
+      }
+    }
+
     // Limpiar campos opcionales
     if (updateData.assigned_seller_id === "none" || updateData.assigned_seller_id === null) {
       updateData.assigned_seller_id = null
@@ -301,6 +315,7 @@ export async function PATCH(
             console.error("Error creating/updating ledger movement for deposit:", error)
           }
         } else if (previousHasDeposit && !hasDeposit && existingMovement) {
+        const movementAccountId = (existingMovement as any).account_id
         const { error: deleteError } = await (supabase.from("ledger_movements") as any)
           .delete()
           .eq("id", (existingMovement as any).id)
@@ -308,6 +323,8 @@ export async function PATCH(
         if (deleteError) {
           console.error("Error deleting ledger movement:", deleteError)
         } else {
+          // Invalidar cache de balance de la cuenta afectada
+          if (movementAccountId) invalidateBalanceCache(movementAccountId)
           console.log(`✅ Deleted ledger movement for lead ${id} (deposit removed)`)
         }
       }

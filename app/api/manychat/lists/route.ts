@@ -50,7 +50,7 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const body = await request.json()
-    const { agencyId, listName } = body
+    const { agencyId, listName, sellerId } = body
 
     if (!agencyId || !listName || !listName.trim()) {
       return NextResponse.json(
@@ -59,13 +59,27 @@ export async function POST(request: Request) {
       )
     }
 
-    // Verificar permisos (solo admins pueden crear)
-    if (!canPerformAction(user, "settings", "write")) {
+    // Verificar permisos: admins pueden crear cualquier lista, sellers solo para sí mismos
+    const isAdmin = canPerformAction(user, "settings", "write")
+    const isSeller = user.role === "SELLER"
+
+    if (!isAdmin && !isSeller) {
       return NextResponse.json(
         { error: "No tiene permiso para crear listas" },
         { status: 403 }
       )
     }
+
+    // SELLER solo puede crear listas para sí mismo
+    if (isSeller && sellerId && sellerId !== user.id) {
+      return NextResponse.json(
+        { error: "Solo puede crear listas para sí mismo" },
+        { status: 403 }
+      )
+    }
+
+    // Si es SELLER, forzar seller_id a su propio ID
+    const finalSellerId = isSeller ? user.id : (sellerId || null)
 
     const trimmedListName = listName.trim()
 
@@ -95,13 +109,14 @@ export async function POST(request: Request) {
 
     const nextPosition = lastOrder ? (lastOrder.position as number) + 1 : 0
 
-    // Insertar nueva lista
+    // Insertar nueva lista con seller_id
     const { error: insertError } = await (supabase
       .from("manychat_list_order") as any)
       .insert({
         agency_id: agencyId,
         list_name: trimmedListName,
         position: nextPosition,
+        seller_id: finalSellerId,
       })
 
     if (insertError) {
