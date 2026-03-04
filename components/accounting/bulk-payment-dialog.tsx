@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle, ChevronRight, CheckCircle2, Search } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
@@ -90,7 +90,6 @@ export function BulkPaymentDialog({
   agencies,
 }: BulkPaymentDialogProps) {
   const router = useRouter()
-  const { toast } = useToast()
   
   // Paso 1: Operador
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>("")
@@ -214,18 +213,14 @@ export function BulkPaymentDialog({
         setPendingPayments(payments)
       } catch (error) {
         console.error("Error fetching pending payments:", error)
-        toast({
-          title: "Error",
-          description: "No se pudieron cargar las deudas",
-          variant: "destructive",
-        })
+        toast.error("No se pudieron cargar las deudas")
       } finally {
         setLoadingPayments(false)
       }
     }
 
     fetchPendingPayments()
-  }, [open, selectedOperatorId, selectedCurrency, agencies, toast])
+  }, [open, selectedOperatorId, selectedCurrency, agencies])
 
   // Actualizar moneda de pago cuando cambia la moneda seleccionada
   useEffect(() => {
@@ -247,18 +242,28 @@ export function BulkPaymentDialog({
     }
   }, [paymentAccountId, financialAccounts, selectedCurrency])
 
-  // Inicializar montos a pagar con el pendiente cuando se selecciona
+  // Inicializar montos a pagar SOLO para pagos recién agregados (no pisar valores editados)
   useEffect(() => {
-    const amounts: Record<string, number> = {}
-    selectedPayments.forEach(paymentId => {
-      const payment = pendingPayments.find(p => p.id === paymentId)
-      if (payment) {
-        const paidAmount = payment.paid_amount || 0
-        const remaining = payment.amount - paidAmount
-        amounts[paymentId] = remaining
-      }
+    setPaymentAmounts(prev => {
+      const updated = { ...prev }
+      // Agregar monto inicial para pagos recién seleccionados
+      selectedPayments.forEach(paymentId => {
+        if (!(paymentId in updated)) {
+          const payment = pendingPayments.find(p => p.id === paymentId)
+          if (payment) {
+            const paidAmount = payment.paid_amount || 0
+            updated[paymentId] = payment.amount - paidAmount
+          }
+        }
+      })
+      // Limpiar pagos que ya no están seleccionados
+      Object.keys(updated).forEach(id => {
+        if (!selectedPayments.has(id)) {
+          delete updated[id]
+        }
+      })
+      return updated
     })
-    setPaymentAmounts(amounts)
   }, [selectedPayments, pendingPayments])
 
   const handleTogglePayment = (paymentId: string) => {
@@ -326,65 +331,37 @@ export function BulkPaymentDialog({
   const handleSubmit = async () => {
     // Validaciones
     if (!selectedOperatorId) {
-      toast({
-        title: "Error",
-        description: "Debe seleccionar un operador",
-        variant: "destructive",
-      })
+      toast.error("Debe seleccionar un operador")
       return
     }
 
     if (!selectedCurrency) {
-      toast({
-        title: "Error",
-        description: "Debe seleccionar una moneda",
-        variant: "destructive",
-      })
+      toast.error("Debe seleccionar una moneda")
       return
     }
 
     if (selectedPayments.size === 0) {
-      toast({
-        title: "Error",
-        description: "Debe seleccionar al menos una deuda para pagar",
-        variant: "destructive",
-      })
+      toast.error("Debe seleccionar al menos una deuda para pagar")
       return
     }
 
     if (!paymentAccountId) {
-      toast({
-        title: "Error",
-        description: "Debe seleccionar una cuenta financiera de origen",
-        variant: "destructive",
-      })
+      toast.error("Debe seleccionar una cuenta financiera de origen")
       return
     }
 
     if (needsExchangeRate() && !exchangeRate) {
-      toast({
-        title: "Error",
-        description: "Debe ingresar el tipo de cambio para convertir monedas",
-        variant: "destructive",
-      })
+      toast.error("Debe ingresar el tipo de cambio para convertir monedas")
       return
     }
 
     if (!receiptNumber.trim()) {
-      toast({
-        title: "Error",
-        description: "Debe ingresar el número de comprobante",
-        variant: "destructive",
-      })
+      toast.error("Debe ingresar el número de comprobante")
       return
     }
 
     if (depositBonus && !bonusAccountId) {
-      toast({
-        title: "Error",
-        description: "Debe seleccionar la cuenta destino para la ganancia financiera",
-        variant: "destructive",
-      })
+      toast.error("Debe seleccionar la cuenta destino para la ganancia financiera")
       return
     }
 
@@ -399,49 +376,53 @@ export function BulkPaymentDialog({
         }
       })
 
+      const requestBody = {
+        payments,
+        payment_account_id: paymentAccountId,
+        payment_currency: paymentCurrency,
+        exchange_rate: exchangeRate ? parseFloat(exchangeRate) : null,
+        receipt_number: receiptNumber,
+        payment_date: paymentDate,
+        notes: notes || null,
+        ...(depositBonus && bonusPercentage && bonusAccountId
+          ? {
+              deposit_bonus: {
+                enabled: true,
+                percentage: parseFloat(bonusPercentage),
+                bonus_account_id: bonusAccountId,
+              },
+            }
+          : {}),
+      }
+
+      console.log("[BulkPayment] Enviando request:", JSON.stringify(requestBody, null, 2))
+
       const response = await fetch("/api/accounting/operator-payments/bulk", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          payments,
-          payment_account_id: paymentAccountId,
-          payment_currency: paymentCurrency,
-          exchange_rate: exchangeRate ? parseFloat(exchangeRate) : null,
-          receipt_number: receiptNumber,
-          payment_date: paymentDate,
-          notes: notes || null,
-          ...(depositBonus && bonusPercentage && bonusAccountId
-            ? {
-                deposit_bonus: {
-                  enabled: true,
-                  percentage: parseFloat(bonusPercentage),
-                  bonus_account_id: bonusAccountId,
-                },
-              }
-            : {}),
-        }),
+        body: JSON.stringify(requestBody),
       })
+
+      const responseData = await response.json()
+      console.log("[BulkPayment] Response status:", response.status, "data:", responseData)
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Error al procesar pagos")
+        throw new Error(responseData.error || "Error al procesar pagos")
       }
 
-      toast({
-        title: "Éxito",
-        description: `Se procesaron ${payments.length} pago(s) correctamente`,
-      })
+      if (responseData.errors?.length > 0) {
+        toast.warning(`Se procesaron ${responseData.processed?.length || 0} pago(s) con ${responseData.errors.length} advertencia(s)`)
+        console.warn("[BulkPayment] Errores parciales:", responseData.errors)
+      } else {
+        toast.success(`Se procesaron ${payments.length} pago(s) correctamente`)
+      }
 
       // Cerrar dialog y refrescar
       onOpenChange(false)
       router.refresh()
     } catch (error: any) {
       console.error("Error submitting bulk payment:", error)
-      toast({
-        title: "Error",
-        description: error.message || "Error al procesar pagos",
-        variant: "destructive",
-      })
+      toast.error(error.message || "Error al procesar pagos")
     } finally {
       setSubmitting(false)
     }

@@ -3,7 +3,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { LeadsKanban } from "@/components/sales/leads-kanban"
-import { LeadsKanbanTrello } from "@/components/sales/leads-kanban-trello"
 import { LeadsTable } from "@/components/sales/leads-table"
 import { NewLeadDialog } from "@/components/sales/new-lead-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -82,10 +81,9 @@ export function LeadsPageClient({
   const [leads, setLeads] = useState<Lead[]>(initialLeads)
   const [newLeadDialogOpen, setNewLeadDialogOpen] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>(defaultAgencyId || agencies[0]?.id || "ALL")
-  const [selectedTrelloListId, setSelectedTrelloListId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [initialLoad, setInitialLoad] = useState(true)
-  const [syncingTrello, setSyncingTrello] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [realtimeConnected, setRealtimeConnected] = useState(false)
   const [initialLeadId, setInitialLeadId] = useState<string | null>(null)
   const supabaseRef = useRef<ReturnType<typeof createBrowserClient> | null>(null)
@@ -95,10 +93,9 @@ export function LeadsPageClient({
     const leadId = searchParams.get("leadId")
     if (leadId) {
       setInitialLeadId(leadId)
-      // Limpiar el query param de la URL sin recargar
       const newSearchParams = new URLSearchParams(searchParams.toString())
       newSearchParams.delete("leadId")
-      const newUrl = newSearchParams.toString() 
+      const newUrl = newSearchParams.toString()
         ? `${window.location.pathname}?${newSearchParams.toString()}`
         : window.location.pathname
       router.replace(newUrl, { scroll: false })
@@ -115,22 +112,20 @@ export function LeadsPageClient({
     }
   }, [])
 
-  // OPTIMIZACIÓN Fase 2: límite inicial 200 (antes 2000). Paginación con "Cargar más".
   const LEADS_LIMIT = 200
   const [leadsPage, setLeadsPage] = useState(1)
   const [leadsHasMore, setLeadsHasMore] = useState(false)
   const [leadsTotal, setLeadsTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
 
-  const loadLeads = useCallback(async (agencyId: string, trelloListId: string | null = null) => {
+  const loadLeads = useCallback(async (agencyId: string) => {
     setLoading(true)
     try {
       const url = agencyId === "ALL"
-        ? `/api/leads?page=1&limit=${LEADS_LIMIT}&source=Trello`
-        : `/api/leads?agencyId=${agencyId}&page=1&limit=${LEADS_LIMIT}&source=Trello`
-      const withList = trelloListId && trelloListId !== "ALL" ? `&trelloListId=${trelloListId}` : ""
+        ? `/api/leads?page=1&limit=${LEADS_LIMIT}`
+        : `/api/leads?agencyId=${agencyId}&page=1&limit=${LEADS_LIMIT}`
 
-      const response = await fetch(`${url}${withList}`, { cache: "no-store" })
+      const response = await fetch(url, { cache: "no-store" })
       const data = await response.json()
 
       setLeads(data.leads || [])
@@ -155,12 +150,10 @@ export function LeadsPageClient({
     try {
       const nextPage = leadsPage + 1
       const url = selectedAgencyId === "ALL"
-        ? `/api/leads?page=${nextPage}&limit=${LEADS_LIMIT}&source=Trello`
-        : `/api/leads?agencyId=${selectedAgencyId}&page=${nextPage}&limit=${LEADS_LIMIT}&source=Trello`
-      const withList = selectedTrelloListId && selectedTrelloListId !== "ALL"
-        ? `&trelloListId=${selectedTrelloListId}` : ""
+        ? `/api/leads?page=${nextPage}&limit=${LEADS_LIMIT}`
+        : `/api/leads?agencyId=${selectedAgencyId}&page=${nextPage}&limit=${LEADS_LIMIT}`
 
-      const response = await fetch(`${url}${withList}`, { cache: "no-store" })
+      const response = await fetch(url, { cache: "no-store" })
       const data = await response.json()
       const newLeads = data.leads || []
 
@@ -175,7 +168,7 @@ export function LeadsPageClient({
     } finally {
       setLoadingMore(false)
     }
-  }, [leadsHasMore, leadsPage, loadingMore, selectedAgencyId, selectedTrelloListId])
+  }, [leadsHasMore, leadsPage, loadingMore, selectedAgencyId])
 
   // 🔄 SUPABASE REALTIME - Actualización automática sin recargar
   useEffect(() => {
@@ -184,55 +177,36 @@ export function LeadsPageClient({
 
     console.log("🔌 Conectando a Supabase Realtime...")
 
-    // Suscribirse a cambios en la tabla leads
     const channel = supabase
       .channel('leads-realtime')
       .on(
         'postgres_changes',
         {
-          event: '*', // INSERT, UPDATE, DELETE
+          event: '*',
           schema: 'public',
           table: 'leads',
         },
         (payload: RealtimePostgresChangesPayload<Lead>) => {
           console.log('📥 Cambio en tiempo real:', payload.eventType, payload.new || payload.old)
-          
+
           if (payload.eventType === 'INSERT') {
             const newLead = payload.new as Lead
-            // Solo agregar si coincide con el filtro de agencia actual
-            // Y si es un lead de Trello (tiene trello_list_id) cuando estamos usando Trello Kanban
-            const isTrelloLead = newLead.trello_list_id !== null && newLead.trello_list_id !== undefined
             const shouldAdd = (selectedAgencyId === "ALL" || newLead.agency_id === selectedAgencyId)
-            
+
             if (shouldAdd) {
               setLeads((prev) => {
-                // Evitar duplicados
                 if (prev.some(l => l.id === newLead.id)) return prev
-                if (isTrelloLead) {
-                  toast.success(`🆕 Nuevo lead de Trello: ${newLead.contact_name}`, { duration: 3000 })
-                }
+                toast.success(`🆕 Nuevo lead: ${newLead.contact_name}`, { duration: 3000 })
                 return [newLead, ...prev]
               })
             }
           } else if (payload.eventType === 'UPDATE') {
             const updatedLead = payload.new as Lead
-            const oldLead = payload.old as Lead
-            
-            // Si cambió el trello_list_id, es un movimiento de lista - recargar todos los leads
-            if (oldLead?.trello_list_id !== updatedLead.trello_list_id) {
-              console.log('📋 Lista de Trello cambiada, recargando leads...')
-              // Recargar todos los leads para asegurar orden correcto
-              if (selectedAgencyId && selectedAgencyId !== "ALL") {
-                loadLeads(selectedAgencyId, selectedTrelloListId)
-              }
-            } else {
-              // Actualizar el lead en la lista actual
-              setLeads((prev) => 
-                prev.map((lead) => 
-                  lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
-                )
+            setLeads((prev) =>
+              prev.map((lead) =>
+                lead.id === updatedLead.id ? { ...lead, ...updatedLead } : lead
               )
-            }
+            )
           } else if (payload.eventType === 'DELETE') {
             const deletedId = (payload.old as any)?.id
             if (deletedId) {
@@ -250,30 +224,25 @@ export function LeadsPageClient({
         }
       })
 
-    // Cleanup al desmontar
     return () => {
       console.log('🔌 Desconectando de Supabase Realtime...')
       supabase.removeChannel(channel)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads])
+  }, [selectedAgencyId, loadLeads])
 
-  // Cargar leads cuando cambia la agencia seleccionada o el filtro de lista
+  // Cargar leads cuando cambia la agencia seleccionada
   useEffect(() => {
-    // SIEMPRE cargar leads desde la API cuando se selecciona una agencia
-    // Esto asegura que se carguen todos los leads (hasta 2000) y no solo los initialLeads
     if (selectedAgencyId && selectedAgencyId !== "ALL") {
-      // Si es la carga inicial, usar un delay más corto
       const delay = initialLoad ? 50 : 100
       const timer = setTimeout(() => {
-        loadLeads(selectedAgencyId, selectedTrelloListId)
+        loadLeads(selectedAgencyId)
         if (initialLoad) {
           setInitialLoad(false)
         }
       }, delay)
       return () => clearTimeout(timer)
     } else if (selectedAgencyId === "ALL") {
-      // Si se selecciona "Todas las agencias", usar los initialLeads (solo Trello)
       setLeads(initialLeads)
       setLeadsHasMore(false)
       setLeadsTotal(initialLeads.length)
@@ -282,112 +251,19 @@ export function LeadsPageClient({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgencyId, selectedTrelloListId, loadLeads, initialLeads])
+  }, [selectedAgencyId, loadLeads, initialLeads])
 
   const handleRefresh = async () => {
-    await loadLeads(selectedAgencyId, selectedTrelloListId)
-  }
-
-  const handleRefreshLeads = async () => {
-    if (selectedAgencyId === "ALL") {
-      // Si es "ALL", solo recargar desde BD
-      await loadLeads(selectedAgencyId, selectedTrelloListId)
-      return
-    }
-
-    setSyncingTrello(true)
+    setRefreshing(true)
     try {
-      // Usar sincronización rápida con Trello
-      const response = await fetch("/api/trello/sync-quick", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agencyId: selectedAgencyId }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        const summary = data.summary
-        toast.success(
-          `✅ Sincronizado: ${summary.created || 0} nuevos, ${summary.updated || 0} actualizados, ${summary.deleted || 0} eliminados`,
-          { duration: 3000 }
-        )
-        
-        // Recargar leads desde BD después de la sincronización
-        await loadLeads(selectedAgencyId, selectedTrelloListId)
-      } else {
-        toast.error(data.error || "Error al sincronizar con Trello")
-      }
-    } catch (error: any) {
-      console.error("Error syncing Trello:", error)
-      toast.error("Error al sincronizar con Trello")
-    } finally {
-      setSyncingTrello(false)
-    }
-  }
-
-  const handleRefreshLeadsOld = async () => {
-    if (!selectedAgencyId || selectedAgencyId === "ALL") {
-      toast.error("Selecciona una agencia específica para refrescar leads")
-      return
-    }
-
-    setSyncingTrello(true)
-    try {
-      // Simplemente recargar los leads desde la BD (sin sincronizar con Trello)
-      // Esto es mucho más rápido y trae los leads actualizados
-      await loadLeads(selectedAgencyId, selectedTrelloListId)
+      await loadLeads(selectedAgencyId)
       toast.success("✅ Leads actualizados", { duration: 2000 })
     } catch (error) {
       console.error("Error refreshing leads:", error)
-      toast.error("Error al refrescar leads")
     } finally {
-      setSyncingTrello(false)
+      setRefreshing(false)
     }
   }
-
-
-  // Los leads ya vienen filtrados del servidor (solo Trello)
-  // SIEMPRE usar Trello Kanban si hay leads con trello_list_id
-  const trelloLeads = useMemo(
-    () => leads.filter((lead) => lead.trello_list_id !== null && lead.trello_list_id !== undefined),
-    [leads]
-  )
-  const hasTrelloLeadsInState = trelloLeads.length > 0
-  
-  // Usar la agencia seleccionada o la primera disponible
-  const effectiveAgencyId = selectedAgencyId !== "ALL" 
-    ? selectedAgencyId 
-    : (trelloLeads[0] as any)?.agency_id || agencies[0]?.id || defaultAgencyId
-  
-  // FORZAR uso de Trello Kanban si hay leads con trello_list_id Y tenemos agencyId
-  const shouldUseTrelloKanban = hasTrelloLeadsInState && !!effectiveAgencyId && effectiveAgencyId !== "ALL"
-
-  // Si hay leads de Trello, SIEMPRE usar el Kanban de Trello
-  const KanbanComponent = shouldUseTrelloKanban ? (
-    <LeadsKanbanTrello 
-      leads={trelloLeads as any} 
-      agencyId={effectiveAgencyId!}
-      agencies={agencies}
-      sellers={sellers}
-      operators={operators}
-      onRefresh={handleRefresh}
-      currentUserId={currentUserId}
-      currentUserRole={currentUserRole}
-      initialLeadId={initialLeadId}
-    />
-  ) : (
-    <LeadsKanban 
-      leads={leads as any}
-      agencies={agencies}
-      sellers={sellers}
-      operators={operators}
-      onRefresh={handleRefresh}
-      initialLeadId={initialLeadId}
-      currentUserId={currentUserId}
-      currentUserRole={currentUserRole}
-    />
-  )
 
   return (
     <div className="space-y-6">
@@ -417,18 +293,17 @@ export function LeadsPageClient({
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="font-medium mb-1">¿Cómo funciona?</p>
-                    <p className="text-xs mb-2"><strong>Leads:</strong> Oportunidades de venta en etapa inicial. Pueden venir de formularios web, Trello, o creación manual.</p>
-                    <p className="text-xs mb-2"><strong>Conversión:</strong> Cuando un lead se convierte en operación, todos los datos se transfieren automáticamente y el lead se marca como ganado.</p>
-                    <p className="text-xs">Los leads pueden estar sincronizados con Trello. El sistema actualiza automáticamente cuando hay cambios en tiempo real.</p>
+                    <p className="text-xs mb-2"><strong>Leads:</strong> Oportunidades de venta. Pueden venir de Manychat, formularios web, o creación manual.</p>
+                    <p className="text-xs">Cuando un lead se convierte en operación, todos los datos se transfieren automáticamente y el lead se marca como ganado.</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
             </div>
             {/* Indicador de conexión en tiempo real */}
-            <div 
+            <div
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
-                realtimeConnected 
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                realtimeConnected
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                   : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
               }`}
               title={realtimeConnected ? "Conectado - Los cambios se actualizan automáticamente" : "Conectando..."}
@@ -447,9 +322,7 @@ export function LeadsPageClient({
             </div>
           </div>
           <p className="text-muted-foreground">
-            {shouldUseTrelloKanban 
-              ? "Leads sincronizados desde Trello • Actualización automática" 
-              : "Gestiona tus leads y oportunidades"}
+            Gestiona tus leads y oportunidades
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -473,26 +346,23 @@ export function LeadsPageClient({
               </Select>
             </div>
           )}
-          {shouldUseTrelloKanban && selectedAgencyId !== "ALL" && (
-            <Button
-              variant="outline"
-              onClick={handleRefreshLeads}
-              disabled={syncingTrello}
-              title="Sincronizar con Trello y actualizar leads"
-            >
-              {syncingTrello ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Actualizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Actualizar Leads
-                </>
-              )}
-            </Button>
-          )}
+          <Button
+            variant="outline"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Actualizando...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Actualizar
+              </>
+            )}
+          </Button>
           <Button onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
@@ -502,9 +372,7 @@ export function LeadsPageClient({
 
       <Tabs defaultValue="kanban" className="w-full">
         <TabsList>
-          <TabsTrigger value="kanban">
-            {shouldUseTrelloKanban ? "Kanban Trello" : "Kanban"}
-          </TabsTrigger>
+          <TabsTrigger value="kanban">Kanban</TabsTrigger>
           <TabsTrigger value="table">Tabla</TabsTrigger>
         </TabsList>
         <TabsContent value="kanban">
@@ -514,8 +382,17 @@ export function LeadsPageClient({
             </div>
           ) : (
             <div className="space-y-4">
-              {KanbanComponent}
-              {shouldUseTrelloKanban && leadsHasMore && (
+              <LeadsKanban
+                leads={leads as any}
+                agencies={agencies}
+                sellers={sellers}
+                operators={operators}
+                onRefresh={() => loadLeads(selectedAgencyId)}
+                initialLeadId={initialLeadId}
+                currentUserId={currentUserId}
+                currentUserRole={currentUserRole}
+              />
+              {leadsHasMore && (
                 <div className="flex flex-col items-center gap-2 pt-2">
                   <p className="text-sm text-muted-foreground">
                     Mostrando {leads.length} de {leadsTotal} leads
@@ -544,7 +421,7 @@ export function LeadsPageClient({
             agencies={agencies}
             sellers={sellers}
             operators={operators}
-            onRefresh={handleRefresh}
+            onRefresh={() => loadLeads(selectedAgencyId)}
             agencyId={selectedAgencyId}
             sellerId={defaultSellerId}
           />
@@ -554,7 +431,7 @@ export function LeadsPageClient({
       <NewLeadDialog
         open={newLeadDialogOpen}
         onOpenChange={setNewLeadDialogOpen}
-        onSuccess={handleRefresh}
+        onSuccess={() => loadLeads(selectedAgencyId)}
         agencies={agencies}
         sellers={sellers}
         defaultAgencyId={selectedAgencyId !== "ALL" ? selectedAgencyId : defaultAgencyId}

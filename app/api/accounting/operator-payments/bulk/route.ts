@@ -60,7 +60,9 @@ export async function POST(request: Request) {
     }
 
     const accountCurrency = paymentAccount.currency as "ARS" | "USD"
+    console.log("[BulkPayment API] Cuenta:", paymentAccount.name, "currency:", accountCurrency, "payment_currency:", payment_currency)
     if (accountCurrency !== payment_currency) {
+      console.error("[BulkPayment API] ❌ Moneda mismatch:", accountCurrency, "vs", payment_currency)
       return NextResponse.json(
         { error: `La cuenta debe estar en ${payment_currency}. Cuenta actual: ${accountCurrency}.` },
         { status: 400 }
@@ -171,13 +173,16 @@ export async function POST(request: Request) {
     }
     const actualDebitFromAccount = roundMoney(totalDebit - bonusTotal)
 
+    console.log("[BulkPayment API] totalDebit:", totalDebit, "bonusTotal:", bonusTotal, "actualDebitFromAccount:", actualDebitFromAccount)
     const balanceCheck = await validateSufficientBalance(
       payment_account_id,
       actualDebitFromAccount,
       payment_currency as "ARS" | "USD",
       supabase
     )
+    console.log("[BulkPayment API] Balance check:", balanceCheck)
     if (!balanceCheck.valid) {
+      console.error("[BulkPayment API] ❌ Saldo insuficiente:", balanceCheck.error)
       return NextResponse.json(
         { error: balanceCheck.error ?? "Saldo insuficiente en la cuenta para el total a pagar." },
         { status: 400 }

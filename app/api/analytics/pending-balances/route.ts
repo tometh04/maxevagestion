@@ -18,8 +18,10 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
     const agencyId = searchParams.get("agencyId") || "ALL"
+    const dateFrom = searchParams.get("dateFrom") // YYYY-MM-DD
+    const dateTo = searchParams.get("dateTo") // YYYY-MM-DD
 
-    console.log("[PendingBalances] Iniciando cálculo de balances...")
+    console.log("[PendingBalances] Iniciando cálculo de balances...", { agencyId, dateFrom, dateTo })
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -32,7 +34,7 @@ export async function GET(request: Request) {
 
     try {
       // Obtener todas las operaciones con clientes
-      const { data: operations, error: operationsError } = await supabase
+      let operationsQuery = supabase
         .from("operations")
         .select(`
           id,
@@ -44,6 +46,16 @@ export async function GET(request: Request) {
           agency_id
         `)
         .in("agency_id", agencyIds)
+
+      // Filtrar por rango de fechas usando created_at (fecha de venta/carga, consistente con KPIs de ventas)
+      if (dateFrom) {
+        operationsQuery = operationsQuery.gte("created_at", `${dateFrom}T00:00:00.000Z`)
+      }
+      if (dateTo) {
+        operationsQuery = operationsQuery.lte("created_at", `${dateTo}T23:59:59.999Z`)
+      }
+
+      const { data: operations, error: operationsError } = await operationsQuery
 
       if (operationsError) {
         console.error("[PendingBalances] Error obteniendo operaciones:", operationsError)
@@ -125,7 +137,7 @@ export async function GET(request: Request) {
 
     try {
       // Obtener todos los pagos pendientes a operadores
-      const { data: operatorPayments, error: operatorPaymentsError } = await supabase
+      let opPaymentsQuery = supabase
         .from("operator_payments")
         .select(`
           id,
@@ -133,15 +145,26 @@ export async function GET(request: Request) {
           paid_amount,
           currency,
           status,
-          operations:operation_id (id, agency_id)
+          due_date,
+          operations:operation_id (id, agency_id, departure_date, created_at)
         `)
         .in("status", ["PENDING", "OVERDUE"])
+
+      const { data: operatorPayments, error: operatorPaymentsError } = await opPaymentsQuery
 
       if (operatorPaymentsError) {
         console.error("[PendingBalances] Error obteniendo pagos a operadores:", operatorPaymentsError)
       } else if (operatorPayments && operatorPayments.length > 0) {
+        // Filtrar por created_at de la operación asociada (consistente con KPIs de ventas)
+        let filteredPayments = operatorPayments.filter((p: any) => {
+          const operation = p.operations
+          if (!operation || !operation.created_at) return false
+          const opCreatedAt = operation.created_at
+          if (dateFrom && opCreatedAt < `${dateFrom}T00:00:00.000Z`) return false
+          if (dateTo && opCreatedAt > `${dateTo}T23:59:59.999Z`) return false
+          return true
+        })
         // Filtrar por agencia si se especifica
-        let filteredPayments = operatorPayments
         if (agencyId && agencyId !== "ALL") {
           filteredPayments = filteredPayments.filter((p: any) => {
             const operation = p.operations
