@@ -52,7 +52,7 @@ interface NavItem {
 const allNavigation: NavItem[] = [
   // Dashboard - NO colapsable
   {
-    title: "Dashboard",
+    title: "Resumen",
     url: "/dashboard",
     icon: LayoutDashboard,
     module: "dashboard",
@@ -66,7 +66,6 @@ const allNavigation: NavItem[] = [
     module: "operations",
     items: [
       { title: "Operaciones", url: "/operations" },
-      { title: "Estadísticas", url: "/operations/statistics" },
       { title: "Facturación", url: "/operations/billing" },
       { title: "Configuración", url: "/operations/settings" },
     ],
@@ -251,7 +250,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             >
               <a href="/dashboard">
                 <GalleryVerticalEnd className="!size-5" />
-                <span className="text-base font-semibold">MAXEVA GESTION</span>
+                <span className="text-base font-semibold">Lozada Rosario</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

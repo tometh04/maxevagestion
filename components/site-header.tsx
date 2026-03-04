@@ -12,7 +12,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell"
 
 const getPageTitle = (pathname: string): string => {
   const routes: Record<string, string> = {
-    "/dashboard": "Dashboard",
+    "/dashboard": "Resumen",
     "/sales/leads": "Leads",
     "/operations": "Operaciones",
     "/customers": "Clientes",
@@ -44,7 +44,7 @@ const getPageTitle = (pathname: string): string => {
     }
   }
 
-  return "MAXEVA GESTION"
+  return "Lozada Rosario"
 }
 
 export function SiteHeader() {
