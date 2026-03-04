@@ -73,8 +73,12 @@ export function applyLeadsFilters(
 ): any {
   const userRole = user.role as UserRole
 
-  // SELLER solo ve sus leads asignados
+  // SELLER ve todos los leads de sus agencias (para poder ver listas compartidas en el CRM y arrastrar leads)
   if (userRole === "SELLER") {
+    if (agencyIds.length > 0) {
+      return query.in("agency_id", agencyIds)
+    }
+    // Fallback: solo sus leads asignados si no tiene agencias
     return query.eq("assigned_seller_id", user.id)
   }
 
