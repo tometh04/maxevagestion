@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene acceso a esta agencia" }, { status: 403 })
     }
 
-    const { data: config } = await supabase
+    const { data: config } = await (supabase as any)
       .from('afip_config')
       .select('cuit, environment, punto_venta, automation_status, is_active, created_at')
       .eq('agency_id', agencyId)
