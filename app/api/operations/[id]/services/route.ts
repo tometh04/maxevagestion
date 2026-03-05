@@ -163,7 +163,12 @@ export async function POST(
 
     if (serviceError || !service) {
       console.error("[Services POST] Error creando servicio:", serviceError)
-      return NextResponse.json({ error: "Error al crear el servicio" }, { status: 500 })
+      return NextResponse.json({
+        error: "Error al crear el servicio",
+        details: serviceError?.message,
+        code: serviceError?.code,
+        hint: serviceError?.hint,
+      }, { status: 500 })
     }
 
     const serviceId = service.id

@@ -234,7 +234,8 @@ export function OperationServicesSection({
       const data = await res.json()
 
       if (!res.ok) {
-        setFormError(data.error || "Error al agregar el servicio")
+        const msg = [data.error, data.details, data.hint].filter(Boolean).join(" — ")
+        setFormError(msg || "Error al agregar el servicio")
         return
       }
 
