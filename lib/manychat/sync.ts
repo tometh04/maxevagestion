@@ -114,21 +114,102 @@ export async function determineAgencyId(
 }
 
 /**
- * Validar y normalizar región
- * Debe ser uno de los valores válidos, sino retorna "OTROS"
+ * Inferir región a partir del destino
+ * Si Manychat no envía región, la deducimos del destino
  */
-export function normalizeRegion(region: string | undefined): "ARGENTINA" | "CARIBE" | "BRASIL" | "EUROPA" | "EEUU" | "OTROS" | "CRUCEROS" {
+function inferRegionFromDestination(destino: string | undefined): "ARGENTINA" | "CARIBE" | "BRASIL" | "EUROPA" | "EEUU" | "OTROS" | "CRUCEROS" | null {
+  if (!destino) return null
+
+  const d = destino.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+
+  // CARIBE
+  const caribeDestinos = [
+    "punta cana", "bayahibe", "cancun", "riviera maya", "playa del carmen",
+    "aruba", "curacao", "curazao", "san andres", "cartagena", "jamaica",
+    "republica dominicana", "dominicana", "santo domingo", "la romana",
+    "varadero", "cuba", "bahamas", "barbados", "bonaire", "cozumel",
+    "puerto rico", "caribe", "isla margarita", "trinidad y tobago",
+    "costa rica", "panama", "honduras", "roatan", "belize",
+    "turks", "caicos", "antigua", "guadalupe", "martinica",
+    "miches", "samana", "santiago (rd)", "puerto plata",
+    "isla mujeres", "holbox", "tulum", "xcaret",
+    "san martin", "st maarten", "virgin islands", "islas virgenes",
+  ]
+
+  // BRASIL
+  const brasilDestinos = [
+    "brasil", "brazil", "rio de janeiro", "rio", "buzios", "florianopolis",
+    "floripa", "salvador", "bahia", "morro de sao paulo", "porto de galinhas",
+    "recife", "natal", "fortaleza", "sao paulo", "foz de iguazu", "iguazu",
+    "jericoacoara", "maragogi", "fernando de noronha", "porto seguro",
+    "camboriú", "balneario", "gramado", "arraial", "trancoso", "praia",
+  ]
+
+  // EUROPA
+  const europaDestinos = [
+    "europa", "paris", "roma", "madrid", "barcelona", "londres", "london",
+    "amsterdam", "berlin", "praga", "viena", "budapest", "atenas", "grecia",
+    "italia", "francia", "espana", "alemania", "portugal", "lisboa",
+    "milan", "venecia", "florencia", "santorini", "croacia", "dubrovnik",
+    "turquia", "estambul", "istanbul", "suiza", "zurich", "irlanda", "dublin",
+    "escocia", "noruega", "suecia", "dinamarca", "finlandia", "islandia",
+  ]
+
+  // EEUU
+  const eeuuDestinos = [
+    "miami", "orlando", "new york", "nueva york", "los angeles", "las vegas",
+    "disney", "disneyworld", "universal", "eeuu", "usa", "estados unidos",
+    "california", "hawaii", "hawai", "san francisco", "chicago", "boston",
+    "washington", "texas", "houston", "atlanta", "seattle", "denver",
+  ]
+
+  // ARGENTINA
+  const argentinaDestinos = [
+    "bariloche", "mendoza", "salta", "jujuy", "ushuaia", "calafate",
+    "el calafate", "buenos aires", "cordoba", "mar del plata", "villa la angostura",
+    "san martin de los andes", "iguazu", "cataratas", "tucuman", "patagonia",
+    "peninsula valdes", "tierra del fuego", "el chalten", "argentina",
+  ]
+
+  // CRUCEROS
+  const cruceroTerms = ["crucero", "cruise", "msc", "royal caribbean", "costa cruceros", "norwegian"]
+
+  if (cruceroTerms.some(t => d.includes(t))) return "CRUCEROS"
+  if (caribeDestinos.some(t => d.includes(t))) return "CARIBE"
+  if (brasilDestinos.some(t => d.includes(t))) return "BRASIL"
+  if (europaDestinos.some(t => d.includes(t))) return "EUROPA"
+  if (eeuuDestinos.some(t => d.includes(t))) return "EEUU"
+  if (argentinaDestinos.some(t => d.includes(t))) return "ARGENTINA"
+
+  return null
+}
+
+/**
+ * Validar y normalizar región
+ * Si la región no viene o es inválida, intenta inferirla del destino
+ */
+export function normalizeRegion(region: string | undefined, destino?: string): "ARGENTINA" | "CARIBE" | "BRASIL" | "EUROPA" | "EEUU" | "OTROS" | "CRUCEROS" {
   const validRegions = ["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]
-  
-  if (!region) return "OTROS"
-  
-  const normalized = region.toUpperCase().trim()
-  
-  // Verificar si es válido
-  if (validRegions.includes(normalized as any)) {
-    return normalized as any
+
+  if (region) {
+    const normalized = region.toUpperCase().trim()
+    if (validRegions.includes(normalized as any) && normalized !== "OTROS") {
+      return normalized as any
+    }
   }
-  
+
+  // Si no hay región válida (o es "OTROS"), inferir del destino
+  const inferred = inferRegionFromDestination(destino)
+  if (inferred) return inferred
+
+  // Si hay región "OTROS" explícita o no se pudo inferir
+  if (region) {
+    const normalized = region.toUpperCase().trim()
+    if (validRegions.includes(normalized as any)) {
+      return normalized as any
+    }
+  }
+
   return "OTROS"
 }
 
@@ -149,26 +230,41 @@ export function mapPhaseToStatus(phase: string | undefined): "NEW" | "IN_PROGRES
 
 /**
  * Detectar lista por región (igual que Zapier detectRegionList)
- * Normaliza el texto y detecta la región
+ * Normaliza el texto y detecta la región.
+ * Si la región no matchea, intenta inferir del destino.
  */
-function detectRegionList(region: string | undefined): string {
-  if (!region) return "Leads - Otros"
-  
-  // Normalizar igual que Zapier: lowercase, NFD, remover acentos, limpiar caracteres especiales
-  const normalized = region
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-  
-  if (normalized.includes("caribe")) return "Leads - Caribe"
-  if (normalized.includes("brasil")) return "Leads - Brasil"
-  if (normalized.includes("argentina")) return "Leads - Argentina"
-  if (normalized.includes("europa")) return "Leads - Europa"
-  if (normalized.includes("eeuu") || normalized.includes("usa")) return "Leads - EEUU"
-  
+function detectRegionList(region: string | undefined, destino?: string): string {
+  if (region) {
+    const normalized = region
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\w\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+
+    if (normalized.includes("caribe")) return "Leads - Caribe"
+    if (normalized.includes("brasil")) return "Leads - Brasil"
+    if (normalized.includes("argentina")) return "Leads - Argentina"
+    if (normalized.includes("europa")) return "Leads - Europa"
+    if (normalized.includes("eeuu") || normalized.includes("usa")) return "Leads - EEUU"
+    if (normalized.includes("crucero")) return "Leads - Exoticos"
+  }
+
+  // Fallback: inferir del destino
+  const inferred = inferRegionFromDestination(destino)
+  if (inferred) {
+    const regionToList: Record<string, string> = {
+      CARIBE: "Leads - Caribe",
+      BRASIL: "Leads - Brasil",
+      ARGENTINA: "Leads - Argentina",
+      EUROPA: "Leads - Europa",
+      EEUU: "Leads - EEUU",
+      CRUCEROS: "Leads - Exoticos",
+    }
+    return regionToList[inferred] || "Leads - Otros"
+  }
+
   return "Leads - Otros"
 }
 
@@ -203,9 +299,9 @@ export function determineListName(manychatData: ManychatLeadData): string {
     return "Leads - Instagram"
   }
   
-  // 4. SIN BUCKET + WHATSAPP → detectar región
+  // 4. SIN BUCKET + WHATSAPP → detectar región (con fallback a destino)
   if (!normalizedBucket && normalizedWhatsapp) {
-    return detectRegionList(region)
+    return detectRegionList(region, manychatData.destino)
   }
   
   // 5. DEFAULT → "Leads - Instagram"
@@ -235,7 +331,7 @@ export async function syncManychatLeadToLead(
   const contact_phone = (manychatData.whatsapp || "").trim()
   const contact_instagram = instagram
   const destination = (manychatData.destino || "Sin destino").trim()
-  const region = normalizeRegion(manychatData.region)
+  const region = normalizeRegion(manychatData.region, manychatData.destino)
   const status = mapPhaseToStatus(manychatData.phase)
   
   // 3. Construir descripción estructurada (igual que Zapier)
