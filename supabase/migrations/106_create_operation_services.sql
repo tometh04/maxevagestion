@@ -78,7 +78,7 @@ CREATE POLICY "Agency members can view their operation services"
   ON operation_services FOR SELECT
   USING (
     agency_id IN (
-      SELECT agency_id FROM agency_users WHERE user_id = auth.uid()
+      SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
   );
 
@@ -86,7 +86,7 @@ CREATE POLICY "Agency admins and sellers can insert operation services"
   ON operation_services FOR INSERT
   WITH CHECK (
     agency_id IN (
-      SELECT agency_id FROM agency_users WHERE user_id = auth.uid()
+      SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
   );
 
@@ -94,7 +94,7 @@ CREATE POLICY "Agency admins can update operation services"
   ON operation_services FOR UPDATE
   USING (
     agency_id IN (
-      SELECT agency_id FROM agency_users WHERE user_id = auth.uid()
+      SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
   );
 
@@ -102,7 +102,7 @@ CREATE POLICY "Agency admins can delete operation services"
   ON operation_services FOR DELETE
   USING (
     agency_id IN (
-      SELECT agency_id FROM agency_users WHERE user_id = auth.uid()
+      SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
   );
 
