@@ -206,8 +206,17 @@ export function LeadsKanbanManychat({
 
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
 
-  const handleDragStart = (leadId: string) => {
+  const handleDragStart = (leadId: string, e: React.DragEvent) => {
     setDraggedLead(leadId)
+    // Mejorar visual del drag: hacer el fantasma semitransparente
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move"
+      // Usar el elemento como drag image con offset centrado
+      const target = e.currentTarget as HTMLElement
+      if (target) {
+        e.dataTransfer.setDragImage(target, target.offsetWidth / 2, 20)
+      }
+    }
   }
 
   const handleDrop = async (targetListName: string) => {
@@ -604,9 +613,18 @@ export function LeadsKanbanManychat({
                       {/* ── Área de leads ── */}
                       <ScrollArea className="h-[calc(100vh-300px)]">
                         <div
-                          className="px-3 pb-3 space-y-2.5"
-                          onDragOver={(e) => { e.preventDefault(); setDragOverColumn(listName) }}
-                          onDragLeave={() => setDragOverColumn(null)}
+                          className={`px-3 pb-3 space-y-2.5 min-h-[200px] transition-colors duration-150 rounded-b-xl ${
+                            isDragOver ? "bg-primary/5 ring-2 ring-inset ring-primary/20" : ""
+                          }`}
+                          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverColumn(listName) }}
+                          onDragLeave={(e) => {
+                            // Solo resetear si realmente salimos del contenedor
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            const { clientX, clientY } = e
+                            if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+                              setDragOverColumn(null)
+                            }
+                          }}
                           onDrop={(e) => { e.preventDefault(); handleDrop(listName) }}
                         >
                           {listLeads.length === 0 ? (
@@ -621,14 +639,16 @@ export function LeadsKanbanManychat({
                               <div
                                 key={lead.id}
                                 draggable
-                                onDragStart={() => handleDragStart(lead.id)}
+                                onDragStart={(e) => handleDragStart(lead.id, e)}
+                                onDragEnd={() => { setDraggedLead(null); setDragOverColumn(null) }}
                                 onClick={() => { if (!draggedLead) { setSelectedLead(lead); setDialogOpen(true) } }}
                                 className={`
-                                  cursor-pointer rounded-xl border-l-4
+                                  cursor-grab active:cursor-grabbing rounded-xl border-l-4
                                   ${regionBorderColors[lead.region] || "border-l-gray-300"}
                                   bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm
                                   shadow-sm hover:shadow-lg hover:-translate-y-0.5
                                   transition-all duration-200 p-3.5
+                                  ${draggedLead === lead.id ? "opacity-40 scale-95 shadow-none" : ""}
                                 `}
                               >
                                 {/* Nombre + Claim button */}
