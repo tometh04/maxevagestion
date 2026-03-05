@@ -74,11 +74,17 @@ CREATE TRIGGER trigger_operation_services_updated_at
 -- 5. RLS
 ALTER TABLE operation_services ENABLE ROW LEVEL SECURITY;
 
+-- Helper: usuario tiene acceso a la agencia (member) o es SUPER_ADMIN/ADMIN
+-- Los SUPER_ADMIN no siempre tienen registro en user_agencies, acceden por rol.
+
 CREATE POLICY "Agency members can view their operation services"
   ON operation_services FOR SELECT
   USING (
     agency_id IN (
       SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('SUPER_ADMIN', 'ADMIN')
     )
   );
 
@@ -88,6 +94,9 @@ CREATE POLICY "Agency admins and sellers can insert operation services"
     agency_id IN (
       SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
+    OR EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('SUPER_ADMIN', 'ADMIN')
+    )
   );
 
 CREATE POLICY "Agency admins can update operation services"
@@ -96,6 +105,9 @@ CREATE POLICY "Agency admins can update operation services"
     agency_id IN (
       SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
     )
+    OR EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('SUPER_ADMIN', 'ADMIN')
+    )
   );
 
 CREATE POLICY "Agency admins can delete operation services"
@@ -103,6 +115,9 @@ CREATE POLICY "Agency admins can delete operation services"
   USING (
     agency_id IN (
       SELECT agency_id FROM user_agencies WHERE user_id = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM users WHERE id = auth.uid() AND role IN ('SUPER_ADMIN', 'ADMIN')
     )
   );
 
