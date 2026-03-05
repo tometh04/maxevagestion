@@ -72,6 +72,7 @@ interface Operation {
   operator_pending_amount?: number // A pagar (a operadores)
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
+  type?: string | null
 }
 
 interface OperationsTableProps {
@@ -331,6 +332,30 @@ export function OperationsTable({
         },
       },
       {
+        accessorKey: "type",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Tipo" />
+        ),
+        cell: ({ row }) => {
+          const typeLabels: Record<string, string> = {
+            FLIGHT: "Vuelo",
+            HOTEL: "Hotel",
+            PACKAGE: "Paquete",
+            CRUISE: "Crucero",
+            TRANSFER: "Transfer",
+            MIXED: "Mixto",
+            ASSISTANCE: "Asistencia",
+          }
+          const type = row.original.type
+          if (!type) return <div className="text-xs">-</div>
+          return (
+            <div className="text-xs font-medium">
+              {typeLabels[type] || type}
+            </div>
+          )
+        },
+      },
+      {
         accessorKey: "customer_name",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Cliente" />
@@ -582,6 +607,45 @@ export function OperationsTable({
             className="pl-9"
           />
         </div>
+        {/* Totales de la página actual */}
+        {operations.length > 0 && (() => {
+          const totals = operations.reduce((acc, op) => {
+            const currency = op.currency || "USD"
+            if (!acc[currency]) {
+              acc[currency] = { sale: 0, paid: 0, pending: 0, opPaid: 0, opPending: 0, margin: 0 }
+            }
+            const sale = op.sale_amount_total || 0
+            const paid = op.paid_amount || 0
+            const pendingAmt = op.pending_amount || Math.max(0, sale - paid)
+            const opPaid = op.operator_paid_amount || 0
+            const opCost = op.operator_cost || 0
+            const opPending = op.operator_pending_amount || Math.max(0, opCost - opPaid)
+            const margin = op.margin_amount || 0
+            acc[currency].sale += sale
+            acc[currency].paid += paid
+            acc[currency].pending += pendingAmt
+            acc[currency].opPaid += opPaid
+            acc[currency].opPending += opPending
+            acc[currency].margin += margin
+            return acc
+          }, {} as Record<string, { sale: number; paid: number; pending: number; opPaid: number; opPending: number; margin: number }>)
+
+          return (
+            <div className="flex flex-wrap gap-2 text-xs py-2 px-3 bg-muted/50 rounded-md border">
+              <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
+              {Object.entries(totals).map(([currency, t]) => (
+                <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
+                  <span className="font-semibold text-orange-600">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
+                  <span className="text-green-600">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
+                  <span className="text-orange-600">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
+                  <span className="text-emerald-700 font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
+                  {Object.keys(totals).length > 1 && <span className="text-muted-foreground">|</span>}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+
         <DataTable
           columns={columns}
           data={operations}
