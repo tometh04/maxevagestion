@@ -240,7 +240,7 @@ export async function POST(request: Request) {
       contact_email,
       contact_instagram,
       assigned_seller_id,
-      trello_list_id,
+      list_name,
       notes,
       quoted_price,
       has_deposit,
@@ -275,6 +275,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // Auto-asignar list_name según la región si no se proporcionó explícitamente
+    const regionToListName: Record<string, string> = {
+      ARGENTINA: "Leads - Argentina",
+      CARIBE: "Leads - Caribe",
+      BRASIL: "Leads - Brasil",
+      EUROPA: "Leads - Europa",
+      EEUU: "Leads - EEUU",
+      OTROS: "Leads - Otros",
+      CRUCEROS: "Leads - Exoticos",
+    }
+    const resolvedListName = list_name || regionToListName[region] || "Leads - Otros"
+
     const leadData: Record<string, any> = {
       agency_id,
       source: source || "Other",
@@ -286,7 +298,7 @@ export async function POST(request: Request) {
       contact_email: contact_email || null,
       contact_instagram: contact_instagram || null,
       assigned_seller_id: assigned_seller_id || (user.role === "SELLER" ? user.id : null),
-      trello_list_id: trello_list_id || null,
+      list_name: resolvedListName,
       notes: notes || null,
       quoted_price: quoted_price || null,
       has_deposit: has_deposit || false,

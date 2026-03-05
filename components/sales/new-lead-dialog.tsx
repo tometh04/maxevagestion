@@ -32,9 +32,19 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 
+const REGION_TO_LIST: Record<string, string> = {
+  ARGENTINA: "Leads - Argentina",
+  CARIBE: "Leads - Caribe",
+  BRASIL: "Leads - Brasil",
+  EUROPA: "Leads - Europa",
+  EEUU: "Leads - EEUU",
+  OTROS: "Leads - Otros",
+  CRUCEROS: "Leads - Exoticos",
+}
+
 const leadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Other"]),
+  source: z.enum(["Manychat", "Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]),
   destination: z.string().min(1, "El destino es requerido"),
@@ -43,7 +53,7 @@ const leadSchema = z.object({
   contact_email: z.string().email().optional().or(z.literal("")),
   contact_instagram: z.string().optional(),
   assigned_seller_id: z.string().optional().nullable(),
-  trello_list_id: z.string().optional().nullable(),
+  list_name: z.string().optional().nullable(),
   notes: z.string().optional(),
   quoted_price: z.coerce.number().min(0).optional().nullable(),
   has_deposit: z.boolean().default(false),
@@ -65,11 +75,6 @@ interface NewLeadDialogProps {
   defaultSellerId?: string
 }
 
-interface TrelloList {
-  id: string
-  name: string
-}
-
 export function NewLeadDialog({
   open,
   onOpenChange,
@@ -80,14 +85,14 @@ export function NewLeadDialog({
   defaultSellerId,
 }: NewLeadDialogProps) {
   const [loading, setLoading] = useState(false)
-  const [trelloLists, setTrelloLists] = useState<TrelloList[]>([])
+  const [crmLists, setCrmLists] = useState<string[]>([])
   const [loadingLists, setLoadingLists] = useState(false)
 
   const form = useForm<LeadFormValues>({
     resolver: zodResolver(leadSchema) as any,
     defaultValues: {
       agency_id: defaultAgencyId || "",
-      source: "Other",
+      source: "Manychat",
       status: "NEW",
       region: "ARGENTINA",
       destination: "",
@@ -96,7 +101,7 @@ export function NewLeadDialog({
       contact_email: "",
       contact_instagram: "",
       assigned_seller_id: defaultSellerId || null,
-      trello_list_id: null,
+      list_name: REGION_TO_LIST["ARGENTINA"],
       notes: "",
       quoted_price: null,
       has_deposit: false,
@@ -109,37 +114,50 @@ export function NewLeadDialog({
 
   const watchedAgencyId = form.watch("agency_id")
 
-  // Cargar listas de Trello cuando cambia la agencia seleccionada
+  const watchedRegion = form.watch("region")
+
+  // Auto-asignar lista cuando cambia la región
   useEffect(() => {
-    const fetchTrelloLists = async () => {
+    if (watchedRegion) {
+      const defaultList = REGION_TO_LIST[watchedRegion]
+      if (defaultList) {
+        form.setValue("list_name", defaultList)
+      }
+    }
+  }, [watchedRegion, form])
+
+  // Cargar listas del CRM cuando cambia la agencia seleccionada
+  useEffect(() => {
+    const fetchCrmLists = async () => {
       if (!watchedAgencyId) {
-        setTrelloLists([])
-        form.setValue("trello_list_id", null)
+        setCrmLists([])
         return
       }
 
       setLoadingLists(true)
       try {
-        const response = await fetch(`/api/trello/lists?agencyId=${watchedAgencyId}`)
+        const response = await fetch(`/api/manychat/list-order?agencyId=${watchedAgencyId}`)
         const data = await response.json()
-        
-        if (data.lists && Array.isArray(data.lists)) {
-          setTrelloLists(data.lists)
+
+        if (data.listNames && Array.isArray(data.listNames) && data.listNames.length > 0) {
+          // Filtrar solo listas que empiecen con "Leads - " (excluir las viejas de Trello)
+          const validLists = data.listNames.filter((name: string) => name.startsWith("Leads - "))
+          setCrmLists(validLists)
         } else {
-          setTrelloLists([])
+          setCrmLists([])
         }
       } catch (error) {
-        console.error("Error fetching Trello lists:", error)
-        setTrelloLists([])
+        console.error("Error fetching CRM lists:", error)
+        setCrmLists([])
       } finally {
         setLoadingLists(false)
       }
     }
 
     if (open && watchedAgencyId) {
-      fetchTrelloLists()
+      fetchCrmLists()
     }
-  }, [watchedAgencyId, open, form])
+  }, [watchedAgencyId, open])
 
   const handleSubmit = async (values: LeadFormValues) => {
     setLoading(true)
@@ -152,7 +170,7 @@ export function NewLeadDialog({
           contact_email: values.contact_email || null,
           contact_instagram: values.contact_instagram || null,
           assigned_seller_id: values.assigned_seller_id || null,
-          trello_list_id: values.trello_list_id || null,
+          list_name: values.list_name || null,
           notes: values.notes || null,
           quoted_price: values.quoted_price || null,
           has_deposit: values.has_deposit || false,
@@ -259,9 +277,12 @@ export function NewLeadDialog({
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="Manychat">Manychat</SelectItem>
                         <SelectItem value="Instagram">Instagram</SelectItem>
                         <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                         <SelectItem value="Meta Ads">Meta Ads</SelectItem>
+                        <SelectItem value="Referido">Referido</SelectItem>
+                        <SelectItem value="Cliente">Cliente</SelectItem>
                         <SelectItem value="Other">Otro</SelectItem>
                       </SelectContent>
                     </Select>
@@ -337,31 +358,39 @@ export function NewLeadDialog({
               )}
             />
 
-            {/* Selector de Lista de Trello - Solo si hay listas disponibles */}
-            {watchedAgencyId && trelloLists.length > 0 && (
+            {/* Selector de Lista del CRM */}
+            {watchedAgencyId && (
               <FormField
                 control={form.control}
-                name="trello_list_id"
+                name="list_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Lista de Trello (Opcional)</FormLabel>
+                    <FormLabel>Lista del CRM</FormLabel>
                     <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
+                      onValueChange={field.onChange}
+                      value={field.value || REGION_TO_LIST[watchedRegion] || "Leads - Otros"}
                       disabled={loadingLists}
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={loadingLists ? "Cargando listas..." : "Sin lista de Trello"} />
+                          <SelectValue placeholder={loadingLists ? "Cargando listas..." : "Seleccionar lista"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none">Sin lista de Trello</SelectItem>
-                        {trelloLists.map((list) => (
-                          <SelectItem key={list.id} value={list.id}>
-                            {list.name}
-                          </SelectItem>
-                        ))}
+                        {crmLists.length > 0 ? (
+                          crmLists.map((listName) => (
+                            <SelectItem key={listName} value={listName}>
+                              {listName}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          // Fallback: mostrar listas por defecto si no hay listas configuradas
+                          Object.values(REGION_TO_LIST).map((listName) => (
+                            <SelectItem key={listName} value={listName}>
+                              {listName}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
