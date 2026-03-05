@@ -205,7 +205,7 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
                   ? `/operations/${result.id}`
                   : result.type === "operator"
                     ? `/operators/${result.id}`
-                    : `/sales/leads?leadId=${result.id}`
+                    : `/sales/crm-manychat?leadId=${result.id}`
 
               // Labels para el tipo
               const typeLabels: Record<string, string> = {
