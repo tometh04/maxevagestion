@@ -46,7 +46,6 @@ export async function GET(request: Request) {
 
     // Step 2: Crear instancia SDK
     steps.push({ step: "2_create_sdk_instance", status: "running" })
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     const Afip = eval('require')('@afipsdk/afip.js')
     const apiKey = process.env.AFIP_SDK_API_KEY || ''
     const isProd = afipConfig.environment === 'production' || afipConfig.environment === 'prod'
