@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
 
     // Verificar si ya existe configuración
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from("afip_config")
       .select("id")
       .maybeSingle()
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
       }
     } else {
       // Crear
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("afip_config")
         .insert({
           cuit,
@@ -87,7 +87,7 @@ export async function GET() {
 
     const supabase = await createServerClient()
 
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from("afip_config")
       .select("*")
       .maybeSingle()
