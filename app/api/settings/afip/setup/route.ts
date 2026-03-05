@@ -45,12 +45,12 @@ export async function POST(request: Request) {
     const automationStatus = automationResult.success ? 'complete' : 'failed'
 
     // Upsert config en BD (desactivar anteriores primero)
-    await supabase
+    await (supabase as any)
       .from('afip_config')
       .update({ is_active: false })
       .eq('agency_id', agency_id)
 
-    const { data: config, error: insertError } = await supabase
+    const { data: config, error: insertError } = await (supabase as any)
       .from('afip_config')
       .insert({
         agency_id,

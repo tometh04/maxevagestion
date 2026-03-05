@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     // Si no se pasa agencyId, buscar la primera agencia con AFIP configurado
     if (!agencyId) {
-      const { data: configs } = await supabase
+      const { data: configs } = await (supabase as any)
         .from('afip_config')
         .select('agency_id')
         .eq('is_active', true)
@@ -46,7 +46,8 @@ export async function GET(request: Request) {
 
     // Step 2: Crear instancia SDK
     steps.push({ step: "2_create_sdk_instance", status: "running" })
-    const Afip = require('@afipsdk/afip.js')
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const Afip = eval('require')('@afipsdk/afip.js')
     const apiKey = process.env.AFIP_SDK_API_KEY || ''
     const isProd = afipConfig.environment === 'production' || afipConfig.environment === 'prod'
     const afip = new Afip({
