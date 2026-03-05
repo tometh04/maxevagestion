@@ -394,6 +394,11 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
 6. Si no estás seguro, ejecuta una query para verificar
 7. Para métricas monetarias, SIEMPRE indica la moneda (USD o ARS)
 8. Para fechas, usa formato amigable (ej: "15 de enero" en lugar de "2025-01-15")
+9. TIPOS DE OPERACIÓN: cuando pregunten por "paquetes", "vuelos", "hoteles", "asistencias", "cruceros", "transfers" o "mixtos",
+   SIEMPRE filtrar por operations.type. Mapeo: paquete/paquetes→'PACKAGE', vuelo/vuelos/aéreo→'FLIGHT',
+   hotel/hoteles→'HOTEL', crucero/cruceros→'CRUISE', transfer/transfers/traslado→'TRANSFER',
+   mixto/mixtos→'MIXED', asistencia/asistencias/assist→'ASSISTANCE'.
+   "Cuántos paquetes vendimos" = COUNT WHERE type='PACKAGE', NO es COUNT de todas las operaciones.
 
 📊 ESQUEMA COMPLETO:
 ${DATABASE_SCHEMA}
@@ -565,6 +570,33 @@ AND o.status NOT IN ('CANCELLED')
 GROUP BY destination
 ORDER BY total_ventas_usd DESC LIMIT 10
 
+-- Operaciones por tipo (cuántos paquetes, vuelos, hoteles, asistencias, etc.)
+-- IMPORTANTE: cuando pregunten "cuántos paquetes vendimos", "cuántas asistencias", "vuelos vendidos", etc.
+-- SIEMPRE filtrar por type. Los valores son: 'PACKAGE' (paquete), 'FLIGHT' (vuelo), 'HOTEL' (hotel),
+-- 'CRUISE' (crucero), 'TRANSFER' (transfer), 'MIXED' (mixto), 'ASSISTANCE' (asistencia)
+SELECT type, COUNT(*) as cantidad,
+  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd
+FROM operations o
+LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
+LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
+WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
+AND o.status NOT IN ('CANCELLED')
+GROUP BY type ORDER BY cantidad DESC
+
+-- Paquetes vendidos (cuántos paquetes vendimos)
+SELECT COUNT(*) as cantidad_paquetes
+FROM operations
+WHERE type = 'PACKAGE'
+AND status NOT IN ('CANCELLED')
+AND operation_date >= date_trunc('month', CURRENT_DATE)
+
+-- Asistencias vendidas
+SELECT COUNT(*) as cantidad_asistencias
+FROM operations
+WHERE type = 'ASSISTANCE'
+AND status NOT IN ('CANCELLED')
+AND operation_date >= date_trunc('month', CURRENT_DATE)
+
 -- Facturas emitidas (este mes)
 SELECT COUNT(*) as cantidad, SUM(imp_total) as total_facturado, status
 FROM invoices
@@ -643,7 +675,7 @@ ORDER BY fa.currency, balance_actual DESC
 - Sé amigable pero profesional
 - Explica números grandes en formato legible (ej: "$125,000" en lugar de "$125000")
 - Para fechas, usa formato amigable (ej: "15 de enero de 2025")
-- Si hay muchos resultados, muestra solo los primeros y menciona el total
+- SIEMPRE muestra TODOS los resultados completos, nunca los trunces ni digas "y más...". El usuario necesita la lista completa para pasarla a su equipo
 - Usa emojis para hacer las respuestas más visuales y amigables
 `
 
@@ -738,7 +770,7 @@ export async function POST(request: Request) {
       tools,
       tool_choice: "auto",
       temperature: 0.3,
-      max_tokens: 2000
+      max_tokens: 8000
     })
 
     let assistantMessage = response.choices[0].message
@@ -800,7 +832,7 @@ export async function POST(request: Request) {
         tools,
         tool_choice: "auto",
         temperature: 0.3,
-        max_tokens: 2000
+        max_tokens: 8000
       })
 
       assistantMessage = response.choices[0].message
