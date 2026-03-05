@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -171,6 +171,41 @@ export function LeadsKanbanManychat({
   const isSeller = currentUserRole === "SELLER"
   const canCreateLists = isAdmin || isSeller
 
+  // Auto-scroll horizontal durante drag de cards
+  const kanbanContainerRef = useRef<HTMLDivElement>(null)
+  const scrollIntervalRef = useRef<number | null>(null)
+  const isDraggingCardRef = useRef(false)
+
+  const stopAutoScroll = () => {
+    if (scrollIntervalRef.current !== null) {
+      clearInterval(scrollIntervalRef.current)
+      scrollIntervalRef.current = null
+    }
+  }
+
+  // Listener permanente en document — usa ref síncrono para evitar
+  // el problema de timing de React 18 con batched state updates
+  useEffect(() => {
+    const handleDragScroll = (e: DragEvent) => {
+      if (!isDraggingCardRef.current) return
+      const container = kanbanContainerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      const threshold = 100
+      if (e.clientX < rect.left + threshold) {
+        if (scrollIntervalRef.current !== null) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null }
+        scrollIntervalRef.current = window.setInterval(() => { kanbanContainerRef.current?.scrollBy({ left: -15 }) }, 16)
+      } else if (e.clientX > rect.right - threshold) {
+        if (scrollIntervalRef.current !== null) { clearInterval(scrollIntervalRef.current); scrollIntervalRef.current = null }
+        scrollIntervalRef.current = window.setInterval(() => { kanbanContainerRef.current?.scrollBy({ left: 15 }) }, 16)
+      } else {
+        stopAutoScroll()
+      }
+    }
+    document.addEventListener('dragover', handleDragScroll)
+    return () => { document.removeEventListener('dragover', handleDragScroll) }
+  }, [])
+
   // Sensors para drag de columnas
   const columnSensors = useSensors(
     useSensor(PointerSensor, {
@@ -207,6 +242,7 @@ export function LeadsKanbanManychat({
   const canClaimLeads = currentUserRole === "SELLER" || currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
 
   const handleDragStart = (leadId: string, e: React.DragEvent) => {
+    isDraggingCardRef.current = true  // síncrono: disponible antes del primer dragover
     setDraggedLead(leadId)
     // Mejorar visual del drag: hacer el fantasma semitransparente
     if (e.dataTransfer) {
@@ -220,6 +256,8 @@ export function LeadsKanbanManychat({
   }
 
   const handleDrop = async (targetListName: string) => {
+    isDraggingCardRef.current = false
+    stopAutoScroll()
     setDragOverColumn(null)
     if (!draggedLead) return
 
@@ -510,7 +548,7 @@ export function LeadsKanbanManychat({
       {/* ── Kanban Board ── */}
       <DndContext sensors={columnSensors} collisionDetection={closestCenter} onDragEnd={handleColumnDragEnd}>
         <SortableContext items={filteredListNames} strategy={horizontalListSortingStrategy}>
-          <div className="flex gap-5 overflow-x-auto pb-4">
+          <div ref={kanbanContainerRef} className="flex gap-5 overflow-x-auto pb-4">
             {filteredListNames.map((listName) => {
               const listLeads = leadsByListName[listName] || []
               const isDragOver = dragOverColumn === listName
@@ -640,7 +678,7 @@ export function LeadsKanbanManychat({
                                 key={lead.id}
                                 draggable
                                 onDragStart={(e) => handleDragStart(lead.id, e)}
-                                onDragEnd={() => { setDraggedLead(null); setDragOverColumn(null) }}
+                                onDragEnd={() => { isDraggingCardRef.current = false; stopAutoScroll(); setDraggedLead(null); setDragOverColumn(null) }}
                                 onClick={() => { if (!draggedLead) { setSelectedLead(lead); setDialogOpen(true) } }}
                                 className={`
                                   cursor-grab active:cursor-grabbing rounded-xl border-l-4
