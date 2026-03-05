@@ -52,14 +52,30 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // 3. Si el lead es de Manychat, NO sincronizar con Trello - solo asignar en DB
+    // 3. Si el lead es de Manychat, asignar en DB y mover a la lista del vendedor
     if (leadData.source === "Manychat") {
+      // Buscar la lista personal del vendedor en manychat_list_order
+      const { data: sellerList } = await supabase
+        .from("manychat_list_order")
+        .select("list_name")
+        .eq("agency_id", leadData.agency_id)
+        .eq("seller_id", user.id)
+        .limit(1)
+        .single()
+
+      const updateData: Record<string, any> = {
+        assigned_seller_id: user.id,
+        updated_at: new Date().toISOString(),
+      }
+
+      // Si el vendedor tiene lista personal, mover el lead ahí
+      if (sellerList?.list_name) {
+        updateData.list_name = sellerList.list_name
+      }
+
       const { error: updateError } = await (supabase
         .from("leads") as any)
-        .update({
-          assigned_seller_id: user.id,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq("id", leadId)
 
       if (updateError) {
@@ -67,9 +83,10 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Error al asignar el lead" }, { status: 500 })
       }
 
-      return NextResponse.json({ 
-        success: true, 
-        message: "Lead asignado correctamente" 
+      return NextResponse.json({
+        success: true,
+        message: "Lead asignado correctamente",
+        newListName: sellerList?.list_name || null,
       })
     }
 

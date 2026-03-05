@@ -344,13 +344,22 @@ export function LeadsKanbanManychat({
     e.stopPropagation()
     setClaimingLeadId(leadId)
 
-    // OPTIMISTIC: Asignar inmediatamente en la UI
+    // Buscar la lista personal del vendedor actual
+    const sellerList = listOrder.find(l => l.seller_id === currentUserId)
+    const currentLead = leads.find(l => l.id === leadId)
+    const previousListName = currentLead?.list_name || null
+
+    // OPTIMISTIC: Asignar inmediatamente en la UI y mover a la lista del vendedor
     if (currentUserId) {
       const sellerName = sellers.find(s => s.id === currentUserId)?.name || "Tú"
-      onUpdateLead?.(leadId, {
+      const updates: Partial<Lead> = {
         assigned_seller_id: currentUserId,
         users: { name: sellerName, email: "" },
-      })
+      }
+      if (sellerList) {
+        updates.list_name = sellerList.name
+      }
+      onUpdateLead?.(leadId, updates)
     }
 
     try {
@@ -362,7 +371,7 @@ export function LeadsKanbanManychat({
       const data = await response.json()
       if (!response.ok) {
         // Rollback
-        onUpdateLead?.(leadId, { assigned_seller_id: null, users: null })
+        onUpdateLead?.(leadId, { assigned_seller_id: null, users: null, list_name: previousListName })
         toast.error(data.error || "Error al agarrar el lead")
         return
       }
@@ -370,7 +379,7 @@ export function LeadsKanbanManychat({
       if (data.warning) toast.warning(data.warning, { duration: 5000 })
     } catch (error) {
       // Rollback
-      onUpdateLead?.(leadId, { assigned_seller_id: null, users: null })
+      onUpdateLead?.(leadId, { assigned_seller_id: null, users: null, list_name: previousListName })
       toast.error("Error al agarrar el lead")
     } finally {
       setClaimingLeadId(null)
