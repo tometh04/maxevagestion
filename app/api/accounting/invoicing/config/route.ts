@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       if (access_token !== "********") {
         updateData.access_token = access_token
       }
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from("afip_config")
         .update(updateData)
         .eq("id", existing.id)
