@@ -174,35 +174,9 @@ export async function POST(
     const serviceId = service.id
     const updates: Record<string, string> = {}
 
-    // ── 2. Deuda del cliente → payments (INCOME, PENDING) ──
-    if (saleAmount > 0) {
-      try {
-        const { data: payment, error: paymentError } = await (supabase.from("payments") as any)
-          .insert({
-            operation_id: operationId,
-            payer_type: "CUSTOMER",
-            direction: "INCOME",
-            method: "OTHER",
-            amount: saleAmount,
-            currency: sale_currency,
-            date_due: departureDate,
-            status: "PENDING",
-            reference: `Servicio: ${serviceLabel} - Op. ${fileCode}`,
-          })
-          .select("id")
-          .single()
-
-        if (!paymentError && payment) {
-          updates.payment_id = payment.id
-        } else {
-          console.error("[Services POST] Error creando payment:", paymentError)
-        }
-      } catch (error) {
-        console.error("[Services POST] Error en payment:", error)
-      }
-    }
-
-    // ── 3. Deuda nuestra al operador → operator_payments ──
+    // ── 2. Deuda nuestra al operador → operator_payments ──
+    // NOTA: El pago del cliente (INCOME) se registra aparte desde la pestaña "Pagos"
+    // del servicio, vinculando el payment con operation_service_id.
     if (costAmount > 0 && operator_id) {
       try {
         const opPayment = await createOperatorPayment(
