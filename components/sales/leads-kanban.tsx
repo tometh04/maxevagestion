@@ -77,26 +77,48 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
     }
   }
 
-  const handleContainerDragOver = (e: React.DragEvent) => {
-    if (!containerRef.current || !draggedLead) return
-    const rect = containerRef.current.getBoundingClientRect()
-    const threshold = 80
-    if (e.clientX < rect.left + threshold) {
-      if (scrollIntervalRef.current === null) {
+  // Escuchar en document para que funcione aunque el cursor esté sobre elementos hijos
+  useEffect(() => {
+    if (!draggedLead) {
+      stopAutoScroll()
+      return
+    }
+
+    const handleDragScroll = (e: DragEvent) => {
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      const threshold = 100
+
+      if (e.clientX < rect.left + threshold) {
+        // zona izquierda: parar scroll derecho y arrancar izquierdo
+        if (scrollIntervalRef.current !== null) {
+          clearInterval(scrollIntervalRef.current)
+          scrollIntervalRef.current = null
+        }
         scrollIntervalRef.current = window.setInterval(() => {
-          containerRef.current?.scrollBy({ left: -8 })
+          containerRef.current?.scrollBy({ left: -15 })
         }, 16)
-      }
-    } else if (e.clientX > rect.right - threshold) {
-      if (scrollIntervalRef.current === null) {
+      } else if (e.clientX > rect.right - threshold) {
+        // zona derecha: parar scroll izquierdo y arrancar derecho
+        if (scrollIntervalRef.current !== null) {
+          clearInterval(scrollIntervalRef.current)
+          scrollIntervalRef.current = null
+        }
         scrollIntervalRef.current = window.setInterval(() => {
-          containerRef.current?.scrollBy({ left: 8 })
+          containerRef.current?.scrollBy({ left: 15 })
         }, 16)
+      } else {
+        stopAutoScroll()
       }
-    } else {
+    }
+
+    document.addEventListener('dragover', handleDragScroll)
+    return () => {
+      document.removeEventListener('dragover', handleDragScroll)
       stopAutoScroll()
     }
-  }
+  }, [draggedLead])
 
   // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
@@ -182,7 +204,6 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
     <div
       ref={containerRef}
       className="flex gap-4 overflow-x-auto pb-4"
-      onDragOver={handleContainerDragOver}
       onDragEnd={stopAutoScroll}
     >
       {statusColumns.map((column) => (
