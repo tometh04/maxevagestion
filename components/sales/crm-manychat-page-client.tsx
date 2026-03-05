@@ -274,8 +274,8 @@ export function CRMManychatPageClient({
         backgroundRepeat: 'no-repeat',
       }}
     >
-      {/* Overlay para legibilidad del contenido */}
-      <div className="absolute inset-0 bg-white/60 dark:bg-gray-950/70 pointer-events-none" />
+      {/* Overlay degradé naranja del sidebar para legibilidad */}
+      <div className="absolute inset-0 bg-gradient-to-br from-orange-600/70 via-orange-500/60 to-amber-400/50 pointer-events-none dark:from-orange-900/80 dark:via-orange-800/70 dark:to-amber-900/60" />
 
       {/* Contenido */}
       <div className="relative space-y-6">
