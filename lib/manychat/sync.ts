@@ -327,7 +327,10 @@ export async function syncManychatLeadToLead(
   
   // 2. Mapear campos
   const instagram = normalizeInstagram(manychatData.ig)
-  const contact_name = (manychatData.name || manychatData.ig || "Sin nombre").trim()
+  const rawName = (manychatData.name || "Sin nombre").trim()
+  const contactId = manychatData.whatsapp?.trim() || manychatData.ig?.trim() || ""
+  const dest = (manychatData.destino || "Sin destino").trim()
+  const contact_name = `${dest} - ${rawName}${contactId ? ` - ${contactId}` : ""}`
   const contact_phone = (manychatData.whatsapp || "").trim()
   const contact_instagram = instagram
   const destination = (manychatData.destino || "Sin destino").trim()

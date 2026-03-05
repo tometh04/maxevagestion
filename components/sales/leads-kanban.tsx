@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -65,6 +65,38 @@ interface LeadsKanbanProps {
 export function LeadsKanban({ leads, agencies = [], sellers = [], operators = [], onRefresh, currentUserId, currentUserRole, initialLeadId }: LeadsKanbanProps) {
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
+
+  // Auto-scroll horizontal durante drag
+  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollIntervalRef = useRef<number | null>(null)
+
+  const stopAutoScroll = () => {
+    if (scrollIntervalRef.current !== null) {
+      clearInterval(scrollIntervalRef.current)
+      scrollIntervalRef.current = null
+    }
+  }
+
+  const handleContainerDragOver = (e: React.DragEvent) => {
+    if (!containerRef.current || !draggedLead) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const threshold = 80
+    if (e.clientX < rect.left + threshold) {
+      if (scrollIntervalRef.current === null) {
+        scrollIntervalRef.current = window.setInterval(() => {
+          containerRef.current?.scrollBy({ left: -8 })
+        }, 16)
+      }
+    } else if (e.clientX > rect.right - threshold) {
+      if (scrollIntervalRef.current === null) {
+        scrollIntervalRef.current = window.setInterval(() => {
+          containerRef.current?.scrollBy({ left: 8 })
+        }, 16)
+      }
+    } else {
+      stopAutoScroll()
+    }
+  }
 
   // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
@@ -147,7 +179,12 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div
+      ref={containerRef}
+      className="flex gap-4 overflow-x-auto pb-4"
+      onDragOver={handleContainerDragOver}
+      onDragEnd={stopAutoScroll}
+    >
       {statusColumns.map((column) => (
         <div key={column.id} className="flex min-w-[280px] flex-col">
           <div className={`rounded-t-lg p-3 ${column.color}`}>
