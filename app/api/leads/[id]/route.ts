@@ -125,8 +125,9 @@ export async function PATCH(
     // Si el lead está sincronizado con Trello (tiene external_id), solo permitir editar ciertos campos
     // Los leads de Manychat que crean tarjetas pero no están sincronizados pueden editarse completamente
     if (lead.source === "Trello" && lead.external_id) {
-      // Solo permitir editar campos que no afectan la sincronización
-      const allowedFields = ["assigned_seller_id", "notes"]
+      // Solo permitir editar campos que no afectan la sincronización con Trello
+      // list_name es un campo interno del Kanban (no se sincroniza de vuelta a Trello)
+      const allowedFields = ["assigned_seller_id", "notes", "list_name"]
       const updateData: any = {}
       
       for (const field of allowedFields) {
