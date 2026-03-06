@@ -41,25 +41,9 @@ export async function DELETE(
 
     const lead = currentLead as any
 
-    // Check permissions for SELLER:
-    // - Can delete leads assigned to them
-    // - Can delete unassigned leads
-    // - Cannot delete leads assigned to OTHER sellers
-    if (user.role === "SELLER") {
-      const isAssignedToOther = lead.assigned_seller_id && lead.assigned_seller_id !== user.id
-      if (isAssignedToOther) {
-        return NextResponse.json({ error: "No puedes eliminar leads asignados a otros vendedores" }, { status: 403 })
-      }
-    }
-
-    // Si el lead viene de Trello, no permitir eliminarlo desde aquí
-    // Debe eliminarse desde Trello para mantener la sincronización
-    if (lead.source === "Trello" && lead.external_id) {
-      return NextResponse.json(
-        { error: "No se puede eliminar un lead sincronizado con Trello. Elimínalo desde Trello." },
-        { status: 400 }
-      )
-    }
+    // Propiedad total sobre leads: cualquier usuario con permiso puede eliminar cualquier lead,
+    // independientemente de si está asignado a otro vendedor o si viene de Trello.
+    // Única restricción de integridad: no se puede eliminar si está vinculado a una operación.
 
     // Check if lead is linked to an operation
     const { data: operations } = await supabase
@@ -118,55 +102,20 @@ export async function PATCH(
 
     const lead = currentLead as any
 
-    // Check permissions for SELLER:
-    // - Can edit any lead (assigned to them, unassigned, or assigned to another seller)
-    // - Opción A: reasignación libre — cualquier vendedor puede tomar cualquier lead
+    // Propiedad total: una vez en el sistema, el lead es nuestro.
+    // Cualquier usuario con permiso puede editar cualquier campo de cualquier lead,
+    // sin importar su origen (Trello, Manychat) ni a quién esté asignado.
 
-    // Si el lead está sincronizado con Trello (tiene external_id), solo permitir editar ciertos campos
-    // Los leads de Manychat que crean tarjetas pero no están sincronizados pueden editarse completamente
-    if (lead.source === "Trello" && lead.external_id) {
-      // Solo permitir editar campos que no afectan la sincronización con Trello
-      // list_name es un campo interno del Kanban (no se sincroniza de vuelta a Trello)
-      const allowedFields = ["assigned_seller_id", "notes", "list_name"]
-      const updateData: any = {}
-      
-      for (const field of allowedFields) {
-        if (body[field] !== undefined) {
-          updateData[field] = body[field]
-        }
-      }
-
-      updateData.updated_at = new Date().toISOString()
-
-      const { error } = await (supabase.from("leads") as any)
-        .update(updateData)
-        .eq("id", id)
-
-      if (error) {
-        console.error("Error updating lead:", error)
-        return NextResponse.json({ error: "Error al actualizar lead" }, { status: 500 })
-      }
-
-      return NextResponse.json({ success: true, lead: { id } })
-    }
-
-    // Lead no sincronizado con Trello (Manychat o Trello sin external_id) - permitir editar todos los campos
     const updateData: any = {
       ...body,
       updated_at: new Date().toISOString(),
     }
 
-    // Remove fields that shouldn't be updated directly
+    // Proteger campos del sistema que nunca deben modificarse directamente
     delete updateData.id
     delete updateData.created_at
-    delete updateData.external_id
-    delete updateData.trello_url
-    // Para leads de Manychat, permitir actualizar list_name
-    // Para leads de Trello sin external_id, NO permitir actualizar list_name (se sincroniza desde Trello)
-    if (lead.source === "Trello" && !lead.external_id) {
-      delete updateData.list_name
-      delete updateData.trello_list_id
-    }
+    delete updateData.external_id  // ID en Trello — no tocar
+    delete updateData.trello_url   // URL en Trello — no tocar
 
     // Auto-asignar seller cuando se mueve a una lista con dueño
     if (body.list_name && body.list_name !== lead.list_name) {
