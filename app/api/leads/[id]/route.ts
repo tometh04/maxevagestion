@@ -119,18 +119,8 @@ export async function PATCH(
     const lead = currentLead as any
 
     // Check permissions for SELLER:
-    // - Can edit leads assigned to them
-    // - Can edit unassigned leads (to claim them)
-    // - Cannot edit leads assigned to OTHER sellers
-    if (user.role === "SELLER") {
-      const isAssignedToMe = lead.assigned_seller_id === user.id
-      const isUnassigned = lead.assigned_seller_id === null || lead.assigned_seller_id === undefined
-      const isAssignedToOther = lead.assigned_seller_id && lead.assigned_seller_id !== user.id
-      
-      if (isAssignedToOther) {
-        return NextResponse.json({ error: "No puedes editar leads asignados a otros vendedores" }, { status: 403 })
-      }
-    }
+    // - Can edit any lead (assigned to them, unassigned, or assigned to another seller)
+    // - Opción A: reasignación libre — cualquier vendedor puede tomar cualquier lead
 
     // Si el lead está sincronizado con Trello (tiene external_id), solo permitir editar ciertos campos
     // Los leads de Manychat que crean tarjetas pero no están sincronizados pueden editarse completamente

@@ -45,12 +45,8 @@ export async function POST(request: Request) {
 
     const leadData = lead as any
 
-    // 2. Verificar que el lead está sin asignar
-    if (leadData.assigned_seller_id) {
-      return NextResponse.json({ 
-        error: "Este lead ya está asignado a otro vendedor" 
-      }, { status: 400 })
-    }
+    // 2. Cualquier vendedor puede tomar un lead, incluso si ya está asignado a otro
+    // (Opción A: reasignación libre entre vendedores)
 
     // 3. Si el lead es de Manychat, asignar en DB y mover a la lista del vendedor
     if (leadData.source === "Manychat") {
