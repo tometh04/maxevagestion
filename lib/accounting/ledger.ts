@@ -558,7 +558,7 @@ export async function getLedgerMovements(
       users:created_by (id, name),
       sellers:seller_id (id, name),
       operators:operator_id (id, name),
-      operations:operation_id (id, destination, file_code),
+      operations:operation_id (id, destination, file_code, agency_id),
       leads:lead_id (id, contact_name)
     `,
       { count: "exact" } // Incluir count para paginación

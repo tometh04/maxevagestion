@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
+  getLedgerMovements,
   calculateARSEquivalent,
   validateSufficientBalance,
   invalidateBalanceCache,
@@ -213,96 +214,71 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    const dateFrom = searchParams.get("dateFrom")
-    const dateTo = searchParams.get("dateTo")
-    const type = searchParams.get("type")
-    const currency = searchParams.get("currency")
+    const dateFrom = searchParams.get("dateFrom") ?? undefined
+    const dateTo = searchParams.get("dateTo") ?? undefined
+    const typeParam = searchParams.get("type") ?? "ALL"
+    const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
-    
-    // Paginación: usar page en vez de offset
-    const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
-    const requestedLimit = parseInt(searchParams.get("limit") || "50")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200
+
+    // Paginación
+    const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
+    const requestedLimit = parseInt(searchParams.get("limit") ?? "50")
+    const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
-    // Query base con count
-    let query = supabase
-      .from("cash_movements")
-      .select(
-        `
-        *,
-        users:user_id (
-          id,
-          name
-        ),
-        operations:operation_id (
-          id,
-          destination,
-          agency_id,
-          agencies:agency_id (
-            id,
-            name
-          )
-        )
-      `,
-      { count: "exact" }
-      )
+    // Los SELLER solo ven movimientos asignados a su seller_id
+    const sellerIdFilter = user.role === "SELLER" ? user.id : undefined
 
-    if (user.role === "SELLER") {
-      query = query.eq("user_id", user.id)
-    }
+    // Obtener movimientos desde ledger_movements (usa admin client internamente → bypasea RLS)
+    const result = await getLedgerMovements(supabase, {
+      dateFrom,
+      dateTo,
+      type: typeParam as any,
+      currency: currencyParam as any,
+      sellerId: sellerIdFilter,
+      limit,
+      offset,
+    })
 
-    if (type && type !== "ALL") {
-      query = query.eq("type", type)
-    }
+    // Mapear ledger_movements al formato CashMovement que espera el frontend
+    let movements = (result.movements || []).map((m: any) => ({
+      id: m.id,
+      // Tipos de ledger: INCOME, FX_GAIN → "INCOME"; EXPENSE, FX_LOSS, COMMISSION, OPERATOR_PAYMENT → "EXPENSE"
+      type: (m.type === "INCOME" || m.type === "FX_GAIN") ? "INCOME" : "EXPENSE",
+      category: m.concept ?? m.type,
+      amount: m.amount_original,
+      currency: m.currency,
+      movement_date: m.created_at,
+      notes: m.notes ?? null,
+      operations: m.operations
+        ? {
+            id: m.operations.id,
+            destination: m.operations.destination ?? null,
+            agency_id: (m.operations as any).agency_id ?? null,
+            agencies: null,
+          }
+        : null,
+      users: m.users ? { name: m.users.name } : null,
+    }))
 
-    if (currency && currency !== "ALL") {
-      query = query.eq("currency", currency)
-    }
-
-    // Para agencyId, necesitamos filtrar a través de operations
-    // Esto requiere una query más compleja, pero por ahora lo dejamos así
-    // y filtramos en el cliente si es necesario
-    if (dateFrom) {
-      query = query.gte("movement_date", dateFrom)
-    }
-
-    if (dateTo) {
-      query = query.lte("movement_date", dateTo)
-    }
-
-    // Aplicar paginación y ordenamiento
-    const { data: movements, error, count } = await query
-      .order("movement_date", { ascending: false })
-      .range(offset, offset + limit - 1)
-
-    if (error) {
-      console.error("Error fetching movements:", error)
-      return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
-    }
-
-    // Filtrar por agencyId en el resultado si es necesario (porque no podemos filtrar fácilmente por operations.agency_id)
-    let filteredMovements = movements || []
+    // Filtro de agencia (client-side, igual que implementación anterior)
     if (agencyId && agencyId !== "ALL") {
-      filteredMovements = filteredMovements.filter((m: any) => 
-        m.operations?.agency_id === agencyId
-      )
-      // Nota: El count no será preciso si filtramos después, pero es una limitación de Supabase
+      movements = movements.filter((m: any) => m.operations?.agency_id === agencyId)
     }
 
-    const totalPages = count ? Math.ceil(count / limit) : 0
+    const totalPages = result.total > 0 ? Math.ceil(result.total / limit) : 0
 
-    return NextResponse.json({ 
-      movements: filteredMovements,
+    return NextResponse.json({
+      movements,
       pagination: {
-        total: count || 0,
+        total: result.total,
         page,
         limit,
         totalPages,
-        hasMore: page < totalPages
-      }
+        hasMore: result.hasMore,
+      },
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in GET /api/cash/movements:", error)
     return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
   }
