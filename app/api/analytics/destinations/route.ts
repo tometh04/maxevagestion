@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
       }
 
-      // Apply filters
+      // Apply date filters using created_at (fecha de venta/carga)
       if (dateFrom) {
         query = query.gte("created_at", `${dateFrom}T00:00:00.000Z`)
       }

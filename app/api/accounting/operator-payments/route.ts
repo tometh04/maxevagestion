@@ -40,7 +40,9 @@ export async function GET(request: Request) {
       query = query.eq("operator_id", operatorId)
     }
 
-    if (status) {
+    if (status === "UNPAID") {
+      query = query.in("status", ["PENDING", "OVERDUE"])
+    } else if (status) {
       query = query.eq("status", status)
     }
 
@@ -83,13 +85,15 @@ export async function GET(request: Request) {
       })
     }
 
-    // Filtrar por monto
+    // Filtrar por deuda (amount - paid_amount)
     if (amountMin) {
       const minAmount = parseFloat(amountMin)
       if (!isNaN(minAmount)) {
         filteredPayments = filteredPayments.filter((p: any) => {
           const amount = parseFloat(p.amount || "0")
-          return amount >= minAmount
+          const paid = parseFloat(p.paid_amount || "0")
+          const debt = amount - paid
+          return debt >= minAmount
         })
       }
     }
@@ -99,7 +103,9 @@ export async function GET(request: Request) {
       if (!isNaN(maxAmount)) {
         filteredPayments = filteredPayments.filter((p: any) => {
           const amount = parseFloat(p.amount || "0")
-          return amount <= maxAmount
+          const paid = parseFloat(p.paid_amount || "0")
+          const debt = amount - paid
+          return debt <= maxAmount
         })
       }
     }

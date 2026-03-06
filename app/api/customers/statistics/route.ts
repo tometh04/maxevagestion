@@ -30,7 +30,8 @@ export async function GET(request: Request) {
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query base de clientes
+    // Query base de clientes - traemos TODOS los clientes (no filtramos por created_at)
+    // para que clientes existentes con operaciones en el rango aparezcan en las stats
     let customersQuery = supabase
       .from("customers")
       .select(`
@@ -54,8 +55,6 @@ export async function GET(request: Request) {
           )
         )
       `)
-      .gte("created_at", filterFrom.toISOString())
-      .lte("created_at", filterTo.toISOString())
 
     const { data: customers, error: customersError } = await customersQuery
 
@@ -65,17 +64,35 @@ export async function GET(request: Request) {
     }
 
     // Filtrar por agencia si es necesario
+    // Y solo incluir clientes que tengan al menos 1 operación en el rango de fechas
     const filteredCustomers = (customers || []).filter((customer: any) => {
-      if (!agencyId || agencyId === "ALL") {
-        if (user.role === "SUPER_ADMIN") return true
-        // Verificar que el cliente tenga operaciones en las agencias del usuario
-        return customer.operation_customers?.some((oc: any) => 
-          agencyIds.includes(oc.operations?.agency_id)
+      // Filtro de agencia
+      const passesAgencyFilter = (() => {
+        if (!agencyId || agencyId === "ALL") {
+          if (user.role === "SUPER_ADMIN") return true
+          return customer.operation_customers?.some((oc: any) =>
+            agencyIds.includes(oc.operations?.agency_id)
+          )
+        }
+        return customer.operation_customers?.some((oc: any) =>
+          oc.operations?.agency_id === agencyId
         )
-      }
-      return customer.operation_customers?.some((oc: any) => 
-        oc.operations?.agency_id === agencyId
-      )
+      })()
+      if (!passesAgencyFilter) return false
+
+      // Incluir si el cliente fue creado en el rango O tiene operaciones en el rango
+      const createdAt = new Date(customer.created_at)
+      const isNewInRange = createdAt >= filterFrom && createdAt <= filterTo
+
+      const hasOperationsInRange = customer.operation_customers?.some((oc: any) => {
+        const op = oc.operations
+        if (!op) return false
+        const opDate = op.departure_date || op.created_at
+        if (!opDate) return false
+        return opDate >= format(filterFrom, "yyyy-MM-dd") && opDate <= format(filterTo, "yyyy-MM-dd")
+      })
+
+      return isNewInRange || hasOperationsInRange
     })
 
     // Obtener tasa de cambio más reciente como fallback
@@ -83,6 +100,12 @@ export async function GET(request: Request) {
 
     // Estadísticas generales
     const totalCustomers = filteredCustomers.length
+
+    // Clientes nuevos en el rango (para el conteo de "nuevos")
+    const newCustomersInRange = filteredCustomers.filter((customer: any) => {
+      const createdAt = new Date(customer.created_at)
+      return createdAt >= filterFrom && createdAt <= filterTo
+    })
     
     // Determinar si agrupar por días o meses (si el rango es <= 31 días, agrupar por días)
     const daysRange = differenceInDays(endOfDay(filterTo), startOfDay(filterFrom))
@@ -99,7 +122,7 @@ export async function GET(request: Request) {
         newCustomersByPeriod[key] = 0
       })
 
-      filteredCustomers.forEach((customer: any) => {
+      newCustomersInRange.forEach((customer: any) => {
         const createdAt = new Date(customer.created_at)
         const key = format(createdAt, "yyyy-MM-dd")
         if (newCustomersByPeriod[key] !== undefined) {
@@ -115,7 +138,7 @@ export async function GET(request: Request) {
         currentDate = new Date(currentDate.setMonth(currentDate.getMonth() + 1))
       }
 
-      filteredCustomers.forEach((customer: any) => {
+      newCustomersInRange.forEach((customer: any) => {
         const createdAt = new Date(customer.created_at)
         const key = format(createdAt, "yyyy-MM")
         if (newCustomersByPeriod[key] !== undefined) {
@@ -151,10 +174,20 @@ export async function GET(request: Request) {
     let inactiveCustomers = 0
 
     // Estadísticas por cliente (todo en USD)
+    // Filtrar operaciones dentro del rango de fechas Y con estado válido
+    const filterFromStr = format(filterFrom, "yyyy-MM-dd")
+    const filterToStr = format(filterTo, "yyyy-MM-dd")
+
     const customerStats = await Promise.all(filteredCustomers.map(async (customer: any) => {
       const operations = (customer.operation_customers || [])
         .map((oc: any) => oc.operations)
-        .filter((op: any) => op && ["CONFIRMED", "TRAVELLED", "RESERVED"].includes(op.status))
+        .filter((op: any) => {
+          if (!op || !["CONFIRMED", "TRAVELLED", "RESERVED"].includes(op.status)) return false
+          // Filtrar por rango de fechas
+          const opDate = op.departure_date || op.created_at
+          if (!opDate) return true // Si no tiene fecha, incluir por defecto
+          return opDate >= filterFromStr && opDate <= filterToStr
+        })
 
       let totalSpentUsd = 0
       for (const op of operations) {

@@ -38,7 +38,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2 } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -126,6 +127,7 @@ export function OperationPaymentsSection({
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
+  const [markAsPaid, setMarkAsPaid] = useState(false)
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
@@ -608,6 +610,7 @@ export function OperationPaymentsSection({
 
   const handleOpenEditDialog = (payment: any) => {
     setEditingPayment(payment)
+    setMarkAsPaid(false)
     editForm.reset({
       payer_type: payment.payer_type,
       direction: payment.direction,
@@ -625,9 +628,9 @@ export function OperationPaymentsSection({
   const onSubmitEdit = async (values: EditPaymentFormValues) => {
     if (!editingPayment) return
 
-    // Si es PAID necesita cuenta financiera
-    if (editingPayment.status === "PAID" && !values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera para pagos ya pagados")
+    // Si es PAID o se está marcando como pagado, necesita cuenta financiera
+    if ((editingPayment.status === "PAID" || markAsPaid) && !values.financial_account_id) {
+      alert("Debe seleccionar una cuenta financiera")
       return
     }
 
@@ -650,6 +653,7 @@ export function OperationPaymentsSection({
           exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
+          markAsPaid: markAsPaid || undefined,
         }),
       })
 
@@ -660,6 +664,7 @@ export function OperationPaymentsSection({
 
       setEditDialogOpen(false)
       setEditingPayment(null)
+      setMarkAsPaid(false)
       editForm.reset()
       router.refresh()
     } catch (error) {
@@ -1245,7 +1250,10 @@ export function OperationPaymentsSection({
       {canEditPayments && (
         <Dialog open={editDialogOpen} onOpenChange={(open) => {
           setEditDialogOpen(open)
-          if (!open) setEditingPayment(null)
+          if (!open) {
+            setEditingPayment(null)
+            setMarkAsPaid(false)
+          }
         }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -1387,8 +1395,27 @@ export function OperationPaymentsSection({
                   )}
                 />
 
-                {/* Cuenta financiera - solo si el pago está PAID */}
-                {editingPayment?.status === "PAID" && (
+                {/* Switch para marcar como pagado - solo para PENDING de operador */}
+                {editingPayment?.status === "PENDING" && editingPayment?.payer_type === "OPERATOR" && (
+                  <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-green-600" />
+                        <span className="text-sm font-medium">Marcar como pagado</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Registra este pago como realizado y selecciona la cuenta de origen
+                      </p>
+                    </div>
+                    <Switch
+                      checked={markAsPaid}
+                      onCheckedChange={setMarkAsPaid}
+                    />
+                  </div>
+                )}
+
+                {/* Cuenta financiera - si el pago está PAID o se está marcando como pagado */}
+                {(editingPayment?.status === "PAID" || markAsPaid) && (
                   <FormField
                     control={editForm.control}
                     name="financial_account_id"

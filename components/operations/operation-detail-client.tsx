@@ -54,6 +54,7 @@ const typeLabels: Record<string, string> = {
   CRUISE: "Crucero",
   TRANSFER: "Transfer",
   MIXED: "Mixto",
+  ASSISTANCE: "Asistencia al Viajero",
 }
 
 const alertTypeLabels: Record<string, string> = {
@@ -63,6 +64,16 @@ const alertTypeLabels: Record<string, string> = {
   MISSING_DOC: "Documento Faltante",
   PASSPORT_EXPIRY: "Documento Vencido",
   GENERIC: "Genérico",
+}
+
+interface OperationService {
+  id: string
+  service_type: string
+  name?: string | null
+  price: number
+  cost: number
+  currency: "ARS" | "USD"
+  generates_commission: boolean
 }
 
 interface OperationDetailClientProps {
@@ -76,6 +87,7 @@ interface OperationDetailClientProps {
   operators: Array<{ id: string; name: string }>
   userRole: string
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
+  operationServices?: OperationService[]
 }
 
 export function OperationDetailClient({
@@ -89,6 +101,7 @@ export function OperationDetailClient({
   operators,
   userRole,
   commissionRecords = [],
+  operationServices = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -184,7 +197,9 @@ export function OperationDetailClient({
           <TabsTrigger value="info">Información</TabsTrigger>
           <TabsTrigger value="customers">Clientes ({customers.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
-          <TabsTrigger value="payments">Pagos ({payments?.length || 0})</TabsTrigger>
+          {userRole !== "SELLER" && (
+            <TabsTrigger value="payments">Pagos ({payments?.length || 0})</TabsTrigger>
+          )}
           {userRole !== "SELLER" && (
             <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
           )}
@@ -241,7 +256,9 @@ export function OperationDetailClient({
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Fecha Salida</p>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "Fecha Salida"}
+                    </p>
                     <p className="text-sm">
                       {(() => {
                         try {
@@ -253,7 +270,9 @@ export function OperationDetailClient({
                   </div>
                   {operation.return_date && (
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Fecha Regreso</p>
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {operation.type === "ASSISTANCE" ? "Fin Cobertura" : "Fecha Regreso"}
+                      </p>
                       <p className="text-sm">
                         {(() => {
                           try {
@@ -273,6 +292,7 @@ export function OperationDetailClient({
               </CardContent>
             </Card>
 
+            {userRole !== "SELLER" && (
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -318,6 +338,7 @@ export function OperationDetailClient({
                 </div>
               </CardContent>
             </Card>
+            )}
 
             <Card>
               <CardHeader>
@@ -408,6 +429,7 @@ export function OperationDetailClient({
                   ? commissionRecords[0].percentage
                   : 10
               }
+              operationServices={operationServices}
             />
           </TabsContent>
         )}

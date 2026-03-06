@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getAccountBalance, createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
+import { getAccountBalance, createLedgerMovement, calculateARSEquivalent, invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 import { canPerformAction } from "@/lib/permissions-api"
 
@@ -198,11 +198,14 @@ export async function DELETE(
     const { error: deleteLedgerError } = await (supabase.from("ledger_movements") as any)
       .delete()
       .eq("account_id", id)
-    
+
     if (deleteLedgerError) {
       console.error("Error eliminando movimientos de ledger:", deleteLedgerError)
       return NextResponse.json({ error: "Error al eliminar movimientos de la cuenta" }, { status: 500 })
     }
+
+    // Invalidar cache de balance de la cuenta eliminada
+    invalidateBalanceCache(id)
 
     // Eliminar la cuenta
     const { error: deleteError } = await (supabase.from("financial_accounts") as any)

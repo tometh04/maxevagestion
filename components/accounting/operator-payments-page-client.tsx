@@ -65,7 +65,7 @@ interface OperatorPaymentsPageClientProps {
 export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaymentsPageClientProps) {
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<any[]>([])
-  const [statusFilter, setStatusFilter] = useState<string>("ALL")
+  const [statusFilter, setStatusFilter] = useState<string>("UNPAID")
   const [agencyFilter, setAgencyFilter] = useState<string>("ALL")
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
   const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined)
@@ -187,11 +187,28 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     fetchPayments()
   }, [fetchPayments])
 
-  const overdueCount = payments.filter((p) => p.status === "OVERDUE").length
-  const pendingCount = payments.filter((p) => p.status === "PENDING").length
-  const totalPending = payments
-    .filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
-    .reduce((sum, p) => sum + parseFloat(p.amount || "0"), 0)
+  const overdueCount = payments.filter((p) => {
+    const isOverdue = p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.due_date) < new Date())
+    return isOverdue
+  }).length
+  const pendingCount = payments.filter((p) => p.status === "PENDING" && new Date(p.due_date) >= new Date()).length
+
+  // Calcular deuda real (amount - paid_amount) separada por moneda
+  const unpaidPayments = payments.filter((p) => p.status === "PENDING" || p.status === "OVERDUE")
+  const totalDebtUSD = unpaidPayments
+    .filter((p) => p.currency === "USD")
+    .reduce((sum, p) => {
+      const amount = parseFloat(p.amount || "0")
+      const paid = parseFloat(p.paid_amount || "0")
+      return sum + (amount - paid)
+    }, 0)
+  const totalDebtARS = unpaidPayments
+    .filter((p) => p.currency !== "USD")
+    .reduce((sum, p) => {
+      const amount = parseFloat(p.amount || "0")
+      const paid = parseFloat(p.paid_amount || "0")
+      return sum + (amount - paid)
+    }, 0)
 
   // Exportar a Excel
   const handleExportExcel = () => {
@@ -320,11 +337,21 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium">Total a Pagar</CardTitle>
+            <CardTitle className="text-sm font-medium">Deuda Total</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalPending)}</div>
-            <p className="text-xs text-muted-foreground mt-1">monto pendiente</p>
+            {totalDebtUSD > 0 && (
+              <div className="text-2xl font-bold">{formatCurrency(totalDebtUSD, "USD")}</div>
+            )}
+            {totalDebtARS > 0 && (
+              <div className={`${totalDebtUSD > 0 ? "text-lg" : "text-2xl"} font-bold ${totalDebtUSD > 0 ? "mt-1" : ""}`}>
+                {formatCurrency(totalDebtARS, "ARS")}
+              </div>
+            )}
+            {totalDebtUSD === 0 && totalDebtARS === 0 && (
+              <div className="text-2xl font-bold text-green-600">$0</div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">deuda pendiente</p>
           </CardContent>
         </Card>
       </div>
@@ -375,10 +402,11 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">Todos los estados</SelectItem>
-                  <SelectItem value="PENDING">Pendientes</SelectItem>
-                  <SelectItem value="OVERDUE">Vencidos</SelectItem>
+                  <SelectItem value="UNPAID">Pendientes y Vencidos</SelectItem>
+                  <SelectItem value="PENDING">Solo Pendientes</SelectItem>
+                  <SelectItem value="OVERDUE">Solo Vencidos</SelectItem>
                   <SelectItem value="PAID">Pagados</SelectItem>
+                  <SelectItem value="ALL">Todos</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -410,7 +438,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Monto mín.</Label>
+              <Label className="text-xs">Deuda mín.</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -419,7 +447,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Monto máx.</Label>
+              <Label className="text-xs">Deuda máx.</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -439,7 +467,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           </div>
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
-            statusFilter !== "ALL" ||
+            statusFilter !== "UNPAID" ||
             dueDateFrom !== undefined ||
             dueDateTo !== undefined ||
             amountMin ||
@@ -451,7 +479,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 onClick={() => {
                   setAgencyFilter("ALL")
                   setOperatorFilter("ALL")
-                  setStatusFilter("ALL")
+                  setStatusFilter("UNPAID")
                   setDueDateFrom(undefined)
                   setDueDateTo(undefined)
                   setAmountMinInput("")
@@ -520,7 +548,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 <TableRow>
                   <TableHead>Operación</TableHead>
                   <TableHead>Operador</TableHead>
-                  <TableHead>Monto</TableHead>
+                  <TableHead>Deuda</TableHead>
                   <TableHead>Fecha Vencimiento</TableHead>
                   <TableHead>Estado</TableHead>
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
@@ -563,12 +591,13 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                       </TableCell>
                       <TableCell>{payment.operators?.name || "-"}</TableCell>
                       <TableCell className="font-medium">
-                        <div>{formatCurrency(payment.amount, payment.currency)}</div>
-                        {isPartial && (
-                          <div className="text-xs text-muted-foreground">
-                            Pagado: {formatCurrency(paidAmount, payment.currency)}
-                          </div>
-                        )}
+                        {(() => {
+                          const totalAmount = parseFloat(payment.amount || "0") || 0
+                          const debt = totalAmount - paidAmount
+                          return (
+                            <div>{formatCurrency(debt, payment.currency)}</div>
+                          )
+                        })()}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">

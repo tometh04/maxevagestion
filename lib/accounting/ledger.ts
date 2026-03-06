@@ -106,6 +106,10 @@ export interface CreateLedgerMovementParams {
 
 /**
  * Crear un movimiento en el ledger
+ *
+ * IMPORTANTE: Para bypasear RLS se usa el admin client (service role) cuando está disponible.
+ * Si `supabase` es el cliente anon, los inserts pueden fallar por políticas RLS en producción.
+ * Usar siempre createAdminClient() desde los API routes al llamar a esta función.
  */
 export async function createLedgerMovement(
   params: CreateLedgerMovementParams,
@@ -116,12 +120,22 @@ export async function createLedgerMovement(
     throw new Error("exchange_rate es requerido cuando currency = USD")
   }
 
-  // Validar que amount_ars_equivalent esté presente
-  if (!params.amount_ars_equivalent) {
-    throw new Error("amount_ars_equivalent es requerido")
+  // Validar que amount_ars_equivalent esté presente y sea un número válido
+  if (params.amount_ars_equivalent === null || params.amount_ars_equivalent === undefined || isNaN(params.amount_ars_equivalent)) {
+    throw new Error(`amount_ars_equivalent inválido: ${params.amount_ars_equivalent}`)
   }
 
-  const ledgerTable = supabase.from("ledger_movements") as any
+  // Intentar con admin client primero para bypasear RLS (si las env vars están disponibles)
+  let clientToUse = supabase
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/server")
+    clientToUse = createAdminClient() as any
+  } catch {
+    // Si no hay service role key disponible, usar el cliente proporcionado
+    console.warn("⚠️ createLedgerMovement: usando cliente anon (puede fallar por RLS)")
+  }
+
+  const ledgerTable = clientToUse.from("ledger_movements") as any
 
   const { data, error } = await ledgerTable
     .insert({
@@ -145,7 +159,19 @@ export async function createLedgerMovement(
     .single()
 
   if (error) {
-    throw new Error(`Error creando ledger movement: ${error.message}`)
+    console.error("❌ Error insertando ledger_movement:", {
+      error: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      params: {
+        type: params.type,
+        currency: params.currency,
+        amount_original: params.amount_original,
+        account_id: params.account_id,
+      }
+    })
+    throw new Error(`Error creando ledger movement: ${error.message} (code: ${error.code})`)
   }
 
   // Invalidar caché de balance para esta cuenta

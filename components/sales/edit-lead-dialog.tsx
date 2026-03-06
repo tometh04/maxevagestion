@@ -37,7 +37,7 @@ import { toast } from "sonner"
 // Esquema base para leads normales
 const baseLeadSchema = z.object({
   agency_id: z.string().min(1, "La agencia es requerida"),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Other", "Trello"]),
+  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Trello", "Manychat"]),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]),
   region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]),
   destination: z.string().min(1, "El destino es requerido"),
@@ -62,7 +62,7 @@ const baseLeadSchema = z.object({
 // Esquema para leads de Trello (campos de contacto opcionales porque vienen de Trello)
 const trelloLeadSchema = z.object({
   agency_id: z.string().optional(),
-  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Other", "Trello"]).optional(),
+  source: z.enum(["Instagram", "WhatsApp", "Meta Ads", "Referido", "Cliente", "Other", "Trello", "Manychat"]).optional(),
   status: z.enum(["NEW", "IN_PROGRESS", "QUOTED", "WON", "LOST"]).optional(),
   region: z.enum(["ARGENTINA", "CARIBE", "BRASIL", "EUROPA", "EEUU", "OTROS", "CRUCEROS"]).optional(),
   destination: z.string().optional(),
@@ -352,9 +352,12 @@ export function EditLeadDialog({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
+                            <SelectItem value="Manychat">Manychat</SelectItem>
                             <SelectItem value="Instagram">Instagram</SelectItem>
                             <SelectItem value="WhatsApp">WhatsApp</SelectItem>
                             <SelectItem value="Meta Ads">Meta Ads</SelectItem>
+                            <SelectItem value="Referido">Referido</SelectItem>
+                            <SelectItem value="Cliente">Cliente</SelectItem>
                             <SelectItem value="Other">Otro</SelectItem>
                             <SelectItem value="Trello">Trello</SelectItem>
                           </SelectContent>

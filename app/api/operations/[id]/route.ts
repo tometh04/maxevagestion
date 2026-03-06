@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA } from "@/lib/accounting/iva"
+import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 
 export async function GET(
@@ -541,13 +542,26 @@ export async function DELETE(
         .eq("operation_id", operationId) as any)
 
       if (payments && payments.length > 0) {
+        // Recopilar account_ids de movimientos a eliminar para invalidar cache
+        const paymentMovementIds = (payments as any[])
+          .map((p: any) => p.ledger_movement_id)
+          .filter(Boolean)
+
+        let paymentAccountIds = new Set<string>()
+        if (paymentMovementIds.length > 0) {
+          const { data: paymentMovements } = await (supabase.from("ledger_movements") as any)
+            .select("account_id")
+            .in("id", paymentMovementIds)
+          if (paymentMovements) {
+            paymentAccountIds = new Set(paymentMovements.map((m: any) => m.account_id).filter(Boolean))
+          }
+        }
+
         for (const payment of payments as any[]) {
-          // Eliminar cash_movement asociado
           await (supabase.from("cash_movements") as any)
             .delete()
             .eq("payment_id", payment.id)
 
-          // Eliminar ledger_movement asociado
           if (payment.ledger_movement_id) {
             await (supabase.from("ledger_movements") as any)
               .delete()
@@ -556,6 +570,9 @@ export async function DELETE(
         }
         // Los pagos se eliminan por CASCADE, pero lo hacemos explícito
         await (supabase.from("payments") as any).delete().eq("operation_id", operationId)
+
+        // Invalidar cache de balances para cuentas afectadas
+        Array.from(paymentAccountIds).forEach((accountId) => invalidateBalanceCache(accountId as string))
         console.log(`  ✓ ${payments.length} pagos eliminados con sus movimientos`)
       }
     } catch (error) {
@@ -564,9 +581,20 @@ export async function DELETE(
 
     // 3. Eliminar ledger_movements de la operación (los que no son de pagos)
     try {
+      // Obtener account_ids antes de eliminar para invalidar cache
+      const { data: movementsToDelete } = await (supabase.from("ledger_movements") as any)
+        .select("account_id")
+        .eq("operation_id", operationId)
+
       await (supabase.from("ledger_movements") as any)
         .delete()
         .eq("operation_id", operationId)
+
+      // Invalidar cache de balances para todas las cuentas afectadas
+      if (movementsToDelete) {
+        const accountIds = Array.from(new Set(movementsToDelete.map((m: any) => m.account_id).filter(Boolean))) as string[]
+        accountIds.forEach((accountId) => invalidateBalanceCache(accountId))
+      }
       console.log(`  ✓ Ledger movements eliminados`)
     } catch (error) {
       console.error("Error deleting ledger movements:", error)

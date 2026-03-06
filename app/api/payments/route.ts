@@ -335,13 +335,24 @@ export async function POST(request: Request) {
         console.log(`✅ Pago ${payment.id} creado con ledger ${ledgerMovementId}`)
 
       } catch (accountingError) {
-        console.error("Error creating accounting movements:", accountingError)
-        // El pago se creó, pero los movimientos contables fallaron
-        // Retornamos el pago pero con una advertencia
-        return NextResponse.json({ 
-          payment,
-          warning: "Pago creado pero hubo error en movimientos contables"
+        const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
+        console.error("❌ CRITICAL: Error creating ledger movement for payment:", {
+          paymentId: payment.id,
+          operationId: operation_id,
+          currency,
+          amount,
+          financial_account_id,
+          error: errorMsg
         })
+        // CRITICAL: revertir el pago si los movimientos contables fallaron
+        // para evitar inconsistencias (pago marcado como PAID sin impacto en saldos)
+        await (supabase.from("payments") as any)
+          .delete()
+          .eq("id", payment.id)
+
+        return NextResponse.json({
+          error: `Error en movimientos contables: ${errorMsg}. El pago fue revertido para mantener consistencia. Por favor intente nuevamente.`
+        }, { status: 500 })
       }
     }
 
@@ -395,11 +406,12 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200
     const offset = (page - 1) * limit
 
-    // Query base con relación a operations para obtener agency_id
+    // Query base con relación a operations para obtener agency_id y destination
     let query = supabase.from("payments").select(`
       *,
       operations:operation_id(
         id,
+        destination,
         agency_id,
         agencies:agency_id(
           id,

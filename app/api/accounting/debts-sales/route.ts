@@ -55,6 +55,7 @@ export async function GET(request: Request) {
             currency,
             status,
             departure_date,
+            created_at,
             seller_id
           )
         )
@@ -182,6 +183,15 @@ export async function GET(request: Request) {
 
         // Aplicar filtro de vendedor si existe
         if (sellerIdFilter && sellerIdFilter !== "ALL" && operation.seller_id !== sellerIdFilter) {
+          continue
+        }
+
+        // Aplicar filtro de fechas por departure_date de la operación
+        const opDate = operation.departure_date || operation.created_at
+        if (dateFromFilter && opDate && opDate < dateFromFilter) {
+          continue
+        }
+        if (dateToFilter && opDate && opDate > dateToFilter + "T23:59:59") {
           continue
         }
 

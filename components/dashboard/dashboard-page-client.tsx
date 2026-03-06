@@ -16,7 +16,7 @@ import { BirthdaysTodayCard } from "./birthdays-today-card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
-import { DollarSign, TrendingUp, Package, Percent, Users, Building2, HelpCircle } from "lucide-react"
+import { DollarSign, TrendingUp, Package, Percent, Users, Building2, HelpCircle, RefreshCw } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -140,15 +140,18 @@ export function DashboardPageClient({
         prevParams.set("sellerId", filters.sellerId)
       }
 
-      // Fetch all data in parallel with cache headers
-      const fetchOptions = { 
-        next: { revalidate: 30 } // Cache por 30 segundos
+      // Fetch all data in parallel (sin cache para evitar datos stale)
+      const fetchOptions = {
+        cache: "no-store" as RequestCache
       }
       
-      // Agregar agencyId al endpoint de pending-balances si está seleccionado
-      const pendingBalancesParams = filters.agencyId && filters.agencyId !== "ALL" 
-        ? `?agencyId=${filters.agencyId}` 
-        : ""
+      // Agregar agencyId y fechas al endpoint de pending-balances
+      const pendingBalancesSearchParams = new URLSearchParams()
+      pendingBalancesSearchParams.set("dateFrom", filters.dateFrom)
+      pendingBalancesSearchParams.set("dateTo", filters.dateTo)
+      if (filters.agencyId && filters.agencyId !== "ALL") {
+        pendingBalancesSearchParams.set("agencyId", filters.agencyId)
+      }
       
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, pendingBalancesRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
@@ -156,17 +159,23 @@ export function DashboardPageClient({
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/pending-balances${pendingBalancesParams}`, fetchOptions),
+        fetch(`/api/analytics/pending-balances?${pendingBalancesSearchParams.toString()}`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
-      const salesData = await salesRes.json()
-      const sellersData = await sellersRes.json()
-      const destinationsData = await destinationsRes.json()
-      const destinationsAllData = await destinationsAllRes.json()
-      const cashflowData = await cashflowRes.json()
-      const pendingBalancesData = await pendingBalancesRes.json()
-      const prevSalesData = await prevSalesRes.json()
+      const salesData = salesRes.ok ? await salesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0, avgMarginPercent: 0 }
+      const sellersData = sellersRes.ok ? await sellersRes.json() : { sellers: [] }
+      const destinationsData = destinationsRes.ok ? await destinationsRes.json() : { destinations: [] }
+      const destinationsAllData = destinationsAllRes.ok ? await destinationsAllRes.json() : { destinations: [] }
+      const cashflowData = cashflowRes.ok ? await cashflowRes.json() : { cashflow: [] }
+      const pendingBalancesData = pendingBalancesRes.ok ? await pendingBalancesRes.json() : { accountsReceivable: 0, accountsPayable: 0 }
+      const prevSalesData = prevSalesRes.ok ? await prevSalesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0 }
+
+      console.log("[Dashboard] salesRes.status:", salesRes.status, "ok:", salesRes.ok)
+      console.log("[Dashboard] salesData:", JSON.stringify(salesData))
+      console.log("[Dashboard] pendingBalancesRes.status:", pendingBalancesRes.status, "ok:", pendingBalancesRes.ok)
+      console.log("[Dashboard] pendingBalancesData:", JSON.stringify(pendingBalancesData))
+      console.log("[Dashboard] params:", params.toString())
 
       // Guardar datos del período anterior para comparativa
       setPreviousKpis({
@@ -205,12 +214,13 @@ export function DashboardPageClient({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Dashboard</h1>
+          <h1 className="text-xl font-semibold">Resumen</h1>
           <p className="text-xs text-muted-foreground">
             Vista general del negocio
           </p>
         </div>
-        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
+        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-950/30">
+          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
       </div>
@@ -225,10 +235,10 @@ export function DashboardPageClient({
 
       {/* KPIs compactos - estilo estadísticas de clientes */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="p-3">
+        <Card className="p-3 border-l-4 border-l-orange-500">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+            <div className="p-1.5 rounded bg-orange-100 dark:bg-orange-900/30">
+              <DollarSign className="h-3.5 w-3.5 text-orange-600" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-1">
@@ -254,7 +264,7 @@ export function DashboardPageClient({
           </div>
         </Card>
 
-        <Card className="p-3">
+        <Card className="p-3 border-l-4 border-l-emerald-500">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
               <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
@@ -283,7 +293,7 @@ export function DashboardPageClient({
           </div>
         </Card>
 
-        <Card className="p-3">
+        <Card className="p-3 border-l-4 border-l-amber-500">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded bg-amber-100 dark:bg-amber-900/30">
               <Users className="h-3.5 w-3.5 text-amber-600" />
@@ -312,7 +322,7 @@ export function DashboardPageClient({
           </div>
         </Card>
 
-        <Card className="p-3">
+        <Card className="p-3 border-l-4 border-l-purple-500">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
               <Building2 className="h-3.5 w-3.5 text-purple-600" />

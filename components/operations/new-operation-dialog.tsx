@@ -1008,7 +1008,7 @@ export function NewOperationDialog({
                 name="departure_date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de Salida *</FormLabel>
+                    <FormLabel>{form.watch("type") === "ASSISTANCE" ? "Inicio de Cobertura *" : "Fecha de Salida *"}</FormLabel>
                         <FormControl>
                       <DateInputWithCalendar
                         value={field.value}
@@ -1029,7 +1029,7 @@ export function NewOperationDialog({
                   const departureDate = form.watch("departure_date")
                   return (
                   <FormItem className="flex flex-col">
-                    <FormLabel>Fecha de Regreso</FormLabel>
+                    <FormLabel>{form.watch("type") === "ASSISTANCE" ? "Fin de Cobertura" : "Fecha de Regreso"}</FormLabel>
                         <FormControl>
                         <DateInputWithCalendar
                           value={field.value || undefined}

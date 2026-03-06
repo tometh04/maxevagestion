@@ -93,6 +93,13 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("date_due", { ascending: true })
 
+  // Get operation services (servicios adicionales: asiento, transfer, visa, etc.)
+  const { data: operationServices } = await (supabase
+    .from("operation_services") as any)
+    .select("id, service_type, name, price, cost, currency, generates_commission")
+    .eq("operation_id", id)
+    .order("created_at", { ascending: true })
+
   // Get commission records for this operation
   const { data: commissionRecords } = await (supabase
     .from("commission_records") as any)
@@ -142,6 +149,7 @@ export default async function OperationDetailPage({
       operators={operators}
       userRole={userRole}
       commissionRecords={commissionRecords || []}
+      operationServices={operationServices || []}
     />
   )
 }
