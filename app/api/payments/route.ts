@@ -30,6 +30,7 @@ export async function POST(request: Request) {
 
     const {
       operation_id,
+      operation_service_id, // Vincular pago a un servicio adicional específico
       payer_type,
       direction,
       method,
@@ -112,6 +113,7 @@ export async function POST(request: Request) {
     // Los movimientos contables se crearán cuando se marque como PAID
     const paymentData = {
         operation_id,
+        operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
         payer_type,
         direction,
       method: method || "Otro",

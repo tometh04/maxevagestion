@@ -265,20 +265,7 @@ export function CRMManychatPageClient({
   const shouldUseManychatKanban = !!effectiveAgencyId && effectiveAgencyId !== "ALL"
 
   return (
-    <div
-      className="relative -m-6 md:-m-8 p-6 md:p-8 min-h-[calc(100vh-3rem)]"
-      style={{
-        backgroundImage: `url('/beach-bg.jpg')`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundRepeat: 'no-repeat',
-      }}
-    >
-      {/* Overlay para legibilidad del contenido */}
-      <div className="absolute inset-0 bg-white/60 dark:bg-gray-950/70 pointer-events-none" />
-
-      {/* Contenido */}
-      <div className="relative space-y-6">
+    <div className="space-y-6">
       <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
@@ -413,7 +400,6 @@ export function CRMManychatPageClient({
         defaultAgencyId={selectedAgencyId !== "ALL" ? selectedAgencyId : defaultAgencyId}
         defaultSellerId={defaultSellerId}
       />
-      </div>
     </div>
   )
 }

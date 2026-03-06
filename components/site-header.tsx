@@ -13,7 +13,7 @@ import { NotificationBell } from "@/components/notifications/notification-bell"
 const getPageTitle = (pathname: string): string => {
   const routes: Record<string, string> = {
     "/dashboard": "Resumen",
-    "/sales/leads": "Leads",
+    "/sales/crm-manychat": "CRM Manychat",
     "/operations": "Operaciones",
     "/customers": "Clientes",
     "/operators": "Operadores",

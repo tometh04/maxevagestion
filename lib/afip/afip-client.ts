@@ -432,3 +432,34 @@ export function determineInvoiceType(
   // Default: Factura B
   return 6
 }
+
+/**
+ * Obtiene la configuración AFIP de una agencia desde la BD
+ * Usado por los routes de settings/afip
+ */
+export async function getAgencyAfipConfig(
+  supabase: any,
+  agencyId: string
+): Promise<{ cuit: string; environment: string; punto_venta?: number } | null> {
+  const { data } = await supabase
+    .from('afip_config')
+    .select('cuit, environment, punto_venta')
+    .eq('agency_id', agencyId)
+    .eq('is_active', true)
+    .maybeSingle()
+  return data || null
+}
+
+/**
+ * Stub: Automatización AFIP SDK (pendiente de implementar)
+ * Por ahora retorna error indicando que la función no está disponible
+ */
+export async function runAfipAutomation(
+  _cuit: string,
+  _password: string
+): Promise<{ success: boolean; error?: string }> {
+  return {
+    success: false,
+    error: 'La automatización AFIP no está implementada aún. Configurá las credenciales manualmente.',
+  }
+}

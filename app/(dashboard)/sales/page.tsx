@@ -8,11 +8,10 @@ export default async function SalesPage({
   const params = await searchParams
   const leadId = params.lead
 
-  // Si hay un leadId, redirigir a /sales/leads con leadId
+  // Si hay un leadId, redirigir a /sales/crm-manychat con leadId
   if (leadId) {
-    redirect(`/sales/leads?leadId=${leadId}`)
+    redirect(`/sales/crm-manychat?leadId=${leadId}`)
   }
 
-  // Si no hay leadId, redirigir a la página de leads
-  redirect("/sales/leads")
+  redirect("/sales/crm-manychat")
 }

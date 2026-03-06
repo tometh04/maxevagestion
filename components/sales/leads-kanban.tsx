@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -66,6 +66,56 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   const [draggedLead, setDraggedLead] = useState<string | null>(null)
   const [claimingLeadId, setClaimingLeadId] = useState<string | null>(null)
 
+  // Auto-scroll horizontal durante drag
+  const containerRef = useRef<HTMLDivElement>(null)
+  const scrollIntervalRef = useRef<number | null>(null)
+  const isDraggingRef = useRef(false) // ref síncrono, no depende del ciclo de render de React
+
+  const stopAutoScroll = () => {
+    if (scrollIntervalRef.current !== null) {
+      clearInterval(scrollIntervalRef.current)
+      scrollIntervalRef.current = null
+    }
+  }
+
+  // Listener permanente — se monta una vez y usa el ref para saber si hay drag activo.
+  // Esto evita el bug de timing de React 18 donde el state update es asíncrono
+  // y el useEffect no agrega el listener a tiempo para los primeros dragover events.
+  useEffect(() => {
+    const handleDragScroll = (e: DragEvent) => {
+      if (!isDraggingRef.current) return
+      const container = containerRef.current
+      if (!container) return
+      const rect = container.getBoundingClientRect()
+      const threshold = 100
+
+      if (e.clientX < rect.left + threshold) {
+        if (scrollIntervalRef.current !== null) {
+          clearInterval(scrollIntervalRef.current)
+          scrollIntervalRef.current = null
+        }
+        scrollIntervalRef.current = window.setInterval(() => {
+          containerRef.current?.scrollBy({ left: -15 })
+        }, 16)
+      } else if (e.clientX > rect.right - threshold) {
+        if (scrollIntervalRef.current !== null) {
+          clearInterval(scrollIntervalRef.current)
+          scrollIntervalRef.current = null
+        }
+        scrollIntervalRef.current = window.setInterval(() => {
+          containerRef.current?.scrollBy({ left: 15 })
+        }, 16)
+      } else {
+        stopAutoScroll()
+      }
+    }
+
+    document.addEventListener('dragover', handleDragScroll)
+    return () => {
+      document.removeEventListener('dragover', handleDragScroll)
+    }
+  }, []) // solo se monta una vez al montar el componente
+
   // Función para "agarrar" un lead
   const handleClaimLead = async (leadId: string, e: React.MouseEvent) => {
     e.stopPropagation() // Evitar abrir el dialog
@@ -126,11 +176,14 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   }, {} as Record<string, Lead[]>)
 
   const handleDragStart = (leadId: string) => {
+    isDraggingRef.current = true  // síncrono: disponible antes del primer dragover
     setDraggedLead(leadId)
   }
 
   const handleDrop = async (newStatus: string) => {
     if (!draggedLead) return
+    isDraggingRef.current = false
+    stopAutoScroll()
 
     try {
       await fetch("/api/leads/update-status", {
@@ -147,7 +200,14 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   }
 
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div
+      ref={containerRef}
+      className="flex gap-4 overflow-x-auto pb-4"
+      onDragEnd={() => {
+        isDraggingRef.current = false
+        stopAutoScroll()
+      }}
+    >
       {statusColumns.map((column) => (
         <div key={column.id} className="flex min-w-[280px] flex-col">
           <div className={`rounded-t-lg p-3 ${column.color}`}>

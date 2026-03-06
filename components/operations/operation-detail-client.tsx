@@ -37,6 +37,7 @@ import {
 import { EditOperationDialog } from "./edit-operation-dialog"
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
+import { OperationServicesSection } from "./operation-services-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -148,6 +149,10 @@ export function OperationDetailClient({
     }
   }
 
+  // Separar pagos de la operación base de pagos de servicios adicionales
+  const operationBasePayments = (payments || []).filter((p: any) => !p.operation_service_id)
+  const servicePayments = (payments || []).filter((p: any) => p.operation_service_id)
+
   return (
     <div className="space-y-6">
       <Breadcrumb>
@@ -198,8 +203,9 @@ export function OperationDetailClient({
           <TabsTrigger value="customers">Clientes ({customers.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
           {userRole !== "SELLER" && (
-            <TabsTrigger value="payments">Pagos ({payments?.length || 0})</TabsTrigger>
+            <TabsTrigger value="payments">Pagos Operación ({operationBasePayments.length})</TabsTrigger>
           )}
+          <TabsTrigger value="services">Servicios</TabsTrigger>
           {userRole !== "SELLER" && (
             <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
           )}
@@ -384,10 +390,64 @@ export function OperationDetailClient({
           </div>
 
           {/* Requisitos del destino */}
-          <OperationRequirementsSection 
-            destination={operation.destination} 
+          <OperationRequirementsSection
+            destination={operation.destination}
             departureDate={operation.departure_date || undefined}
           />
+
+          {/* Resumen financiero global (operación + servicios) */}
+          {servicePayments.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Resumen Financiero Global</CardTitle>
+                <CardDescription>
+                  Totales combinados de la operación base y sus servicios adicionales
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Venta operación</p>
+                    <p className="font-semibold">
+                      {operation.currency} {Number(operation.sale_amount_total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Cobrado en servicios</p>
+                    {(() => {
+                      const totals: Record<string, number> = {}
+                      servicePayments.filter(p => p.direction === "INCOME" && p.status === "PAID").forEach(p => {
+                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
+                      })
+                      return Object.keys(totals).length > 0
+                        ? Object.entries(totals).map(([cur, amt]) => (
+                            <p key={cur} className="font-semibold text-green-700">
+                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            </p>
+                          ))
+                        : <p className="text-muted-foreground text-sm">Sin cobros</p>
+                    })()}
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-xs text-muted-foreground mb-1">Pagado a proveedores (servicios)</p>
+                    {(() => {
+                      const totals: Record<string, number> = {}
+                      servicePayments.filter(p => p.direction === "EXPENSE" && p.status === "PAID").forEach(p => {
+                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
+                      })
+                      return Object.keys(totals).length > 0
+                        ? Object.entries(totals).map(([cur, amt]) => (
+                            <p key={cur} className="font-semibold text-red-700">
+                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            </p>
+                          ))
+                        : <p className="text-muted-foreground text-sm">Sin pagos</p>
+                    })()}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
@@ -409,7 +469,7 @@ export function OperationDetailClient({
         <TabsContent value="payments" className="space-y-4">
           <OperationPaymentsSection
             operationId={operation.id}
-            payments={payments || []}
+            payments={operationBasePayments}
             currency={operation.currency}
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
@@ -514,6 +574,17 @@ export function OperationDetailClient({
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="services" className="space-y-4">
+          <OperationServicesSection
+            operationId={operation.id}
+            operationStatus={operation.status}
+            operators={operators}
+            userRole={userRole}
+            servicePayments={servicePayments}
+            operationCurrency={operation.currency}
+          />
         </TabsContent>
       </Tabs>
 
