@@ -15,6 +15,21 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
 /**
+ * Helper interno: devuelve el admin client (SERVICE_ROLE_KEY) para bypasear RLS.
+ * Si no está disponible, cae al cliente anónimo recibido como parámetro.
+ * Se usa para TODOS los SELECT/INSERT/UPDATE sobre ledger_movements.
+ */
+async function getAdminClient(fallback: any): Promise<any> {
+  try {
+    const { createAdminClient } = await import("@/lib/supabase/server")
+    return createAdminClient()
+  } catch {
+    console.warn("⚠️ ledger: SERVICE_ROLE_KEY no disponible, usando cliente anon (puede fallar por RLS)")
+    return fallback
+  }
+}
+
+/**
  * Obtener el nombre del pasajero principal de una operación
  */
 export async function getMainPassengerName(
@@ -232,10 +247,9 @@ export async function getAccountBalance(
   const accountCurrency = account.currency as "ARS" | "USD"
 
   // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
-  // Aunque no podemos usar SUM() directamente con Supabase sin RPC, 
-  // traer solo los campos necesarios (no *) es más rápido
-  // Además, el caché evita recalcular constantemente
-  const { data: movements, error: movementsError } = await (supabase
+  // Usamos admin client para bypasear RLS en el SELECT (mismo fix que para INSERT)
+  const adminClient = await getAdminClient(supabase)
+  const { data: movements, error: movementsError } = await (adminClient
     .from("ledger_movements") as any)
     .select("type, amount_original, amount_ars_equivalent")
     .eq("account_id", accountId)
@@ -346,8 +360,10 @@ export async function getAccountBalancesBatch(
   }
 
   // Obtener todos los movimientos para las cuentas que necesitan cálculo
+  // Usamos admin client para bypasear RLS en el SELECT
   const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
-  const { data: movements, error: movementsError } = await (supabase
+  const adminClient = await getAdminClient(supabase)
+  const { data: movements, error: movementsError } = await (adminClient
     .from("ledger_movements") as any)
     .select("account_id, type, amount_original, amount_ars_equivalent")
     .in("account_id", accountIdsToCalculate)
@@ -425,7 +441,8 @@ export async function transferLeadToOperation(
   operationId: string,
   supabase: SupabaseClient<Database>
 ): Promise<{ transferred: number }> {
-  const ledgerTable = supabase.from("ledger_movements") as any
+  const adminClient = await getAdminClient(supabase)
+  const ledgerTable = adminClient.from("ledger_movements") as any
 
   // Actualizar todos los movimientos con lead_id para que tengan operation_id
   const { data, error } = await ledgerTable
@@ -474,7 +491,8 @@ export async function getLeadMovements(
   leadId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const { data, error } = await (supabase.from("ledger_movements") as any)
+  const adminClient = await getAdminClient(supabase)
+  const { data, error } = await (adminClient.from("ledger_movements") as any)
     .select("*")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false })
@@ -493,7 +511,8 @@ export async function getOperationMovements(
   operationId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const { data, error } = await (supabase.from("ledger_movements") as any)
+  const adminClient = await getAdminClient(supabase)
+  const { data, error } = await (adminClient.from("ledger_movements") as any)
     .select("*")
     .eq("operation_id", operationId)
     .order("created_at", { ascending: false })
@@ -530,7 +549,8 @@ export async function getLedgerMovements(
   const limit = filters.limit ?? 1000
   const offset = filters.offset ?? 0
 
-  let query = (supabase.from("ledger_movements") as any)
+  const adminClientForLedger = await getAdminClient(supabase)
+  let query = (adminClientForLedger.from("ledger_movements") as any)
     .select(
       `
       *,
