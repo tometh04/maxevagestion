@@ -993,9 +993,29 @@ export function NewOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Destino *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ciudad de destino" {...field} />
-                    </FormControl>
+                    <SearchableCombobox
+                      value={field.value || ""}
+                      onChange={(value) => field.onChange(value || "")}
+                      placeholder="Ciudad de destino..."
+                      searchPlaceholder="Buscar aeropuerto o ciudad..."
+                      emptyMessage="No se encontraron aeropuertos"
+                      initialLabel={field.value || ""}
+                      searchFn={async (query) => {
+                        if (!query || query.length < 2) return []
+                        try {
+                          const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
+                          if (!res.ok) return []
+                          const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
+                          return data.map((airport) => ({
+                            value: airport.city,
+                            label: `${airport.code} — ${airport.city}`,
+                            subtitle: `${airport.name}, ${airport.country}`,
+                          }))
+                        } catch {
+                          return []
+                        }
+                      }}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}

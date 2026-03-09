@@ -30,6 +30,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
+import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
@@ -770,9 +771,29 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Destino *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ciudad de destino" {...field} />
-                    </FormControl>
+                    <SearchableCombobox
+                      value={field.value || ""}
+                      onChange={(value) => field.onChange(value || "")}
+                      placeholder="Ciudad de destino..."
+                      searchPlaceholder="Buscar aeropuerto o ciudad..."
+                      emptyMessage="No se encontraron aeropuertos"
+                      initialLabel={field.value || ""}
+                      searchFn={async (query) => {
+                        if (!query || query.length < 2) return []
+                        try {
+                          const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
+                          if (!res.ok) return []
+                          const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
+                          return data.map((airport) => ({
+                            value: airport.city,
+                            label: `${airport.code} — ${airport.city}`,
+                            subtitle: `${airport.name}, ${airport.country}`,
+                          }))
+                        } catch {
+                          return []
+                        }
+                      }}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
