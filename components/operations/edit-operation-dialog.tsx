@@ -757,9 +757,36 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Origen</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ciudad de origen" {...field} />
-                    </FormControl>
+                    <SearchableCombobox
+                      value={field.value || ""}
+                      onChange={(value) => field.onChange(value || "")}
+                      placeholder="Ciudad de origen..."
+                      searchPlaceholder="Buscar aeropuerto o ciudad..."
+                      emptyMessage="No se encontraron resultados"
+                      initialLabel={field.value || ""}
+                      searchFn={async (query) => {
+                        if (!query || query.length < 2) return []
+                        const options: ComboboxOption[] = [
+                          { value: query, label: query, subtitle: "Usar como origen" },
+                        ]
+                        try {
+                          const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
+                          if (res.ok) {
+                            const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
+                            for (const airport of data) {
+                              options.push({
+                                value: airport.city,
+                                label: `${airport.code} — ${airport.city}`,
+                                subtitle: `${airport.name}, ${airport.country}`,
+                              })
+                            }
+                          }
+                        } catch {
+                          // silencioso
+                        }
+                        return options
+                      }}
+                    />
                     <FormMessage />
                   </FormItem>
                 )}
