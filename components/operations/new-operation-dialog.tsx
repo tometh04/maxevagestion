@@ -44,7 +44,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
-import { SearchableCombobox } from "@/components/ui/searchable-combobox"
+import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 
 // Configuración de operaciones
 interface OperationSettings {
@@ -998,22 +998,30 @@ export function NewOperationDialog({
                       onChange={(value) => field.onChange(value || "")}
                       placeholder="Ciudad de destino..."
                       searchPlaceholder="Buscar aeropuerto o ciudad..."
-                      emptyMessage="No se encontraron aeropuertos"
+                      emptyMessage="No se encontraron resultados"
                       initialLabel={field.value || ""}
                       searchFn={async (query) => {
                         if (!query || query.length < 2) return []
+                        // Siempre incluir lo que el usuario escribió como primera opción (fallback libre)
+                        const options: ComboboxOption[] = [
+                          { value: query, label: query, subtitle: "Usar como destino" },
+                        ]
                         try {
                           const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
-                          if (!res.ok) return []
-                          const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
-                          return data.map((airport) => ({
-                            value: airport.city,
-                            label: `${airport.code} — ${airport.city}`,
-                            subtitle: `${airport.name}, ${airport.country}`,
-                          }))
+                          if (res.ok) {
+                            const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
+                            for (const airport of data) {
+                              options.push({
+                                value: airport.city,
+                                label: `${airport.code} — ${airport.city}`,
+                                subtitle: `${airport.name}, ${airport.country}`,
+                              })
+                            }
+                          }
                         } catch {
-                          return []
+                          // silencioso — igual tenemos la opción de texto libre
                         }
+                        return options
                       }}
                     />
                     <FormMessage />
