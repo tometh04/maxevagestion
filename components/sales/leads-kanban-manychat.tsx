@@ -277,9 +277,10 @@ export function LeadsKanbanManychat({
     const previousSellerId = lead.assigned_seller_id
     const movedLeadId = draggedLead
 
-    // OPTIMISTIC: Actualizar UI inmediatamente
+    // OPTIMISTIC: Actualizar UI inmediatamente (updated_at fresco → sube al tope de la columna)
     onUpdateLead?.(movedLeadId, {
       list_name: targetListName,
+      updated_at: new Date().toISOString(),
       ...(targetList?.seller_id ? { assigned_seller_id: targetList.seller_id } : {}),
     })
     setDraggedLead(null)
@@ -476,6 +477,14 @@ export function LeadsKanbanManychat({
         if (!grouped[listName]) grouped[listName] = []
         grouped[listName].push(lead)
       }
+    })
+    // Ordenar cada columna: el último movido queda primero
+    Object.keys(grouped).forEach(listName => {
+      grouped[listName].sort((a, b) => {
+        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0
+        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0
+        return tb - ta
+      })
     })
     return grouped
   }, [leads, listOrder])
