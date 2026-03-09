@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import {
@@ -59,8 +59,9 @@ export async function DELETE(
       )
     }
 
-    // Delete lead
-    const { error } = await (supabase.from("leads") as any).delete().eq("id", id)
+    // Delete lead — usar admin client para bypassear RLS
+    const adminClient = createAdminClient()
+    const { error } = await (adminClient.from("leads") as any).delete().eq("id", id)
 
     if (error) {
       console.error("Error deleting lead:", error)
@@ -135,7 +136,9 @@ export async function PATCH(
       updateData.assigned_seller_id = null
     }
 
-    const { error } = await (supabase.from("leads") as any)
+    // Usar admin client para bypassear RLS — cualquier usuario con permiso puede editar cualquier lead
+    const adminClient = createAdminClient()
+    const { error } = await (adminClient.from("leads") as any)
       .update(updateData)
       .eq("id", id)
 
@@ -270,8 +273,7 @@ export async function PATCH(
       }
     }
 
-    const { data: updatedLead } = await supabase
-      .from("leads")
+    const { data: updatedLead } = await (adminClient.from("leads") as any)
       .select("*, agencies(name), users:assigned_seller_id(name, email)")
       .eq("id", id)
       .single()
