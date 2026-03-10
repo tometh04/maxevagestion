@@ -273,7 +273,7 @@ function detectRegionList(region: string | undefined, destino?: string): string 
  * Lógica IDÉNTICA a la función chooseList() de Zapier:
  * 1. Si BUCKET incluye "cupo" → "Cupos - ${BUCKET}"
  * 2. Si BUCKET incluye "cupo" → "Cupos - ${BUCKET}"
- * 3. Si BUCKET existe (con o sin WhatsApp) → "${BUCKET}" (nombre directo de la campaña)
+ * 3. Si BUCKET existe (con o sin WhatsApp) → "Campaña - ${BUCKET}"
  * 4. Si !BUCKET && WHATSAPP → detectRegionList() → "Leads - ${REGION}"
  * 5. Default → "Leads - Instagram"
  */
@@ -289,10 +289,9 @@ export function determineListName(manychatData: ManychatLeadData): string {
     return `Cupos - ${bucketValue}`
   }
 
-  // 2. BUCKET existe → usar el nombre de la campaña directamente
-  // (independientemente de si hay WhatsApp o no)
+  // 2. BUCKET existe → "Campaña - ${BUCKET}" (con o sin WhatsApp)
   if (normalizedBucket) {
-    return bucketValue
+    return `Campaña - ${bucketValue}`
   }
 
   // 3. SIN BUCKET + WHATSAPP → detectar región
