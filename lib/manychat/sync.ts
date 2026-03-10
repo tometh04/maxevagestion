@@ -397,7 +397,56 @@ export async function syncManychatLeadToLead(
   // Este nombre se usa para agrupar leads en el kanban de CRM Manychat
   const listName = determineListName(manychatData)
   console.log(`✅ Lead de Manychat asignado a lista: "${listName}"`)
-  
+
+  // 6b. Auto-registrar la lista en manychat_list_order al inicio del kanban (posición 0)
+  //     Solo si la lista no existe todavía para esta agencia
+  try {
+    const { data: existingList } = await (supabase
+      .from("manychat_list_order") as any)
+      .select("id")
+      .eq("agency_id", agency_id)
+      .eq("list_name", listName)
+      .maybeSingle()
+
+    if (!existingList) {
+      // Obtener listas actuales para desplazarlas hacia adelante
+      const { data: currentLists } = await (supabase
+        .from("manychat_list_order") as any)
+        .select("list_name, position, seller_id")
+        .eq("agency_id", agency_id)
+        .order("position", { ascending: true })
+
+      if (currentLists && currentLists.length > 0) {
+        // Eliminar las existentes y re-insertar con posiciones +1, nueva lista en 0
+        await (supabase.from("manychat_list_order") as any)
+          .delete()
+          .eq("agency_id", agency_id)
+
+        const shiftedData = [
+          { agency_id, list_name: listName, position: 0, seller_id: null },
+          ...currentLists.map((list: any, idx: number) => ({
+            agency_id,
+            list_name: list.list_name,
+            position: idx + 1,
+            seller_id: list.seller_id || null,
+          })),
+        ]
+
+        await (supabase.from("manychat_list_order") as any)
+          .insert(shiftedData)
+      } else {
+        // No hay listas previas, insertar directamente en posición 0
+        await (supabase.from("manychat_list_order") as any)
+          .insert({ agency_id, list_name: listName, position: 0, seller_id: null })
+      }
+
+      console.log(`✅ Lista "${listName}" registrada en posición 0 del kanban`)
+    }
+  } catch (listError) {
+    // No interrumpir el flujo principal si falla el registro de la lista
+    console.error("⚠️ Error registrando lista en manychat_list_order:", listError)
+  }
+
   // 7. Preparar datos del lead
   const leadData: any = {
     agency_id,

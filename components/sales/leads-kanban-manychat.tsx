@@ -531,12 +531,19 @@ export function LeadsKanbanManychat({
 
   const orderedListNames = useMemo(() => {
     const savedListNames = new Set(listOrder.map(l => l.name))
-    const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
     const ordered: string[] = listOrder.map(l => l.name)
-    const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
-    ordered.push(...additionalLists.sort())
+
+    // Solo los admins ven listas "adicionales" (leads con list_name no registrado en manychat_list_order).
+    // Los sellers SOLO ven sus propias listas + compartidas, tal como devuelve el servidor.
+    // Esto evita que un seller vea columnas de otras vendedoras.
+    if (isAdmin) {
+      const actualListNames = new Set(Object.keys(leadsByListName).filter(name => leadsByListName[name].length > 0))
+      const additionalLists = Array.from(actualListNames).filter(name => !savedListNames.has(name))
+      ordered.push(...additionalLists.sort())
+    }
+
     return ordered
-  }, [listOrder, leadsByListName])
+  }, [listOrder, leadsByListName, isAdmin])
 
   useEffect(() => { setColumnOrder(orderedListNames) }, [orderedListNames])
 
@@ -741,7 +748,7 @@ export function LeadsKanbanManychat({
                             <div className="flex items-center gap-2 flex-1 min-w-0">
                               {/* Drag handle integrado en el header */}
                               {isAdmin && handleProps && (
-                                <div {...handleProps} className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity" title="Arrastrar columna">
+                                <div {...handleProps} className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded opacity-25 group-hover:opacity-70 hover:!opacity-100 transition-opacity" title="Arrastrar para reordenar columna">
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                                 </div>
                               )}
