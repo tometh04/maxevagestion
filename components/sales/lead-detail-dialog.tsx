@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
@@ -168,6 +168,7 @@ interface Lead {
     sale_amount_total?: number
   }> | null
   customers?: Array<{ id: string; first_name: string; last_name: string }> | null
+  archived_at?: string | null
 }
 
 interface LeadDetailDialogProps {
@@ -179,20 +180,22 @@ interface LeadDetailDialogProps {
   operators?: Array<{ id: string; name: string }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
+  onArchive?: () => void
   onConvert?: () => void
   canClaimLeads?: boolean
   onClaim?: () => void
 }
 
-export function LeadDetailDialog({ 
-  lead, 
-  open, 
+export function LeadDetailDialog({
+  lead,
+  open,
   onOpenChange,
   agencies = [],
   sellers = [],
   operators = [],
   onEdit,
   onDelete,
+  onArchive,
   onConvert,
   canClaimLeads = false,
   onClaim,
@@ -201,6 +204,7 @@ export function LeadDetailDialog({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [archiving, setArchiving] = useState(false)
   const [claiming, setClaiming] = useState(false)
   const [editingNotes, setEditingNotes] = useState(false)
   const [notesValue, setNotesValue] = useState(lead?.notes || "")
@@ -328,6 +332,27 @@ export function LeadDetailDialog({
       toast.error(error instanceof Error ? error.message : "Error al agarrar el lead")
     } finally {
       setClaiming(false)
+    }
+  }
+
+  const handleArchive = async () => {
+    if (!lead) return
+    setArchiving(true)
+    const isArchived = !!lead.archived_at
+    try {
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ archived_at: isArchived ? null : new Date().toISOString() }),
+      })
+      if (!response.ok) throw new Error("Error al archivar lead")
+      toast.success(isArchived ? "Lead restaurado correctamente" : "Lead archivado correctamente")
+      onArchive?.()
+      onOpenChange(false)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al archivar lead")
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -768,6 +793,23 @@ export function LeadDetailDialog({
                   Convertir a Operación
                 </Button>
               )
+            )}
+            {onArchive && (
+              <Button
+                variant="ghost"
+                className="text-amber-600 flex-1 sm:flex-initial hover:text-amber-700 hover:bg-amber-50"
+                onClick={handleArchive}
+                disabled={archiving}
+              >
+                {archiving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : lead?.archived_at ? (
+                  <ArchiveRestore className="mr-2 h-4 w-4" />
+                ) : (
+                  <Archive className="mr-2 h-4 w-4" />
+                )}
+                {archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}
+              </Button>
             )}
             {onDelete && !isFromTrello && (
               <Button

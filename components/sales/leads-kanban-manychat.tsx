@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User } from "lucide-react"
+import { Phone, Instagram, MapPin, DollarSign, UserPlus, Loader2, Pencil, Trash2, Plus, GripVertical, Inbox, Check, X, User, Archive, ArchiveRestore } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -84,6 +84,7 @@ interface Lead {
   deposit_currency?: string | null
   users?: { name: string; email: string } | null
   agencies?: { name: string } | null
+  archived_at?: string | null
 }
 
 interface ListInfo {
@@ -166,6 +167,9 @@ export function LeadsKanbanManychat({
   const [createListDialogOpen, setCreateListDialogOpen] = useState(false)
   const [newListName, setNewListName] = useState("")
   const [newListSellerId, setNewListSellerId] = useState<string>("none")
+  const [viewMode, setViewMode] = useState<"activos" | "archivados">("activos")
+  const [archivedLeads, setArchivedLeads] = useState<Lead[]>([])
+  const [loadingArchived, setLoadingArchived] = useState(false)
 
   const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN"
   const isSeller = currentUserRole === "SELLER"
@@ -468,6 +472,24 @@ export function LeadsKanbanManychat({
     else setLoading(false)
   }, [agencyId, fetchListOrder])
 
+  const fetchArchivedLeads = useCallback(async () => {
+    if (!agencyId) return
+    setLoadingArchived(true)
+    try {
+      const res = await fetch(`/api/leads?archived=true&agencyId=${agencyId}&limit=500`)
+      const data = await res.json()
+      setArchivedLeads(data.leads || [])
+    } catch {
+      setArchivedLeads([])
+    } finally {
+      setLoadingArchived(false)
+    }
+  }, [agencyId])
+
+  useEffect(() => {
+    if (viewMode === "archivados") fetchArchivedLeads()
+  }, [viewMode, fetchArchivedLeads])
+
   const leadsByListName = useMemo(() => {
     const grouped: Record<string, Lead[]> = {}
     listOrder.forEach(list => { grouped[list.name] = [] })
@@ -488,6 +510,24 @@ export function LeadsKanbanManychat({
     })
     return grouped
   }, [leads, listOrder])
+
+  // Leads archivados agrupados por list_name (para la tab Archivados)
+  const archivedLeadsByListName = useMemo(() => {
+    const grouped: Record<string, Lead[]> = {}
+    archivedLeads.forEach(lead => {
+      const listName = (lead.list_name || "Sin lista").trim()
+      if (!grouped[listName]) grouped[listName] = []
+      grouped[listName].push(lead)
+    })
+    Object.keys(grouped).forEach(listName => {
+      grouped[listName].sort((a, b) => {
+        const ta = a.updated_at ? new Date(a.updated_at).getTime() : 0
+        const tb = b.updated_at ? new Date(b.updated_at).getTime() : 0
+        return tb - ta
+      })
+    })
+    return grouped
+  }, [archivedLeads])
 
   const orderedListNames = useMemo(() => {
     const savedListNames = new Set(listOrder.map(l => l.name))
@@ -515,6 +555,40 @@ export function LeadsKanbanManychat({
 
   return (
     <div className="space-y-4">
+      {/* ── Tabs Activos / Archivados ── */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setViewMode("activos")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            viewMode === "activos"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "bg-white/60 dark:bg-gray-900/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-800/80"
+          }`}
+        >
+          <Inbox className="h-4 w-4" />
+          Activos
+          <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${viewMode === "activos" ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+            {leads.length}
+          </span>
+        </button>
+        <button
+          onClick={() => setViewMode("archivados")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            viewMode === "archivados"
+              ? "bg-amber-500 text-white shadow-sm"
+              : "bg-white/60 dark:bg-gray-900/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-800/80"
+          }`}
+        >
+          <Archive className="h-4 w-4" />
+          Archivados
+          {archivedLeads.length > 0 && (
+            <span className={`ml-1 px-1.5 py-0.5 rounded text-xs ${viewMode === "archivados" ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"}`}>
+              {archivedLeads.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       {/* ── Barra de filtros ── */}
       <div className="flex items-center justify-between gap-4 bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm rounded-xl p-4 shadow-sm">
         <div className="flex items-center gap-3">
@@ -554,7 +628,75 @@ export function LeadsKanbanManychat({
         )}
       </div>
 
-      {/* ── Kanban Board ── */}
+      {/* ── Board Archivados ── */}
+      {viewMode === "archivados" && (
+        <div>
+          {loadingArchived ? (
+            <div className="flex items-center justify-center p-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary/40" />
+            </div>
+          ) : archivedLeads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-16 text-muted-foreground gap-3">
+              <Archive className="h-10 w-10 opacity-30" />
+              <p className="text-sm">No hay leads archivados</p>
+            </div>
+          ) : (
+            <div className="flex gap-5 overflow-x-auto pb-4">
+              {Object.keys(archivedLeadsByListName).sort().map((listName) => {
+                const listLeads = archivedLeadsByListName[listName]
+                return (
+                  <div key={listName} className="flex-shrink-0 w-80">
+                    <div className="rounded-xl bg-amber-50/60 dark:bg-amber-900/20 backdrop-blur-sm shadow-sm border border-amber-200/40 dark:border-amber-700/30">
+                      {/* Header columna archivada */}
+                      <div className="p-3 border-b border-amber-200/40 dark:border-amber-700/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Archive className="h-4 w-4 text-amber-500 shrink-0" />
+                            <span className="font-semibold text-sm text-foreground truncate">{listName}</span>
+                          </div>
+                          <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full font-medium shrink-0 ml-2">
+                            {listLeads.length}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Cards archivadas */}
+                      <div className="p-2 flex flex-col gap-2 max-h-[calc(100vh-320px)] overflow-y-auto">
+                        {listLeads.map((lead) => (
+                          <div
+                            key={lead.id}
+                            className="bg-white/70 dark:bg-gray-900/70 rounded-lg p-3 shadow-sm cursor-pointer hover:shadow-md transition-all opacity-75 hover:opacity-100"
+                            onClick={() => { setSelectedLead(lead); setDialogOpen(true) }}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1">
+                              <p className="font-medium text-sm leading-tight truncate">{lead.contact_name}</p>
+                              <Archive className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
+                            </div>
+                            {lead.destination && (
+                              <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
+                                <MapPin className="h-3 w-3 shrink-0" />
+                                {lead.destination}
+                              </p>
+                            )}
+                            {lead.contact_phone && (
+                              <p className="text-xs text-muted-foreground truncate mt-1 flex items-center gap-1">
+                                <Phone className="h-3 w-3 shrink-0" />
+                                {lead.contact_phone}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Kanban Board (Activos) ── */}
+      {viewMode === "activos" && (
       <DndContext sensors={columnSensors} collisionDetection={closestCenter} onDragEnd={handleColumnDragEnd}>
         <SortableContext items={filteredListNames} strategy={horizontalListSortingStrategy}>
           <div ref={kanbanContainerRef} className="flex gap-5 overflow-x-auto pb-4">
@@ -779,6 +921,7 @@ export function LeadsKanbanManychat({
           </div>
         </SortableContext>
       </DndContext>
+      )} {/* fin viewMode === "activos" */}
 
       {/* Dialog de detalle */}
       {selectedLead && (
@@ -787,6 +930,7 @@ export function LeadsKanbanManychat({
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           onDelete={onRefresh}
+          onArchive={() => { onRefresh?.(); fetchArchivedLeads() }}
           onConvert={onRefresh}
           canClaimLeads={canClaimLeads}
           onClaim={() => {

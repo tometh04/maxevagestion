@@ -63,6 +63,14 @@ export async function GET(request: Request) {
       query = query.eq("source", source)
     }
 
+    // Filtro de archivados: por defecto excluir archivados; con ?archived=true traer solo archivados
+    const archivedParam = searchParams.get("archived")
+    if (archivedParam === "true") {
+      query = (query as any).not("archived_at", "is", null)
+    } else {
+      query = (query as any).is("archived_at", null)
+    }
+
     // Add pagination: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
