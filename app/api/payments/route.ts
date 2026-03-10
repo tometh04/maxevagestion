@@ -401,6 +401,7 @@ export async function GET(request: Request) {
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
     const direction = searchParams.get("direction")
+    const contactName = searchParams.get("contactName")
     
     // Paginación: usar page en vez de offset para mejor UX
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
@@ -408,13 +409,14 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200) // Máximo 200
     const offset = (page - 1) * limit
 
-    // Query base con relación a operations para obtener agency_id y destination
+    // Query base con relación a operations para obtener agency_id, destination y contact_name
     let query = supabase.from("payments").select(`
       *,
       operations:operation_id(
         id,
         destination,
         agency_id,
+        contact_name,
         agencies:agency_id(
           id,
           name
@@ -455,11 +457,18 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener pagos" }, { status: 500 })
     }
 
-    // Filtrar por agencia si está especificada (porque no podemos filtrar fácilmente por operations.agency_id en Supabase)
+    // Filtrar en memoria por agencia y nombre de cliente (nested join fields)
     let filteredPayments = payments || []
     if (agencyId && agencyId !== "ALL") {
-      filteredPayments = filteredPayments.filter((p: any) => 
+      filteredPayments = filteredPayments.filter((p: any) =>
         p.operations?.agency_id === agencyId
+      )
+    }
+    if (contactName && contactName.trim()) {
+      const search = contactName.trim().toLowerCase()
+      filteredPayments = filteredPayments.filter((p: any) =>
+        p.operations?.contact_name?.toLowerCase().includes(search) ||
+        p.contact_name?.toLowerCase().includes(search)
       )
     }
 

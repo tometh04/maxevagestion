@@ -117,6 +117,8 @@ export interface CreateLedgerMovementParams {
   receipt_number?: string | null
   notes?: string | null
   created_by?: string | null
+  /** Fecha efectiva del movimiento (puede ser retroactiva). Si no se provee, usa NOW(). */
+  movement_date?: string | Date | null
 }
 
 /**
@@ -169,6 +171,11 @@ export async function createLedgerMovement(
       receipt_number: params.receipt_number || null,
       notes: params.notes || null,
       created_by: params.created_by || null,
+      // Fecha efectiva del movimiento: puede ser retroactiva (ej. 13/02).
+      // Si no se provee, usa la fecha actual como fallback.
+      movement_date: params.movement_date
+        ? new Date(params.movement_date).toISOString()
+        : new Date().toISOString(),
     })
     .select("id")
     .single()
@@ -563,16 +570,16 @@ export async function getLedgerMovements(
     `,
       { count: "exact" } // Incluir count para paginación
     )
-    .order("created_at", { ascending: false })
+    .order("movement_date", { ascending: false })
     .range(offset, offset + limit - 1) // Paginación
 
   if (filters.dateFrom) {
-    // Incluir todo el día desde las 00:00:00
-    query = query.gte("created_at", `${filters.dateFrom}T00:00:00`)
+    // Filtrar por movement_date (fecha efectiva del movimiento, puede ser retroactiva)
+    query = query.gte("movement_date", `${filters.dateFrom}T00:00:00`)
   }
   if (filters.dateTo) {
     // Incluir todo el día hasta las 23:59:59
-    query = query.lte("created_at", `${filters.dateTo}T23:59:59`)
+    query = query.lte("movement_date", `${filters.dateTo}T23:59:59`)
   }
   if (filters.type && filters.type !== "ALL") {
     query = query.eq("type", filters.type)

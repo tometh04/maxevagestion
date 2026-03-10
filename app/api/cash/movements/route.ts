@@ -188,6 +188,9 @@ export async function POST(request: Request) {
         receipt_number: null,
         notes: notes || null,
         created_by: user.id,
+        // Pasar la fecha efectiva del movimiento para que el filtro de Caja funcione
+        // con fechas retroactivas (ej. egreso cargado hoy pero con fecha 13/02)
+        movement_date: movement_date || new Date().toISOString(),
       },
       supabase
     )
@@ -248,7 +251,7 @@ export async function GET(request: Request) {
       category: m.concept ?? m.type,
       amount: m.amount_original,
       currency: m.currency,
-      movement_date: m.created_at,
+      movement_date: m.movement_date ?? m.created_at,
       notes: m.notes ?? null,
       operations: m.operations
         ? {

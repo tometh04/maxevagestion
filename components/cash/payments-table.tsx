@@ -55,12 +55,13 @@ interface PaymentsTableProps {
   status?: string
   payerType?: string
   direction?: string
+  contactName?: string
 }
 
-export function PaymentsTable({ 
-  payments: initialPayments, 
-  isLoading: externalLoading = false, 
-  onRefresh, 
+export function PaymentsTable({
+  payments: initialPayments,
+  isLoading: externalLoading = false,
+  onRefresh,
   emptyMessage,
   dateFrom,
   dateTo,
@@ -69,6 +70,7 @@ export function PaymentsTable({
   status,
   payerType,
   direction,
+  contactName,
 }: PaymentsTableProps) {
   const [payments, setPayments] = useState<Payment[]>(initialPayments || [])
   const [loading, setLoading] = useState(!initialPayments)
@@ -99,6 +101,7 @@ export function PaymentsTable({
       if (status && status !== "ALL") params.append("status", status)
       if (payerType && payerType !== "ALL") params.append("payerType", payerType)
       if (direction && direction !== "ALL") params.append("direction", direction)
+      if (contactName && contactName.trim()) params.append("contactName", contactName.trim())
       params.append("page", page.toString())
       params.append("limit", limit.toString())
 
@@ -117,7 +120,7 @@ export function PaymentsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, status, payerType, direction, page, limit])
+  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, status, payerType, direction, contactName, page, limit])
   
   useEffect(() => {
     fetchPayments()
