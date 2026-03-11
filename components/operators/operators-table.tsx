@@ -44,23 +44,19 @@ export function OperatorsTable({ operators, isLoading = false, emptyMessage }: O
       {
         accessorKey: "name",
         header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Nombre" />
+          <DataTableColumnHeader column={column} title="Operador" />
         ),
         cell: ({ row }) => (
-          <div className="font-medium">{row.original.name}</div>
-        ),
-      },
-      {
-        id: "contact",
-        header: "Contacto",
-        cell: ({ row }) => (
-          <div className="text-sm space-y-1">
-            {row.original.contact_name && <div>{row.original.contact_name}</div>}
+          <div className="space-y-0.5">
+            <div className="font-medium">{row.original.name}</div>
+            {row.original.contact_name && (
+              <div className="text-xs text-muted-foreground">{row.original.contact_name}</div>
+            )}
             {row.original.contact_email && (
-              <div className="text-muted-foreground">{row.original.contact_email}</div>
+              <div className="text-xs text-muted-foreground">{row.original.contact_email}</div>
             )}
             {row.original.contact_phone && (
-              <div className="text-muted-foreground">{row.original.contact_phone}</div>
+              <div className="text-xs text-muted-foreground">{row.original.contact_phone}</div>
             )}
           </div>
         ),
