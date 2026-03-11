@@ -76,6 +76,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [showReconfigureForm, setShowReconfigureForm] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState(defaultAgencyId || agencies[0]?.id || "")
+  const [setupError, setSetupError] = useState<{ message: string; steps?: { certificate: boolean; service: boolean } } | null>(null)
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),
@@ -113,6 +114,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
   const onSubmit = async (values: AfipFormValues) => {
     setIsLoading(true)
+    setSetupError(null)
     try {
       const response = await fetch("/api/settings/afip/setup", {
         method: "POST",
@@ -129,6 +131,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       const data = await response.json()
 
       if (!response.ok || !data.success) {
+        setSetupError({ message: data.error || "Error desconocido", steps: data.steps })
         toast({
           title: "Error al configurar AFIP",
           description: data.error || "Verificá tus datos y volvé a intentar",
@@ -296,6 +299,27 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 El proceso crea automáticamente un certificado digital y autoriza el Web Service de Facturación (WSFE) en AFIP. Puede tardar hasta 2 minutos.
               </AlertDescription>
             </Alert>
+
+            {/* Error inline con detalle para debug */}
+            {setupError && (
+              <Alert className="mb-6 border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/20">
+                <XCircle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-700 dark:text-red-400 text-sm space-y-1">
+                  <p className="font-medium">Error al configurar AFIP:</p>
+                  <p className="font-mono text-xs bg-red-100 dark:bg-red-950 p-2 rounded">{setupError.message}</p>
+                  {setupError.steps && (
+                    <div className="flex gap-3 mt-2 text-xs">
+                      <span className={setupError.steps.certificate ? "text-green-600" : "text-red-600"}>
+                        {setupError.steps.certificate ? "✓" : "✗"} Certificado
+                      </span>
+                      <span className={setupError.steps.service ? "text-green-600" : "text-red-600"}>
+                        {setupError.steps.service ? "✓" : "✗"} Web Service
+                      </span>
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">

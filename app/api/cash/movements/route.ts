@@ -68,6 +68,7 @@ export async function POST(request: Request) {
     const movementData: Record<string, any> = {
       operation_id: operation_id || null,
       cash_box_id: finalCashBoxId,
+      financial_account_id: financial_account_id || null, // Vincular con cuenta financiera
       user_id: user.id,
       type,
       category,
