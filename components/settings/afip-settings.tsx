@@ -37,6 +37,7 @@ import {
   Shield,
   AlertCircle,
   Info,
+  Circle,
 } from "lucide-react"
 
 const afipSchema = z.object({
@@ -44,7 +45,7 @@ const afipSchema = z.object({
   cuit: z.string()
     .min(10, "El CUIT debe tener al menos 10 dígitos")
     .max(13, "CUIT inválido")
-    .transform(v => v.replace(/\D/g, ''))
+    .transform(v => v.replace(/\D/g, ""))
     .refine(v => v.length === 11, "El CUIT debe tener 11 dígitos"),
   password: z.string().min(1, "La Clave Fiscal es requerida"),
   punto_venta: z.coerce.number().min(1, "Mínimo 1").max(9999, "Máximo 9999"),
@@ -52,6 +53,22 @@ const afipSchema = z.object({
 })
 
 type AfipFormValues = z.infer<typeof afipSchema>
+
+type SetupStep =
+  | "creating_cert"
+  | "waiting_cert"
+  | "authorizing"
+  | "waiting_auth"
+  | "saving"
+  | null
+
+const STEP_LABELS: Record<NonNullable<SetupStep>, string> = {
+  creating_cert: "Iniciando creación de certificado...",
+  waiting_cert: "Creando certificado digital en AFIP (puede tardar hasta 2 min)...",
+  authorizing: "Iniciando autorización del Web Service...",
+  waiting_auth: "Autorizando WSFE en AFIP (puede tardar hasta 2 min)...",
+  saving: "Guardando configuración...",
+}
 
 interface AfipStatus {
   configured: boolean
@@ -67,6 +84,28 @@ interface AfipSettingsProps {
   defaultAgencyId: string | null
 }
 
+/** Polling de una automatización AFIP SDK desde el cliente */
+async function pollAutomation(
+  automationId: string,
+  maxAttempts = 80,
+  intervalMs = 3000
+): Promise<{ success: boolean; result?: any; error?: string }> {
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+    try {
+      const res = await fetch(`/api/settings/afip/automation?automation_id=${automationId}`)
+      const data = await res.json()
+      if (!res.ok) return { success: false, error: data.error || `Error ${res.status}` }
+      if (data.status === "completed") return { success: true, result: data.result }
+      if (data.status === "failed") return { success: false, error: data.error || "La automatización falló en AFIP" }
+      // pending / in_process → seguir esperando
+    } catch {
+      // timeout transitorio, seguir intentando
+    }
+  }
+  return { success: false, error: "Tiempo de espera agotado. Verificá tu conexión y reintentá." }
+}
+
 export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -76,7 +115,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [showReconfigureForm, setShowReconfigureForm] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState(defaultAgencyId || agencies[0]?.id || "")
-  const [setupError, setSetupError] = useState<{ message: string; steps?: { certificate: boolean; service: boolean } } | null>(null)
+  const [setupError, setSetupError] = useState<{ message: string; step?: string } | null>(null)
+  const [setupStep, setSetupStep] = useState<SetupStep>(null)
+  const [certStepDone, setCertStepDone] = useState(false)
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),
@@ -115,47 +156,101 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const onSubmit = async (values: AfipFormValues) => {
     setIsLoading(true)
     setSetupError(null)
+    setCertStepDone(false)
+
+    const cuitClean = values.cuit.replace(/\D/g, "")
+    const alias = `cert${cuitClean}`
+    const certType = values.environment === "sandbox" ? "create-cert-dev" : "create-cert-prod"
+    const authType = values.environment === "sandbox" ? "auth-web-service-dev" : "auth-web-service-prod"
+
     try {
-      const response = await fetch("/api/settings/afip/setup", {
+      // ── PASO 1: Iniciar creación de certificado ──────────────────────
+      setSetupStep("creating_cert")
+      const certStartRes = await fetch("/api/settings/afip/automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          automation: certType,
+          params: {
+            cuit: cuitClean,
+            username: cuitClean,
+            password: values.password,
+            alias,
+          },
+        }),
+      })
+      const certStart = await certStartRes.json()
+      if (!certStartRes.ok) {
+        throw new Error(`Error al crear certificado: ${certStart.error}`)
+      }
+
+      // ── PASO 2: Esperar que el certificado esté listo ────────────────
+      setSetupStep("waiting_cert")
+      const certResult = await pollAutomation(certStart.automation_id)
+      if (!certResult.success) {
+        throw new Error(`Error al crear certificado: ${certResult.error}`)
+      }
+      setCertStepDone(true)
+
+      // ── PASO 3: Iniciar autorización del Web Service ─────────────────
+      setSetupStep("authorizing")
+      const authStartRes = await fetch("/api/settings/afip/automation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          automation: authType,
+          params: {
+            cuit: cuitClean,
+            username: cuitClean,
+            password: values.password,
+            alias,
+            service: "wsfe",
+          },
+        }),
+      })
+      const authStart = await authStartRes.json()
+      if (!authStartRes.ok) {
+        throw new Error(`Error al autorizar servicio: ${authStart.error}`)
+      }
+
+      // ── PASO 4: Esperar autorización ─────────────────────────────────
+      setSetupStep("waiting_auth")
+      const authResult = await pollAutomation(authStart.automation_id)
+      if (!authResult.success) {
+        throw new Error(`Error al autorizar servicio WSFE: ${authResult.error}`)
+      }
+
+      // ── PASO 5: Guardar config en DB ─────────────────────────────────
+      setSetupStep("saving")
+      const certData = certResult.result?.cert_data || certResult.result
+      const saveRes = await fetch("/api/settings/afip/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           agency_id: values.agency_id,
-          cuit: values.cuit,
-          password: values.password,
+          cuit: cuitClean,
           punto_venta: values.punto_venta,
           environment: values.environment,
+          cert_id: certData?.cert_id || certData?.id,
         }),
       })
-
-      const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        setSetupError({ message: data.error || "Error desconocido", steps: data.steps })
-        toast({
-          title: "Error al configurar AFIP",
-          description: data.error || "Verificá tus datos y volvé a intentar",
-          variant: "destructive",
-        })
-        return
+      const saveData = await saveRes.json()
+      if (!saveRes.ok) {
+        throw new Error(saveData.error || "Error al guardar configuración")
       }
 
       toast({
         title: "AFIP configurado exitosamente ✓",
-        description: `Certificado creado y web service autorizado para CUIT ${data.config?.cuit}`,
+        description: `Certificado creado y WSFE autorizado para CUIT ${cuitClean}`,
       })
-
       setShowReconfigureForm(false)
       form.reset()
       await loadStatus(values.agency_id)
-    } catch (error: any) {
-      toast({
-        title: "Error de conexión",
-        description: error.message || "No se pudo conectar con el servidor",
-        variant: "destructive",
-      })
+    } catch (err: any) {
+      setSetupError({ message: err.message || "Error desconocido", step: setupStep || undefined })
     } finally {
       setIsLoading(false)
+      setSetupStep(null)
     }
   }
 
@@ -165,10 +260,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       const response = await fetch(`/api/settings/afip/test?agencyId=${selectedAgencyId}`)
       const data = await response.json()
       if (data.success) {
-        toast({
-          title: "Conexión exitosa ✓",
-          description: data.message || "AFIP responde correctamente",
-        })
+        toast({ title: "Conexión exitosa ✓", description: data.message || "AFIP responde correctamente" })
       } else {
         toast({
           title: "Error de conexión",
@@ -176,12 +268,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           variant: "destructive",
         })
       }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "No se pudo probar la conexión",
-        variant: "destructive",
-      })
+    } catch {
+      toast({ title: "Error", description: "No se pudo probar la conexión", variant: "destructive" })
     } finally {
       setIsTesting(false)
     }
@@ -198,7 +286,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         </p>
       </div>
 
-      {/* Selector de agencia (si hay más de una) */}
+      {/* Selector de agencia */}
       {agencies.length > 1 && (
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-muted-foreground">Agencia:</label>
@@ -226,7 +314,6 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           </CardContent>
         </Card>
       ) : afipStatus?.configured && !showReconfigureForm ? (
-        /* --- ESTADO: YA CONFIGURADO --- */
         <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -251,28 +338,17 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               </div>
               <div>
                 <span className="text-muted-foreground">Entorno</span>
-                <p className="font-medium mt-0.5 capitalize">{afipStatus.config?.environment === 'production' ? 'Producción' : 'Sandbox'}</p>
+                <p className="font-medium mt-0.5 capitalize">
+                  {afipStatus.config?.environment === "production" ? "Producción" : "Sandbox"}
+                </p>
               </div>
             </div>
             <div className="flex gap-2 pt-1">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleTestConnection}
-                disabled={isTesting}
-              >
-                {isTesting ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
+              <Button variant="outline" size="sm" onClick={handleTestConnection} disabled={isTesting}>
+                {isTesting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                 Probar Conexión
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowReconfigureForm(true)}
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowReconfigureForm(true)}>
                 <Settings2 className="h-4 w-4 mr-2" />
                 Reconfigurar
               </Button>
@@ -281,7 +357,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         </Card>
       ) : null}
 
-      {/* --- FORMULARIO DE CONFIGURACIÓN --- */}
+      {/* Formulario de configuración */}
       {showForm && (
         <Card>
           <CardHeader>
@@ -289,7 +365,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               {showReconfigureForm ? "Reconfigurar AFIP" : "Configurar AFIP"}
             </CardTitle>
             <CardDescription>
-              Ingresá los datos de tu empresa en AFIP. La Clave Fiscal se usa para crear el certificado digital de forma automática y <strong>no se almacena</strong> en el sistema.
+              Ingresá los datos de tu empresa en AFIP. La Clave Fiscal se usa para crear el certificado digital de forma automática y{" "}
+              <strong>no se almacena</strong> en el sistema.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -300,21 +377,51 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               </AlertDescription>
             </Alert>
 
-            {/* Error inline con detalle para debug */}
+            {/* Progreso del setup (mientras se ejecuta) */}
+            {isLoading && setupStep && (
+              <div className="mb-6 p-4 rounded-lg border bg-muted/30 space-y-3">
+                <p className="text-sm font-medium">Configurando AFIP...</p>
+                <div className="space-y-2 text-sm">
+                  {/* Paso 1: certificado */}
+                  <div className="flex items-center gap-2">
+                    {certStepDone ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />
+                    ) : setupStep === "creating_cert" || setupStep === "waiting_cert" ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span className={certStepDone ? "text-green-700 line-through" : ""}>
+                      Crear certificado digital
+                    </span>
+                  </div>
+                  {/* Paso 2: autorización */}
+                  <div className="flex items-center gap-2">
+                    {setupStep === "waiting_auth" || setupStep === "saving" ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                    ) : (
+                      <Circle className="h-4 w-4 text-muted-foreground shrink-0" />
+                    )}
+                    <span>Autorizar Web Service WSFE</span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">{STEP_LABELS[setupStep]}</p>
+              </div>
+            )}
+
+            {/* Error inline */}
             {setupError && (
               <Alert className="mb-6 border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/20">
                 <XCircle className="h-4 w-4 text-red-600" />
                 <AlertDescription className="text-red-700 dark:text-red-400 text-sm space-y-1">
                   <p className="font-medium">Error al configurar AFIP:</p>
-                  <p className="font-mono text-xs bg-red-100 dark:bg-red-950 p-2 rounded">{setupError.message}</p>
-                  {setupError.steps && (
+                  <p className="font-mono text-xs bg-red-100 dark:bg-red-950 p-2 rounded break-all">
+                    {setupError.message}
+                  </p>
+                  {certStepDone && (
                     <div className="flex gap-3 mt-2 text-xs">
-                      <span className={setupError.steps.certificate ? "text-green-600" : "text-red-600"}>
-                        {setupError.steps.certificate ? "✓" : "✗"} Certificado
-                      </span>
-                      <span className={setupError.steps.service ? "text-green-600" : "text-red-600"}>
-                        {setupError.steps.service ? "✓" : "✗"} Web Service
-                      </span>
+                      <span className="text-green-600">✓ Certificado creado</span>
+                      <span className="text-red-600">✗ Web Service</span>
                     </div>
                   )}
                 </AlertDescription>
@@ -323,7 +430,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-                {/* Agency (hidden si hay una sola) */}
+                {/* Agency (oculto) */}
                 <FormField
                   control={form.control}
                   name="agency_id"
@@ -345,11 +452,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                       <FormItem>
                         <FormLabel>CUIT de la Empresa</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            placeholder="20-12345678-9"
-                            className="font-mono"
-                          />
+                          <Input {...field} placeholder="20-12345678-9" className="font-mono" />
                         </FormControl>
                         <FormDescription>11 dígitos sin guiones</FormDescription>
                         <FormMessage />
@@ -365,13 +468,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                       <FormItem>
                         <FormLabel>Número de Punto de Venta</FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            min={1}
-                            max={9999}
-                            placeholder="1"
-                          />
+                          <Input {...field} type="number" min={1} max={9999} placeholder="1" />
                         </FormControl>
                         <FormDescription>El habilitado en Web Services de AFIP</FormDescription>
                         <FormMessage />
@@ -441,19 +538,14 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                     {isLoading ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Configurando AFIP... (puede tardar ~2 min)
+                        Configurando AFIP...
                       </>
                     ) : (
                       "Configurar AFIP"
                     )}
                   </Button>
                   {showReconfigureForm && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => setShowReconfigureForm(false)}
-                      disabled={isLoading}
-                    >
+                    <Button type="button" variant="ghost" onClick={() => setShowReconfigureForm(false)} disabled={isLoading}>
                       Cancelar
                     </Button>
                   )}
