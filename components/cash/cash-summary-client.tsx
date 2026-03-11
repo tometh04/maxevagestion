@@ -170,20 +170,6 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     fetchSummary()
   }, [fetchSummary])
 
-  // Auto-fetch de movimientos para cuentas visibles cuando cambian filtros o tab activo.
-  // Esto garantiza que los KPIs (Ingresos/Egresos) reflejen siempre el período seleccionado.
-  useEffect(() => {
-    if (activeTab !== "usd" && activeTab !== "ars") return
-    const accountsToFetch = activeTab === "usd" ? usdAccounts : arsAccounts
-    if (accountsToFetch.length === 0) return
-
-    // Limpiar y recargar todos los movimientos del tab activo
-    setAccountMovements({})
-    accountsToFetch.forEach(account => {
-      fetchAccountMovements(account.id)
-    })
-  }, [activeTab, fetchAccountMovements, usdAccounts, arsAccounts])
-
   // Filtrar cuentas por agencia y cuenta individual
   const filteredAccounts = useMemo(() => {
     let filtered = accounts
@@ -251,6 +237,21 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .filter(acc => acc.currency === "ARS" && acc.is_active !== false)
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
+
+  // Auto-fetch de movimientos para cuentas visibles cuando cambian filtros o tab activo.
+  // Esto garantiza que los KPIs (Ingresos/Egresos) reflejen siempre el período seleccionado.
+  // IMPORTANTE: debe ir después de usdAccounts y arsAccounts para evitar "used before declaration".
+  useEffect(() => {
+    if (activeTab !== "usd" && activeTab !== "ars") return
+    const accountsToFetch = activeTab === "usd" ? usdAccounts : arsAccounts
+    if (accountsToFetch.length === 0) return
+
+    // Limpiar y recargar todos los movimientos del tab activo
+    setAccountMovements({})
+    accountsToFetch.forEach(account => {
+      fetchAccountMovements(account.id)
+    })
+  }, [activeTab, fetchAccountMovements, usdAccounts, arsAccounts])
 
   // Calcular ingresos y egresos por cuenta (basado en cash_movements del período)
   const calculateAccountStats = useCallback((accountId: string) => {
