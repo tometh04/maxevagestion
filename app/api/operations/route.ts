@@ -226,7 +226,9 @@ export async function POST(request: Request) {
 
     if (operationError) {
       console.error("Error creating operation:", operationError)
-      return NextResponse.json({ error: "Error al crear operación" }, { status: 500 })
+      // Pasar el mensaje real del error de Supabase para que el UI lo muestre
+      const errorMsg = operationError.message || operationError.details || operationError.hint || "Error al crear operación"
+      return NextResponse.json({ error: errorMsg }, { status: 500 })
     }
 
     // Auto-generate file_code after operation is created (so we can use the real ID)
