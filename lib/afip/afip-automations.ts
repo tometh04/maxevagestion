@@ -42,9 +42,12 @@ async function createAutomation(
     const data = await response.json()
 
     if (!response.ok) {
+      const errorMsg = data.message || data.error || data.detail || data.details ||
+        (typeof data === 'string' ? data : JSON.stringify(data)) || `Error ${response.status}`
+      console.error('[AFIP SDK] Error en createAutomation:', response.status, JSON.stringify(data))
       return {
         success: false,
-        error: data.message || data.error || `Error ${response.status}`,
+        error: errorMsg,
       }
     }
 
@@ -86,9 +89,12 @@ async function getAutomationStatus(
     const data = await response.json()
 
     if (!response.ok) {
+      const errorMsg = data.message || data.error || data.detail || data.details ||
+        (typeof data === 'string' ? data : JSON.stringify(data)) || `Error ${response.status}`
+      console.error('[AFIP SDK] Error en getAutomationStatus:', response.status, JSON.stringify(data))
       return {
         success: false,
-        error: data.message || data.error || `Error ${response.status}`,
+        error: errorMsg,
       }
     }
 
