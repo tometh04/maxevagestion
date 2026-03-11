@@ -364,9 +364,31 @@ export function OperationDetailClient({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Vendedor</p>
-                  <p className="text-sm">{operation.sellers?.name || "-"}</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
+                  </p>
+                  <p className="text-sm">
+                    {operation.sellers?.name || "-"}
+                    {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({(operation as any).commission_split}% comisión)
+                      </span>
+                    )}
+                  </p>
                 </div>
+                {(operation as any).sellers_secondary && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Vendedor Secundario</p>
+                    <p className="text-sm">
+                      {(operation as any).sellers_secondary.name}
+                      {(operation as any).commission_split != null && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({100 - (operation as any).commission_split}% comisión)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Operador</p>
                   <p className="text-sm">{operation.operators?.name || "-"}</p>
