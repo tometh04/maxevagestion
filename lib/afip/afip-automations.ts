@@ -186,7 +186,7 @@ export async function createDevelopmentCertificate(
       cuit,
       username,
       password,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -252,7 +252,7 @@ export async function createProductionCertificate(
       cuit,
       username,
       password,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -313,7 +313,7 @@ export async function authorizeDevelopmentWebService(
       username,
       password,
       service,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -367,7 +367,7 @@ export async function authorizeProductionWebService(
       username,
       password,
       service,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
