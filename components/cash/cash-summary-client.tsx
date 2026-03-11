@@ -141,19 +141,24 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId])
 
-  const fetchAccountMovements = useCallback(async (accountId: string) => {
+  const fetchAccountMovements = useCallback(async (accountId: string, accountCurrency?: string) => {
     if (!dateFrom || !dateTo) return
 
     setLoadingMovements(prev => ({ ...prev, [accountId]: true }))
     try {
       // Usar /api/cash/movements que filtra por movement_date (fecha real del movimiento),
       // no por created_at. Esto evita que movimientos backdateados queden invisibles.
+      // Pasamos accountCurrency para que la API incluya también movimientos con
+      // financial_account_id=NULL (movimientos históricos sin cuenta asignada).
       const params = new URLSearchParams({
         financialAccountId: accountId,
         dateFrom: format(dateFrom, "yyyy-MM-dd"),
         dateTo: format(dateTo, "yyyy-MM-dd"),
         limit: "200",
       })
+      if (accountCurrency) {
+        params.set("accountCurrency", accountCurrency)
+      }
       const response = await fetch(`/api/cash/movements?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
@@ -246,10 +251,11 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     const accountsToFetch = activeTab === "usd" ? usdAccounts : arsAccounts
     if (accountsToFetch.length === 0) return
 
-    // Limpiar y recargar todos los movimientos del tab activo
+    // Limpiar y recargar todos los movimientos del tab activo.
+    // Pasamos account.currency para que la API incluya movimientos históricos (financial_account_id=NULL).
     setAccountMovements({})
     accountsToFetch.forEach(account => {
-      fetchAccountMovements(account.id)
+      fetchAccountMovements(account.id, account.currency)
     })
   }, [activeTab, fetchAccountMovements, usdAccounts, arsAccounts])
 

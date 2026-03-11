@@ -252,7 +252,17 @@ export async function GET(request: Request) {
 
     // Filtros
     if (financialAccountId && financialAccountId !== "ALL") {
-      query = query.eq("financial_account_id", financialAccountId)
+      // Incluir movimientos de la cuenta específica O movimientos sin cuenta asignada
+      // que coincidan con la moneda de la cuenta (movimientos viejos con financial_account_id=NULL).
+      // Esto evita que movimientos históricos queden invisibles en la Caja.
+      const accountCurrency = searchParams.get("accountCurrency")
+      if (accountCurrency) {
+        query = query.or(
+          `financial_account_id.eq.${financialAccountId},and(financial_account_id.is.null,currency.eq.${accountCurrency})`
+        )
+      } else {
+        query = query.eq("financial_account_id", financialAccountId)
+      }
     }
     if (dateFrom) {
       query = query.gte("movement_date", dateFrom)
