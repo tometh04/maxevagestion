@@ -3,7 +3,6 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
-  getLedgerMovements,
   calculateARSEquivalent,
   validateSufficientBalance,
   invalidateBalanceCache,
@@ -230,59 +229,92 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
-    // Los SELLER solo ven movimientos asignados a su seller_id
-    const sellerIdFilter = user.role === "SELLER" ? user.id : undefined
+    // Consultar cash_movements directamente — garantiza:
+    // 1. Todos los movimientos (con Y sin operación asociada)
+    // 2. Filtro por movement_date nativo (columna que siempre existió en cash_movements),
+    //    evitando el bug de ledger_movements.movement_date que en prod puede ser NULL
+    let query = (supabase.from("cash_movements") as any)
+      .select(
+        `
+        id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        users:user_id (id, name),
+        operations:operation_id (
+          id,
+          destination,
+          file_code,
+          agency_id
+        )
+      `,
+        { count: "exact" }
+      )
+      .order("movement_date", { ascending: false })
+      .range(offset, offset + limit - 1)
 
-    // Obtener movimientos desde ledger_movements (usa admin client internamente → bypasea RLS)
-    // getLedgerMovements filtra por movement_date (no created_at), soportando fechas retroactivas
-    const result = await getLedgerMovements(supabase, {
-      dateFrom,
-      dateTo,
-      type: typeParam as any,
-      currency: currencyParam as any,
-      accountId: financialAccountId ?? undefined,
-      sellerId: sellerIdFilter,
-      limit,
-      offset,
-    })
+    // Filtros
+    if (financialAccountId && financialAccountId !== "ALL") {
+      query = query.eq("financial_account_id", financialAccountId)
+    }
+    if (dateFrom) {
+      query = query.gte("movement_date", dateFrom)
+    }
+    if (dateTo) {
+      // Incluir el día completo hasta las 23:59:59
+      query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    }
+    if (typeParam && typeParam !== "ALL") {
+      query = query.eq("type", typeParam)
+    }
+    if (currencyParam && currencyParam !== "ALL") {
+      query = query.eq("currency", currencyParam)
+    }
+    // SELLER solo ve sus propios movimientos
+    if (user.role === "SELLER") {
+      query = query.eq("user_id", user.id)
+    }
 
-    // Mapear ledger_movements al formato CashMovement que espera el frontend
-    let movements = (result.movements || []).map((m: any) => ({
+    const { data: rawMovements, error: movError, count } = await query
+
+    if (movError) {
+      console.error("Error fetching cash movements:", movError)
+      return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
+    }
+
+    let movements = (rawMovements || []).map((m: any) => ({
       id: m.id,
-      // Tipos de ledger: INCOME, FX_GAIN → "INCOME"; EXPENSE, FX_LOSS, COMMISSION, OPERATOR_PAYMENT → "EXPENSE"
-      type: (m.type === "INCOME" || m.type === "FX_GAIN") ? "INCOME" : "EXPENSE",
-      category: m.concept ?? m.type,
-      amount: m.amount_original,
+      type: m.type as "INCOME" | "EXPENSE",
+      category: m.category,
+      amount: m.amount,
       currency: m.currency,
-      movement_date: m.movement_date ?? m.created_at,
+      movement_date: m.movement_date,
       notes: m.notes ?? null,
       operations: m.operations
         ? {
             id: m.operations.id,
             destination: m.operations.destination ?? null,
             file_code: m.operations.file_code ?? null,
-            agency_id: (m.operations as any).agency_id ?? null,
+            agency_id: m.operations.agency_id ?? null,
             agencies: null,
           }
         : null,
       users: m.users ? { name: m.users.name } : null,
     }))
 
-    // Filtro de agencia (client-side, igual que implementación anterior)
+    // Filtro de agencia (solo si viene el parámetro)
     if (agencyId && agencyId !== "ALL") {
       movements = movements.filter((m: any) => m.operations?.agency_id === agencyId)
     }
 
-    const totalPages = result.total > 0 ? Math.ceil(result.total / limit) : 0
+    const total = count ?? movements.length
+    const totalPages = total > 0 ? Math.ceil(total / limit) : 0
 
     return NextResponse.json({
       movements,
       pagination: {
-        total: result.total,
+        total,
         page,
         limit,
         totalPages,
-        hasMore: result.hasMore,
+        hasMore: offset + limit < total,
       },
     })
   } catch (error: any) {
