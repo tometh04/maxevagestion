@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DestinationCombobox } from "@/components/ui/destination-combobox"
 import {
   Select,
   SelectContent,
@@ -426,7 +427,12 @@ export function EditLeadDialog({
                       <FormItem>
                         <FormLabel>Destino</FormLabel>
                         <FormControl>
-                          <Input placeholder="Ej: Cancún, México" {...field} disabled={!!isSyncedWithTrello} />
+                          <DestinationCombobox
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Ej: Cancún, México"
+                            disabled={!!isSyncedWithTrello}
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
