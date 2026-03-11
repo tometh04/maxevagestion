@@ -94,14 +94,14 @@ export async function POST(request: Request) {
     // Obtener información de la operación si existe para completar seller_id y operator_id
     let sellerId: string | null = null
     let operatorId: string | null = null
-    
+
     if (operation_id) {
       try {
         const { data: operation } = await (supabase.from("operations") as any)
           .select("seller_id, operator_id")
           .eq("id", operation_id)
           .maybeSingle()
-        
+
         if (operation) {
           sellerId = (operation as any).seller_id || null
           operatorId = (operation as any).operator_id || null
@@ -123,19 +123,19 @@ export async function POST(request: Request) {
     if (currency === "USD") {
       const rateDate = movement_date ? new Date(movement_date) : new Date()
       exchangeRate = await getExchangeRate(supabase, rateDate)
-      
+
       // Si no hay tasa para esa fecha, usar la más reciente disponible
       if (!exchangeRate) {
         exchangeRate = await getLatestExchangeRate(supabase)
       }
-      
+
       // Fallback: si aún no hay tasa, usar 1450 como último recurso
       if (!exchangeRate) {
         console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
         exchangeRate = 1450
       }
     }
-    
+
     const amountARS = calculateARSEquivalent(
       amountNum,
       currency as "ARS" | "USD",
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
         currency as "ARS" | "USD",
         supabase
       )
-      
+
       if (!balanceCheck.valid) {
         return NextResponse.json(
           { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
@@ -222,6 +222,7 @@ export async function GET(request: Request) {
     const typeParam = searchParams.get("type") ?? "ALL"
     const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
+    const financialAccountId = searchParams.get("financialAccountId")
 
     // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
@@ -233,11 +234,13 @@ export async function GET(request: Request) {
     const sellerIdFilter = user.role === "SELLER" ? user.id : undefined
 
     // Obtener movimientos desde ledger_movements (usa admin client internamente → bypasea RLS)
+    // getLedgerMovements filtra por movement_date (no created_at), soportando fechas retroactivas
     const result = await getLedgerMovements(supabase, {
       dateFrom,
       dateTo,
       type: typeParam as any,
       currency: currencyParam as any,
+      accountId: financialAccountId ?? undefined,
       sellerId: sellerIdFilter,
       limit,
       offset,
@@ -257,6 +260,7 @@ export async function GET(request: Request) {
         ? {
             id: m.operations.id,
             destination: m.operations.destination ?? null,
+            file_code: m.operations.file_code ?? null,
             agency_id: (m.operations as any).agency_id ?? null,
             agencies: null,
           }
@@ -296,7 +300,7 @@ export async function DELETE(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const movementId = searchParams.get("movementId")
 
     if (!movementId) {
@@ -365,9 +369,9 @@ export async function DELETE(request: Request) {
     if (accountIdToInvalidate) invalidateBalanceCache(accountIdToInvalidate)
     console.log(`✅ Cash movement ${movementId} eliminado`)
 
-    return NextResponse.json({ 
-      success: true, 
-      message: "Movimiento eliminado correctamente" 
+    return NextResponse.json({
+      success: true,
+      message: "Movimiento eliminado correctamente"
     })
   } catch (error) {
     console.error("Error in DELETE /api/cash/movements:", error)

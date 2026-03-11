@@ -61,24 +61,19 @@ interface DailyBalance {
   balance: number
 }
 
-interface LedgerMovement {
+interface CashMovement {
   id: string
   type: string
-  concept: string
+  concept?: string
+  category: string
   currency: "ARS" | "USD"
-  amount_original: number
-  amount_ars_equivalent: number
-  created_at: string
-  financial_accounts?: {
-    id: string
-    name: string
-    type: string
-    currency: string
-  }
+  amount: number
+  movement_date: string
+  notes?: string | null
   operations?: {
     id: string
     destination: string
-    file_code: string
+    file_code?: string
   } | null
 }
 
@@ -112,7 +107,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [activeTab, setActiveTab] = useState("resumen")
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
-  const [accountMovements, setAccountMovements] = useState<Record<string, LedgerMovement[]>>({})
+  const [accountMovements, setAccountMovements] = useState<Record<string, CashMovement[]>>({})
   const [loading, setLoading] = useState(true)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
 
@@ -151,9 +146,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
 
     setLoadingMovements(prev => ({ ...prev, [accountId]: true }))
     try {
-      const response = await fetch(
-        `/api/accounting/ledger?accountId=${accountId}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}&type=ALL`
-      )
+      // Usar /api/cash/movements que filtra por movement_date (fecha real del movimiento),
+      // no por created_at. Esto evita que movimientos backdateados queden invisibles.
+      const params = new URLSearchParams({
+        financialAccountId: accountId,
+        dateFrom: format(dateFrom, "yyyy-MM-dd"),
+        dateTo: format(dateTo, "yyyy-MM-dd"),
+        limit: "200",
+      })
+      const response = await fetch(`/api/cash/movements?${params.toString()}`)
       if (response.ok) {
         const data = await response.json()
         setAccountMovements(prev => ({ ...prev, [accountId]: data.movements || [] }))
@@ -168,6 +169,20 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   useEffect(() => {
     fetchSummary()
   }, [fetchSummary])
+
+  // Auto-fetch de movimientos para cuentas visibles cuando cambian filtros o tab activo.
+  // Esto garantiza que los KPIs (Ingresos/Egresos) reflejen siempre el período seleccionado.
+  useEffect(() => {
+    if (activeTab !== "usd" && activeTab !== "ars") return
+    const accountsToFetch = activeTab === "usd" ? usdAccounts : arsAccounts
+    if (accountsToFetch.length === 0) return
+
+    // Limpiar y recargar todos los movimientos del tab activo
+    setAccountMovements({})
+    accountsToFetch.forEach(account => {
+      fetchAccountMovements(account.id)
+    })
+  }, [activeTab, fetchAccountMovements, usdAccounts, arsAccounts])
 
   // Filtrar cuentas por agencia y cuenta individual
   const filteredAccounts = useMemo(() => {
@@ -237,15 +252,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
 
-  // Calcular ingresos y egresos por cuenta
+  // Calcular ingresos y egresos por cuenta (basado en cash_movements del período)
   const calculateAccountStats = useCallback((accountId: string) => {
     const movements = accountMovements[accountId] || []
     const income = movements
       .filter(m => m.type === "INCOME")
-      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
+      .reduce((sum, m) => sum + (m.amount || 0), 0)
     const expenses = movements
       .filter(m => m.type === "EXPENSE")
-      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
+      .reduce((sum, m) => sum + (m.amount || 0), 0)
     return { income, expenses }
   }, [accountMovements])
 
@@ -465,24 +480,41 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                              {formatCurrency(stats.income, "USD")}
-                            </p>
+                            {isLoading ? (
+                              <Skeleton className="h-7 w-24 mt-1" />
+                            ) : (
+                              <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                {formatCurrency(stats.income, "USD")}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
-                              {formatCurrency(stats.expenses, "USD")}
-                            </p>
+                            {isLoading ? (
+                              <Skeleton className="h-7 w-24 mt-1" />
+                            ) : (
+                              <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                                {formatCurrency(stats.expenses, "USD")}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                           <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           <div>
-                            <p className="text-xs text-muted-foreground">Balance</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-xs text-muted-foreground cursor-help underline decoration-dotted">Balance actual</p>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs">Saldo total vigente de la cuenta,<br/>independiente del rango de fechas.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                               {formatCurrency(account.current_balance ?? 0, "USD")}
                             </p>
@@ -490,68 +522,61 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                         </div>
                       </div>
 
-                      {/* Botón para cargar movimientos */}
-                      {!accountMovements[account.id] && !isLoading && (
-                        <button
-                          onClick={() => fetchAccountMovements(account.id)}
-                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
-                        >
-                          Ver Movimientos
-                        </button>
-                      )}
-
                       {/* Tabla de movimientos */}
-                      {accountMovements[account.id] && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
-                          {isLoading ? (
-                            <Skeleton className="h-32 w-full" />
-                          ) : movements.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
-                          ) : (
-                            <div className="border rounded-md overflow-hidden">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>Fecha</TableHead>
-                                    <TableHead>Tipo</TableHead>
-                                    <TableHead>Concepto</TableHead>
-                                    <TableHead className="text-right">Monto</TableHead>
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">
+                          Movimientos del período
+                        </h4>
+                        {isLoading ? (
+                          <Skeleton className="h-32 w-full" />
+                        ) : movements.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                        ) : (
+                          <div className="border rounded-md overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Tipo</TableHead>
+                                  <TableHead>Concepto</TableHead>
+                                  <TableHead className="text-right">Monto</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {movements.map((movement) => (
+                                  <TableRow key={movement.id}>
+                                    <TableCell className="text-sm">
+                                      {format(new Date(movement.movement_date), "dd/MM/yyyy", { locale: es })}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={movement.type === "INCOME" ? "default" : "destructive"}
+                                      >
+                                        {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                      {movement.category}
+                                      {movement.notes && (
+                                        <span className="text-muted-foreground ml-1">— {movement.notes}</span>
+                                      )}
+                                      {movement.operations && (
+                                        <span className="text-muted-foreground ml-1">
+                                          ({movement.operations.file_code})
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                      {movement.type === "INCOME" ? "+" : "-"}
+                                      {formatCurrency(movement.amount, movement.currency)}
+                                    </TableCell>
                                   </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {movements.map((movement) => (
-                                    <TableRow key={movement.id}>
-                                      <TableCell className="text-sm">
-                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Badge
-                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                        >
-                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell className="text-sm">
-                                        {movement.concept}
-                                        {movement.operations && (
-                                          <span className="text-muted-foreground ml-1">
-                                            ({movement.operations.file_code})
-                                          </span>
-                                        )}
-                                      </TableCell>
-                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                        {movement.type === "INCOME" ? "+" : "-"}
-                                        {formatCurrency(movement.amount_original, movement.currency)}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
           </CardContent>
         </Card>
                 )
@@ -600,24 +625,41 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                              {formatCurrency(stats.income, "ARS")}
-                            </p>
+                            {isLoading ? (
+                              <Skeleton className="h-7 w-24 mt-1" />
+                            ) : (
+                              <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                                {formatCurrency(stats.income, "ARS")}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
-                              {formatCurrency(stats.expenses, "ARS")}
-                            </p>
+                            {isLoading ? (
+                              <Skeleton className="h-7 w-24 mt-1" />
+                            ) : (
+                              <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                                {formatCurrency(stats.expenses, "ARS")}
+                              </p>
+                            )}
                           </div>
-                            </div>
+                        </div>
                         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                           <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           <div>
-                            <p className="text-xs text-muted-foreground">Balance</p>
+                            <TooltipProvider>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <p className="text-xs text-muted-foreground cursor-help underline decoration-dotted">Balance actual</p>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="text-xs">Saldo total vigente de la cuenta,<br/>independiente del rango de fechas.</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </TooltipProvider>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                               {formatCurrency(account.current_balance ?? 0, "ARS")}
                             </p>
@@ -625,68 +667,61 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                         </div>
                       </div>
 
-                      {/* Botón para cargar movimientos */}
-                      {!accountMovements[account.id] && !isLoading && (
-                        <button
-                          onClick={() => fetchAccountMovements(account.id)}
-                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
-                        >
-                          Ver Movimientos
-                        </button>
-                      )}
-
                       {/* Tabla de movimientos */}
-                      {accountMovements[account.id] && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
-                          {isLoading ? (
-                            <Skeleton className="h-32 w-full" />
-                          ) : movements.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
-                          ) : (
-                            <div className="border rounded-md overflow-hidden">
-                              <Table>
-                                <TableHeader>
-                                  <TableRow>
-                                    <TableHead>Fecha</TableHead>
-                                    <TableHead>Tipo</TableHead>
-                                    <TableHead>Concepto</TableHead>
-                                    <TableHead className="text-right">Monto</TableHead>
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">
+                          Movimientos del período
+                        </h4>
+                        {isLoading ? (
+                          <Skeleton className="h-32 w-full" />
+                        ) : movements.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                        ) : (
+                          <div className="border rounded-md overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Fecha</TableHead>
+                                  <TableHead>Tipo</TableHead>
+                                  <TableHead>Concepto</TableHead>
+                                  <TableHead className="text-right">Monto</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {movements.map((movement) => (
+                                  <TableRow key={movement.id}>
+                                    <TableCell className="text-sm">
+                                      {format(new Date(movement.movement_date), "dd/MM/yyyy", { locale: es })}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={movement.type === "INCOME" ? "default" : "destructive"}
+                                      >
+                                        {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-sm">
+                                      {movement.category}
+                                      {movement.notes && (
+                                        <span className="text-muted-foreground ml-1">— {movement.notes}</span>
+                                      )}
+                                      {movement.operations && (
+                                        <span className="text-muted-foreground ml-1">
+                                          ({movement.operations.file_code})
+                                        </span>
+                                      )}
+                                    </TableCell>
+                                    <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                      {movement.type === "INCOME" ? "+" : "-"}
+                                      {formatCurrency(movement.amount, movement.currency)}
+                                    </TableCell>
                                   </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                  {movements.map((movement) => (
-                                    <TableRow key={movement.id}>
-                                      <TableCell className="text-sm">
-                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
-                                      </TableCell>
-                                      <TableCell>
-                                        <Badge
-                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                        >
-                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
-                                        </Badge>
-                                      </TableCell>
-                                      <TableCell className="text-sm">
-                                        {movement.concept}
-                                        {movement.operations && (
-                                          <span className="text-muted-foreground ml-1">
-                                            ({movement.operations.file_code})
-                                          </span>
-                                        )}
-                                      </TableCell>
-                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                        {movement.type === "INCOME" ? "+" : "-"}
-                                        {formatCurrency(movement.amount_original, movement.currency)}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
-                                </TableBody>
-                              </Table>
-                            </div>
-                          )}
-                        </div>
-          )}
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </div>
         </CardContent>
       </Card>
                 )
