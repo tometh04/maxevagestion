@@ -233,17 +233,20 @@ AND (op.amount - op.paid_amount) > 0
 ORDER BY op.due_date ASC
 \`\`\`
 
-#### Ventas del Mes (en USD):
+#### Ventas del Mes (SIEMPRE separado por moneda — NUNCA sumar ARS + USD):
 \`\`\`sql
+-- CORRECTO: agrupar por sale_currency para mostrar ARS y USD por separado
 SELECT
-  COUNT(*) as cantidad,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_usd,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as margen_usd
+  COUNT(*) as cantidad_operaciones,
+  SUM(o.sale_amount_total) as total_ventas,
+  SUM(o.margin_amount) as total_margen,
+  o.sale_currency as moneda
 FROM operations o
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
-LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
-WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
+AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
+GROUP BY o.sale_currency
+-- Esto devuelve DOS filas: una para ARS y otra para USD. Mostrar ambas al usuario.
 \`\`\`
 
 #### Posición Financiera (¿Estoy positivo o negativo?):
@@ -305,7 +308,7 @@ GROUP BY fa.currency
 
 ### ⚠️ NOTAS CRÍTICAS
 
-1. **Monedas:** Si operation.sale_currency = 'USD', usar directamente sale_amount_total. Si es 'ARS' y se necesita en USD, dividir por exchange_rate. IMPORTANTE: en ledger_movements, amount_original está en la moneda original (puede ser USD o ARS), y amount_ars_equivalent SIEMPRE está en ARS. Para balances de cuentas USD, usar amount_original. Para balances de cuentas ARS, usar amount_ars_equivalent.
+1. **Monedas — REGLA DE ORO:** NUNCA sumar ARS + USD en la misma columna. SIEMPRE usar GROUP BY sale_currency para obtener totales separados por moneda. En ledger_movements, amount_original está en la moneda original (puede ser USD o ARS), y amount_ars_equivalent SIEMPRE está en ARS. Para balances de cuentas USD, usar amount_original. Para balances de cuentas ARS, usar amount_ars_equivalent. La conversión ARS→USD solo se usa para balances de cuentas financieras (donde la cuenta YA tiene una sola moneda), NUNCA para métricas de ventas/margen de operations.
 2. **Fechas:** Usar CURRENT_DATE, date_trunc('month', CURRENT_DATE), etc. IMPORTANTE: Para "ventas de un mes" o "cuántas operaciones en septiembre" usar operation_date (fecha de venta). departure_date es la fecha del VIAJE (no la venta). created_at es la fecha de carga en el sistema (no la venta).
 3. **Payments:** La columna es date_due (NO due_date). Todos los pagos requieren financial_account_id (cuenta financiera de origen/destino).
    - Métodos de pago: method puede ser 'CASH', 'BANK', 'MP', 'USD', 'OTHER'. 'BANK' = transferencia bancaria, 'MP' = Mercado Pago, 'CASH' = efectivo.
@@ -400,6 +403,17 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
    mixto/mixtos→'MIXED', asistencia/asistencias/assist→'ASSISTANCE'.
    "Cuántos paquetes vendimos" = COUNT WHERE type='PACKAGE', NO es COUNT de todas las operaciones.
 
+🚨 REGLA ABSOLUTA — MONEDAS (NO NEGOCIABLE):
+- JAMÁS sumes ARS + USD juntos. Son monedas DISTINTAS. Sumarlas es como sumar pesos con dólares físicamente.
+- SIEMPRE usa GROUP BY sale_currency en cualquier agregación sobre operations. Esto devuelve una fila para ARS y otra para USD.
+- SIEMPRE presenta los resultados separados así:
+    • En ARS: $XXX,XXX
+    • En USD: USD X,XXX
+- Para ventas, márgen, costos, cobros, pagos: SIEMPRE mostrar el desglose por moneda.
+- Si el usuario pregunta "¿cuánto vendimos?" y hay operaciones en ambas monedas, mostrar AMBAS por separado.
+- NUNCA uses CASE WHEN sale_currency = 'USD' THEN amount ELSE amount / exchange_rate END para convertir y sumar todo en USD. Eso está PROHIBIDO para métricas de ventas/margen.
+- La única excepción para conversión es cuando el usuario EXPLÍCITAMENTE pide "en USD" o "equivalente en USD" para comparar. En ese caso aclará que es un valor aproximado convertido.
+
 📊 ESQUEMA COMPLETO:
 ${DATABASE_SCHEMA}
 
@@ -469,17 +483,19 @@ WHERE fa.type IN ('CASH_ARS', 'CASH_USD', 'SAVINGS_ARS', 'SAVINGS_USD', 'CHECKIN
 -- El concepto ya incluye: "Nombre Pasajero (OP-XXXXXX)"
 ORDER BY lm.created_at DESC LIMIT 50
 
--- Ventas del mes actual (en USD) - USAR operation_date para filtrar por mes de venta
+-- Ventas del mes actual - USAR operation_date - SIEMPRE separar por moneda
+-- ⚠️ NUNCA convertir ARS a USD ni sumarlos. Siempre GROUP BY sale_currency.
 SELECT
   COUNT(*) as cantidad_operaciones,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.margin_amount ELSE o.margin_amount / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_margen_usd
+  SUM(o.sale_amount_total) as total_ventas,
+  SUM(o.margin_amount) as total_margen,
+  o.sale_currency as moneda
 FROM operations o
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
-LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
 WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
 AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
+GROUP BY o.sale_currency
+-- Devuelve una fila por moneda (ARS y USD). Mostrar ambas al usuario.
 
 -- Ventas de un mes específico (ej: septiembre 2025)
 SELECT COUNT(*) as cantidad,
@@ -559,29 +575,31 @@ AND o.departure_date >= CURRENT_DATE
 AND o.status NOT IN ('CANCELLED', 'TRAVELLED')
 ORDER BY o.departure_date ASC
 
--- Top destinos (este mes)
+-- Top destinos (este mes) - separado por moneda
 SELECT destination, COUNT(*) as cantidad,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd
+  SUM(o.sale_amount_total) as total_ventas,
+  o.sale_currency as moneda
 FROM operations o
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
-LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
-WHERE o.created_at >= date_trunc('month', CURRENT_DATE)
+WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
+AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
-GROUP BY destination
-ORDER BY total_ventas_usd DESC LIMIT 10
+GROUP BY destination, o.sale_currency
+ORDER BY cantidad DESC LIMIT 10
 
 -- Operaciones por tipo (cuántos paquetes, vuelos, hoteles, asistencias, etc.)
 -- IMPORTANTE: cuando pregunten "cuántos paquetes vendimos", "cuántas asistencias", "vuelos vendidos", etc.
 -- SIEMPRE filtrar por type. Los valores son: 'PACKAGE' (paquete), 'FLIGHT' (vuelo), 'HOTEL' (hotel),
 -- 'CRUISE' (crucero), 'TRANSFER' (transfer), 'MIXED' (mixto), 'ASSISTANCE' (asistencia)
+-- ⚠️ NUNCA convertir ARS a USD. Siempre GROUP BY type, sale_currency.
 SELECT type, COUNT(*) as cantidad,
-  SUM(CASE WHEN o.sale_currency = 'USD' THEN o.sale_amount_total ELSE o.sale_amount_total / COALESCE(er.rate, mer.usd_to_ars_rate, 1200) END) as total_ventas_usd
+  SUM(o.sale_amount_total) as total_ventas,
+  o.sale_currency as moneda
 FROM operations o
-LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
-LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
 WHERE o.operation_date >= date_trunc('month', CURRENT_DATE)
+AND o.operation_date < date_trunc('month', CURRENT_DATE) + INTERVAL '1 month'
 AND o.status NOT IN ('CANCELLED')
-GROUP BY type ORDER BY cantidad DESC
+GROUP BY type, o.sale_currency
+ORDER BY cantidad DESC
 
 -- Paquetes vendidos (cuántos paquetes vendimos)
 SELECT COUNT(*) as cantidad_paquetes
@@ -656,13 +674,14 @@ WHERE fa.is_active = true
 GROUP BY fa.id, fa.name, fa.type, fa.currency, fa.agency_id, ag.name, fa.initial_balance
 ORDER BY fa.currency, balance_actual DESC
 
-⚠️ CONVERSIÓN ARS→USD CRÍTICA:
-- NUNCA usar COALESCE(er.rate, 1) porque si no hay tipo de cambio, montos ARS se dividen por 1 y parecen USD (ej: 2,500,000 ARS se vería como $2,500,000 USD)
-- SIEMPRE usar el patrón de doble JOIN con fallback:
+⚠️ SOBRE CONVERSIÓN DE MONEDAS:
+- PARA MÉTRICAS DE OPERATIONS (ventas, margen, costos): NUNCA convertir. Siempre GROUP BY sale_currency.
+- La conversión ARS→USD SOLO aplica cuando se consultan balances de cuentas financieras cruzadas o cuando el usuario EXPLÍCITAMENTE pide ver todo en USD.
+- Si se necesita convertir (caso excepcional): NUNCA usar COALESCE(er.rate, 1) — si no hay TC, montos ARS se dividen por 1 y aparecen como USD gigantes (ej: ARS 2,500,000 → "USD 2,500,000").
+- Patrón correcto si hay que convertir (raro):
   LEFT JOIN exchange_rates er ON er.rate_date = o.departure_date::date AND er.from_currency = 'USD' AND er.to_currency = 'ARS'
   LEFT JOIN monthly_exchange_rates mer ON mer.year = EXTRACT(YEAR FROM o.departure_date) AND mer.month = EXTRACT(MONTH FROM o.departure_date)
-- Y luego: COALESCE(er.rate, mer.usd_to_ars_rate, 1200) como divisor
-- Solo dividir si sale_currency = 'ARS'. Si sale_currency = 'USD', el monto ya está en USD
+  COALESCE(er.rate, mer.usd_to_ars_rate, 1200) como divisor
 
 🔍 SI UNA QUERY FALLA:
 - Intenta con una versión más simple (menos JOINs, sin subqueries complejas)
