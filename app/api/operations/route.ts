@@ -878,14 +878,26 @@ export async function GET(request: Request) {
       }
     }
 
-    // Filtros por fecha de cobro/pago
+    // Filtros por fecha de cobro/pago/operación
     const paymentDateFrom = searchParams.get("paymentDateFrom")
     const paymentDateTo = searchParams.get("paymentDateTo")
-    const paymentDateType = searchParams.get("paymentDateType") // "COBRO" | "PAGO" | "VENCIMIENTO"
-    
+    const paymentDateType = searchParams.get("paymentDateType") // "OPERACION" | "COBRO" | "PAGO" | "VENCIMIENTO"
+
+    // Filtro por fecha de operación (operation_date) — sin JOIN a payments
+    if (paymentDateType === "OPERACION") {
+      if (paymentDateFrom) {
+        query = query.gte("operation_date", paymentDateFrom)
+        countQuery = countQuery.gte("operation_date", paymentDateFrom)
+      }
+      if (paymentDateTo) {
+        query = query.lte("operation_date", paymentDateTo)
+        countQuery = countQuery.lte("operation_date", paymentDateTo)
+      }
+    }
+
     // Si hay filtros de fecha de cobro/pago, primero obtener los operation_ids que cumplen
     let operationIdsWithPayments: string[] = []
-    if (paymentDateFrom || paymentDateTo) {
+    if (paymentDateType !== "OPERACION" && (paymentDateFrom || paymentDateTo)) {
       if (paymentDateType === "COBRO" || paymentDateType === "PAGO" || paymentDateType === "VENCIMIENTO") {
         let paymentFilterQuery = supabase
           .from("payments")

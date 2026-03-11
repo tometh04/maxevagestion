@@ -203,6 +203,7 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="NONE">Ninguno</SelectItem>
+                <SelectItem value="OPERACION">Operación</SelectItem>
                 <SelectItem value="COBRO">Cobro</SelectItem>
                 <SelectItem value="PAGO">Pago</SelectItem>
                 <SelectItem value="VENCIMIENTO">Vencimiento</SelectItem>
@@ -213,7 +214,12 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
           {paymentDateType && paymentDateType !== "NONE" && (
             <>
               <div className="space-y-1.5">
-                <Label className="text-xs">{paymentDateType === "COBRO" ? "Cobro Desde" : paymentDateType === "PAGO" ? "Pago Desde" : "Venc. Desde"}</Label>
+                <Label className="text-xs">
+                  {paymentDateType === "OPERACION" ? "Op. Desde"
+                    : paymentDateType === "COBRO" ? "Cobro Desde"
+                    : paymentDateType === "PAGO" ? "Pago Desde"
+                    : "Venc. Desde"}
+                </Label>
                 <DateInputWithCalendar
                   value={paymentDateFrom}
                   onChange={(date) => {
@@ -226,7 +232,12 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
                 />
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">{paymentDateType === "COBRO" ? "Cobro Hasta" : paymentDateType === "PAGO" ? "Pago Hasta" : "Venc. Hasta"}</Label>
+                <Label className="text-xs">
+                  {paymentDateType === "OPERACION" ? "Op. Hasta"
+                    : paymentDateType === "COBRO" ? "Cobro Hasta"
+                    : paymentDateType === "PAGO" ? "Pago Hasta"
+                    : "Venc. Hasta"}
+                </Label>
                 <DateInputWithCalendar
                   value={paymentDateTo}
                   onChange={(date) => {
