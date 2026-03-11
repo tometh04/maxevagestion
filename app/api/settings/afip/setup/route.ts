@@ -22,17 +22,26 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { agency_id, cuit, punto_venta, environment = "production", cert_id } = body
+    const { agency_id, cuit: bodyCuit, punto_venta, environment = "production", cert_id } = body
 
-    if (!agency_id || !cuit || !punto_venta) {
+    if (!agency_id || !punto_venta) {
       return NextResponse.json(
-        { error: "Faltan campos requeridos (agency_id, cuit, punto_venta)" },
+        { error: "Faltan campos requeridos (agency_id, punto_venta)" },
+        { status: 400 }
+      )
+    }
+
+    // Usar env var AFIP_CUIT si está disponible, sino el valor del body
+    const rawCuit = process.env.AFIP_CUIT || bodyCuit
+    if (!rawCuit) {
+      return NextResponse.json(
+        { error: "CUIT no configurado. Agregá AFIP_CUIT a las variables de entorno." },
         { status: 400 }
       )
     }
 
     // Validar CUIT
-    const cuitClean = formatCuit(cuit)
+    const cuitClean = formatCuit(rawCuit)
     if (!isValidCuit(cuitClean)) {
       return NextResponse.json({ error: "El CUIT debe tener 11 dígitos" }, { status: 400 })
     }

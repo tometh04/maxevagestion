@@ -3,7 +3,8 @@
  * POST: inicia una automatización y devuelve el automation_id inmediatamente.
  * GET:  consulta el estado de una automatización (para polling desde el cliente).
  *
- * No hay polling server-side — así evitamos el timeout de Vercel.
+ * Sin polling server-side → nunca hace timeout en Vercel.
+ * Usa AFIP_CUIT y AFIP_PASSWORD de env vars si están disponibles.
  */
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
@@ -26,11 +27,31 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { automation, params } = body
+    const { automation, params: bodyParams } = body
 
-    if (!automation || !params) {
-      return NextResponse.json({ error: "Faltan campos: automation y params son requeridos" }, { status: 400 })
+    if (!automation) {
+      return NextResponse.json({ error: "Falta el campo 'automation'" }, { status: 400 })
     }
+
+    // Usar env vars como fuente de verdad; el frontend puede enviar vacíos si están configurados
+    const systemCuit = process.env.AFIP_CUIT?.replace(/\D/g, "")
+    const systemPassword = process.env.AFIP_PASSWORD
+
+    const params = {
+      ...bodyParams,
+      // Sobrescribir con env vars si están disponibles
+      ...(systemCuit && { cuit: systemCuit, username: systemCuit }),
+      ...(systemPassword && { password: systemPassword }),
+    }
+
+    if (!params.cuit) {
+      return NextResponse.json({ error: "CUIT no configurado. Agregá AFIP_CUIT a las variables de entorno o ingresalo en el formulario." }, { status: 400 })
+    }
+    if (!params.password) {
+      return NextResponse.json({ error: "Clave Fiscal no configurada. Agregá AFIP_PASSWORD a las variables de entorno o ingresala en el formulario." }, { status: 400 })
+    }
+
+    console.log(`[AFIP Automation] Iniciando '${automation}' para CUIT ${params.cuit}`)
 
     const response = await fetch(`${AFIP_SDK_BASE_URL}/automations`, {
       method: "POST",
@@ -45,15 +66,17 @@ export async function POST(request: Request) {
 
     if (!response.ok) {
       const errorMsg =
+        (data.data_errors ? JSON.stringify(data.data_errors) : null) ||
         data.message ||
         data.error ||
         data.detail ||
-        (data.data_errors ? JSON.stringify(data.data_errors) : null) ||
         JSON.stringify(data) ||
         `Error ${response.status}`
       console.error("[AFIP Automation] Error al iniciar:", response.status, JSON.stringify(data))
       return NextResponse.json({ error: errorMsg }, { status: response.status })
     }
+
+    console.log(`[AFIP Automation] Iniciada OK. ID: ${data.id || data.automation_id}, Status: ${data.status}`)
 
     return NextResponse.json({
       automation_id: data.id || data.automation_id,
@@ -93,8 +116,7 @@ export async function GET(request: Request) {
     const data = await response.json()
 
     if (!response.ok) {
-      const errorMsg =
-        data.message || data.error || JSON.stringify(data) || `Error ${response.status}`
+      const errorMsg = data.message || data.error || JSON.stringify(data) || `Error ${response.status}`
       return NextResponse.json({ error: errorMsg }, { status: response.status })
     }
 
