@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -64,9 +64,11 @@ const formatCurrency = (value: number) => {
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  const urlSearchParams = useSearchParams()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const preselectedOperationId = urlSearchParams.get('operationId') || null
   
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -112,6 +114,14 @@ export default function NewInvoicePage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  // Auto-preseleccionar operación si viene por URL
+  useEffect(() => {
+    if (!loading && preselectedOperationId && operations.length > 0) {
+      handleOperationChange(preselectedOperationId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, preselectedOperationId])
 
   const loadData = async () => {
     try {

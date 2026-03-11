@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -190,6 +190,12 @@ export function OperationDetailClient({
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">{statusLabels[operation.status] || operation.status}</Badge>
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/operations/billing/new?operationId=${operation.id}`}>
+              <Receipt className="mr-2 h-4 w-4" />
+              Facturar
+            </Link>
+          </Button>
           <Button onClick={() => setEditDialogOpen(true)}>
             <Pencil className="mr-2 h-4 w-4" />
             Editar
