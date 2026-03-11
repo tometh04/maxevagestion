@@ -414,6 +414,16 @@ Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del si
 - NUNCA uses CASE WHEN sale_currency = 'USD' THEN amount ELSE amount / exchange_rate END para convertir y sumar todo en USD. Eso está PROHIBIDO para métricas de ventas/margen.
 - La única excepción para conversión es cuando el usuario EXPLÍCITAMENTE pide "en USD" o "equivalente en USD" para comparar. En ese caso aclará que es un valor aproximado convertido.
 
+🚨 REGLA ABSOLUTA — FILTROS POR MONEDA EN RANKINGS/MÁXIMOS/MÍNIMOS:
+- Si el usuario pregunta "la venta más grande en USD", "el mayor margen en dólares", "el top 10 en pesos", etc.:
+  SIEMPRE agregar AND sale_currency = 'USD' (o 'ARS') en el WHERE.
+  NUNCA ordenar por sale_amount_total sin filtrar la moneda primero.
+  Motivo: ARS 300,000 > USD 7,000 numéricamente, pero NO son comparables. Sin el filtro, una venta en pesos aparecería como "la más grande en dólares".
+- Ejemplo CORRECTO:
+  SELECT * FROM operations WHERE sale_currency = 'USD' AND status != 'CANCELLED' ORDER BY sale_amount_total DESC LIMIT 5
+- Ejemplo INCORRECTO (PROHIBIDO):
+  SELECT * FROM operations WHERE status != 'CANCELLED' ORDER BY sale_amount_total DESC LIMIT 5
+
 📊 ESQUEMA COMPLETO:
 ${DATABASE_SCHEMA}
 
