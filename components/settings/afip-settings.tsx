@@ -71,6 +71,7 @@ const STEP_LABELS: Record<NonNullable<SetupStep>, string> = {
 
 interface AfipStatus {
   configured: boolean
+  has_cert?: boolean
   config?: {
     cuit: string
     environment: string
@@ -263,6 +264,9 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           punto_venta: values.punto_venta,
           environment: values.environment,
           cert_id: certData?.cert_id || certData?.id,
+          // Pasar cert y key para que el SDK pueda autenticar con AFIP
+          cert: certData?.cert || certData?.certificate || undefined,
+          key: certData?.key || certData?.private_key || undefined,
         }),
       })
       const saveData = await saveRes.json()
@@ -306,6 +310,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     }
   }
 
+  // Cert is needed if configured but has_cert is explicitly false
+  const needsRecert = afipStatus?.configured && afipStatus?.has_cert === false && !showReconfigureForm
   const showForm = !afipStatus?.configured || showReconfigureForm
 
   return (
@@ -364,24 +370,41 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
           </CardContent>
         </Card>
       ) : afipStatus?.configured && !showReconfigureForm ? (
-        <Card className="border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20">
+        <Card className={needsRecert
+          ? "border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20"
+          : "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
+        }>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-green-600" />
-                <CardTitle className="text-base text-green-700 dark:text-green-400">
-                  AFIP Configurado
+                {needsRecert
+                  ? <AlertCircle className="h-5 w-5 text-amber-600" />
+                  : <CheckCircle2 className="h-5 w-5 text-green-600" />
+                }
+                <CardTitle className={`text-base ${needsRecert ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400"}`}>
+                  {needsRecert ? "AFIP: Certificado pendiente" : "AFIP Configurado"}
                 </CardTitle>
               </div>
               <Badge
                 variant="outline"
-                className="border-green-600 text-green-700 dark:text-green-400"
+                className={needsRecert
+                  ? "border-amber-600 text-amber-700 dark:text-amber-400"
+                  : "border-green-600 text-green-700 dark:text-green-400"
+                }
               >
-                Activo
+                {needsRecert ? "Incompleto" : "Activo"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {needsRecert && (
+              <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-700 dark:text-amber-400 text-sm">
+                  Falta el certificado digital. Hacé clic en <strong>Reconfigurar</strong> para crear el certificado e ingresar tu Clave Fiscal.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">CUIT</span>
@@ -399,20 +422,26 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
               </div>
             </div>
             <div className="flex gap-2 pt-1">
+              {!needsRecert && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestConnection}
+                  disabled={isTesting}
+                >
+                  {isTesting ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                  )}
+                  Probar Conexión
+                </Button>
+              )}
               <Button
-                variant="outline"
+                variant={needsRecert ? "default" : "ghost"}
                 size="sm"
-                onClick={handleTestConnection}
-                disabled={isTesting}
+                onClick={() => setShowReconfigureForm(true)}
               >
-                {isTesting ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Probar Conexión
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowReconfigureForm(true)}>
                 <Settings2 className="h-4 w-4 mr-2" />
                 Reconfigurar
               </Button>

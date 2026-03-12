@@ -37,6 +37,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       configured: true,
+      has_cert: !!(config.cert && config.key),
       config: {
         cuit: maskCuit(config.cuit),
         environment: config.environment,

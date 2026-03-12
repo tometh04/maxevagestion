@@ -22,7 +22,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { agency_id, cuit: bodyCuit, punto_venta, environment = "production", cert_id } = body
+    const { agency_id, cuit: bodyCuit, punto_venta, environment = "production", cert_id, cert, key } = body
 
     if (!agency_id || !punto_venta) {
       return NextResponse.json(
@@ -66,7 +66,7 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log("[AFIP Setup] Guardando config para CUIT:", cuitClean, "agency:", agency_id, "env:", environment)
+    console.log("[AFIP Setup] Guardando config para CUIT:", cuitClean, "agency:", agency_id, "env:", environment, "cert:", !!cert, "key:", !!key)
 
     const saveResult = await saveAfipConfigForAgency(
       supabase,
@@ -77,6 +77,8 @@ export async function POST(request: Request) {
         point_of_sale: ptoVtaNum,
         environment: environment as "sandbox" | "production",
         cert_id: cert_id || undefined,
+        cert: cert || undefined,
+        key: key || undefined,
       },
       user.id
     )
@@ -96,6 +98,7 @@ export async function POST(request: Request) {
         cuit: cuitClean,
         environment,
         punto_venta: ptoVtaNum,
+        has_cert: !!(cert),
       },
     })
   } catch (error: any) {
