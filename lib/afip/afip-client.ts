@@ -1,69 +1,28 @@
 /**
- * Cliente HTTP para AFIP SDK API REST
- * Documentación: https://afipsdk.com/docs/api-reference/introduction/
- * 
- * REFACTORIZADO: Ahora acepta configuración por agencia/cliente
- * en lugar de variables de entorno globales
+ * Cliente AFIP usando @afipsdk/afip.js
+ * Documentación: https://docs.afipsdk.com
  */
 
 import {
   CreateInvoiceRequest,
   CreateInvoiceResponse,
-  GetLastVoucherRequest,
   GetLastVoucherResponse,
-  GetTaxpayerDataRequest,
   GetTaxpayerDataResponse,
   TipoComprobante,
 } from './types'
 import type { AfipConfig } from './afip-config'
 
-// URL base por defecto (puede ser sobrescrita por config)
-const DEFAULT_AFIP_SDK_BASE_URL = 'https://app.afipsdk.com/api/v1'
-
 /**
- * Headers comunes para todas las requests
+ * Crea una instancia del SDK de AFIP con la configuración de la agencia
  */
-function getHeaders(config: AfipConfig) {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${config.api_key}`,
-  }
-}
-
-/**
- * Hace una request a la API de AFIP SDK
- */
-async function afipRequest<T>(
-  config: AfipConfig,
-  endpoint: string,
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' = 'GET',
-  body?: Record<string, any>
-): Promise<T> {
-  const baseUrl = config.base_url || DEFAULT_AFIP_SDK_BASE_URL
-  const url = `${baseUrl}${endpoint}`
-  
-  console.log(`[AFIP SDK] ${method} ${url} (CUIT: ${config.cuit})`)
-  
-  try {
-    const response = await fetch(url, {
-      method,
-      headers: getHeaders(config),
-      body: body ? JSON.stringify(body) : undefined,
-    })
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      console.error('[AFIP SDK] Error response:', data)
-      throw new Error(data.message || data.error || `Error ${response.status}`)
-    }
-
-    console.log('[AFIP SDK] Success response:', JSON.stringify(data).substring(0, 200))
-    return data
-  } catch (error: any) {
-    console.error('[AFIP SDK] Request failed:', error)
-    throw error
-  }
+function createAfipInstance(config: AfipConfig) {
+  // eval('require') evita que Next.js intente hacer tree-shaking del módulo CJS
+  const Afip = eval('require')('@afipsdk/afip.js')
+  return new Afip({
+    CUIT: Number(config.cuit),
+    production: config.environment === 'production',
+    access_token: config.api_key,
+  })
 }
 
 /**
@@ -87,22 +46,12 @@ export async function getLastVoucherNumber(
   cbteTipo: TipoComprobante
 ): Promise<GetLastVoucherResponse> {
   try {
-    const response = await afipRequest<any>(
-      config,
-      `/facturacion/ultimo-comprobante`,
-      'POST',
-      {
-        environment: config.environment,
-        cuit: config.cuit,
-        pto_vta: ptoVta,
-        cbte_tipo: cbteTipo,
-      }
-    )
-
+    const afip = createAfipInstance(config)
+    const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo)
     return {
       success: true,
       data: {
-        CbteNro: response.CbteNro || response.cbte_nro || 0,
+        CbteNro: lastVoucher || 0,
         PtoVta: ptoVta,
         CbteTipo: cbteTipo,
       },
@@ -116,132 +65,67 @@ export async function getLastVoucherNumber(
 }
 
 /**
- * Obtiene el Ticket de Acceso (TA) para un servicio web específico
- * Documentación: https://docs.afipsdk.com/integracion/api
- * AFIP SDK maneja automáticamente el caching y renovación del TA
- */
-async function getTicketAcceso(
-  config: AfipConfig,
-  service: 'wsfe' | 'wsfev1' = 'wsfev1'
-): Promise<{
-  success: boolean
-  token?: string
-  sign?: string
-  error?: string
-}> {
-  try {
-    const response = await afipRequest<any>(
-      config,
-      `/afip/auth`,
-      'POST',
-      {
-        environment: config.environment,
-        cuit: config.cuit,
-        service, // WSID del servicio (wsfe, wsfev1, etc.)
-        // Si hay certificado, AFIP SDK lo usa automáticamente
-        // Si no, usa el certificado de desarrollo
-      }
-    )
-
-    return {
-      success: true,
-      token: response.token || response.Token,
-      sign: response.sign || response.Sign,
-    }
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error.message || 'Error al obtener Ticket de Acceso',
-    }
-  }
-}
-
-/**
- * Crea una factura electrónica
- * Documentación: https://afipsdk.com/api-factura-electronica/
+ * Crea una factura electrónica usando createNextVoucher
+ * (el SDK obtiene automáticamente el próximo número)
  */
 export async function createInvoice(
   config: AfipConfig,
   request: CreateInvoiceRequest
 ): Promise<CreateInvoiceResponse> {
   try {
-    // Obtener el próximo número de comprobante
-    const lastVoucher = await getLastVoucherNumber(config, request.PtoVta, request.CbteTipo)
-    const nextNumber = (lastVoucher.data?.CbteNro || 0) + 1
+    const afip = createAfipInstance(config)
 
-    // Obtener Ticket de Acceso (TA) - AFIP SDK lo cachea automáticamente
-    const ta = await getTicketAcceso(config, 'wsfev1')
-    if (!ta.success) {
-      return {
-        success: false,
-        error: ta.error || 'Error al obtener Ticket de Acceso',
-      }
+    const data: Record<string, any> = {
+      CantReg: 1,
+      PtoVta: request.PtoVta,
+      CbteTipo: request.CbteTipo,
+      Concepto: request.Concepto,
+      DocTipo: request.DocTipo,
+      DocNro: request.DocNro,
+      CbteFch: request.CbteFch ? parseInt(request.CbteFch) : parseInt(formatDate(new Date())),
+      ImpTotal: request.ImpTotal,
+      ImpTotConc: request.ImpTotConc || 0,
+      ImpNeto: request.ImpNeto,
+      ImpOpEx: request.ImpOpEx || 0,
+      ImpIVA: request.ImpIVA || 0,
+      ImpTrib: request.ImpTrib || 0,
+      MonId: request.MonId || 'PES',
+      MonCotiz: request.MonCotiz || 1,
+      CondicionIVAReceptorId: request.CondicionIVAReceptorId || 5,
     }
 
-    // Crear factura usando el Web Service de Facturación Electrónica
-    const response = await afipRequest<any>(
-      config,
-      `/facturacion/crear`,
-      'POST',
-      {
-        environment: config.environment,
-        cuit: config.cuit,
-        // Ticket de Acceso
-        token: ta.token,
-        sign: ta.sign,
-        // Datos del comprobante
-        pto_vta: request.PtoVta,
-        cbte_tipo: request.CbteTipo,
-        cbte_nro: nextNumber,
-        concepto: request.Concepto,
-        doc_tipo: request.DocTipo,
-        doc_nro: request.DocNro,
-        cbte_fch: request.CbteFch || formatDate(new Date()),
-        imp_total: request.ImpTotal,
-        imp_tot_conc: request.ImpTotConc,
-        imp_neto: request.ImpNeto,
-        imp_op_ex: request.ImpOpEx,
-        imp_iva: request.ImpIVA,
-        imp_trib: request.ImpTrib,
-        fch_serv_desde: request.FchServDesde,
-        fch_serv_hasta: request.FchServHasta,
-        fch_vto_pago: request.FchVtoPago,
-        mon_id: request.MonId || 'PES',
-        mon_cotiz: request.MonCotiz || 1,
-        iva: request.Iva,
-        tributos: request.Tributos,
-        cbtes_asoc: request.CbtesAsoc,
-        opcionales: request.Opcionales,
-      }
-    )
+    if (request.Iva && request.Iva.length > 0) {
+      data.Iva = request.Iva
+    }
 
-    // Parsear respuesta
-    if (response.CAE || response.cae) {
+    // Concepto 2 o 3 requiere fechas de servicio
+    if (request.Concepto === 2 || request.Concepto === 3) {
+      data.FchServDesde = request.FchServDesde
+      data.FchServHasta = request.FchServHasta
+      data.FchVtoPago = request.FchVtoPago || request.FchServHasta
+    }
+
+    const res = await afip.ElectronicBilling.createNextVoucher(data)
+
+    if (res?.CAE) {
       return {
         success: true,
         data: {
-          CAE: response.CAE || response.cae,
-          CAEFchVto: response.CAEFchVto || response.cae_fch_vto,
-          CbteDesde: response.CbteDesde || response.cbte_desde || nextNumber,
-          CbteHasta: response.CbteHasta || response.cbte_hasta || nextNumber,
-          FchProceso: response.FchProceso || response.fch_proceso || new Date().toISOString(),
-          Resultado: response.Resultado || response.resultado || 'A',
-          Observaciones: response.Observaciones || response.observaciones,
-          Errores: response.Errores || response.errores,
+          CAE: res.CAE,
+          CAEFchVto: res.CAEFchVto,
+          CbteDesde: res.voucher_number,
+          CbteHasta: res.voucher_number,
+          FchProceso: new Date().toISOString(),
+          Resultado: 'A',
         },
       }
     } else {
       return {
         success: false,
-        error: response.error || response.message || 'Error al crear factura',
+        error: res?.error || 'Error al crear factura: sin CAE en respuesta',
         data: {
-          CAE: '',
-          CAEFchVto: '',
-          CbteDesde: nextNumber,
-          CbteHasta: nextNumber,
-          FchProceso: new Date().toISOString(),
-          Resultado: 'R',
-          Errores: response.Errores || response.errores,
+          CAE: '', CAEFchVto: '', CbteDesde: 0, CbteHasta: 0,
+          FchProceso: new Date().toISOString(), Resultado: 'R',
         },
       }
     }
@@ -261,11 +145,12 @@ export async function getTaxpayerData(
   cuit: number
 ): Promise<GetTaxpayerDataResponse> {
   try {
-    const response = await afipRequest<any>(
-      config,
-      `/padron/contribuyente/${cuit}`,
-      'GET'
-    )
+    const url = `https://app.afipsdk.com/api/v1/padron/contribuyente/${cuit}`
+    const res = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${config.api_key}`, 'Content-Type': 'application/json' },
+    })
+    if (!res.ok) throw new Error(`Error ${res.status}`)
+    const response = await res.json()
 
     return {
       success: true,
@@ -289,10 +174,7 @@ export async function getTaxpayerData(
 }
 
 /**
- * Obtiene los puntos de venta habilitados
- * Usa FEParamGetPtosVenta del WSFEv1
- * Respuesta: FEParamGetPtosVentaResult.ResultGet.PtoVenta[]
- * Cada item: { Nro, EmisionTipo, Bloqueado ("S"/"N"), FchBaja }
+ * Obtiene los puntos de venta habilitados para web services (WSFEv1)
  */
 export async function getPointsOfSale(config: AfipConfig): Promise<{
   success: boolean
@@ -304,52 +186,22 @@ export async function getPointsOfSale(config: AfipConfig): Promise<{
   error?: string
 }> {
   try {
-    // Obtener token/sign para autenticación WSFEv1
-    const ta = await getTicketAcceso(config, 'wsfe')
-    if (!ta.success) {
-      return { success: false, error: ta.error || 'Error al obtener Ticket de Acceso' }
-    }
+    const afip = createAfipInstance(config)
+    const salesPoints = await afip.ElectronicBilling.getSalesPoints()
 
-    const response = await afipRequest<any>(
-      config,
-      `/afip/requests`,
-      'POST',
-      {
-        environment: config.environment,
-        method: 'FEParamGetPtosVenta',
-        wsid: 'wsfe',
-        params: {
-          Auth: {
-            Token: ta.token,
-            Sign: ta.sign,
-            Cuit: config.cuit,
-          },
-        },
-      }
-    )
+    // getSalesPoints devuelve array o null
+    const list: any[] = Array.isArray(salesPoints) ? salesPoints : salesPoints ? [salesPoints] : []
 
-    // Navegar la estructura de respuesta del WSFEv1
-    const raw =
-      response?.FEParamGetPtosVentaResult?.ResultGet?.PtoVenta ||
-      response?.ResultGet?.PtoVenta ||
-      response?.puntos_venta ||
-      response?.PtosVta ||
-      []
+    const data = list.map((pv: any) => ({
+      numero: Number(pv.Nro ?? pv.numero ?? pv.number),
+      tipo: String(pv.EmisionTipo ?? pv.tipo ?? pv.type ?? ''),
+      bloqueado: pv.Bloqueado === 'S' || pv.bloqueado === true,
+    }))
 
-    // Normalizar a array (AFIP puede devolver objeto si hay un solo PV)
-    const list: any[] = Array.isArray(raw) ? raw : [raw]
-
-    const data = list
-      .filter((pv: any) => pv && pv.Nro != null)
-      .map((pv: any) => ({
-        numero: Number(pv.Nro),
-        tipo: String(pv.EmisionTipo || ''),
-        // Bloqueado viene como string "S" o "N", no boolean
-        bloqueado: pv.Bloqueado === 'S',
-      }))
-
+    console.log('[AFIP] getSalesPoints raw:', JSON.stringify(salesPoints).substring(0, 500))
     return { success: true, data }
   } catch (error: any) {
+    console.error('[AFIP] getSalesPoints error:', error.message, error?.data)
     return {
       success: false,
       error: error.message || 'Error al obtener puntos de venta',
@@ -375,24 +227,15 @@ export async function testConnection(config: AfipConfig): Promise<{
         cuit: config.cuit || '',
       }
     }
-    
-    // Intentar obtener el último comprobante como test
-    const result = await getLastVoucherNumber(config, config.point_of_sale, 6) // Factura B
 
-    if (result.success) {
-      return {
-        success: true,
-        message: `Conexión exitosa. Último comprobante: ${result.data?.CbteNro || 0}`,
-        environment: config.environment,
-        cuit: config.cuit,
-      }
-    } else {
-      return {
-        success: false,
-        message: result.error || 'Error de conexión',
-        environment: config.environment,
-        cuit: config.cuit,
-      }
+    const afip = createAfipInstance(config)
+    await afip.GetServiceTA('wsfe')
+
+    return {
+      success: true,
+      message: 'Conexión exitosa con AFIP',
+      environment: config.environment,
+      cuit: config.cuit,
     }
   } catch (error: any) {
     return {

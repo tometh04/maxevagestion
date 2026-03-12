@@ -115,9 +115,11 @@ export async function POST(
       Iva: ivaArray.length > 0 ? ivaArray : undefined,
       FchServDesde: invoice.fch_serv_desde,
       FchServHasta: invoice.fch_serv_hasta,
-      FchVtoPago: invoice.fecha_vto_pago 
+      FchVtoPago: invoice.fecha_vto_pago
         ? formatDate(new Date(invoice.fecha_vto_pago))
         : undefined,
+      // Condición IVA del receptor: 5=Consumidor Final (default), 1=RI, 6=Monotributo
+      CondicionIVAReceptorId: invoice.receptor_condicion_iva || 5,
     }
 
     // Enviar a AFIP usando la configuración de la agencia
