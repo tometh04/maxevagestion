@@ -48,17 +48,19 @@ export async function GET(request: Request) {
     // Step 2: Crear instancia SDK
     steps.push({ step: "2_create_sdk_instance", status: "running" })
     const Afip = eval('require')('@afipsdk/afip.js')
-    const apiKey = process.env.AFIP_SDK_API_KEY || ''
+    const apiKey = process.env.AFIP_SDK_API_KEY || afipConfig.api_key || ''
     const isProd = afipConfig.environment === 'production'
     const afip = new Afip({
-      CUIT: afipConfig.cuit,
+      CUIT: Number(afipConfig.cuit),
       production: isProd,
       access_token: apiKey,
+      ...(afipConfig.cert && { cert: afipConfig.cert }),
+      ...(afipConfig.key && { key: afipConfig.key }),
     })
     steps[steps.length - 1] = {
       step: "2_create_sdk_instance",
       status: "ok",
-      data: { cuit: afipConfig.cuit, production: isProd, api_key_length: apiKey.length, api_key_prefix: apiKey.substring(0, 8) }
+      data: { cuit: afipConfig.cuit, production: isProd, has_cert: !!(afipConfig.cert), has_key: !!(afipConfig.key) }
     }
 
     // Step 3: Obtener Token/Sign (v1/afip/auth)
@@ -80,14 +82,15 @@ export async function GET(request: Request) {
       return NextResponse.json({ steps })
     }
 
-    // Step 4: getLastVoucher
+    // Step 4: getLastVoucher (usar el PV configurado)
     steps.push({ step: "4_get_last_voucher", status: "running" })
     try {
-      const lastVoucher = await afip.ElectronicBilling.getLastVoucher(1, 11)
+      const ptoVta = afipConfig.point_of_sale || 1
+      const lastVoucher = await afip.ElectronicBilling.getLastVoucher(ptoVta, 11)
       steps[steps.length - 1] = {
         step: "4_get_last_voucher",
         status: "ok",
-        data: { lastVoucher, ptoVta: 1, cbteTipo: 11 }
+        data: { lastVoucher, ptoVta, cbteTipo: 11 }
       }
     } catch (lvError: any) {
       steps[steps.length - 1] = {
@@ -96,7 +99,7 @@ export async function GET(request: Request) {
         error: lvError.message,
         data: { errorData: lvError?.data, errorStatus: lvError?.status }
       }
-      return NextResponse.json({ steps })
+      return NextResponse.json({ success: false, message: lvError.message, steps })
     }
 
     // Step 5: FEDummy (server status)
@@ -113,9 +116,15 @@ export async function GET(request: Request) {
       }
     }
 
-    return NextResponse.json({ steps, allOk: steps.every(s => s.status === "ok") })
+    const allOk = steps.every(s => s.status === "ok")
+    return NextResponse.json({
+      success: allOk,
+      message: allOk ? "Conexión exitosa con AFIP" : "Hay errores en la conexión",
+      steps
+    })
   } catch (error: any) {
+    if (error?.digest?.startsWith("NEXT_REDIRECT")) throw error
     steps.push({ step: "unexpected_error", status: "error", error: error.message })
-    return NextResponse.json({ steps }, { status: 500 })
+    return NextResponse.json({ success: false, error: error.message, steps }, { status: 500 })
   }
 }
