@@ -50,12 +50,17 @@ export async function GET(request: Request) {
           }
         }
 
-        // Filtrar solo puntos de venta no bloqueados
+        // Filtrar solo puntos de venta habilitados para web services (CAE/CAEA)
+        // Los de tipo OFFLINE son para facturación manual y no pueden autorizarse vía WSFE
+        const WS_TIPOS = ['CAE', 'CAEA']
         const activePointsOfSale = (result.data || [])
-          .filter((pv: any) => !pv.bloqueado)
+          .filter((pv: any) => {
+            const tipo = (pv.tipo || pv.EmisionTipo || '').toUpperCase()
+            return !pv.bloqueado && WS_TIPOS.includes(tipo)
+          })
           .map((pv: any) => ({
             numero: pv.numero,
-            tipo: pv.tipo || '',
+            tipo: (pv.tipo || pv.EmisionTipo || '').toUpperCase(),
             bloqueado: pv.bloqueado || false,
           }))
 
