@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { getAgencyAfipConfig } from "@/lib/afip/afip-client"
+import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 
 export const dynamic = 'force-dynamic'
 
@@ -21,9 +21,10 @@ export async function GET(request: Request) {
     // Si no se pasa agencyId, buscar la primera agencia con AFIP configurado
     if (!agencyId) {
       const { data: configs } = await (supabase as any)
-        .from('afip_config')
+        .from('integrations')
         .select('agency_id')
-        .eq('is_active', true)
+        .eq('integration_type', 'afip')
+        .eq('status', 'active')
         .in('agency_id', agencyIds)
         .limit(1)
       agencyId = configs?.[0]?.agency_id || agencyIds[0]
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
 
     // Step 1: Obtener config de BD
     steps.push({ step: "1_get_config", status: "running" })
-    const afipConfig = await getAgencyAfipConfig(supabase, agencyId)
+    const afipConfig = await getAfipConfigForAgency(supabase, agencyId)
     if (!afipConfig) {
       steps[steps.length - 1] = { step: "1_get_config", status: "error", error: "No hay config AFIP para esta agencia" }
       return NextResponse.json({ steps })
