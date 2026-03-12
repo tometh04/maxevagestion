@@ -524,8 +524,8 @@ export default function NewInvoicePage() {
           agency_id: formData.agency_id, // Requerido: viene del punto de venta
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
-          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD' 
-            ? exchangeRate 
+          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
+            ? exchangeRate
             : 1,
           items: items.map(item => {
             const itemTotals = calculateItemTotal(item)
@@ -547,11 +547,35 @@ export default function NewInvoicePage() {
         throw new Error(error.error || 'Error al crear factura')
       }
 
-      toast({
-        title: "Factura creada",
-        description: "La factura se creó como borrador. Puede autorizarla con AFIP.",
-      })
-      
+      const invoiceData = await response.json()
+      const invoiceId = invoiceData.invoice?.id
+
+      // Autorizar automáticamente con AFIP
+      if (invoiceId) {
+        const authRes = await fetch(`/api/invoices/${invoiceId}/authorize`, {
+          method: 'POST',
+        })
+        const authData = await authRes.json()
+
+        if (authRes.ok && authData.success) {
+          toast({
+            title: "Factura autorizada",
+            description: `CAE: ${authData.data?.cae} — Nro: ${authData.data?.cbte_nro}`,
+          })
+        } else {
+          toast({
+            title: "Factura creada, pero error al autorizar",
+            description: authData.error || "Podés autorizarla manualmente desde el listado.",
+            variant: "destructive",
+          })
+        }
+      } else {
+        toast({
+          title: "Factura creada",
+          description: "La factura se creó correctamente.",
+        })
+      }
+
       router.push('/operations/billing')
     } catch (error: any) {
       toast({
@@ -1004,10 +1028,10 @@ export default function NewInvoicePage() {
                   {saving ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : null}
-                  Crear Factura (Borrador)
+                  Crear y Autorizar con AFIP
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
-                  La factura se creará como borrador. Podrás autorizarla con AFIP después.
+                  La factura se creará y autorizará en AFIP automáticamente.
                 </p>
               </div>
             </CardContent>

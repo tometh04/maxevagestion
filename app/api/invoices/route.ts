@@ -105,7 +105,7 @@ export async function GET(request: Request) {
   }
 }
 
-// POST - Crear factura (borrador)
+// POST - Crear factura
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
