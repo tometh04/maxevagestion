@@ -675,8 +675,8 @@ export default function NewInvoicePage() {
                         <li>Ir a <strong>Administración de puntos de venta y domicilios → A/B/M de puntos de venta</strong></li>
                         <li>Crear un nuevo PV seleccionando:
                           <ul className="mt-0.5 ml-3 list-disc">
-                            <li>Monotributista: <em>"Factura Electrónica - Monotributo - Web Service"</em></li>
-                            <li>Responsable Inscripto: <em>"RECE para aplicativo y Web Service"</em></li>
+                            <li>Monotributista: <em>&ldquo;Factura Electrónica - Monotributo - Web Service&rdquo;</em></li>
+                            <li>Responsable Inscripto: <em>&ldquo;RECE para aplicativo y Web Service&rdquo;</em></li>
                           </ul>
                         </li>
                         <li>Volvé acá y recargá la página</li>
