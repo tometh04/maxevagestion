@@ -16,8 +16,10 @@ import type { AfipConfig } from './afip-config'
  * Crea una instancia del SDK de AFIP con la configuración de la agencia
  */
 function createAfipInstance(config: AfipConfig) {
-  // eval('require') evita que Next.js intente hacer tree-shaking del módulo CJS
-  const Afip = eval('require')('@afipsdk/afip.js')
+  // @afipsdk/afip.js está en serverExternalPackages en next.config.js,
+  // así Vercel lo incluye en el bundle serverless correctamente
+  /* eslint-disable-next-line */
+  const Afip = require('@afipsdk/afip.js')
   return new Afip({
     CUIT: Number(config.cuit),
     production: config.environment === 'production',
