@@ -290,6 +290,9 @@ export async function getTaxpayerData(
 
 /**
  * Obtiene los puntos de venta habilitados
+ * Usa FEParamGetPtosVenta del WSFEv1
+ * Respuesta: FEParamGetPtosVentaResult.ResultGet.PtoVenta[]
+ * Cada item: { Nro, EmisionTipo, Bloqueado ("S"/"N"), FchBaja }
  */
 export async function getPointsOfSale(config: AfipConfig): Promise<{
   success: boolean
@@ -301,20 +304,51 @@ export async function getPointsOfSale(config: AfipConfig): Promise<{
   error?: string
 }> {
   try {
+    // Obtener token/sign para autenticación WSFEv1
+    const ta = await getTicketAcceso(config, 'wsfe')
+    if (!ta.success) {
+      return { success: false, error: ta.error || 'Error al obtener Ticket de Acceso' }
+    }
+
     const response = await afipRequest<any>(
       config,
-      `/facturacion/puntos-venta`,
+      `/afip/requests`,
       'POST',
       {
         environment: config.environment,
-        cuit: config.cuit,
+        method: 'FEParamGetPtosVenta',
+        wsid: 'wsfe',
+        params: {
+          Auth: {
+            Token: ta.token,
+            Sign: ta.sign,
+            Cuit: config.cuit,
+          },
+        },
       }
     )
 
-    return {
-      success: true,
-      data: response.puntos_venta || response.PtosVta || [],
-    }
+    // Navegar la estructura de respuesta del WSFEv1
+    const raw =
+      response?.FEParamGetPtosVentaResult?.ResultGet?.PtoVenta ||
+      response?.ResultGet?.PtoVenta ||
+      response?.puntos_venta ||
+      response?.PtosVta ||
+      []
+
+    // Normalizar a array (AFIP puede devolver objeto si hay un solo PV)
+    const list: any[] = Array.isArray(raw) ? raw : [raw]
+
+    const data = list
+      .filter((pv: any) => pv && pv.Nro != null)
+      .map((pv: any) => ({
+        numero: Number(pv.Nro),
+        tipo: String(pv.EmisionTipo || ''),
+        // Bloqueado viene como string "S" o "N", no boolean
+        bloqueado: pv.Bloqueado === 'S',
+      }))
+
+    return { success: true, data }
   } catch (error: any) {
     return {
       success: false,

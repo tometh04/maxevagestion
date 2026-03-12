@@ -8,10 +8,21 @@ import { getPointsOfSale } from "@/lib/afip/afip-client"
 export const dynamic = 'force-dynamic'
 
 // Verifica si un tipo de punto de venta es compatible con web services (WSFEv1)
-// Tipos válidos: "CAE", "CAE - Monotributo", "CAEA"
+// AFIP devuelve EmisionTipo con descripciones largas como:
+//   "RECE para aplicativo y web services"   → Responsable Inscripto
+//   "Factura Electronica - Monotributo - Web Services"
+//   "CAEA"
+// Los de tipo OFFLINE/fiscal no sirven para WSFEv1
 function isWebServiceTipo(tipo: string): boolean {
   const t = tipo.toUpperCase().trim()
-  return t === 'CAEA' || t.startsWith('CAE')
+  return (
+    t.includes('WEB SERVICE') ||
+    t.includes('WEB SERVICES') ||
+    t.includes('RECE') ||
+    t === 'CAE' ||
+    t === 'CAEA' ||
+    t.startsWith('CAE')
+  )
 }
 
 // GET - Obtener puntos de venta disponibles por agencia
