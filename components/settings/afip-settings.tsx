@@ -40,24 +40,18 @@ import {
   Circle,
 } from "lucide-react"
 
-// Schema dinámico según qué campos están pre-configurados
-function buildSchema(needsCuit: boolean, needsPassword: boolean) {
-  return z.object({
-    agency_id: z.string().min(1, "Seleccioná una agencia"),
-    cuit: needsCuit
-      ? z.string()
-          .min(10, "El CUIT debe tener al menos 10 dígitos")
-          .max(13, "CUIT inválido")
-          .transform(v => v.replace(/\D/g, ""))
-          .refine(v => v.length === 11, "El CUIT debe tener 11 dígitos")
-      : z.string().optional().default(""),
-    password: needsPassword
-      ? z.string().min(1, "La Clave Fiscal es requerida")
-      : z.string().optional().default(""),
-    punto_venta: z.coerce.number().min(1, "Mínimo 1").max(9999, "Máximo 9999"),
-    environment: z.enum(["production", "sandbox"]),
-  })
-}
+// Schema fijo con cuit y password como strings (pueden estar vacíos).
+// Si el sistema tiene env vars configuradas no son requeridos;
+// esa validación se hace en runtime en onSubmit.
+const afipSchema = z.object({
+  agency_id: z.string().min(1, "Seleccioná una agencia"),
+  cuit: z.string(),
+  password: z.string(),
+  punto_venta: z.coerce.number().min(1, "Mínimo 1").max(9999, "Máximo 9999"),
+  environment: z.enum(["production", "sandbox"]),
+})
+
+type AfipFormValues = z.infer<typeof afipSchema>
 
 type SetupStep =
   | "creating_cert"
@@ -143,11 +137,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const needsCuit = !systemConfig?.cuitConfigured
   const needsPassword = !systemConfig?.passwordConfigured
 
-  const schema = buildSchema(needsCuit, needsPassword)
-  type FormValues = z.infer<typeof schema>
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+  const form = useForm<AfipFormValues>({
+    resolver: zodResolver(afipSchema),
     defaultValues: {
       agency_id: selectedAgencyId,
       cuit: "",
@@ -180,7 +171,17 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     }
   }, [selectedAgencyId, loadStatus, form])
 
-  const onSubmit = async (values: FormValues) => {
+  const onSubmit = async (values: AfipFormValues) => {
+    // Validación runtime de campos requeridos según env vars del sistema
+    if (needsCuit && !values.cuit?.trim()) {
+      form.setError("cuit", { message: "El CUIT es requerido" })
+      return
+    }
+    if (needsPassword && !values.password?.trim()) {
+      form.setError("password", { message: "La Clave Fiscal es requerida" })
+      return
+    }
+
     setIsLoading(true)
     setSetupError(null)
     setCertStepDone(false)
