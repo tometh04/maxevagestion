@@ -124,7 +124,7 @@ export async function GET(
     const fechaEmision = invoice.fecha_emision ?? invoice.created_at
     text(`Fecha de emisión: ${fmtDate(fechaEmision)}`, L, y, 8, regular, gray)
     if (invoice.fch_serv_desde) {
-      text(`Período: ${fmtDate(invoice.fch_serv_desde)} — ${fmtDate(invoice.fch_serv_hasta)}`, mid, y, 8, regular, gray)
+      text(`Periodo: ${fmtDate(invoice.fch_serv_desde)} al ${fmtDate(invoice.fch_serv_hasta)}`, mid, y, 8, regular, gray)
     }
     y -= 18
 
@@ -152,7 +152,7 @@ export async function GET(
       // Truncar descripción larga
       const maxDescChars = 42
       const desc = item.descripcion.length > maxDescChars
-        ? item.descripcion.slice(0, maxDescChars) + "…"
+        ? item.descripcion.slice(0, maxDescChars) + "..."
         : item.descripcion
 
       text(desc,                            colDesc  + 4, y - rowH + 3, 8, regular)
@@ -193,7 +193,7 @@ export async function GET(
       line(L, y - boxH, R, y - boxH, rgb(0.3, 0.65, 0.3), 0.8)
       line(L, y,        R, y,        rgb(0.3, 0.65, 0.3), 0.8)
 
-      text("✓ COMPROBANTE AUTORIZADO POR AFIP", L + 8, y - 12, 9, bold, rgb(0.1, 0.5, 0.1))
+      text("COMPROBANTE AUTORIZADO POR AFIP", L + 8, y - 12, 9, bold, rgb(0.1, 0.5, 0.1))
       text(`CAE Nro: ${invoice.cae}`,           L + 8, y - 26, 9, regular)
       text(`Vencimiento CAE: ${fmtDate(invoice.cae_fch_vto)}`, L + 8, y - 38, 9, regular)
       text(`Comprobante: ${String(invoice.pto_vta).padStart(4,"0")}-${String(invoice.cbte_nro).padStart(8,"0")}`, R - 200, y - 26, 9, regular)
@@ -202,7 +202,7 @@ export async function GET(
 
     // ── FOOTER ────────────────────────────────────────────────────────────
     line(L, 35, R, 35, gray, 0.3)
-    text("Comprobante generado por maxeva — Sistema de Gestión de Agencias de Viajes", L, 22, 7, regular, gray)
+    text("Comprobante generado por maxeva - Sistema de Gestion de Agencias de Viajes", L, 22, 7, regular, gray)
     text("Verificá en: www.afip.gob.ar/fe/qr", R - 160, 22, 7, regular, gray)
 
     const pdfBytes = await pdfDoc.save()
