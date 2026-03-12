@@ -11,6 +11,8 @@ import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 import { TipoComprobante, TipoDocumento, TipoIVA, IVA_PORCENTAJES } from "@/lib/afip/types"
 
 export const dynamic = 'force-dynamic'
+// Aumentar timeout para llamadas a AFIP (puede tomar varios segundos)
+export const maxDuration = 60
 
 // POST - Autorizar factura en AFIP
 export async function POST(

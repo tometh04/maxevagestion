@@ -5,6 +5,7 @@ import { getUserAgencyIds } from "@/lib/permissions-api"
 import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 // GET - Testear conexión AFIP paso a paso
 export async function GET(request: Request) {
