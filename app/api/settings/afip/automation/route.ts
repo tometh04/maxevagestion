@@ -120,9 +120,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: errorMsg }, { status: response.status })
     }
 
+    // afipsdk.com stores cert data in `data` field (not `result`)
+    // Normalize both fields so the client gets the cert no matter what
+    const resultData = data.data || data.result || null
+    const normalizedStatus = data.status === 'complete' ? 'completed' : data.status
+
     return NextResponse.json({
-      status: data.status,
-      result: data.result,
+      status: normalizedStatus,
+      result: resultData,
       error: data.error || null,
     })
   } catch (error: any) {

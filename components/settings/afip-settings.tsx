@@ -254,6 +254,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
       // ── PASO 5: Guardar config en DB ─────────────────────────────────
       setSetupStep("saving")
+      // afipsdk.com puede devolver cert en result.cert_data, result, o directamente
       const certData = certResult.result?.cert_data || certResult.result
       const saveRes = await fetch("/api/settings/afip/setup", {
         method: "POST",
