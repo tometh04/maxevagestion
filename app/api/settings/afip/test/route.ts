@@ -49,7 +49,7 @@ export async function GET(request: Request) {
     steps.push({ step: "2_create_sdk_instance", status: "running" })
     const Afip = eval('require')('@afipsdk/afip.js')
     const apiKey = process.env.AFIP_SDK_API_KEY || ''
-    const isProd = afipConfig.environment === 'production' || afipConfig.environment === 'prod'
+    const isProd = afipConfig.environment === 'production'
     const afip = new Afip({
       CUIT: afipConfig.cuit,
       production: isProd,
