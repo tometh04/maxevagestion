@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowLeft, Plus, Trash2, Calculator } from "lucide-react"
+import { Loader2, ArrowLeft, Plus, Trash2, Calculator, ExternalLink, AlertTriangle } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -78,6 +78,7 @@ export default function NewInvoicePage() {
     agency_id: string
     agency_name: string
     points_of_sale: Array<{ numero: number; tipo: string; bloqueado: boolean }>
+    has_ws_points: boolean
     default_point_of_sale?: number
   }>>([])
   
@@ -133,18 +134,16 @@ export default function NewInvoicePage() {
         const data = await pointsOfSaleRes.json()
         setPointsOfSale(data.pointsOfSale || [])
         
-        // Seleccionar el primer punto de venta por defecto
+        // Seleccionar el primer punto de venta CAE disponible por defecto
         if (data.pointsOfSale && data.pointsOfSale.length > 0) {
-          const firstAgency = data.pointsOfSale[0]
-          const firstPtoVta = firstAgency.points_of_sale && firstAgency.points_of_sale.length > 0
-            ? firstAgency.points_of_sale[0].numero
-            : (firstAgency.default_point_of_sale || 1)
-          
-          setFormData(prev => ({
-            ...prev,
-            agency_id: firstAgency.agency_id,
-            pto_vta: firstPtoVta,
-          }))
+          const firstAgencyWithWs = data.pointsOfSale.find((a: any) => a.has_ws_points)
+          if (firstAgencyWithWs) {
+            setFormData(prev => ({
+              ...prev,
+              agency_id: firstAgencyWithWs.agency_id,
+              pto_vta: firstAgencyWithWs.points_of_sale[0].numero,
+            }))
+          }
         }
       }
       
@@ -659,43 +658,68 @@ export default function NewInvoicePage() {
                 </div>
                 <div>
                   <Label>Punto de Venta / Agencia *</Label>
-                  <Select
-                    value={formData.pto_vta ? `${formData.agency_id}:${formData.pto_vta}` : ''}
-                    onValueChange={(value) => {
-                      const [agencyId, ptoVta] = value.split(':')
-                      handlePointOfSaleChange(agencyId, parseInt(ptoVta))
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccione punto de venta" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pointsOfSale.map((agency) => (
-                        <div key={agency.agency_id}>
-                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                            {agency.agency_name}
-                          </div>
-                          {agency.points_of_sale && agency.points_of_sale.length > 0 ? (
-                            agency.points_of_sale.map((pv) => (
+                  {pointsOfSale.length > 0 && !pointsOfSale.some(a => a.has_ws_points) ? (
+                    // Ninguna agencia tiene puntos de venta para web services
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                        <div className="text-sm text-amber-800">
+                          <p className="font-medium">No tenés puntos de venta habilitados para Web Services</p>
+                          <p className="mt-1 text-xs">
+                            Para emitir facturas electrónicas necesitás crear un punto de venta de tipo <strong>CAE</strong> en el portal de ARCA.
+                          </p>
+                        </div>
+                      </div>
+                      <ol className="text-xs text-amber-700 space-y-1 ml-6 list-decimal">
+                        <li>Ingresá a <strong>ARCA (afip.gob.ar)</strong> con Clave Fiscal</li>
+                        <li>Ir a <strong>Administración de puntos de venta y domicilios → A/B/M de puntos de venta</strong></li>
+                        <li>Crear un nuevo PV seleccionando:
+                          <ul className="mt-0.5 ml-3 list-disc">
+                            <li>Monotributista: <em>"Factura Electrónica - Monotributo - Web Service"</em></li>
+                            <li>Responsable Inscripto: <em>"RECE para aplicativo y Web Service"</em></li>
+                          </ul>
+                        </li>
+                        <li>Volvé acá y recargá la página</li>
+                      </ol>
+                      <a
+                        href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-700 underline hover:text-amber-900 ml-6"
+                      >
+                        Ir al portal de ARCA <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  ) : (
+                    <Select
+                      value={formData.pto_vta ? `${formData.agency_id}:${formData.pto_vta}` : ''}
+                      onValueChange={(value) => {
+                        const [agencyId, ptoVta] = value.split(':')
+                        handlePointOfSaleChange(agencyId, parseInt(ptoVta))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione punto de venta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pointsOfSale.filter(a => a.has_ws_points).map((agency) => (
+                          <div key={agency.agency_id}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                              {agency.agency_name}
+                            </div>
+                            {agency.points_of_sale.map((pv) => (
                               <SelectItem
                                 key={`${agency.agency_id}:${pv.numero}`}
                                 value={`${agency.agency_id}:${pv.numero}`}
                               >
-                                P.V. {String(pv.numero).padStart(4, '0')} - {pv.tipo}
+                                P.V. {String(pv.numero).padStart(4, '0')} — {pv.tipo}
                               </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem
-                              key={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
-                              value={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
-                            >
-                              P.V. {String(agency.default_point_of_sale || 1).padStart(4, '0')} (por defecto)
-                            </SelectItem>
-                          )}
-                        </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {formData.agency_id && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Agencia: {pointsOfSale.find(p => p.agency_id === formData.agency_id)?.agency_name || ''}

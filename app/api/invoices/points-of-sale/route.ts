@@ -7,6 +7,13 @@ import { getPointsOfSale } from "@/lib/afip/afip-client"
 
 export const dynamic = 'force-dynamic'
 
+// Verifica si un tipo de punto de venta es compatible con web services (WSFEv1)
+// Tipos válidos: "CAE", "CAE - Monotributo", "CAEA"
+function isWebServiceTipo(tipo: string): boolean {
+  const t = tipo.toUpperCase().trim()
+  return t === 'CAEA' || t.startsWith('CAE')
+}
+
 // GET - Obtener puntos de venta disponibles por agencia
 export async function GET(request: Request) {
   try {
@@ -34,40 +41,42 @@ export async function GET(request: Request) {
     const pointsOfSaleByAgency = await Promise.all(
       agencies.map(async (agency: any) => {
         const afipConfig = await getAfipConfigForAgency(supabase, agency.id)
-        
+
         if (!afipConfig) {
           return null
         }
 
-        // Obtener puntos de venta habilitados desde AFIP
+        // Obtener puntos de venta desde AFIP
         const result = await getPointsOfSale(afipConfig)
-        
+
         if (!result.success || !result.data) {
           return {
             agency_id: agency.id,
             agency_name: agency.name,
             points_of_sale: [],
+            has_ws_points: false,
+            default_point_of_sale: afipConfig.point_of_sale,
           }
         }
 
-        // Filtrar solo puntos de venta habilitados para web services (CAE/CAEA)
-        // Los de tipo OFFLINE son para facturación manual y no pueden autorizarse vía WSFE
-        const WS_TIPOS = ['CAE', 'CAEA']
+        // Filtrar solo los habilitados para web services (CAE, "CAE - Monotributo", CAEA)
+        // Los de tipo OFFLINE son para facturación manual y no funcionan con WSFEv1
         const activePointsOfSale = (result.data || [])
           .filter((pv: any) => {
-            const tipo = (pv.tipo || pv.EmisionTipo || '').toUpperCase()
-            return !pv.bloqueado && WS_TIPOS.includes(tipo)
+            const tipo = pv.tipo || pv.EmisionTipo || ''
+            return !pv.bloqueado && isWebServiceTipo(tipo)
           })
           .map((pv: any) => ({
             numero: pv.numero,
-            tipo: (pv.tipo || pv.EmisionTipo || '').toUpperCase(),
-            bloqueado: pv.bloqueado || false,
+            tipo: (pv.tipo || pv.EmisionTipo || '').toUpperCase().trim(),
+            bloqueado: false,
           }))
 
         return {
           agency_id: agency.id,
           agency_name: agency.name,
           points_of_sale: activePointsOfSale,
+          has_ws_points: activePointsOfSale.length > 0,
           default_point_of_sale: afipConfig.point_of_sale,
         }
       })
