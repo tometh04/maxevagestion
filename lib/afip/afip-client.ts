@@ -22,6 +22,9 @@ function createAfipInstance(config: AfipConfig) {
     CUIT: Number(config.cuit),
     production: config.environment === 'production',
     access_token: config.api_key,
+    // Certificado PEM inline (requerido cuando afipsdk.com no tiene el cert en su servidor)
+    ...(config.cert && { cert: config.cert }),
+    ...(config.key && { key: config.key }),
   })
 }
 
@@ -113,8 +116,8 @@ export async function createInvoice(
         data: {
           CAE: res.CAE,
           CAEFchVto: res.CAEFchVto,
-          CbteDesde: res.voucher_number,
-          CbteHasta: res.voucher_number,
+          CbteDesde: res.voucherNumber,
+          CbteHasta: res.voucherNumber,
           FchProceso: new Date().toISOString(),
           Resultado: 'A',
         },

@@ -7,6 +7,16 @@ import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
 
+// Mapa de porcentaje IVA → ID AFIP
+const IVA_PORCENTAJE_TO_ID: Record<number, number> = {
+  0: 3,
+  2.5: 9,
+  5: 8,
+  10.5: 4,
+  21: 5,
+  27: 6,
+}
+
 // Schema de validación para crear factura
 const createInvoiceSchema = z.object({
   operation_id: z.string().uuid().optional().nullable(),
@@ -154,8 +164,12 @@ export async function POST(request: Request) {
       impIva += ivaImporte
       impTotal += total
 
+      // Derivar iva_id desde iva_porcentaje si no se envió correctamente
+      const derivedIvaId = IVA_PORCENTAJE_TO_ID[item.iva_porcentaje] ?? item.iva_id ?? 5
+
       return {
         ...item,
+        iva_id: derivedIvaId,
         subtotal,
         iva_importe: ivaImporte,
         total,

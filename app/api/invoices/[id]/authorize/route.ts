@@ -75,40 +75,50 @@ export async function POST(
 
     // Preparar datos para AFIP
     const items = invoice.invoice_items || []
-    
-    // Agrupar IVA por alícuota
-    const ivaGrouped: Record<number, { BaseImp: number; Importe: number }> = {}
-    
-    for (const item of items) {
-      const ivaId = item.iva_id as TipoIVA
-      if (!ivaGrouped[ivaId]) {
-        ivaGrouped[ivaId] = { BaseImp: 0, Importe: 0 }
+    const cbteType = invoice.cbte_tipo as TipoComprobante
+
+    // Factura C (11), Nota Débito C (12), Nota Crédito C (13) → monotributistas: sin IVA discriminado
+    const isFacturaC = [11, 12, 13].includes(cbteType)
+
+    // Agrupar IVA por alícuota (solo para facturas A y B)
+    let ivaArray: Array<{ Id: TipoIVA; BaseImp: number; Importe: number }> = []
+
+    if (!isFacturaC) {
+      const ivaGrouped: Record<number, { BaseImp: number; Importe: number }> = {}
+      for (const item of items) {
+        const ivaId = item.iva_id as TipoIVA
+        if (!ivaGrouped[ivaId]) {
+          ivaGrouped[ivaId] = { BaseImp: 0, Importe: 0 }
+        }
+        ivaGrouped[ivaId].BaseImp += item.subtotal
+        ivaGrouped[ivaId].Importe += item.iva_importe
       }
-      ivaGrouped[ivaId].BaseImp += item.subtotal
-      ivaGrouped[ivaId].Importe += item.iva_importe
+      ivaArray = Object.entries(ivaGrouped).map(([id, values]) => ({
+        Id: parseInt(id, 10) as TipoIVA,
+        BaseImp: Math.round(values.BaseImp * 100) / 100,
+        Importe: Math.round(values.Importe * 100) / 100,
+      }))
     }
 
-    const ivaArray = Object.entries(ivaGrouped).map(([id, values]) => ({
-      Id: parseInt(id, 10) as TipoIVA,
-      BaseImp: Math.round(values.BaseImp * 100) / 100,
-      Importe: Math.round(values.Importe * 100) / 100,
-    }))
+    // Para Factura C: ImpNeto = ImpTotal, ImpIVA = 0 (monotributistas no discriminan IVA)
+    const impNeto = isFacturaC ? invoice.imp_total : invoice.imp_neto
+    const impIva = isFacturaC ? 0 : invoice.imp_iva
 
     // Crear request para AFIP
     const afipRequest = {
-      CbteTipo: invoice.cbte_tipo as TipoComprobante,
+      CbteTipo: cbteType,
       PtoVta: invoice.pto_vta,
       Concepto: invoice.concepto as 1 | 2 | 3,
       DocTipo: invoice.receptor_doc_tipo as TipoDocumento,
       DocNro: parseInt(invoice.receptor_doc_nro.replace(/\D/g, ''), 10),
-      CbteFch: invoice.fecha_emision 
+      CbteFch: invoice.fecha_emision
         ? formatDate(new Date(invoice.fecha_emision))
         : formatDate(new Date()),
       ImpTotal: invoice.imp_total,
       ImpTotConc: invoice.imp_tot_conc || 0,
-      ImpNeto: invoice.imp_neto,
+      ImpNeto: impNeto,
       ImpOpEx: invoice.imp_op_ex || 0,
-      ImpIVA: invoice.imp_iva,
+      ImpIVA: impIva,
       ImpTrib: invoice.imp_trib || 0,
       MonId: invoice.moneda || 'PES',
       MonCotiz: invoice.cotizacion || 1,

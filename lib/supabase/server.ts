@@ -26,9 +26,14 @@ export function createAdminClient() {
 }
 
 export async function createServerClient() {
+  // En desarrollo con DISABLE_AUTH, usar service role para bypasear RLS
+  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+    return createAdminClient()
+  }
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder_anon_key'
-  
+
   const cookieStore = await cookies()
   
   return createSupabaseServerClient<Database>(supabaseUrl, supabaseAnonKey, {

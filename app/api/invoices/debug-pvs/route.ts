@@ -23,6 +23,8 @@ export async function GET() {
       }
 
       // Paso 1: auth
+      // afipsdk.com usa "prod"/"dev", no "production"/"sandbox"
+      const sdkEnv = afipConfig.environment === 'production' ? 'prod' : 'dev'
       const authRes = await fetch(`https://app.afipsdk.com/api/v1/afip/auth`, {
         method: 'POST',
         headers: {
@@ -30,9 +32,10 @@ export async function GET() {
           'Authorization': `Bearer ${afipConfig.api_key}`,
         },
         body: JSON.stringify({
-          environment: afipConfig.environment,
+          environment: sdkEnv,
           tax_id: afipConfig.cuit,
           wsid: 'wsfe',
+          force_create: false,
         }),
       })
       const authData = await authRes.json()
@@ -50,7 +53,7 @@ export async function GET() {
           'Authorization': `Bearer ${afipConfig.api_key}`,
         },
         body: JSON.stringify({
-          environment: afipConfig.environment,
+          environment: sdkEnv,
           method: 'FEParamGetPtosVenta',
           wsid: 'wsfe',
           params: {

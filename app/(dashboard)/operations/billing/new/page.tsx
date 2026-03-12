@@ -642,9 +642,16 @@ export default function NewInvoicePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Comprobante *</Label>
-                  <Select 
-                    value={formData.cbte_tipo.toString()} 
-                    onValueChange={(v) => setFormData({ ...formData, cbte_tipo: parseInt(v) })}
+                  <Select
+                    value={formData.cbte_tipo.toString()}
+                    onValueChange={(v) => {
+                      const tipo = parseInt(v)
+                      setFormData({ ...formData, cbte_tipo: tipo })
+                      // Factura C: monotributistas no discriminan IVA → forzar 0%
+                      if ([11, 12, 13].includes(tipo)) {
+                        setItems(prev => prev.map(it => ({ ...it, iva_porcentaje: 0 })))
+                      }
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
