@@ -558,8 +558,8 @@ export default function NewInvoicePage() {
 
         if (authRes.ok && authData.success) {
           toast({
-            title: "Factura autorizada",
-            description: `CAE: ${authData.data?.cae} — Nro: ${authData.data?.cbte_nro}`,
+            title: "✅ Factura autorizada por AFIP",
+            description: `Nro: ${String(formData.pto_vta).padStart(4,'0')}-${String(authData.data?.cbte_nro).padStart(8,'0')} | CAE: ${authData.data?.cae} | Vto: ${authData.data?.cae_fch_vto}`,
           })
         } else {
           toast({
@@ -999,11 +999,11 @@ export default function NewInvoicePage() {
                         </Select>
                       </div>
                       <div>
-                        <Label>Subtotal</Label>
+                        <Label>Total c/IVA</Label>
                         <Input
-                          value={formatCurrency(itemTotals.subtotal)}
+                          value={formatCurrency(itemTotals.total)}
                           disabled
-                          className="bg-muted text-right"
+                          className="bg-muted text-right font-medium"
                         />
                       </div>
                     </div>

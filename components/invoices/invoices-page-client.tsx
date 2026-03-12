@@ -353,9 +353,16 @@ export function InvoicesPageClient() {
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {selectedInvoice && COMPROBANTE_LABELS[selectedInvoice.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
-              {selectedInvoice?.cbte_nro && ` ${String(selectedInvoice.pto_vta).padStart(4, '0')}-${String(selectedInvoice.cbte_nro).padStart(8, '0')}`}
+            <DialogTitle className="flex items-center gap-3">
+              <span>
+                {selectedInvoice && COMPROBANTE_LABELS[selectedInvoice.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                {selectedInvoice?.cbte_nro && ` ${String(selectedInvoice.pto_vta).padStart(4, '0')}-${String(selectedInvoice.cbte_nro).padStart(8, '0')}`}
+              </span>
+              {selectedInvoice && (
+                <Badge variant={statusLabels[selectedInvoice.status]?.variant ?? 'outline'}>
+                  {statusLabels[selectedInvoice.status]?.label ?? selectedInvoice.status}
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription>
               Detalle de la factura
