@@ -87,12 +87,13 @@ export default function NewInvoicePage() {
     customer_id: '',
     operation_id: '',
     agency_id: '', // Se determina del punto de venta seleccionado
-    cbte_tipo: 11, // Factura C por defecto
+    cbte_tipo: 6, // Factura B por defecto (RI emitiendo a Consumidor Final)
     pto_vta: 0, // Se selecciona del punto de venta
     concepto: 2, // Servicios
     receptor_nombre: '',
-    receptor_doc_tipo: 80, // CUIT
-    receptor_doc_nro: '',
+    receptor_doc_tipo: 99 as number, // 99=Sin especificar (Consumidor Final)
+    receptor_doc_nro: '0',
+    receptor_condicion_iva: 5 as number, // 5=Consumidor Final por defecto
     fecha_servicio_desde: new Date().toISOString().split('T')[0],
     fecha_servicio_hasta: new Date().toISOString().split('T')[0],
     moneda: 'PES' as 'PES' | 'DOL',
@@ -168,21 +169,54 @@ export default function NewInvoicePage() {
     }
   }
 
+  /**
+   * Calcula automáticamente el tipo de comprobante y condición IVA
+   * según si el receptor tiene CUIT (Responsable Inscripto) o no (Consumidor Final).
+   * - CUIT presente → Factura A (RI), DocTipo 80, CondIVA 1
+   * - Sin CUIT       → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
+   */
+  const getReceptorDefaults = (customer: Customer) => {
+    if (customer.cuit) {
+      // Tiene CUIT → asumir Responsable Inscripto → Factura A
+      return {
+        cbte_tipo: 1,           // Factura A
+        receptor_doc_tipo: 80,  // CUIT
+        receptor_doc_nro: customer.cuit,
+        receptor_condicion_iva: 1, // RI
+      }
+    } else {
+      // Sin CUIT → Consumidor Final → Factura B
+      return {
+        cbte_tipo: 6,           // Factura B
+        receptor_doc_tipo: customer.dni ? 96 : 99, // DNI o sin especificar
+        receptor_doc_nro: customer.dni || '0',
+        receptor_condicion_iva: 5, // Consumidor Final
+      }
+    }
+  }
+
   const handleCustomerChange = async (customerId: string) => {
     const customer = customers.find(c => c.id === customerId)
     if (customer) {
+      const receptorDefaults = getReceptorDefaults(customer)
       setFormData({
         ...formData,
         customer_id: customerId,
         receptor_nombre: `${customer.first_name} ${customer.last_name}`,
-        receptor_doc_nro: customer.cuit || customer.dni || '',
-        receptor_doc_tipo: customer.cuit ? 80 : 96, // 80=CUIT, 96=DNI
+        ...receptorDefaults,
         operation_id: '', // Limpiar operación cuando cambia el cliente
       })
-      
+      // Ajustar IVA de los items según el tipo de comprobante
+      if (receptorDefaults.cbte_tipo === 1) {
+        // Factura A: RI discrimina IVA → 21% por defecto
+        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+      } else {
+        // Factura B: CF no discrimina IVA en item visual, pero igual enviamos la alícuota
+        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+      }
+
       // Limpiar operación seleccionada
       setSelectedOperation(null)
-      setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
       
       // Cargar operaciones del cliente
       try {
@@ -472,10 +506,19 @@ export default function NewInvoicePage() {
   const handleSubmit = async () => {
     try {
       // Validaciones
-      if (!formData.receptor_nombre || !formData.receptor_doc_nro) {
+      if (!formData.receptor_nombre) {
         toast({
           title: "Error",
-          description: "Debe seleccionar un cliente con datos fiscales",
+          description: "Debe ingresar el nombre del receptor",
+          variant: "destructive",
+        })
+        return
+      }
+      // Factura A requiere CUIT obligatoriamente
+      if (formData.cbte_tipo === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0')) {
+        toast({
+          title: "Error de datos fiscales",
+          description: "Factura A requiere el CUIT del receptor (Responsable Inscripto). Ingresá el CUIT del cliente.",
           variant: "destructive",
         })
         return
@@ -641,27 +684,19 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Tipo de Comprobante *</Label>
-                  <Select
-                    value={formData.cbte_tipo.toString()}
-                    onValueChange={(v) => {
-                      const tipo = parseInt(v)
-                      setFormData({ ...formData, cbte_tipo: tipo })
-                      // Factura C: monotributistas no discriminan IVA → forzar 0%
-                      if ([11, 12, 13].includes(tipo)) {
-                        setItems(prev => prev.map(it => ({ ...it, iva_porcentaje: 0 })))
-                      }
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1">Factura A</SelectItem>
-                      <SelectItem value="6">Factura B</SelectItem>
-                      <SelectItem value="11">Factura C</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Tipo de Comprobante</Label>
+                  <div className="rounded-md border bg-muted px-3 py-2 text-sm font-medium">
+                    {formData.cbte_tipo === 1
+                      ? "Factura A — Responsable Inscripto"
+                      : formData.cbte_tipo === 6
+                      ? "Factura B — Consumidor Final / Exento"
+                      : formData.cbte_tipo === 11
+                      ? "Factura C — Monotributista"
+                      : `Tipo ${formData.cbte_tipo}`}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Se determina automáticamente por la condición IVA del receptor
+                  </p>
                 </div>
                 <div>
                   <Label>Punto de Venta / Agencia *</Label>
@@ -823,12 +858,54 @@ export default function NewInvoicePage() {
                   />
                 </div>
                 <div>
-                  <Label>CUIT/DNI *</Label>
+                  <Label>CUIT/DNI</Label>
                   <Input
-                    value={formData.receptor_doc_nro}
-                    onChange={(e) => setFormData({ ...formData, receptor_doc_nro: e.target.value })}
-                    placeholder="20123456789"
+                    value={formData.receptor_doc_nro === '0' ? '' : formData.receptor_doc_nro}
+                    onChange={(e) => setFormData({ ...formData, receptor_doc_nro: e.target.value || '0' })}
+                    placeholder={formData.receptor_condicion_iva === 1 ? "20123456789 (requerido)" : "Consumidor Final (opcional)"}
                   />
+                </div>
+              </div>
+
+              {/* Condición IVA del receptor — determina el tipo de factura automáticamente */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Condición IVA del receptor *</Label>
+                  <Select
+                    value={formData.receptor_condicion_iva.toString()}
+                    onValueChange={(v) => {
+                      const condicion = parseInt(v)
+                      // Mapear condición IVA → tipo de comprobante automáticamente
+                      const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
+                      const receptor_doc_tipo = condicion === 1 ? 80 : (formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? 96 : 99)
+                      setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">Consumidor Final → Factura B</SelectItem>
+                      <SelectItem value="1">Responsable Inscripto → Factura A</SelectItem>
+                      <SelectItem value="4">Sujeto Exento → Factura B</SelectItem>
+                      <SelectItem value="6">Monotributista → Factura B</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tipo de factura: <strong>{formData.cbte_tipo === 1 ? "Factura A" : "Factura B"}</strong>
+                  </p>
+                </div>
+                <div className="flex items-end">
+                  {formData.receptor_condicion_iva === 1 && !formData.receptor_doc_nro || formData.receptor_doc_nro === '0' ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 w-full">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <span>Factura A requiere CUIT del receptor. Ingresá el CUIT en el campo de arriba.</span>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 w-full">
+                      ✓ Tipo de comprobante determinado automáticamente por la condición IVA
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1041,11 +1118,21 @@ export default function NewInvoicePage() {
                 </div>
               </div>
 
-              <div className="p-3 bg-muted rounded-lg">
+              <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Tipo:</strong> {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                  <strong>Tipo:</strong>{" "}
+                  <span className={formData.cbte_tipo === 1 ? "text-blue-700 font-semibold" : "text-green-700 font-semibold"}>
+                    {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                  </span>
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Condición receptor:</strong>{" "}
+                  {formData.receptor_condicion_iva === 1 ? "Responsable Inscripto"
+                    : formData.receptor_condicion_iva === 4 ? "Sujeto Exento"
+                    : formData.receptor_condicion_iva === 6 ? "Monotributista"
+                    : "Consumidor Final"}
+                </p>
+                <p className="text-xs text-muted-foreground">
                   <strong>Punto de Venta:</strong> {String(formData.pto_vta).padStart(4, '0')}
                 </p>
               </div>
