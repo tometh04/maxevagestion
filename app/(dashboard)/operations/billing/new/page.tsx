@@ -684,18 +684,27 @@ export default function NewInvoicePage() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label>Tipo de Comprobante</Label>
-                  <div className="rounded-md border bg-muted px-3 py-2 text-sm font-medium">
-                    {formData.cbte_tipo === 1
-                      ? "Factura A — Responsable Inscripto"
-                      : formData.cbte_tipo === 6
-                      ? "Factura B — Consumidor Final / Exento"
-                      : formData.cbte_tipo === 11
-                      ? "Factura C — Monotributista"
-                      : `Tipo ${formData.cbte_tipo}`}
-                  </div>
+                  <Label>Tipo de Comprobante *</Label>
+                  <Select
+                    value={formData.cbte_tipo.toString()}
+                    onValueChange={(v) => {
+                      const tipo = parseInt(v)
+                      // Sincronizar condición IVA al cambiar tipo manualmente
+                      const condicion = tipo === 1 ? 1 : formData.receptor_condicion_iva === 1 ? 5 : formData.receptor_condicion_iva
+                      setFormData({ ...formData, cbte_tipo: tipo, receptor_condicion_iva: condicion })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="6">Factura B</SelectItem>
+                      <SelectItem value="1">Factura A</SelectItem>
+                      <SelectItem value="11">Factura C</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Se determina automáticamente por la condición IVA del receptor
+                    B = CF/Exento · A = RI · C = Monotributista
                   </p>
                 </div>
                 <div>
