@@ -370,11 +370,12 @@ export async function POST(request: Request) {
 
       if (accountsReceivableChart) {
         // Buscar o crear financial_account asociada a esta cuenta del plan
-        let accountsReceivableFinancialAccount = await (supabase.from("financial_accounts") as any)
+        const { data: existingReceivableFA } = await (supabase.from("financial_accounts") as any)
           .select("id")
           .eq("chart_account_id", accountsReceivableChart.id)
           .eq("is_active", true)
           .maybeSingle()
+        let accountsReceivableFinancialAccount = existingReceivableFA
 
         if (!accountsReceivableFinancialAccount) {
           // Crear financial_account para cuentas por cobrar si no existe
@@ -438,11 +439,12 @@ export async function POST(request: Request) {
 
         if (accountsPayableChart) {
           // Buscar o crear financial_account asociada
-          let accountsPayableFinancialAccount = await (supabase.from("financial_accounts") as any)
+          const { data: existingPayableFA } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", accountsPayableChart.id)
             .eq("is_active", true)
             .maybeSingle()
+          let accountsPayableFinancialAccount = existingPayableFA
 
           if (!accountsPayableFinancialAccount) {
             const { data: newFA } = await (supabase.from("financial_accounts") as any)
@@ -773,6 +775,7 @@ export async function GET(request: Request) {
       .select(`
         *,
         sellers:seller_id(id, name, email),
+        sellers_secondary:seller_secondary_id(id, name, email),
         operators:operator_id(id, name),
         agencies:agency_id(id, name, city),
         leads:lead_id(id, contact_name, destination, trello_url, status),
@@ -989,6 +992,7 @@ export async function GET(request: Request) {
         .select(`
           *,
           sellers:seller_id(name),
+          sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
           leads:lead_id(contact_name, destination, trello_url),
@@ -1009,6 +1013,7 @@ export async function GET(request: Request) {
         .select(`
           *,
           sellers:seller_id(name),
+          sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
           leads:lead_id(contact_name, destination, trello_url),

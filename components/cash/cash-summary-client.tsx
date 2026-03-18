@@ -69,6 +69,7 @@ interface LedgerMovement {
   amount_original: number
   amount_ars_equivalent: number
   created_at: string
+  movement_date?: string
   financial_accounts?: {
     id: string
     name: string
@@ -113,8 +114,10 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
   const [accountMovements, setAccountMovements] = useState<Record<string, LedgerMovement[]>>({})
+  const [accountStats, setAccountStats] = useState<Record<string, { income: number; expenses: number }>>({})
   const [loading, setLoading] = useState(true)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
+  const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
 
   const fetchSummary = useCallback(async () => {
     setLoading(true)
@@ -162,6 +165,24 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       console.error("Error fetching account movements:", error)
     } finally {
       setLoadingMovements(prev => ({ ...prev, [accountId]: false }))
+    }
+  }, [dateFrom, dateTo])
+
+  const fetchAccountStats = useCallback(async (accountId: string) => {
+    if (!dateFrom || !dateTo) return
+    setLoadingStats(prev => ({ ...prev, [accountId]: true }))
+    try {
+      const response = await fetch(
+        `/api/accounting/ledger/stats?accountId=${accountId}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
+      )
+      if (response.ok) {
+        const data = await response.json()
+        setAccountStats(prev => ({ ...prev, [accountId]: { income: data.income || 0, expenses: data.expenses || 0 } }))
+      }
+    } catch (error) {
+      console.error("Error fetching account stats:", error)
+    } finally {
+      setLoadingStats(prev => ({ ...prev, [accountId]: false }))
     }
   }, [dateFrom, dateTo])
 
@@ -237,17 +258,36 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
 
+  // Auto-cargar stats Y movimientos al entrar al tab USD o ARS
+  useEffect(() => {
+    if (activeTab === "usd" || activeTab === "ars") {
+      const targetAccounts = activeTab === "usd" ? usdAccounts : arsAccounts
+      targetAccounts.forEach(account => {
+        if (!accountStats[account.id] && !loadingStats[account.id]) {
+          fetchAccountStats(account.id)
+        }
+        if (!accountMovements[account.id] && !loadingMovements[account.id]) {
+          fetchAccountMovements(account.id)
+        }
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, usdAccounts, arsAccounts, fetchAccountStats, fetchAccountMovements])
+
   // Calcular ingresos y egresos por cuenta
+  // Prioridad: stats pre-cargados (dataset completo, sin paginación)
   const calculateAccountStats = useCallback((accountId: string) => {
-    const movements = accountMovements[accountId] || []
-    const income = movements
-      .filter(m => m.type === "INCOME")
-      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
-    const expenses = movements
-      .filter(m => m.type === "EXPENSE")
-      .reduce((sum, m) => sum + (m.amount_original || 0), 0)
-    return { income, expenses }
-  }, [accountMovements])
+    if (accountStats[accountId]) return accountStats[accountId]
+    // Fallback: calcular desde movements si están cargados
+    if (accountMovements[accountId]) {
+      const movements = accountMovements[accountId]
+      return {
+        income: movements.filter(m => m.type === "INCOME" || m.type === "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
+        expenses: movements.filter(m => m.type !== "INCOME" && m.type !== "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
+      }
+    }
+    return { income: 0, expenses: 0 }
+  }, [accountMovements, accountStats])
 
   // Preparar datos para el gráfico
   const chartData = useMemo(() => {
@@ -348,8 +388,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                     if (date && dateTo && dateTo < date) {
                       setDateTo(undefined)
                     }
-                    // Limpiar movimientos cuando cambia la fecha
                     setAccountMovements({})
+                    setAccountStats({})
                   }}
                   placeholder="dd/MM/yyyy"
                 />
@@ -363,8 +403,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       return
                     }
                     setDateTo(date)
-                    // Limpiar movimientos cuando cambia la fecha
                     setAccountMovements({})
+                    setAccountStats({})
                   }}
                   placeholder="dd/MM/yyyy"
                   minDate={dateFrom}
@@ -501,12 +541,11 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       )}
 
                       {/* Tabla de movimientos */}
-                      {accountMovements[account.id] && (
+                      {isLoading && <Skeleton className="h-32 w-full" />}
+                      {accountMovements[account.id] && !isLoading && (
                         <div>
                           <h4 className="text-sm font-medium mb-2">Movimientos</h4>
-                          {isLoading ? (
-                            <Skeleton className="h-32 w-full" />
-                          ) : movements.length === 0 ? (
+                          {movements.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
                           ) : (
                             <div className="border rounded-md overflow-hidden">
@@ -523,12 +562,10 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                   {movements.map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
-                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
                                       </TableCell>
                                       <TableCell>
-                                        <Badge
-                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                        >
+                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
                                           {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
                                         </Badge>
                                       </TableCell>
@@ -636,12 +673,11 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       )}
 
                       {/* Tabla de movimientos */}
-                      {accountMovements[account.id] && (
+                      {isLoading && <Skeleton className="h-32 w-full" />}
+                      {accountMovements[account.id] && !isLoading && (
                         <div>
                           <h4 className="text-sm font-medium mb-2">Movimientos</h4>
-                          {isLoading ? (
-                            <Skeleton className="h-32 w-full" />
-                          ) : movements.length === 0 ? (
+                          {movements.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
                           ) : (
                             <div className="border rounded-md overflow-hidden">
@@ -658,12 +694,10 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                   {movements.map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
-                                        {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
                                       </TableCell>
                                       <TableCell>
-                                        <Badge
-                                          variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                        >
+                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
                                           {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
                                         </Badge>
                                       </TableCell>
@@ -686,7 +720,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                             </div>
                           )}
                         </div>
-          )}
+                      )}
         </CardContent>
       </Card>
                 )
