@@ -50,7 +50,7 @@ export async function GET(request: Request) {
     if (dateTo) dateFilter += ` AND movement_date <= '${dateTo}T23:59:59'`
 
     // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles
-    const sqlQuery = `SELECT account_id, SUM(CASE WHEN type IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN type NOT IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements WHERE 1=1 ${accountFilter} ${dateFilter} GROUP BY account_id`
+    const sqlQuery = `SELECT account_id, SUM(CASE WHEN type IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN type NOT IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements WHERE affects_balance = true ${accountFilter} ${dateFilter} GROUP BY account_id`
 
     const { data: aggData, error: aggError } = await admin.rpc("execute_readonly_query", {
       query_text: sqlQuery

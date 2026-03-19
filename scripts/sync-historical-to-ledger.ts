@@ -221,7 +221,9 @@ async function syncHistoricalToLedger() {
       continue
     }
 
-    // Create ledger_movement
+    // Create ledger_movement con affects_balance=false
+    // Se MUESTRA en la lista de movimientos pero NO afecta el saldo de la cuenta
+    // (porque el initial_balance ya contempla estos montos)
     const { data: lm, error: lmError } = await supabase
       .from("ledger_movements")
       .insert({
@@ -241,6 +243,7 @@ async function syncHistoricalToLedger() {
         notes: `Migrado desde pago histórico ${payment.id}`,
         created_by: null,
         movement_date: new Date(payment.date_paid!).toISOString(),
+        affects_balance: false,
       })
       .select("id")
       .single()

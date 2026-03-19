@@ -42,13 +42,13 @@ export async function GET(request: Request) {
     // QUERY 1: Sumas acumuladas ANTES del dateFrom (para el balance inicial del gráfico)
     // Resultado: { account_id, type, total_original, total_ars } por cada combinación
     const { data: priorSums } = await admin.rpc("execute_readonly_query", {
-      query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND created_at < '${dateFrom}T00:00:00' GROUP BY account_id, type`
+      query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND created_at < '${dateFrom}T00:00:00' AND affects_balance = true GROUP BY account_id, type`
     })
 
     // QUERY 2: Movimientos agrupados por DÍA dentro del rango
     // Resultado: { account_id, mov_date, type, total_original, total_ars }
     const { data: dailySums } = await admin.rpc("execute_readonly_query", {
-      query_text: `SELECT account_id, DATE(created_at)::text as mov_date, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND created_at >= '${dateFrom}T00:00:00' AND created_at <= '${dateTo}T23:59:59' GROUP BY account_id, DATE(created_at), type ORDER BY mov_date`
+      query_text: `SELECT account_id, DATE(created_at)::text as mov_date, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND created_at >= '${dateFrom}T00:00:00' AND created_at <= '${dateTo}T23:59:59' AND affects_balance = true GROUP BY account_id, DATE(created_at), type ORDER BY mov_date`
     })
 
     // Parsear resultados (execute_readonly_query retorna JSONB)

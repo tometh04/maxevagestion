@@ -373,7 +373,7 @@ export async function getAccountBalancesBatch(
 
   const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
   const { data: aggregatedData, error: aggError } = await adminClient.rpc("execute_readonly_query", {
-    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) GROUP BY account_id, type`
+    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true GROUP BY account_id, type`
   })
 
   if (aggError) {
