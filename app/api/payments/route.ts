@@ -309,9 +309,34 @@ export async function POST(request: Request) {
           }
         }
 
-        // NOTA: Solo creamos UN movimiento contable usando la cuenta financiera seleccionada
-        // El movimiento ya fue creado arriba (línea 203-224) usando accountId = financial_account_id
-        // No creamos un segundo movimiento duplicado en otra cuenta
+        // 9. Crear cash_movement para que aparezca en la vista de caja
+        const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
+          .select("id")
+          .eq("currency", currency)
+          .eq("is_default", true)
+          .eq("is_active", true)
+          .eq("agency_id", agencyId || "")
+          .maybeSingle()
+
+        const { error: cashMovementError } = await (supabase.from("cash_movements") as any)
+          .insert({
+            operation_id: operation_id || null,
+            payment_id: payment.id,
+            cash_box_id: (defaultCashBox as any)?.id || null,
+            user_id: user.id,
+            type: direction === "INCOME" ? "INCOME" : "EXPENSE",
+            category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            amount: parseFloat(amount),
+            currency: currency,
+            movement_date: date_paid || new Date().toISOString().split("T")[0],
+            notes: notes || null,
+            is_touristic: true,
+          })
+
+        if (cashMovementError) {
+          console.warn(`⚠️ Error creando cash_movement para pago ${payment.id}:`, cashMovementError)
+        }
+
         console.log(`✅ Pago ${payment.id} creado con movimiento contable en cuenta ${accountId}`)
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
@@ -517,12 +542,32 @@ export async function DELETE(request: Request) {
     }
 
     // 2. Eliminar movimiento de caja relacionado
-    const { error: cashError } = await (supabase.from("cash_movements") as any)
+    const { data: deletedCash, error: cashError } = await (supabase.from("cash_movements") as any)
       .delete()
       .eq("payment_id", paymentId)
+      .select("id")
 
     if (cashError) {
-      console.warn("Warning: Could not delete cash movement:", cashError)
+      console.warn("Warning: Could not delete cash movement by payment_id:", cashError)
+    }
+
+    // Fallback: si no se encontró por payment_id, buscar huérfanos por operation_id + amount + type
+    // (movimientos creados sin payment_id por versiones anteriores del código)
+    if (!deletedCash?.length && payment.operation_id && payment.status === "PAID") {
+      const expectedType = payment.direction === "INCOME" ? "INCOME" : "EXPENSE"
+      const { error: orphanError } = await (supabase.from("cash_movements") as any)
+        .delete()
+        .eq("operation_id", payment.operation_id)
+        .eq("type", expectedType)
+        .eq("amount", payment.amount)
+        .eq("currency", payment.currency)
+        .is("payment_id", null)
+
+      if (orphanError) {
+        console.warn("Warning: Could not delete orphaned cash movement:", orphanError)
+      } else {
+        console.log(`⚠️ Eliminado cash_movement huérfano (sin payment_id) para operation ${payment.operation_id}`)
+      }
     }
 
     // 3. Si hay ledger_movement_id, eliminar el movimiento del libro mayor
@@ -574,6 +619,57 @@ export async function DELETE(request: Request) {
       } else if (ledgerMovement?.account_id) {
         // Invalidar cache de balance de la cuenta afectada
         invalidateBalanceCache(ledgerMovement.account_id)
+      }
+    }
+
+    // 3b. Eliminar movimiento contable COUNTERPART en CpC/CpP (creado por mark-paid)
+    // Cuando mark-paid crea 2 entries (CpC/CpP + cuenta principal), solo el principal
+    // se guarda en payment.ledger_movement_id. Hay que buscar y eliminar el counterpart.
+    if (payment.operation_id && payment.status === "PAID") {
+      // Buscar cuentas CpC (1.1.03) y CpP (2.1.01)
+      const { data: cpcChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "1.1.03")
+        .eq("is_active", true)
+        .maybeSingle()
+
+      const { data: cppChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("account_code", "2.1.01")
+        .eq("is_active", true)
+        .maybeSingle()
+
+      const chartIds = [cpcChart?.id, cppChart?.id].filter(Boolean)
+
+      if (chartIds.length > 0) {
+        // Buscar financial_accounts que son CpC/CpP
+        const { data: accountingAccounts } = await (supabase.from("financial_accounts") as any)
+          .select("id")
+          .in("chart_account_id", chartIds)
+          .eq("is_active", true)
+
+        const accountingAccountIds = (accountingAccounts || []).map((a: any) => a.id)
+
+        if (accountingAccountIds.length > 0) {
+          // Buscar y eliminar ledger_movements huérfanos en CpC/CpP para esta operación + monto
+          const { data: counterpartMovements, error: counterpartError } = await (supabase.from("ledger_movements") as any)
+            .delete()
+            .eq("operation_id", payment.operation_id)
+            .in("account_id", accountingAccountIds)
+            .eq("amount_original", payment.amount)
+            .eq("currency", payment.currency)
+            .select("id, account_id")
+
+          if (counterpartError) {
+            console.warn("Warning: Could not delete counterpart CpC/CpP ledger movements:", counterpartError)
+          } else if (counterpartMovements?.length > 0) {
+            console.log(`✅ Eliminados ${counterpartMovements.length} movimientos CpC/CpP counterpart para operación ${payment.operation_id}`)
+            // Invalidar cache de las cuentas CpC/CpP afectadas
+            counterpartMovements.forEach((m: any) => {
+              if (m.account_id) invalidateBalanceCache(m.account_id)
+            })
+          }
+        }
       }
     }
 
@@ -757,6 +853,8 @@ export async function PATCH(request: Request) {
         let sellerId: string | null = null
         let operatorId: string | null = null
 
+        let agencyId: string | null = null
+
         if (existingPayment.operation_id) {
           const { data: operation } = await (supabase.from("operations") as any)
             .select("seller_id, operator_id, agency_id")
@@ -765,6 +863,7 @@ export async function PATCH(request: Request) {
 
           sellerId = operation?.seller_id || null
           operatorId = operation?.operator_id || null
+          agencyId = operation?.agency_id || null
         }
 
         // Calcular tasa de cambio para ARS equivalent
@@ -896,6 +995,34 @@ export async function PATCH(request: Request) {
                 .eq("id", operatorPayment.id)
             }
           }
+        }
+
+        // Crear nuevo cash_movement (el PATCH borraba el viejo pero no recreaba el nuevo)
+        const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
+          .select("id")
+          .eq("currency", finalCurrency)
+          .eq("is_default", true)
+          .eq("is_active", true)
+          .eq("agency_id", agencyId || "")
+          .maybeSingle()
+
+        const { error: cashInsertError } = await (supabase.from("cash_movements") as any)
+          .insert({
+            operation_id: existingPayment.operation_id,
+            payment_id: paymentId,
+            cash_box_id: (defaultCashBox as any)?.id || null,
+            user_id: user.id,
+            type: existingPayment.direction === "INCOME" ? "INCOME" : "EXPENSE",
+            category: existingPayment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            amount: finalAmount,
+            currency: finalCurrency,
+            movement_date: finalDatePaid,
+            notes: finalNotes || null,
+            is_touristic: true,
+          })
+
+        if (cashInsertError) {
+          console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
         }
 
         console.log(`✅ Pago ${paymentId} editado. Nuevo ledger_movement: ${newLedgerMovementId}`)
