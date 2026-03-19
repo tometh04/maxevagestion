@@ -240,10 +240,34 @@ export async function GET(request: Request) {
       adminSupabase = supabase
     }
 
+    // Excluir cuentas contables CpC/CpP del listado de movimientos de caja
+    // (son movimientos internos de contabilidad, no movimientos de caja reales)
+    let excludeAccountIds: string[] = []
+    try {
+      const { data: accountingCharts } = await adminSupabase
+        .from("chart_of_accounts")
+        .select("id")
+        .in("account_code", ["1.1.03", "2.1.01"]) // CpC y CpP
+        .eq("is_active", true)
+
+      if (accountingCharts?.length) {
+        const chartIds = accountingCharts.map((c: any) => c.id)
+        const { data: accountingFAs } = await adminSupabase
+          .from("financial_accounts")
+          .select("id")
+          .in("chart_account_id", chartIds)
+          .eq("is_active", true)
+
+        excludeAccountIds = (accountingFAs || []).map((a: any) => a.id)
+      }
+    } catch (err) {
+      console.warn("Could not fetch accounting-only accounts to exclude:", err)
+    }
+
     let dataQuery = adminSupabase
       .from("ledger_movements")
       .select(
-        `id, type, concept, currency, amount_original, movement_date, notes,
+        `id, type, concept, currency, amount_original, movement_date, notes, account_id,
          operations:operation_id (id, destination, agency_id),
          users:created_by (name)`,
         { count: "exact" }
@@ -262,6 +286,12 @@ export async function GET(request: Request) {
     }
     if (currencyParam && currencyParam !== "ALL") dataQuery = dataQuery.eq("currency", currencyParam)
     if (sellerIdFilter) dataQuery = dataQuery.eq("seller_id", sellerIdFilter)
+    // Excluir movimientos de cuentas contables (CpC/CpP) — no son movimientos de caja reales
+    if (excludeAccountIds.length > 0) {
+      // Usar NOT IN para excluir: .not("account_id", "in", '("id1","id2")')
+      const idList = excludeAccountIds.map(id => `"${id}"`).join(",")
+      dataQuery = dataQuery.not("account_id", "in", `(${idList})`)
+    }
 
     const { data: rawMovements, error: movError, count: totalCount } = await dataQuery
 
