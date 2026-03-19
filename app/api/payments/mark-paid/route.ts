@@ -240,6 +240,7 @@ export async function POST(request: Request) {
                 receipt_number: reference || null,
                 notes: `Pago recibido: ${reference || ""}`,
                 created_by: user.id,
+                movement_date: datePaid, // Usar fecha del pago (puede ser retroactiva)
               },
               supabase
             )
@@ -316,6 +317,7 @@ export async function POST(request: Request) {
                 receipt_number: reference || null,
                 notes: `Pago realizado: ${reference || ""}`,
                 created_by: user.id,
+                movement_date: datePaid, // Usar fecha del pago (puede ser retroactiva)
               },
               supabase
             )
@@ -502,6 +504,7 @@ export async function POST(request: Request) {
         receipt_number: reference || null,
         notes: `Cuenta: ${financialAccount.name || accountId} - ${reference || ""}`,
         created_by: user.id,
+        movement_date: datePaid, // Usar fecha del pago (puede ser retroactiva)
       },
       supabase
     )
