@@ -258,7 +258,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
 
-  // Auto-cargar stats Y movimientos al entrar al tab USD o ARS
+  // Auto-cargar SOLO stats al entrar al tab USD o ARS (query liviana)
+  // Los movimientos se cargan bajo demanda con "Ver Movimientos" para no sobrecargar
   useEffect(() => {
     if (activeTab === "usd" || activeTab === "ars") {
       const targetAccounts = activeTab === "usd" ? usdAccounts : arsAccounts
@@ -266,13 +267,10 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         if (!accountStats[account.id] && !loadingStats[account.id]) {
           fetchAccountStats(account.id)
         }
-        if (!accountMovements[account.id] && !loadingMovements[account.id]) {
-          fetchAccountMovements(account.id)
-        }
       })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, usdAccounts, arsAccounts, fetchAccountStats, fetchAccountMovements])
+  }, [activeTab, usdAccounts, arsAccounts, fetchAccountStats])
 
   // Calcular ingresos y egresos por cuenta
   // Prioridad: stats pre-cargados (dataset completo, sin paginación)
