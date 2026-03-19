@@ -168,21 +168,34 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   }, [dateFrom, dateTo])
 
-  const fetchAccountStats = useCallback(async (accountId: string) => {
-    if (!dateFrom || !dateTo) return
-    setLoadingStats(prev => ({ ...prev, [accountId]: true }))
+  // Batch: cargar stats de TODAS las cuentas en UNA sola request
+  const fetchAllStats = useCallback(async (accountIds: string[]) => {
+    if (!dateFrom || !dateTo || accountIds.length === 0) return
+
+    // Marcar todas como loading
+    setLoadingStats(prev => {
+      const next = { ...prev }
+      accountIds.forEach(id => { next[id] = true })
+      return next
+    })
+
     try {
       const response = await fetch(
-        `/api/accounting/ledger/stats?accountId=${accountId}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
+        `/api/accounting/ledger/stats?accountIds=${accountIds.join(",")}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
       )
       if (response.ok) {
         const data = await response.json()
-        setAccountStats(prev => ({ ...prev, [accountId]: { income: data.income || 0, expenses: data.expenses || 0 } }))
+        const batchStats = data.stats || {}
+        setAccountStats(prev => ({ ...prev, ...batchStats }))
       }
     } catch (error) {
-      console.error("Error fetching account stats:", error)
+      console.error("Error fetching batch stats:", error)
     } finally {
-      setLoadingStats(prev => ({ ...prev, [accountId]: false }))
+      setLoadingStats(prev => {
+        const next = { ...prev }
+        accountIds.forEach(id => { next[id] = false })
+        return next
+      })
     }
   }, [dateFrom, dateTo])
 
@@ -258,19 +271,21 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
 
-  // Auto-cargar SOLO stats al entrar al tab USD o ARS (query liviana)
+  // Auto-cargar stats de TODAS las cuentas del tab activo en UNA sola request batch
   // Los movimientos se cargan bajo demanda con "Ver Movimientos" para no sobrecargar
   useEffect(() => {
     if (activeTab === "usd" || activeTab === "ars") {
       const targetAccounts = activeTab === "usd" ? usdAccounts : arsAccounts
-      targetAccounts.forEach(account => {
-        if (!accountStats[account.id] && !loadingStats[account.id]) {
-          fetchAccountStats(account.id)
-        }
-      })
+      const accountsNeedingStats = targetAccounts
+        .filter(account => !accountStats[account.id] && !loadingStats[account.id])
+        .map(account => account.id)
+
+      if (accountsNeedingStats.length > 0) {
+        fetchAllStats(accountsNeedingStats)
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, usdAccounts, arsAccounts, fetchAccountStats])
+  }, [activeTab, usdAccounts, arsAccounts, fetchAllStats])
 
   // Calcular ingresos y egresos por cuenta
   // Prioridad: stats pre-cargados (dataset completo, sin paginación)
