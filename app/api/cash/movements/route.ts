@@ -264,6 +264,18 @@ export async function GET(request: Request) {
       console.warn("Could not fetch accounting-only accounts to exclude:", err)
     }
 
+    // Si hay filtro de agencia, obtener operation_ids de esa agencia ANTES del query principal
+    // para que la paginación sea correcta (antes se filtraba post-query y los totales no coincidían)
+    let agencyOperationIds: string[] | null = null
+    if (agencyId && agencyId !== "ALL") {
+      const { data: agencyOps } = await adminSupabase
+        .from("operations")
+        .select("id")
+        .eq("agency_id", agencyId)
+
+      agencyOperationIds = (agencyOps || []).map((o: any) => o.id)
+    }
+
     let dataQuery = adminSupabase
       .from("ledger_movements")
       .select(
@@ -288,9 +300,20 @@ export async function GET(request: Request) {
     if (sellerIdFilter) dataQuery = dataQuery.eq("seller_id", sellerIdFilter)
     // Excluir movimientos de cuentas contables (CpC/CpP) — no son movimientos de caja reales
     if (excludeAccountIds.length > 0) {
-      // Usar NOT IN para excluir: .not("account_id", "in", '("id1","id2")')
       const idList = excludeAccountIds.map(id => `"${id}"`).join(",")
       dataQuery = dataQuery.not("account_id", "in", `(${idList})`)
+    }
+    // Filtro de agencia: incluir movimientos de esa agencia + movimientos manuales (sin operación)
+    // Se aplica EN el query para que la paginación y conteo sean correctos
+    if (agencyOperationIds !== null) {
+      if (agencyOperationIds.length > 0) {
+        // Movimientos de operaciones de esa agencia O movimientos sin operación (manuales)
+        const opIdList = agencyOperationIds.map(id => `"${id}"`).join(",")
+        dataQuery = dataQuery.or(`operation_id.in.(${opIdList}),operation_id.is.null`)
+      } else {
+        // La agencia no tiene operaciones, solo mostrar movimientos manuales
+        dataQuery = dataQuery.is("operation_id", null)
+      }
     }
 
     const { data: rawMovements, error: movError, count: totalCount } = await dataQuery
@@ -301,7 +324,7 @@ export async function GET(request: Request) {
     }
 
     // Mapear al formato CashMovement que espera el frontend
-    let movements = (rawMovements || []).map((m: any) => ({
+    const movements = (rawMovements || []).map((m: any) => ({
       id: m.id,
       type: (m.type === "INCOME" || m.type === "FX_GAIN") ? "INCOME" : "EXPENSE",
       category: m.concept ?? m.type,
@@ -319,13 +342,6 @@ export async function GET(request: Request) {
         : null,
       users: m.users ? { name: m.users.name } : null,
     }))
-
-    // Filtro de agencia: incluye movimientos de la agencia Y movimientos manuales (sin operación)
-    if (agencyId && agencyId !== "ALL") {
-      movements = movements.filter(
-        (m: any) => !m.operations || m.operations.agency_id === agencyId
-      )
-    }
 
     const total = totalCount ?? 0
     const totalPages = total > 0 ? Math.ceil(total / limit) : 0

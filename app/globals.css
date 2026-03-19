@@ -32,9 +32,9 @@
     --chart-6: 12 80% 50%;
     --sidebar-background: 24 78% 54%;
     --sidebar-foreground: 0 0% 100%;
-    --sidebar-primary: 24 85% 46%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 24 72% 48%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 24 78% 40%;
+    --sidebar-accent: 24 78% 42%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 24 70% 48%;
     --sidebar-ring: 24 85% 60%;

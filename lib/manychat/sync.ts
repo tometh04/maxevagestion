@@ -289,7 +289,8 @@ export function determineListName(manychatData: ManychatLeadData): string {
     return `Cupos - ${bucketValue}`
   }
 
-  // 2. BUCKET existe → "Campaña - ${BUCKET}" (con o sin WhatsApp)
+  // 2. BUCKET existe → lista de campaña específica (ej: "Campaña - EUROPA - SEPTIEMBRE OCTUBRE")
+  // Los leads orgánicos van a "Leads - {región}" (sin bucket), los de campaña tienen su propia lista
   if (normalizedBucket) {
     return `Campaña - ${bucketValue}`
   }
@@ -322,10 +323,10 @@ export async function syncManychatLeadToLead(
   
   // 2. Mapear campos
   const instagram = normalizeInstagram(manychatData.ig)
-  const rawName = (manychatData.name || "Sin nombre").trim()
-  const contactId = manychatData.whatsapp?.trim() || manychatData.ig?.trim() || ""
+  const rawName = (manychatData.name || "").trim()
   const dest = (manychatData.destino || "Sin destino").trim()
-  const contact_name = `${dest} - ${rawName}${contactId ? ` - ${contactId}` : ""}`
+  // contact_name = solo el nombre de la persona (destino y teléfono ya tienen sus propios campos)
+  const contact_name = rawName || (instagram ? `@${instagram}` : (manychatData.whatsapp?.trim() || "Sin nombre"))
   const contact_phone = (manychatData.whatsapp || "").trim()
   const contact_instagram = instagram
   const destination = (manychatData.destino || "Sin destino").trim()

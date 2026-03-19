@@ -6,8 +6,7 @@ import { canAccessModule } from "@/lib/permissions"
 
 function getDefaultDateRange() {
   const today = new Date()
-  const from = new Date()
-  from.setDate(today.getDate() - 30)
+  const from = new Date(today.getFullYear(), 0, 1) // 1° de enero del año actual
 
   return {
     dateFrom: from.toISOString().split("T")[0],

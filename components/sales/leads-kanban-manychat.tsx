@@ -63,6 +63,44 @@ const regionDotColors: Record<string, string> = {
   CRUCEROS: "bg-orange-500",
 }
 
+// Extrae el nombre de la persona limpio del contact_name
+// Maneja formatos legacy: "Destino - Nombre - +Teléfono", "Nombre - +Teléfono - Bucket", etc.
+function getDisplayName(lead: { contact_name: string; contact_instagram?: string | null; contact_phone?: string }): string {
+  const name = (lead.contact_name || "").trim()
+  if (!name) return lead.contact_instagram ? `@${lead.contact_instagram}` : "Sin nombre"
+
+  // Sin separador → devolver tal cual
+  if (!name.includes("-")) return name
+
+  // Separar por " - " y variantes
+  const parts = name.split(/\s*-\s*/).map(p => p.trim()).filter(Boolean)
+  if (parts.length <= 1) return name
+
+  // Filtrar teléfonos y variables de template sin resolver
+  const filtered = parts.filter(p => {
+    if (p.startsWith("{{")) return false       // {{full_name}}, {{phone}}, etc.
+    if (/^\+/.test(p)) return false            // +54..., +1...
+    if (/^[\d\s]{7,}$/.test(p)) return false  // cadenas solo de dígitos/espacios (teléfono sin +)
+    return true
+  })
+
+  if (filtered.length === 0) return parts[0]
+
+  // Saltar el primer segmento si es un destino/región conocida
+  const regionKeywords = [
+    "europa", "caribe", "brasil", "exoticos", "argentina", "eeuu",
+    "bayahibe", "punta cana", "cancun", "aruba", "curazao", "miami",
+    "cruceros", "machu pichu", "orlando", "disney",
+  ]
+  for (const part of filtered) {
+    const lower = part.toLowerCase()
+    const isRegion = regionKeywords.some(k => lower === k || lower.startsWith(k + " ") || lower.endsWith(" " + k))
+    if (!isRegion) return part
+  }
+
+  return filtered[0]
+}
+
 interface Lead {
   id: string
   contact_name: string
@@ -675,7 +713,7 @@ export function LeadsKanbanManychat({
                             onClick={() => { setSelectedLead(lead); setDialogOpen(true) }}
                           >
                             <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-medium text-sm leading-tight truncate">{lead.contact_name}</p>
+                              <p className="font-medium text-sm line-clamp-2 leading-snug">{getDisplayName(lead)}</p>
                               <Archive className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
                             </div>
                             {lead.destination && (
@@ -850,7 +888,7 @@ export function LeadsKanbanManychat({
                                 {/* Nombre + Claim button */}
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-sm truncate">{lead.contact_name}</p>
+                                    <p className="font-semibold text-sm line-clamp-2 leading-snug">{getDisplayName(lead)}</p>
                                     {lead.destination && (
                                       <div className="flex items-center gap-1 mt-0.5">
                                         <MapPin className="h-3 w-3 text-muted-foreground/60 flex-shrink-0" />

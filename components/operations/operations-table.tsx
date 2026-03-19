@@ -49,6 +49,8 @@ interface Operation {
   departure_date: string
   return_date: string | null
   sellers: { name: string } | null
+  sellers_secondary?: { name: string } | null
+  commission_split?: number | null
   operators: { name: string } | null
   operation_operators?: Array<{
     id: string
@@ -415,11 +417,22 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Vend." />
         ),
-        cell: ({ row }) => (
-          <div className="text-xs max-w-[60px] truncate" title={row.original.sellers?.name || "-"}>
-            {row.original.sellers?.name || "-"}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const op = row.original as any
+          const primary = op.sellers?.name || "-"
+          const secondary = op.sellers_secondary?.name
+          const split = op.commission_split
+          return (
+            <div className="flex flex-col gap-0.5 max-w-[80px]">
+              <div className="text-xs truncate" title={primary}>{primary}</div>
+              {secondary && (
+                <div className="text-[10px] text-muted-foreground truncate" title={`${secondary}${split != null ? ` (${100 - split}%)` : ""}`}>
+                  + {secondary}{split != null ? ` (${100 - split}%)` : ""}
+                </div>
+              )}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "operators",
