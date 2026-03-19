@@ -116,21 +116,31 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [accountMovements, setAccountMovements] = useState<Record<string, LedgerMovement[]>>({})
   const [accountStats, setAccountStats] = useState<Record<string, { income: number; expenses: number }>>({})
   const [loading, setLoading] = useState(true)
+  const [loadingChart, setLoadingChart] = useState(false)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
 
-  const fetchSummary = useCallback(async () => {
+  // Cargar cuentas financieras (rápido, no depende de fechas)
+  const fetchAccounts = useCallback(async () => {
     setLoading(true)
     try {
-      // Obtener balances de cuentas financieras
       const accountsResponse = await fetch("/api/accounting/financial-accounts")
       if (accountsResponse.ok) {
         const accountsData = await accountsResponse.json()
         setAccounts(accountsData.accounts || [])
       }
+    } catch (error) {
+      console.error("Error fetching accounts:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-      // Obtener evolución diaria de la caja
-      if (!dateFrom || !dateTo) return
+  // Cargar gráfico diario EN BACKGROUND (lento, no bloquea el render de cuentas)
+  const fetchDailyBalance = useCallback(async () => {
+    if (!dateFrom || !dateTo) return
+    setLoadingChart(true)
+    try {
       const dailyParams = new URLSearchParams({
         dateFrom: format(dateFrom, "yyyy-MM-dd"),
         dateTo: format(dateTo, "yyyy-MM-dd"),
@@ -143,9 +153,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         setDailyBalances(dailyData.dailyBalances || [])
       }
     } catch (error) {
-      console.error("Error fetching summary:", error)
+      console.error("Error fetching daily balance:", error)
     } finally {
-      setLoading(false)
+      setLoadingChart(false)
     }
   }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId])
 
@@ -199,9 +209,18 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   }, [dateFrom, dateTo])
 
+  // Cargar cuentas una sola vez al montar (no depende de fechas)
   useEffect(() => {
-    fetchSummary()
-  }, [fetchSummary])
+    fetchAccounts()
+  }, [fetchAccounts])
+
+  // Cargar gráfico diario cuando cambian las fechas/filtros (no bloquea cuentas)
+  useEffect(() => {
+    if (activeTab === "resumen") {
+      fetchDailyBalance()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId, activeTab])
 
   // Filtrar cuentas por agencia y cuenta individual
   const filteredAccounts = useMemo(() => {
