@@ -366,61 +366,64 @@ export async function getAccountBalancesBatch(
     return result
   }
 
-  // Obtener todos los movimientos para las cuentas que necesitan cálculo
-  // Usamos admin client para bypasear RLS en el SELECT
+  // Obtener sumas agrupadas por account_id y type usando SQL aggregation
+  // En vez de traer TODOS los movimientos individuales, traemos máximo N_cuentas × 6 filas
   const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
   const adminClient = await getAdminClient(supabase)
-  const { data: movements, error: movementsError } = await (adminClient
-    .from("ledger_movements") as any)
-    .select("account_id, type, amount_original, amount_ars_equivalent")
-    .in("account_id", accountIdsToCalculate)
 
-  if (movementsError) {
-    throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
+  const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
+  const { data: aggregatedData, error: aggError } = await adminClient.rpc("execute_readonly_query", {
+    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) GROUP BY account_id, type`
+  })
+
+  if (aggError) {
+    throw new Error(`Error obteniendo sumas de movimientos: ${aggError.message}`)
   }
 
-  // Agrupar movimientos por cuenta
-  const movementsByAccount = new Map<string, typeof movements>()
-  for (const movement of movements || []) {
-    const accountId = movement.account_id
-    if (!movementsByAccount.has(accountId)) {
-      movementsByAccount.set(accountId, [])
+  // Parsear resultados agrupados
+  const sumRows: Array<{ account_id: string; type: string; total_original: number; total_ars: number }> =
+    Array.isArray(aggregatedData) ? aggregatedData : (aggregatedData || [])
+
+  // Indexar sumas por account_id → type → { total_original, total_ars }
+  const sumsByAccount = new Map<string, Map<string, { total_original: number; total_ars: number }>>()
+  for (const row of sumRows) {
+    if (!sumsByAccount.has(row.account_id)) {
+      sumsByAccount.set(row.account_id, new Map())
     }
-    movementsByAccount.get(accountId)!.push(movement)
+    sumsByAccount.get(row.account_id)!.set(row.type, {
+      total_original: Number(row.total_original),
+      total_ars: Number(row.total_ars),
+    })
   }
 
-  // Calcular balance para cada cuenta
+  // Calcular balance para cada cuenta usando las sumas agrupadas
+  // MISMA LÓGICA que antes: PASIVO invierte signos, ACTIVO normal
   for (const account of accountsToCalculate) {
     const initialBalance = parseFloat(account.initial_balance || "0")
     const accountCurrency = account.currency as "ARS" | "USD"
     const category = account.chart_account_id
       ? chartCategoryMap.get(account.chart_account_id) || "ACTIVO"
       : "ACTIVO"
-    const accountMovements = movementsByAccount.get(account.id) || []
+    const typeSums = sumsByAccount.get(account.id) || new Map()
 
-    const movementsSum = accountMovements.reduce((sum: number, m: any) => {
-      const amount = parseFloat(
-        accountCurrency === "USD" 
-          ? (m.amount_original || "0")
-          : (m.amount_ars_equivalent || "0")
-      )
-      
+    let movementsSum = 0
+    typeSums.forEach((sums, type) => {
+      const amount = accountCurrency === "USD" ? sums.total_original : sums.total_ars
+
       if (category === "PASIVO") {
-        if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
-          return sum + amount
-        } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
-          return sum - amount
+        if (type === "EXPENSE" || type === "OPERATOR_PAYMENT" || type === "FX_LOSS") {
+          movementsSum += amount
+        } else if (type === "INCOME" || type === "FX_GAIN") {
+          movementsSum -= amount
         }
-        return sum
+      } else {
+        if (type === "INCOME" || type === "FX_GAIN") {
+          movementsSum += amount
+        } else if (type === "EXPENSE" || type === "FX_LOSS" || type === "COMMISSION" || type === "OPERATOR_PAYMENT") {
+          movementsSum -= amount
+        }
       }
-      
-      if (m.type === "INCOME" || m.type === "FX_GAIN") {
-        return sum + amount
-      } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
-        return sum - amount
-      }
-      return sum
-    }, 0)
+    })
 
     const finalBalance = initialBalance + movementsSum
     result[account.id] = finalBalance

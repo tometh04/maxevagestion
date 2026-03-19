@@ -7,9 +7,8 @@ import { getCurrentUser } from "@/lib/auth"
  *
  * Modo individual: ?accountId=xxx → { income, expenses }
  * Modo batch:      ?accountIds=id1,id2,id3 → { stats: { id1: {income, expenses}, id2: ... } }
- * Sin filtro:      (sin accountId ni accountIds) → stats de TODOS los movimientos agrupados por account_id
  *
- * Query liviana: solo 3 columnas (type, amount_original, account_id), sin JOINs.
+ * OPTIMIZADO: Usa SQL aggregation (SUM + GROUP BY) en vez de traer todas las filas.
  */
 export async function GET(request: Request) {
   try {
@@ -31,71 +30,64 @@ export async function GET(request: Request) {
     let admin: any
     try { admin = await createAdminClient() } catch { admin = supabase }
 
-    // Batch mode: muchas cuentas en UNA query
+    // Construir filtro de cuentas
+    let accountFilter = ""
+    let ids: string[] = []
+
     if (accountIds) {
-      const ids = accountIds.split(",").filter(Boolean)
-
-      let q = admin
-        .from("ledger_movements")
-        .select("type, amount_original, account_id")
-
+      ids = accountIds.split(",").filter(Boolean)
       if (ids.length > 0) {
-        q = q.in("account_id", ids)
+        accountFilter = `AND account_id IN (${ids.map(id => `'${id}'`).join(",")})`
       }
-      if (dateFrom) q = q.gte("movement_date", `${dateFrom}T00:00:00`)
-      if (dateTo) q = q.lte("movement_date", `${dateTo}T23:59:59`)
+    } else if (accountId && accountId !== "ALL") {
+      accountFilter = `AND account_id = '${accountId}'`
+      ids = [accountId]
+    }
 
-      const { data, error } = await q
+    // Construir filtro de fechas
+    let dateFilter = ""
+    if (dateFrom) dateFilter += ` AND movement_date >= '${dateFrom}T00:00:00'`
+    if (dateTo) dateFilter += ` AND movement_date <= '${dateTo}T23:59:59'`
 
-      if (error) {
-        console.error("Error fetching batch ledger stats:", error)
-        return NextResponse.json({ error: "Error al calcular stats batch" }, { status: 500 })
-      }
+    // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles
+    const sqlQuery = `SELECT account_id, SUM(CASE WHEN type IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN type NOT IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements WHERE 1=1 ${accountFilter} ${dateFilter} GROUP BY account_id`
 
-      const rows: Array<{ type: string; amount_original: number; account_id: string }> = data || []
+    const { data: aggData, error: aggError } = await admin.rpc("execute_readonly_query", {
+      query_text: sqlQuery
+    })
 
-      // Agrupar por account_id
+    if (aggError) {
+      console.error("Error fetching aggregated stats:", aggError)
+      return NextResponse.json({ error: "Error al calcular stats" }, { status: 500 })
+    }
+
+    const rows: Array<{ account_id: string; income: number; expenses: number }> =
+      Array.isArray(aggData) ? aggData : (aggData || [])
+
+    // Batch mode: retornar por account_id
+    if (accountIds) {
       const stats: Record<string, { income: number; expenses: number }> = {}
       for (const id of ids) {
         stats[id] = { income: 0, expenses: 0 }
       }
       for (const r of rows) {
-        if (!stats[r.account_id]) stats[r.account_id] = { income: 0, expenses: 0 }
-        if (r.type === "INCOME" || r.type === "FX_GAIN") {
-          stats[r.account_id].income += r.amount_original || 0
-        } else {
-          stats[r.account_id].expenses += r.amount_original || 0
+        stats[r.account_id] = {
+          income: Number(r.income) || 0,
+          expenses: Number(r.expenses) || 0,
         }
       }
-
       return NextResponse.json({ stats })
     }
 
-    // Modo individual (backward compatible)
-    let q = admin
-      .from("ledger_movements")
-      .select("type, amount_original")
-
-    if (accountId && accountId !== "ALL") q = q.eq("account_id", accountId)
-    if (dateFrom) q = q.gte("movement_date", `${dateFrom}T00:00:00`)
-    if (dateTo) q = q.lte("movement_date", `${dateTo}T23:59:59`)
-
-    const { data, error } = await q
-
-    if (error) {
-      console.error("Error fetching ledger stats:", error)
-      return NextResponse.json({ error: "Error al calcular stats" }, { status: 500 })
+    // Modo individual: sumar todo
+    let totalIncome = 0
+    let totalExpenses = 0
+    for (const r of rows) {
+      totalIncome += Number(r.income) || 0
+      totalExpenses += Number(r.expenses) || 0
     }
 
-    const rows: Array<{ type: string; amount_original: number }> = data || []
-    const income = rows
-      .filter(r => r.type === "INCOME" || r.type === "FX_GAIN")
-      .reduce((sum, r) => sum + (r.amount_original || 0), 0)
-    const expenses = rows
-      .filter(r => r.type !== "INCOME" && r.type !== "FX_GAIN")
-      .reduce((sum, r) => sum + (r.amount_original || 0), 0)
-
-    return NextResponse.json({ income, expenses })
+    return NextResponse.json({ income: totalIncome, expenses: totalExpenses })
   } catch (error) {
     console.error("Error in GET /api/accounting/ledger/stats:", error)
     return NextResponse.json({ error: "Error" }, { status: 500 })
