@@ -19,7 +19,7 @@ export async function GET(
 
   let query = supabase
     .from("wa_messages")
-    .select("id, direction, message_type, body_text, sent_at, from_me, participant_jid")
+    .select("id, direction, message_type, body_text, sent_at, from_me, participant_jid, raw_payload")
     .eq("chat_id", chatId)
     .order("sent_at", { ascending: true })
     .limit(limit)
@@ -34,5 +34,12 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ messages: messages || [] })
+  // Extract sender_name from raw_payload.pushName and strip raw_payload from response
+  const enriched = (messages || []).map((msg: any) => {
+    const senderName = msg.raw_payload?.pushName || null
+    const { raw_payload, ...rest } = msg
+    return { ...rest, sender_name: senderName }
+  })
+
+  return NextResponse.json({ messages: enriched })
 }

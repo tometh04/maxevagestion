@@ -38,6 +38,7 @@ interface Message {
   sent_at: string
   from_me: boolean
   participant_jid: string | null
+  sender_name: string | null
 }
 
 export function InboxView() {
@@ -292,9 +293,10 @@ export function InboxView() {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
                     const isGroupChat = selectedChat?.is_group
-                    const participantName = msg.participant_jid
+                    const participantPhone = msg.participant_jid
                       ? msg.participant_jid.split("@")[0]
                       : null
+                    const participantName = msg.sender_name || participantPhone
 
                     return (
                       <div
