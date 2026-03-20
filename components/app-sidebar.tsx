@@ -168,6 +168,7 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Tareas", url: "/tools/tasks" },
       { title: "Cerebro", url: "/tools/cerebro" },
+      { title: "WHA Control", url: "/tools/wha-control" },
     ],
   },
 ]
@@ -206,6 +207,11 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             }
 
             // Ocultar Cerebro para SELLER
+
+            // Ocultar WHA Control para todos excepto maxi@erplozada.com
+            if (subItem.url === "/tools/wha-control" && user.email !== "maxi@erplozada.com") {
+              return null
+            }
             if (userRole === "SELLER" && subItem.url === "/tools/cerebro") {
               return null
             }

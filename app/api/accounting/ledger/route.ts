@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
-    const limit = Math.min(parseInt(searchParams.get("limit") || "500"), 1000)
+    const limit = Math.min(parseInt(searchParams.get("limit") || "2000"), 5000)
     const offset = parseInt(searchParams.get("offset") || "0")
     const dateFrom = searchParams.get("dateFrom") || undefined
     const dateTo = searchParams.get("dateTo") || undefined

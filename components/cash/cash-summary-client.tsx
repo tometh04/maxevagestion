@@ -61,19 +61,25 @@ interface DailyBalance {
   balance: number
 }
 
-interface CashMovement {
+interface LedgerMovement {
   id: string
   type: string
-  concept?: string
-  category: string
+  concept: string
   currency: "ARS" | "USD"
-  amount: number
-  movement_date: string
-  notes?: string | null
+  amount_original: number
+  amount_ars_equivalent: number
+  created_at: string
+  movement_date?: string
+  financial_accounts?: {
+    id: string
+    name: string
+    type: string
+    currency: string
+  }
   operations?: {
     id: string
     destination: string
-    file_code?: string
+    file_code: string
   } | null
 }
 
@@ -107,22 +113,34 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [activeTab, setActiveTab] = useState("resumen")
   const [accounts, setAccounts] = useState<AccountBalance[]>([])
   const [dailyBalances, setDailyBalances] = useState<DailyBalance[]>([])
-  const [accountMovements, setAccountMovements] = useState<Record<string, CashMovement[]>>({})
+  const [accountMovements, setAccountMovements] = useState<Record<string, LedgerMovement[]>>({})
+  const [accountStats, setAccountStats] = useState<Record<string, { income: number; expenses: number }>>({})
   const [loading, setLoading] = useState(true)
+  const [loadingChart, setLoadingChart] = useState(false)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
+  const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
 
-  const fetchSummary = useCallback(async () => {
+  // Cargar cuentas financieras (rápido, no depende de fechas)
+  const fetchAccounts = useCallback(async () => {
     setLoading(true)
     try {
-      // Obtener balances de cuentas financieras
       const accountsResponse = await fetch("/api/accounting/financial-accounts")
       if (accountsResponse.ok) {
         const accountsData = await accountsResponse.json()
         setAccounts(accountsData.accounts || [])
       }
+    } catch (error) {
+      console.error("Error fetching accounts:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
-      // Obtener evolución diaria de la caja
-      if (!dateFrom || !dateTo) return
+  // Cargar gráfico diario EN BACKGROUND (lento, no bloquea el render de cuentas)
+  const fetchDailyBalance = useCallback(async () => {
+    if (!dateFrom || !dateTo) return
+    setLoadingChart(true)
+    try {
       const dailyParams = new URLSearchParams({
         dateFrom: format(dateFrom, "yyyy-MM-dd"),
         dateTo: format(dateTo, "yyyy-MM-dd"),
@@ -135,31 +153,20 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         setDailyBalances(dailyData.dailyBalances || [])
       }
     } catch (error) {
-      console.error("Error fetching summary:", error)
+      console.error("Error fetching daily balance:", error)
     } finally {
-      setLoading(false)
+      setLoadingChart(false)
     }
   }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId])
 
-  const fetchAccountMovements = useCallback(async (accountId: string, accountCurrency?: string) => {
+  const fetchAccountMovements = useCallback(async (accountId: string) => {
     if (!dateFrom || !dateTo) return
 
     setLoadingMovements(prev => ({ ...prev, [accountId]: true }))
     try {
-      // Usar /api/cash/movements que filtra por movement_date (fecha real del movimiento),
-      // no por created_at. Esto evita que movimientos backdateados queden invisibles.
-      // Pasamos accountCurrency para que la API incluya también movimientos con
-      // financial_account_id=NULL (movimientos históricos sin cuenta asignada).
-      const params = new URLSearchParams({
-        financialAccountId: accountId,
-        dateFrom: format(dateFrom, "yyyy-MM-dd"),
-        dateTo: format(dateTo, "yyyy-MM-dd"),
-        limit: "200",
-      })
-      if (accountCurrency) {
-        params.set("accountCurrency", accountCurrency)
-      }
-      const response = await fetch(`/api/cash/movements?${params.toString()}`)
+      const response = await fetch(
+        `/api/accounting/ledger?accountId=${accountId}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}&type=ALL&limit=5000`
+      )
       if (response.ok) {
         const data = await response.json()
         setAccountMovements(prev => ({ ...prev, [accountId]: data.movements || [] }))
@@ -171,9 +178,49 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
   }, [dateFrom, dateTo])
 
+  // Batch: cargar stats de TODAS las cuentas en UNA sola request
+  const fetchAllStats = useCallback(async (accountIds: string[]) => {
+    if (!dateFrom || !dateTo || accountIds.length === 0) return
+
+    // Marcar todas como loading
+    setLoadingStats(prev => {
+      const next = { ...prev }
+      accountIds.forEach(id => { next[id] = true })
+      return next
+    })
+
+    try {
+      const response = await fetch(
+        `/api/accounting/ledger/stats?accountIds=${accountIds.join(",")}&dateFrom=${format(dateFrom, "yyyy-MM-dd")}&dateTo=${format(dateTo, "yyyy-MM-dd")}`
+      )
+      if (response.ok) {
+        const data = await response.json()
+        const batchStats = data.stats || {}
+        setAccountStats(prev => ({ ...prev, ...batchStats }))
+      }
+    } catch (error) {
+      console.error("Error fetching batch stats:", error)
+    } finally {
+      setLoadingStats(prev => {
+        const next = { ...prev }
+        accountIds.forEach(id => { next[id] = false })
+        return next
+      })
+    }
+  }, [dateFrom, dateTo])
+
+  // Cargar cuentas una sola vez al montar (no depende de fechas)
   useEffect(() => {
-    fetchSummary()
-  }, [fetchSummary])
+    fetchAccounts()
+  }, [fetchAccounts])
+
+  // Cargar gráfico diario cuando cambian las fechas/filtros (no bloquea cuentas)
+  useEffect(() => {
+    if (activeTab === "resumen") {
+      fetchDailyBalance()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFrom, dateTo, selectedAgencyId, selectedAccountId, activeTab])
 
   // Filtrar cuentas por agencia y cuenta individual
   const filteredAccounts = useMemo(() => {
@@ -243,33 +290,36 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       .sort((a, b) => (b.current_balance || 0) - (a.current_balance || 0))
   }, [filteredAccounts])
 
-  // Auto-fetch de movimientos para cuentas visibles cuando cambian filtros o tab activo.
-  // Esto garantiza que los KPIs (Ingresos/Egresos) reflejen siempre el período seleccionado.
-  // IMPORTANTE: debe ir después de usdAccounts y arsAccounts para evitar "used before declaration".
+  // Auto-cargar stats de TODAS las cuentas del tab activo en UNA sola request batch
+  // Los movimientos se cargan bajo demanda con "Ver Movimientos" para no sobrecargar
   useEffect(() => {
-    if (activeTab !== "usd" && activeTab !== "ars") return
-    const accountsToFetch = activeTab === "usd" ? usdAccounts : arsAccounts
-    if (accountsToFetch.length === 0) return
+    if (activeTab === "usd" || activeTab === "ars") {
+      const targetAccounts = activeTab === "usd" ? usdAccounts : arsAccounts
+      const accountsNeedingStats = targetAccounts
+        .filter(account => !accountStats[account.id] && !loadingStats[account.id])
+        .map(account => account.id)
 
-    // Limpiar y recargar todos los movimientos del tab activo.
-    // Pasamos account.currency para que la API incluya movimientos históricos (financial_account_id=NULL).
-    setAccountMovements({})
-    accountsToFetch.forEach(account => {
-      fetchAccountMovements(account.id, account.currency)
-    })
-  }, [activeTab, fetchAccountMovements, usdAccounts, arsAccounts])
+      if (accountsNeedingStats.length > 0) {
+        fetchAllStats(accountsNeedingStats)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, usdAccounts, arsAccounts, fetchAllStats])
 
-  // Calcular ingresos y egresos por cuenta (basado en cash_movements del período)
+  // Calcular ingresos y egresos por cuenta
+  // Prioridad: stats pre-cargados (dataset completo, sin paginación)
   const calculateAccountStats = useCallback((accountId: string) => {
-    const movements = accountMovements[accountId] || []
-    const income = movements
-      .filter(m => m.type === "INCOME")
-      .reduce((sum, m) => sum + (m.amount || 0), 0)
-    const expenses = movements
-      .filter(m => m.type === "EXPENSE")
-      .reduce((sum, m) => sum + (m.amount || 0), 0)
-    return { income, expenses }
-  }, [accountMovements])
+    if (accountStats[accountId]) return accountStats[accountId]
+    // Fallback: calcular desde movements si están cargados
+    if (accountMovements[accountId]) {
+      const movements = accountMovements[accountId]
+      return {
+        income: movements.filter(m => m.type === "INCOME" || m.type === "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
+        expenses: movements.filter(m => m.type !== "INCOME" && m.type !== "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
+      }
+    }
+    return { income: 0, expenses: 0 }
+  }, [accountMovements, accountStats])
 
   // Preparar datos para el gráfico
   const chartData = useMemo(() => {
@@ -370,8 +420,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                     if (date && dateTo && dateTo < date) {
                       setDateTo(undefined)
                     }
-                    // Limpiar movimientos cuando cambia la fecha
                     setAccountMovements({})
+                    setAccountStats({})
                   }}
                   placeholder="dd/MM/yyyy"
                 />
@@ -385,8 +435,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       return
                     }
                     setDateTo(date)
-                    // Limpiar movimientos cuando cambia la fecha
                     setAccountMovements({})
+                    setAccountStats({})
                   }}
                   placeholder="dd/MM/yyyy"
                   minDate={dateFrom}
@@ -487,41 +537,24 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            {isLoading ? (
-                              <Skeleton className="h-7 w-24 mt-1" />
-                            ) : (
-                              <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                                {formatCurrency(stats.income, "USD")}
-                              </p>
-                            )}
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              {formatCurrency(stats.income, "USD")}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            {isLoading ? (
-                              <Skeleton className="h-7 w-24 mt-1" />
-                            ) : (
-                              <p className="text-lg font-semibold text-red-600 dark:text-red-400">
-                                {formatCurrency(stats.expenses, "USD")}
-                              </p>
-                            )}
+                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                              {formatCurrency(stats.expenses, "USD")}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                           <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           <div>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <p className="text-xs text-muted-foreground cursor-help underline decoration-dotted">Balance actual</p>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">Saldo total vigente de la cuenta,<br/>independiente del rango de fechas.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <p className="text-xs text-muted-foreground">Balance</p>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                               {formatCurrency(account.current_balance ?? 0, "USD")}
                             </p>
@@ -529,61 +562,65 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                         </div>
                       </div>
 
+                      {/* Botón para cargar movimientos */}
+                      {!accountMovements[account.id] && !isLoading && (
+                        <button
+                          onClick={() => fetchAccountMovements(account.id)}
+                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                        >
+                          Ver Movimientos
+                        </button>
+                      )}
+
                       {/* Tabla de movimientos */}
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">
-                          Movimientos del período
-                        </h4>
-                        {isLoading ? (
-                          <Skeleton className="h-32 w-full" />
-                        ) : movements.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
-                        ) : (
-                          <div className="border rounded-md overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Tipo</TableHead>
-                                  <TableHead>Concepto</TableHead>
-                                  <TableHead className="text-right">Monto</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {movements.map((movement) => (
-                                  <TableRow key={movement.id}>
-                                    <TableCell className="text-sm">
-                                      {format(new Date(movement.movement_date), "dd/MM/yyyy", { locale: es })}
-                                    </TableCell>
-                                    <TableCell>
-                                      <Badge
-                                        variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                      >
-                                        {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-sm">
-                                      {movement.category}
-                                      {movement.notes && (
-                                        <span className="text-muted-foreground ml-1">— {movement.notes}</span>
-                                      )}
-                                      {movement.operations && (
-                                        <span className="text-muted-foreground ml-1">
-                                          ({movement.operations.file_code})
-                                        </span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                      {movement.type === "INCOME" ? "+" : "-"}
-                                      {formatCurrency(movement.amount, movement.currency)}
-                                    </TableCell>
+                      {isLoading && <Skeleton className="h-32 w-full" />}
+                      {accountMovements[account.id] && !isLoading && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          {movements.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                          ) : (
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Fecha</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Concepto</TableHead>
+                                    <TableHead className="text-right">Monto</TableHead>
                                   </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
-                      </div>
+                                </TableHeader>
+                                <TableBody>
+                                  {movements.map((movement) => (
+                                    <TableRow key={movement.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
+                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {movement.concept}
+                                        {movement.operations && (
+                                          <span className="text-muted-foreground ml-1">
+                                            ({movement.operations.file_code})
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                        {movement.type === "INCOME" ? "+" : "-"}
+                                        {formatCurrency(movement.amount_original, movement.currency)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      )}
           </CardContent>
         </Card>
                 )
@@ -632,41 +669,24 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            {isLoading ? (
-                              <Skeleton className="h-7 w-24 mt-1" />
-                            ) : (
-                              <p className="text-lg font-semibold text-green-600 dark:text-green-400">
-                                {formatCurrency(stats.income, "ARS")}
-                              </p>
-                            )}
+                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                              {formatCurrency(stats.income, "ARS")}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                           <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            {isLoading ? (
-                              <Skeleton className="h-7 w-24 mt-1" />
-                            ) : (
-                              <p className="text-lg font-semibold text-red-600 dark:text-red-400">
-                                {formatCurrency(stats.expenses, "ARS")}
-                              </p>
-                            )}
+                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                              {formatCurrency(stats.expenses, "ARS")}
+                            </p>
                           </div>
-                        </div>
+                            </div>
                         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
                           <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           <div>
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <p className="text-xs text-muted-foreground cursor-help underline decoration-dotted">Balance actual</p>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p className="text-xs">Saldo total vigente de la cuenta,<br/>independiente del rango de fechas.</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
+                            <p className="text-xs text-muted-foreground">Balance</p>
                             <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
                               {formatCurrency(account.current_balance ?? 0, "ARS")}
                             </p>
@@ -674,61 +694,65 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                         </div>
                       </div>
 
+                      {/* Botón para cargar movimientos */}
+                      {!accountMovements[account.id] && !isLoading && (
+                        <button
+                          onClick={() => fetchAccountMovements(account.id)}
+                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                        >
+                          Ver Movimientos
+                        </button>
+                      )}
+
                       {/* Tabla de movimientos */}
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">
-                          Movimientos del período
-                        </h4>
-                        {isLoading ? (
-                          <Skeleton className="h-32 w-full" />
-                        ) : movements.length === 0 ? (
-                          <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
-                        ) : (
-                          <div className="border rounded-md overflow-hidden">
-                            <Table>
-                              <TableHeader>
-                                <TableRow>
-                                  <TableHead>Fecha</TableHead>
-                                  <TableHead>Tipo</TableHead>
-                                  <TableHead>Concepto</TableHead>
-                                  <TableHead className="text-right">Monto</TableHead>
-                                </TableRow>
-                              </TableHeader>
-                              <TableBody>
-                                {movements.map((movement) => (
-                                  <TableRow key={movement.id}>
-                                    <TableCell className="text-sm">
-                                      {format(new Date(movement.movement_date), "dd/MM/yyyy", { locale: es })}
-                                    </TableCell>
-                                    <TableCell>
-                                      <Badge
-                                        variant={movement.type === "INCOME" ? "default" : "destructive"}
-                                      >
-                                        {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
-                                      </Badge>
-                                    </TableCell>
-                                    <TableCell className="text-sm">
-                                      {movement.category}
-                                      {movement.notes && (
-                                        <span className="text-muted-foreground ml-1">— {movement.notes}</span>
-                                      )}
-                                      {movement.operations && (
-                                        <span className="text-muted-foreground ml-1">
-                                          ({movement.operations.file_code})
-                                        </span>
-                                      )}
-                                    </TableCell>
-                                    <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                                      {movement.type === "INCOME" ? "+" : "-"}
-                                      {formatCurrency(movement.amount, movement.currency)}
-                                    </TableCell>
+                      {isLoading && <Skeleton className="h-32 w-full" />}
+                      {accountMovements[account.id] && !isLoading && (
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          {movements.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                          ) : (
+                            <div className="border rounded-md overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Fecha</TableHead>
+                                    <TableHead>Tipo</TableHead>
+                                    <TableHead>Concepto</TableHead>
+                                    <TableHead className="text-right">Monto</TableHead>
                                   </TableRow>
-                                ))}
-                              </TableBody>
-                            </Table>
-                          </div>
-                        )}
-                      </div>
+                                </TableHeader>
+                                <TableBody>
+                                  {movements.map((movement) => (
+                                    <TableRow key={movement.id}>
+                                      <TableCell className="text-sm">
+                                        {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
+                                      </TableCell>
+                                      <TableCell>
+                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
+                                          {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                                        </Badge>
+                                      </TableCell>
+                                      <TableCell className="text-sm">
+                                        {movement.concept}
+                                        {movement.operations && (
+                                          <span className="text-muted-foreground ml-1">
+                                            ({movement.operations.file_code})
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                        {movement.type === "INCOME" ? "+" : "-"}
+                                        {formatCurrency(movement.amount_original, movement.currency)}
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+                        </div>
+                      )}
         </CardContent>
       </Card>
                 )
