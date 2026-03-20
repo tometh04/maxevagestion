@@ -7,7 +7,7 @@ export async function GET() {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
 
-  
+
   const supabase = createAdminClient() as any
   const { data: devices, error } = await supabase
     .from("wa_devices")
@@ -19,7 +19,35 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ devices: devices || [] })
+  // Enrich with live connector status
+  const enriched = await Promise.all(
+    (devices || []).map(async (device: any) => {
+      try {
+        const liveStatus = await callConnector(`/devices/${device.id}/status`)
+        if (liveStatus?.isRunning && device.status !== "CONNECTED") {
+          // Connector says it's running but DB is stale — fix it
+          await supabase
+            .from("wa_devices")
+            .update({ status: "CONNECTED" })
+            .eq("id", device.id)
+          return { ...device, status: "CONNECTED" }
+        }
+        if (liveStatus && !liveStatus.isRunning && device.status === "CONNECTED") {
+          // DB says connected but connector says it's not running
+          await supabase
+            .from("wa_devices")
+            .update({ status: "DISCONNECTED" })
+            .eq("id", device.id)
+          return { ...device, status: "DISCONNECTED" }
+        }
+      } catch {
+        // Connector unreachable — fall back to DB status
+      }
+      return device
+    })
+  )
+
+  return NextResponse.json({ devices: enriched })
 }
 
 export async function POST(request: Request) {
