@@ -358,6 +358,8 @@ export function EditOperationDialog({
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
+        // Mantener sale_currency sincronizado con currency para evitar inconsistencias
+        sale_currency: values.currency,
       }
 
       if (useMultipleOperators && operatorList.length > 0) {

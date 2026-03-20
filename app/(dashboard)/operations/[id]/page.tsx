@@ -18,6 +18,7 @@ export default async function OperationDetailPage({
     .select(`
       *,
       sellers:seller_id(id, name, email),
+      sellers_secondary:seller_secondary_id(id, name, email),
       operators:operator_id(id, name, contact_email, contact_phone),
       agencies:agency_id(id, name, city),
       leads:lead_id(id, contact_name, destination, status),

@@ -93,7 +93,7 @@ export function IntegrationsPageClient() {
     username: '',
     password: '',
     point_of_sale: 1,
-    environment: 'sandbox' as 'sandbox' | 'production',
+    environment: 'production' as 'sandbox' | 'production',
   })
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
   const [settingUpAfip, setSettingUpAfip] = useState(false)
@@ -201,7 +201,7 @@ export function IntegrationsPageClient() {
       toast.success('AFIP configurado correctamente. Ya puedes comenzar a facturar.')
       setShowNewDialog(false)
       setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'sandbox' })
+      setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
       loadIntegrations()
     } catch (error: any) {
       toast.error(error.message || 'Error al configurar AFIP')
@@ -489,7 +489,7 @@ export function IntegrationsPageClient() {
                   <Button variant="outline" onClick={() => {
                     setShowNewDialog(false)
                     setFormData({ name: '', integration_type: '', description: '', config: {}, sync_enabled: false, sync_frequency: 'manual' })
-                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'sandbox' })
+                    setAfipSetupData({ agency_id: agencies[0]?.id || '', cuit: '', username: '', password: '', point_of_sale: 1, environment: 'production' })
                   }}>
                     Cancelar
                   </Button>

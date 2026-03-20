@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { DestinationCombobox } from "@/components/ui/destination-combobox"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -351,7 +352,11 @@ export function NewLeadDialog({
                 <FormItem>
                   <FormLabel>Destino *</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ej: Cancún, París, etc." {...field} />
+                    <DestinationCombobox
+                      value={field.value}
+                      onChange={field.onChange}
+                      placeholder="Ej: Cancún, París, etc."
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

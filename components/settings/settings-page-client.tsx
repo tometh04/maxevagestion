@@ -40,6 +40,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="commissions">Comisiones</TabsTrigger>
         <TabsTrigger value="ai">AI</TabsTrigger>
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
+        <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         <TabsTrigger value="import">Importar Datos</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         {userRole === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
@@ -61,6 +62,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="requirements">
         <DestinationRequirementsClient />
+      </TabsContent>
+      <TabsContent value="afip" className="pt-4">
+        <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
       </TabsContent>
       <TabsContent value="import">
         <ImportSettings />

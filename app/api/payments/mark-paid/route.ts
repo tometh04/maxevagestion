@@ -147,6 +147,7 @@ export async function POST(request: Request) {
         operation_id: paymentData.operation_id,
         payment_id: paymentId, // Vincular con el pago
         cash_box_id: (defaultCashBox as any)?.id || null,
+        financial_account_id: financial_account_id || null, // Vincular con cuenta financiera → visible en Caja
         user_id: user.id,
         type: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
         category: paymentData.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",

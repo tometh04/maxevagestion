@@ -47,6 +47,7 @@ import { COMPROBANTE_LABELS } from "@/lib/afip/types"
 
 interface Invoice {
   id: string
+  agency_id?: string
   cbte_tipo: number
   pto_vta: number
   cbte_nro?: number
@@ -54,7 +55,12 @@ interface Invoice {
   cae_fch_vto?: string
   receptor_nombre: string
   receptor_doc_nro: string
+  receptor_condicion_iva?: number
+  imp_neto?: number
+  imp_iva?: number
   imp_total: number
+  moneda?: string
+  cotizacion?: number
   status: string
   fecha_emision?: string
   created_at: string
@@ -326,7 +332,12 @@ export function InvoicesPageClient() {
                         </Button>
                       )}
                       {invoice.status === 'authorized' && (
-                        <Button variant="outline" size="icon">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          title="Descargar PDF"
+                          onClick={() => window.open(`/api/invoices/${invoice.id}/pdf`, '_blank')}
+                        >
                           <Download className="h-4 w-4" />
                         </Button>
                       )}
@@ -353,9 +364,16 @@ export function InvoicesPageClient() {
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>
-              {selectedInvoice && COMPROBANTE_LABELS[selectedInvoice.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
-              {selectedInvoice?.cbte_nro && ` ${String(selectedInvoice.pto_vta).padStart(4, '0')}-${String(selectedInvoice.cbte_nro).padStart(8, '0')}`}
+            <DialogTitle className="flex items-center gap-3">
+              <span>
+                {selectedInvoice && COMPROBANTE_LABELS[selectedInvoice.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                {selectedInvoice?.cbte_nro && ` ${String(selectedInvoice.pto_vta).padStart(4, '0')}-${String(selectedInvoice.cbte_nro).padStart(8, '0')}`}
+              </span>
+              {selectedInvoice && (
+                <Badge variant={statusLabels[selectedInvoice.status]?.variant ?? 'outline'}>
+                  {statusLabels[selectedInvoice.status]?.label ?? selectedInvoice.status}
+                </Badge>
+              )}
             </DialogTitle>
             <DialogDescription>
               Detalle de la factura

@@ -7,18 +7,18 @@ type User = Database['public']['Tables']['users']['Row']
 export async function getCurrentUser(): Promise<{ user: User; session: { user: any } }> {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
-    // Retornar usuario mock para desarrollo
+    // Retornar usuario mock para desarrollo (usar IDs reales para evitar errores de UUID)
     const mockUser: User = {
-      id: 'dev-user-id',
-      auth_id: 'dev-auth-id',
+      id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
+      auth_id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe',
       name: 'Usuario Desarrollo',
-      email: 'dev@erplozada.com',
+      email: 'tomas.sanchez04@gmail.com',
       role: 'SUPER_ADMIN',
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
-    return { user: mockUser, session: { user: { id: 'dev-auth-id' } } }
+    return { user: mockUser, session: { user: { id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe' } } }
   }
 
   const supabase = await createServerClient()

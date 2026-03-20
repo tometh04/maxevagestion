@@ -13,6 +13,9 @@ export interface AfipConfig {
   access_token?: string
   token_expires_at?: string
   cert_id?: string
+  // Certificado digital PEM (para autenticación inline con afipsdk.com)
+  cert?: string
+  key?: string
 }
 
 /**

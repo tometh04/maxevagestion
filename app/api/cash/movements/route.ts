@@ -68,6 +68,7 @@ export async function POST(request: Request) {
     const movementData: Record<string, any> = {
       operation_id: operation_id || null,
       cash_box_id: finalCashBoxId,
+      financial_account_id: financial_account_id || null, // Vincular con cuenta financiera
       user_id: user.id,
       type,
       category,
@@ -93,14 +94,14 @@ export async function POST(request: Request) {
     // Obtener información de la operación si existe para completar seller_id y operator_id
     let sellerId: string | null = null
     let operatorId: string | null = null
-    
+
     if (operation_id) {
       try {
         const { data: operation } = await (supabase.from("operations") as any)
           .select("seller_id, operator_id")
           .eq("id", operation_id)
           .maybeSingle()
-        
+
         if (operation) {
           sellerId = (operation as any).seller_id || null
           operatorId = (operation as any).operator_id || null
@@ -122,19 +123,19 @@ export async function POST(request: Request) {
     if (currency === "USD") {
       const rateDate = movement_date ? new Date(movement_date) : new Date()
       exchangeRate = await getExchangeRate(supabase, rateDate)
-      
+
       // Si no hay tasa para esa fecha, usar la más reciente disponible
       if (!exchangeRate) {
         exchangeRate = await getLatestExchangeRate(supabase)
       }
-      
+
       // Fallback: si aún no hay tasa, usar 1450 como último recurso
       if (!exchangeRate) {
         console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
         exchangeRate = 1450
       }
     }
-    
+
     const amountARS = calculateARSEquivalent(
       amountNum,
       currency as "ARS" | "USD",
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
         currency as "ARS" | "USD",
         supabase
       )
-      
+
       if (!balanceCheck.valid) {
         return NextResponse.json(
           { error: balanceCheck.error || "Saldo insuficiente en cuenta para realizar el pago" },
@@ -221,6 +222,7 @@ export async function GET(request: Request) {
     const typeParam = searchParams.get("type") ?? "ALL"
     const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
+    const financialAccountId = searchParams.get("financialAccountId")
 
     // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
@@ -228,107 +230,71 @@ export async function GET(request: Request) {
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
-    // Los SELLER solo ven movimientos asignados a su seller_id
-    const sellerIdFilter = user.role === "SELLER" ? user.id : undefined
-
-    // Query directa y liviana — solo los campos necesarios para el listado de movimientos
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    let adminSupabase: any
-    try {
-      adminSupabase = await createAdminClient()
-    } catch {
-      adminSupabase = supabase
-    }
-
-    // Excluir cuentas contables CpC/CpP del listado de movimientos de caja
-    // (son movimientos internos de contabilidad, no movimientos de caja reales)
-    let excludeAccountIds: string[] = []
-    try {
-      const { data: accountingCharts } = await adminSupabase
-        .from("chart_of_accounts")
-        .select("id")
-        .in("account_code", ["1.1.03", "2.1.01"]) // CpC y CpP
-        .eq("is_active", true)
-
-      if (accountingCharts?.length) {
-        const chartIds = accountingCharts.map((c: any) => c.id)
-        const { data: accountingFAs } = await adminSupabase
-          .from("financial_accounts")
-          .select("id")
-          .in("chart_account_id", chartIds)
-          .eq("is_active", true)
-
-        excludeAccountIds = (accountingFAs || []).map((a: any) => a.id)
-      }
-    } catch (err) {
-      console.warn("Could not fetch accounting-only accounts to exclude:", err)
-    }
-
-    // Si hay filtro de agencia, obtener operation_ids de esa agencia ANTES del query principal
-    // para que la paginación sea correcta (antes se filtraba post-query y los totales no coincidían)
-    let agencyOperationIds: string[] | null = null
-    if (agencyId && agencyId !== "ALL") {
-      const { data: agencyOps } = await adminSupabase
-        .from("operations")
-        .select("id")
-        .eq("agency_id", agencyId)
-
-      agencyOperationIds = (agencyOps || []).map((o: any) => o.id)
-    }
-
-    let dataQuery = adminSupabase
-      .from("ledger_movements")
+    // Consultar cash_movements directamente — garantiza:
+    // 1. Todos los movimientos (con Y sin operación asociada)
+    // 2. Filtro por movement_date nativo (columna que siempre existió en cash_movements),
+    //    evitando el bug de ledger_movements.movement_date que en prod puede ser NULL
+    let query = (supabase.from("cash_movements") as any)
       .select(
-        `id, type, concept, currency, amount_original, movement_date, notes, account_id,
-         operations:operation_id (id, destination, agency_id),
-         users:created_by (name)`,
+        `
+        id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        users:user_id (id, name),
+        operations:operation_id (
+          id,
+          destination,
+          file_code,
+          agency_id
+        )
+      `,
         { count: "exact" }
       )
       .order("movement_date", { ascending: false })
       .range(offset, offset + limit - 1)
 
-    if (dateFrom) dataQuery = dataQuery.gte("movement_date", `${dateFrom}T00:00:00`)
-    if (dateTo) dataQuery = dataQuery.lte("movement_date", `${dateTo}T23:59:59`)
+    // Filtros
+    if (financialAccountId && financialAccountId !== "ALL") {
+      // Incluir movimientos de la cuenta específica O movimientos sin cuenta asignada
+      // que coincidan con la moneda de la cuenta (movimientos viejos con financial_account_id=NULL).
+      // Esto evita que movimientos históricos queden invisibles en la Caja.
+      const accountCurrency = searchParams.get("accountCurrency")
+      if (accountCurrency) {
+        query = query.or(
+          `financial_account_id.eq.${financialAccountId},and(financial_account_id.is.null,currency.eq.${accountCurrency})`
+        )
+      } else {
+        query = query.eq("financial_account_id", financialAccountId)
+      }
+    }
+    if (dateFrom) {
+      query = query.gte("movement_date", dateFrom)
+    }
+    if (dateTo) {
+      // Incluir el día completo hasta las 23:59:59
+      query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    }
     if (typeParam && typeParam !== "ALL") {
-      if (typeParam === "INCOME") {
-        dataQuery = dataQuery.in("type", ["INCOME", "FX_GAIN"])
-      } else {
-        dataQuery = dataQuery.not("type", "in", '("INCOME","FX_GAIN")')
-      }
+      query = query.eq("type", typeParam)
     }
-    if (currencyParam && currencyParam !== "ALL") dataQuery = dataQuery.eq("currency", currencyParam)
-    if (sellerIdFilter) dataQuery = dataQuery.eq("seller_id", sellerIdFilter)
-    // Excluir movimientos de cuentas contables (CpC/CpP) — no son movimientos de caja reales
-    if (excludeAccountIds.length > 0) {
-      const idList = excludeAccountIds.map(id => `"${id}"`).join(",")
-      dataQuery = dataQuery.not("account_id", "in", `(${idList})`)
+    if (currencyParam && currencyParam !== "ALL") {
+      query = query.eq("currency", currencyParam)
     }
-    // Filtro de agencia: incluir movimientos de esa agencia + movimientos manuales (sin operación)
-    // Se aplica EN el query para que la paginación y conteo sean correctos
-    if (agencyOperationIds !== null) {
-      if (agencyOperationIds.length > 0) {
-        // Movimientos de operaciones de esa agencia O movimientos sin operación (manuales)
-        const opIdList = agencyOperationIds.map(id => `"${id}"`).join(",")
-        dataQuery = dataQuery.or(`operation_id.in.(${opIdList}),operation_id.is.null`)
-      } else {
-        // La agencia no tiene operaciones, solo mostrar movimientos manuales
-        dataQuery = dataQuery.is("operation_id", null)
-      }
+    // SELLER solo ve sus propios movimientos
+    if (user.role === "SELLER") {
+      query = query.eq("user_id", user.id)
     }
 
-    const { data: rawMovements, error: movError, count: totalCount } = await dataQuery
+    const { data: rawMovements, error: movError, count } = await query
 
     if (movError) {
-      console.error("Error fetching ledger movements:", movError)
+      console.error("Error fetching cash movements:", movError)
       return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
     }
 
-    // Mapear al formato CashMovement que espera el frontend
-    const movements = (rawMovements || []).map((m: any) => ({
+    let movements = (rawMovements || []).map((m: any) => ({
       id: m.id,
-      type: (m.type === "INCOME" || m.type === "FX_GAIN") ? "INCOME" : "EXPENSE",
-      category: m.concept ?? m.type,
-      amount: m.amount_original,
+      type: m.type as "INCOME" | "EXPENSE",
+      category: m.category,
+      amount: m.amount,
       currency: m.currency,
       movement_date: m.movement_date,
       notes: m.notes ?? null,
@@ -336,6 +302,7 @@ export async function GET(request: Request) {
         ? {
             id: m.operations.id,
             destination: m.operations.destination ?? null,
+            file_code: m.operations.file_code ?? null,
             agency_id: m.operations.agency_id ?? null,
             agencies: null,
           }
@@ -343,7 +310,12 @@ export async function GET(request: Request) {
       users: m.users ? { name: m.users.name } : null,
     }))
 
-    const total = totalCount ?? 0
+    // Filtro de agencia (solo si viene el parámetro)
+    if (agencyId && agencyId !== "ALL") {
+      movements = movements.filter((m: any) => m.operations?.agency_id === agencyId)
+    }
+
+    const total = count ?? movements.length
     const totalPages = total > 0 ? Math.ceil(total / limit) : 0
 
     return NextResponse.json({
@@ -371,7 +343,7 @@ export async function DELETE(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const movementId = searchParams.get("movementId")
 
     if (!movementId) {
@@ -440,9 +412,9 @@ export async function DELETE(request: Request) {
     if (accountIdToInvalidate) invalidateBalanceCache(accountIdToInvalidate)
     console.log(`✅ Cash movement ${movementId} eliminado`)
 
-    return NextResponse.json({ 
-      success: true, 
-      message: "Movimiento eliminado correctamente" 
+    return NextResponse.json({
+      success: true,
+      message: "Movimiento eliminado correctamente"
     })
   } catch (error) {
     console.error("Error in DELETE /api/cash/movements:", error)

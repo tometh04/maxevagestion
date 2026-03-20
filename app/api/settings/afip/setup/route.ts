@@ -1,12 +1,16 @@
+/**
+ * Guarda la configuración de AFIP en la DB.
+ * La automatización (crear cert + autorizar servicio) la orquesta el CLIENTE
+ * con polling a /api/settings/afip/automation para evitar timeout en Vercel.
+ */
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { setupAfipAutomatically } from "@/lib/afip/afip-automations"
 import { saveAfipConfigForAgency } from "@/lib/afip/afip-helpers"
+import { isValidCuit, formatCuit } from "@/lib/afip/afip-config"
 
-export const dynamic = 'force-dynamic'
-export const maxDuration = 120 // La automatización AFIP puede tardar hasta 2 min
+export const dynamic = "force-dynamic"
 
 export async function POST(request: Request) {
   try {
@@ -18,16 +22,34 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { agency_id, cuit, password, punto_venta, environment } = body
+    const { agency_id, cuit: bodyCuit, punto_venta, environment = "production", cert_id, cert, key } = body
 
-    if (!agency_id || !cuit || !password) {
-      return NextResponse.json({ error: "Faltan campos requeridos (agency_id, cuit, password)" }, { status: 400 })
+    if (!agency_id || !punto_venta) {
+      return NextResponse.json(
+        { error: "Faltan campos requeridos (agency_id, punto_venta)" },
+        { status: 400 }
+      )
     }
 
-    // Validar CUIT (11 dígitos)
-    const cuitClean = cuit.replace(/\D/g, '')
-    if (cuitClean.length !== 11) {
+    // Usar env var AFIP_CUIT si está disponible, sino el valor del body
+    const rawCuit = process.env.AFIP_CUIT || bodyCuit
+    if (!rawCuit) {
+      return NextResponse.json(
+        { error: "CUIT no configurado. Agregá AFIP_CUIT a las variables de entorno." },
+        { status: 400 }
+      )
+    }
+
+    // Validar CUIT
+    const cuitClean = formatCuit(rawCuit)
+    if (!isValidCuit(cuitClean)) {
       return NextResponse.json({ error: "El CUIT debe tener 11 dígitos" }, { status: 400 })
+    }
+
+    // Validar punto de venta
+    const ptoVtaNum = Number(punto_venta)
+    if (!ptoVtaNum || ptoVtaNum < 1 || ptoVtaNum > 9999) {
+      return NextResponse.json({ error: "Número de punto de venta inválido (1-9999)" }, { status: 400 })
     }
 
     // Validar acceso a la agencia
@@ -36,40 +58,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene acceso a esta agencia" }, { status: 403 })
     }
 
-    const apiKey = process.env.AFIP_SDK_API_KEY
-    if (!apiKey) {
-      return NextResponse.json({ error: "AFIP SDK no configurado en el servidor" }, { status: 500 })
+    const api_key = process.env.AFIP_SDK_API_KEY
+    if (!api_key) {
+      return NextResponse.json(
+        { error: "El sistema AFIP no está configurado. Contacte al administrador." },
+        { status: 500 }
+      )
     }
 
-    const env = (environment === 'sandbox' ? 'sandbox' : 'production') as 'sandbox' | 'production'
-    const ptoVenta = parseInt(String(punto_venta || '1'), 10) || 1
+    console.log("[AFIP Setup] Guardando config para CUIT:", cuitClean, "agency:", agency_id, "env:", environment, "cert:", !!cert, "key:", !!key)
 
-    console.log("[AFIP Setup] Ejecutando automatización para CUIT:", cuitClean, "agency:", agency_id, "env:", env)
-
-    const automationResult = await setupAfipAutomatically(apiKey, cuitClean, cuitClean, password, ptoVenta, env)
-
-    console.log("[AFIP Setup] Resultado:", JSON.stringify(automationResult))
-
-    if (!automationResult.success) {
-      return NextResponse.json({
-        success: false,
-        error: automationResult.error || "Error en la automatización AFIP",
-        steps: automationResult.steps,
-      }, { status: 400 })
-    }
-
-    // Guardar en tabla integrations (no en afip_config)
-    const saveResult = await saveAfipConfigForAgency(supabase, agency_id, {
-      api_key: apiKey,
-      cuit: cuitClean,
-      point_of_sale: ptoVenta,
-      environment: env,
-      cert_id: automationResult.config?.cert_id,
-    }, user.id)
+    const saveResult = await saveAfipConfigForAgency(
+      supabase,
+      agency_id,
+      {
+        api_key,
+        cuit: cuitClean,
+        point_of_sale: ptoVtaNum,
+        environment: environment as "sandbox" | "production",
+        cert_id: cert_id || undefined,
+        cert: cert || undefined,
+        key: key || undefined,
+      },
+      user.id
+    )
 
     if (!saveResult.success) {
       console.error("[AFIP Setup] Error guardando config:", saveResult.error)
-      return NextResponse.json({ error: "Error al guardar configuración", details: saveResult.error }, { status: 500 })
+      return NextResponse.json(
+        { error: `Error al guardar configuración: ${saveResult.error}` },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
@@ -77,14 +96,14 @@ export async function POST(request: Request) {
       message: "AFIP configurado correctamente",
       config: {
         cuit: cuitClean,
-        environment: env,
-        punto_venta: ptoVenta,
-        automation_status: 'complete',
+        environment,
+        punto_venta: ptoVtaNum,
+        has_cert: !!(cert),
       },
     })
   } catch (error: any) {
-    if (error?.digest?.startsWith('NEXT_REDIRECT')) throw error
+    if (error?.digest?.startsWith("NEXT_REDIRECT")) throw error
     console.error("[AFIP Setup] Error:", error)
-    return NextResponse.json({ error: error.message || "Error al configurar AFIP" }, { status: 500 })
+    return NextResponse.json({ error: error.message || "Error al guardar configuración AFIP" }, { status: 500 })
   }
 }

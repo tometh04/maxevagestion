@@ -170,6 +170,13 @@ export async function PATCH(
 
     // Calculate margin if amounts changed
     let updateData: any = { ...bodyWithoutOperators }
+
+    // Si se actualiza currency pero no sale_currency, sincronizarlos para evitar inconsistencias
+    // (el edit-operation-dialog solo tiene el campo "currency" en su formulario)
+    if (body.currency && !body.sale_currency) {
+      updateData.sale_currency = body.currency
+    }
+
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
     const newSaleAmount = body.sale_amount_total ?? oldSaleAmount

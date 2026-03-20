@@ -34,7 +34,7 @@ async function createAutomation(
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        type: automationType,
+        automation: automationType,
         params,
       }),
     })
@@ -42,9 +42,12 @@ async function createAutomation(
     const data = await response.json()
 
     if (!response.ok) {
+      const errorMsg = data.message || data.error || data.detail || data.details ||
+        (typeof data === 'string' ? data : JSON.stringify(data)) || `Error ${response.status}`
+      console.error('[AFIP SDK] Error en createAutomation:', response.status, JSON.stringify(data))
       return {
         success: false,
-        error: data.message || data.error || `Error ${response.status}`,
+        error: errorMsg,
       }
     }
 
@@ -86,9 +89,12 @@ async function getAutomationStatus(
     const data = await response.json()
 
     if (!response.ok) {
+      const errorMsg = data.message || data.error || data.detail || data.details ||
+        (typeof data === 'string' ? data : JSON.stringify(data)) || `Error ${response.status}`
+      console.error('[AFIP SDK] Error en getAutomationStatus:', response.status, JSON.stringify(data))
       return {
         success: false,
-        error: data.message || data.error || `Error ${response.status}`,
+        error: errorMsg,
       }
     }
 
@@ -162,6 +168,8 @@ async function waitForAutomation(
 export async function createDevelopmentCertificate(
   apiKey: string,
   cuit: string,
+  username: string,
+  password: string,
   alias?: string
 ): Promise<{
   success: boolean
@@ -176,7 +184,9 @@ export async function createDevelopmentCertificate(
   try {
     const automation = await createAutomation(apiKey, 'create-cert-dev', {
       cuit,
-      alias: alias || `cert-${cuit}`,
+      username,
+      password,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -242,7 +252,7 @@ export async function createProductionCertificate(
       cuit,
       username,
       password,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -288,7 +298,9 @@ export async function createProductionCertificate(
 export async function authorizeDevelopmentWebService(
   apiKey: string,
   cuit: string,
-  service: 'wsfe' | 'wsfev1' = 'wsfev1',
+  username: string,
+  password: string,
+  service: 'wsfe' | 'wsfev1' = 'wsfe',
   alias?: string
 ): Promise<{
   success: boolean
@@ -298,8 +310,10 @@ export async function authorizeDevelopmentWebService(
   try {
     const automation = await createAutomation(apiKey, 'auth-web-service-dev', {
       cuit,
+      username,
+      password,
       service,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -340,7 +354,7 @@ export async function authorizeProductionWebService(
   cuit: string,
   username: string,
   password: string,
-  service: 'wsfe' | 'wsfev1' = 'wsfev1',
+  service: 'wsfe' | 'wsfev1' = 'wsfe',
   alias?: string
 ): Promise<{
   success: boolean
@@ -353,7 +367,7 @@ export async function authorizeProductionWebService(
       username,
       password,
       service,
-      alias: alias || `cert-${cuit}`,
+      alias: (alias || `cert${cuit}`).replace(/[^a-zA-Z0-9]/g, ''),
     })
 
     if (!automation.success || !automation.automation_id) {
@@ -410,9 +424,9 @@ export async function setupAfipAutomatically(
     let authResult
 
     if (environment === 'sandbox') {
-      // Desarrollo: crear certificado de desarrollo
-      certResult = await createDevelopmentCertificate(apiKey, cuit)
-      
+      // Desarrollo: crear certificado de desarrollo (requiere username/password igual que prod)
+      certResult = await createDevelopmentCertificate(apiKey, cuit, username, password)
+
       if (!certResult.success) {
         return {
           success: false,
@@ -425,7 +439,9 @@ export async function setupAfipAutomatically(
       authResult = await authorizeDevelopmentWebService(
         apiKey,
         cuit,
-        'wsfev1',
+        username,
+        password,
+        'wsfe',
         certResult.cert_data?.alias
       )
     } else {
@@ -446,7 +462,7 @@ export async function setupAfipAutomatically(
         cuit,
         username,
         password,
-        'wsfev1',
+        'wsfe',
         certResult.cert_data?.alias
       )
     }

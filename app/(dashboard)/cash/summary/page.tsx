@@ -28,8 +28,9 @@ const CashSummaryClient = dynamic(
 
 function getDefaultDateRange() {
   const today = new Date()
-  const from = new Date()
-  from.setDate(today.getDate() - 7) // Rango semanal por defecto
+  // Rango por defecto: inicio del mes actual (ej. 01/03/2026 → hoy)
+  // Así Santi ve toda la actividad del mes en curso, no solo los últimos 7 días.
+  const from = new Date(today.getFullYear(), today.getMonth(), 1)
 
   return {
     dateFrom: from.toISOString().split("T")[0],

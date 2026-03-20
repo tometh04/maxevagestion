@@ -42,11 +42,14 @@ export async function getAfipConfigForAgency(
       api_key: config.api_key || '',
       cuit: config.cuit || '',
       point_of_sale: config.point_of_sale || config.pointOfSale || 1,
-      environment: config.environment || 'sandbox',
+      environment: config.environment || 'production',
       base_url: config.base_url || config.baseUrl,
       access_token: config.access_token || config.accessToken,
       token_expires_at: config.token_expires_at || config.tokenExpiresAt,
       cert_id: config.cert_id || config.certId,
+      // Certificado PEM inline (permite autenticación sin cert almacenado en afipsdk.com)
+      cert: config.cert || undefined,
+      key: config.key || undefined,
     }
 
     // Validar que la configuración esté completa
@@ -88,11 +91,14 @@ export async function saveAfipConfigForAgency(
       api_key: config.api_key,
       cuit: config.cuit,
       point_of_sale: config.point_of_sale,
-      environment: config.environment || 'sandbox',
+      environment: config.environment || 'production',
       base_url: config.base_url,
       access_token: config.access_token,
       token_expires_at: config.token_expires_at,
       cert_id: config.cert_id,
+      // Certificado PEM inline (para autenticación directa con afipsdk.com)
+      cert: config.cert || undefined,
+      key: config.key || undefined,
     }
 
     if (existingIntegration) {

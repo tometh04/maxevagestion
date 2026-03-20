@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, ArrowLeft, Plus, Trash2, Calculator } from "lucide-react"
+import { Loader2, ArrowLeft, Plus, Trash2, Calculator, ExternalLink, AlertTriangle } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -64,9 +64,11 @@ const formatCurrency = (value: number) => {
 
 export default function NewInvoicePage() {
   const router = useRouter()
+  const urlSearchParams = useSearchParams()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
+  const preselectedOperationId = urlSearchParams.get('operationId') || null
   
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -76,6 +78,7 @@ export default function NewInvoicePage() {
     agency_id: string
     agency_name: string
     points_of_sale: Array<{ numero: number; tipo: string; bloqueado: boolean }>
+    has_ws_points: boolean
     default_point_of_sale?: number
   }>>([])
   
@@ -84,12 +87,13 @@ export default function NewInvoicePage() {
     customer_id: '',
     operation_id: '',
     agency_id: '', // Se determina del punto de venta seleccionado
-    cbte_tipo: 11, // Factura C por defecto
+    cbte_tipo: 6, // Factura B por defecto (RI emitiendo a Consumidor Final)
     pto_vta: 0, // Se selecciona del punto de venta
     concepto: 2, // Servicios
     receptor_nombre: '',
-    receptor_doc_tipo: 80, // CUIT
-    receptor_doc_nro: '',
+    receptor_doc_tipo: 99 as number, // 99=Sin especificar (Consumidor Final)
+    receptor_doc_nro: '0',
+    receptor_condicion_iva: 5 as number, // 5=Consumidor Final por defecto
     fecha_servicio_desde: new Date().toISOString().split('T')[0],
     fecha_servicio_hasta: new Date().toISOString().split('T')[0],
     moneda: 'PES' as 'PES' | 'DOL',
@@ -113,6 +117,14 @@ export default function NewInvoicePage() {
     loadData()
   }, [])
 
+  // Auto-preseleccionar operación si viene por URL
+  useEffect(() => {
+    if (!loading && preselectedOperationId && operations.length > 0) {
+      handleOperationChange(preselectedOperationId)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, preselectedOperationId])
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -123,18 +135,16 @@ export default function NewInvoicePage() {
         const data = await pointsOfSaleRes.json()
         setPointsOfSale(data.pointsOfSale || [])
         
-        // Seleccionar el primer punto de venta por defecto
+        // Seleccionar el primer punto de venta CAE disponible por defecto
         if (data.pointsOfSale && data.pointsOfSale.length > 0) {
-          const firstAgency = data.pointsOfSale[0]
-          const firstPtoVta = firstAgency.points_of_sale && firstAgency.points_of_sale.length > 0
-            ? firstAgency.points_of_sale[0].numero
-            : (firstAgency.default_point_of_sale || 1)
-          
-          setFormData(prev => ({
-            ...prev,
-            agency_id: firstAgency.agency_id,
-            pto_vta: firstPtoVta,
-          }))
+          const firstAgencyWithWs = data.pointsOfSale.find((a: any) => a.has_ws_points)
+          if (firstAgencyWithWs) {
+            setFormData(prev => ({
+              ...prev,
+              agency_id: firstAgencyWithWs.agency_id,
+              pto_vta: firstAgencyWithWs.points_of_sale[0].numero,
+            }))
+          }
         }
       }
       
@@ -159,21 +169,54 @@ export default function NewInvoicePage() {
     }
   }
 
+  /**
+   * Calcula automáticamente el tipo de comprobante y condición IVA
+   * según si el receptor tiene CUIT (Responsable Inscripto) o no (Consumidor Final).
+   * - CUIT presente → Factura A (RI), DocTipo 80, CondIVA 1
+   * - Sin CUIT       → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
+   */
+  const getReceptorDefaults = (customer: Customer) => {
+    if (customer.cuit) {
+      // Tiene CUIT → asumir Responsable Inscripto → Factura A
+      return {
+        cbte_tipo: 1,           // Factura A
+        receptor_doc_tipo: 80,  // CUIT
+        receptor_doc_nro: customer.cuit,
+        receptor_condicion_iva: 1, // RI
+      }
+    } else {
+      // Sin CUIT → Consumidor Final → Factura B
+      return {
+        cbte_tipo: 6,           // Factura B
+        receptor_doc_tipo: customer.dni ? 96 : 99, // DNI o sin especificar
+        receptor_doc_nro: customer.dni || '0',
+        receptor_condicion_iva: 5, // Consumidor Final
+      }
+    }
+  }
+
   const handleCustomerChange = async (customerId: string) => {
     const customer = customers.find(c => c.id === customerId)
     if (customer) {
+      const receptorDefaults = getReceptorDefaults(customer)
       setFormData({
         ...formData,
         customer_id: customerId,
         receptor_nombre: `${customer.first_name} ${customer.last_name}`,
-        receptor_doc_nro: customer.cuit || customer.dni || '',
-        receptor_doc_tipo: customer.cuit ? 80 : 96, // 80=CUIT, 96=DNI
+        ...receptorDefaults,
         operation_id: '', // Limpiar operación cuando cambia el cliente
       })
-      
+      // Ajustar IVA de los items según el tipo de comprobante
+      if (receptorDefaults.cbte_tipo === 1) {
+        // Factura A: RI discrimina IVA → 21% por defecto
+        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+      } else {
+        // Factura B: CF no discrimina IVA en item visual, pero igual enviamos la alícuota
+        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+      }
+
       // Limpiar operación seleccionada
       setSelectedOperation(null)
-      setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
       
       // Cargar operaciones del cliente
       try {
@@ -463,10 +506,19 @@ export default function NewInvoicePage() {
   const handleSubmit = async () => {
     try {
       // Validaciones
-      if (!formData.receptor_nombre || !formData.receptor_doc_nro) {
+      if (!formData.receptor_nombre) {
         toast({
           title: "Error",
-          description: "Debe seleccionar un cliente con datos fiscales",
+          description: "Debe ingresar el nombre del receptor",
+          variant: "destructive",
+        })
+        return
+      }
+      // Factura A requiere CUIT obligatoriamente
+      if (formData.cbte_tipo === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0')) {
+        toast({
+          title: "Error de datos fiscales",
+          description: "Factura A requiere el CUIT del receptor (Responsable Inscripto). Ingresá el CUIT del cliente.",
           variant: "destructive",
         })
         return
@@ -514,8 +566,8 @@ export default function NewInvoicePage() {
           agency_id: formData.agency_id, // Requerido: viene del punto de venta
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
-          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD' 
-            ? exchangeRate 
+          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
+            ? exchangeRate
             : 1,
           items: items.map(item => {
             const itemTotals = calculateItemTotal(item)
@@ -537,11 +589,35 @@ export default function NewInvoicePage() {
         throw new Error(error.error || 'Error al crear factura')
       }
 
-      toast({
-        title: "Factura creada",
-        description: "La factura se creó como borrador. Puede autorizarla con AFIP.",
-      })
-      
+      const invoiceData = await response.json()
+      const invoiceId = invoiceData.invoice?.id
+
+      // Autorizar automáticamente con AFIP
+      if (invoiceId) {
+        const authRes = await fetch(`/api/invoices/${invoiceId}/authorize`, {
+          method: 'POST',
+        })
+        const authData = await authRes.json()
+
+        if (authRes.ok && authData.success) {
+          toast({
+            title: "✅ Factura autorizada por AFIP",
+            description: `Nro: ${String(formData.pto_vta).padStart(4,'0')}-${String(authData.data?.cbte_nro).padStart(8,'0')} | CAE: ${authData.data?.cae} | Vto: ${authData.data?.cae_fch_vto}`,
+          })
+        } else {
+          toast({
+            title: "Factura creada, pero error al autorizar",
+            description: authData.error || "Podés autorizarla manualmente desde el listado.",
+            variant: "destructive",
+          })
+        }
+      } else {
+        toast({
+          title: "Factura creada",
+          description: "La factura se creó correctamente.",
+        })
+      }
+
       router.push('/operations/billing')
     } catch (error: any) {
       toast({
@@ -609,59 +685,92 @@ export default function NewInvoicePage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Comprobante *</Label>
-                  <Select 
-                    value={formData.cbte_tipo.toString()} 
-                    onValueChange={(v) => setFormData({ ...formData, cbte_tipo: parseInt(v) })}
+                  <Select
+                    value={formData.cbte_tipo.toString()}
+                    onValueChange={(v) => {
+                      const tipo = parseInt(v)
+                      // Sincronizar condición IVA al cambiar tipo manualmente
+                      const condicion = tipo === 1 ? 1 : formData.receptor_condicion_iva === 1 ? 5 : formData.receptor_condicion_iva
+                      setFormData({ ...formData, cbte_tipo: tipo, receptor_condicion_iva: condicion })
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Factura A</SelectItem>
                       <SelectItem value="6">Factura B</SelectItem>
+                      <SelectItem value="1">Factura A</SelectItem>
                       <SelectItem value="11">Factura C</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    B = CF/Exento · A = RI · C = Monotributista
+                  </p>
                 </div>
                 <div>
                   <Label>Punto de Venta / Agencia *</Label>
-                  <Select
-                    value={formData.pto_vta ? `${formData.agency_id}:${formData.pto_vta}` : ''}
-                    onValueChange={(value) => {
-                      const [agencyId, ptoVta] = value.split(':')
-                      handlePointOfSaleChange(agencyId, parseInt(ptoVta))
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccione punto de venta" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pointsOfSale.map((agency) => (
-                        <div key={agency.agency_id}>
-                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
-                            {agency.agency_name}
-                          </div>
-                          {agency.points_of_sale && agency.points_of_sale.length > 0 ? (
-                            agency.points_of_sale.map((pv) => (
+                  {pointsOfSale.length > 0 && !pointsOfSale.some(a => a.has_ws_points) ? (
+                    // Ninguna agencia tiene puntos de venta para web services
+                    <div className="rounded-md border border-amber-200 bg-amber-50 p-3 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                        <div className="text-sm text-amber-800">
+                          <p className="font-medium">No tenés puntos de venta habilitados para Web Services</p>
+                          <p className="mt-1 text-xs">
+                            Para emitir facturas electrónicas necesitás crear un punto de venta de tipo <strong>CAE</strong> en el portal de ARCA.
+                          </p>
+                        </div>
+                      </div>
+                      <ol className="text-xs text-amber-700 space-y-1 ml-6 list-decimal">
+                        <li>Ingresá a <strong>ARCA (afip.gob.ar)</strong> con Clave Fiscal</li>
+                        <li>Ir a <strong>Administración de puntos de venta y domicilios → A/B/M de puntos de venta</strong></li>
+                        <li>Crear un nuevo PV seleccionando:
+                          <ul className="mt-0.5 ml-3 list-disc">
+                            <li>Monotributista: <em>&ldquo;Factura Electrónica - Monotributo - Web Service&rdquo;</em></li>
+                            <li>Responsable Inscripto: <em>&ldquo;RECE para aplicativo y Web Service&rdquo;</em></li>
+                          </ul>
+                        </li>
+                        <li>Volvé acá y recargá la página</li>
+                      </ol>
+                      <a
+                        href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-amber-700 underline hover:text-amber-900 ml-6"
+                      >
+                        Ir al portal de ARCA <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  ) : (
+                    <Select
+                      value={formData.pto_vta ? `${formData.agency_id}:${formData.pto_vta}` : ''}
+                      onValueChange={(value) => {
+                        const [agencyId, ptoVta] = value.split(':')
+                        handlePointOfSaleChange(agencyId, parseInt(ptoVta))
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccione punto de venta" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pointsOfSale.filter(a => a.has_ws_points).map((agency) => (
+                          <div key={agency.agency_id}>
+                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                              {agency.agency_name}
+                            </div>
+                            {agency.points_of_sale.map((pv) => (
                               <SelectItem
                                 key={`${agency.agency_id}:${pv.numero}`}
                                 value={`${agency.agency_id}:${pv.numero}`}
                               >
-                                P.V. {String(pv.numero).padStart(4, '0')} - {pv.tipo}
+                                P.V. {String(pv.numero).padStart(4, '0')} — {pv.tipo}
                               </SelectItem>
-                            ))
-                          ) : (
-                            <SelectItem
-                              key={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
-                              value={`${agency.agency_id}:${agency.default_point_of_sale || 1}`}
-                            >
-                              P.V. {String(agency.default_point_of_sale || 1).padStart(4, '0')} (por defecto)
-                            </SelectItem>
-                          )}
-                        </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                            ))}
+                          </div>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   {formData.agency_id && (
                     <p className="text-xs text-muted-foreground mt-1">
                       Agencia: {pointsOfSale.find(p => p.agency_id === formData.agency_id)?.agency_name || ''}
@@ -758,12 +867,54 @@ export default function NewInvoicePage() {
                   />
                 </div>
                 <div>
-                  <Label>CUIT/DNI *</Label>
+                  <Label>CUIT/DNI</Label>
                   <Input
-                    value={formData.receptor_doc_nro}
-                    onChange={(e) => setFormData({ ...formData, receptor_doc_nro: e.target.value })}
-                    placeholder="20123456789"
+                    value={formData.receptor_doc_nro === '0' ? '' : formData.receptor_doc_nro}
+                    onChange={(e) => setFormData({ ...formData, receptor_doc_nro: e.target.value || '0' })}
+                    placeholder={formData.receptor_condicion_iva === 1 ? "20123456789 (requerido)" : "Consumidor Final (opcional)"}
                   />
+                </div>
+              </div>
+
+              {/* Condición IVA del receptor — determina el tipo de factura automáticamente */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Condición IVA del receptor *</Label>
+                  <Select
+                    value={formData.receptor_condicion_iva.toString()}
+                    onValueChange={(v) => {
+                      const condicion = parseInt(v)
+                      // Mapear condición IVA → tipo de comprobante automáticamente
+                      const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
+                      const receptor_doc_tipo = condicion === 1 ? 80 : (formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? 96 : 99)
+                      setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">Consumidor Final → Factura B</SelectItem>
+                      <SelectItem value="1">Responsable Inscripto → Factura A</SelectItem>
+                      <SelectItem value="4">Sujeto Exento → Factura B</SelectItem>
+                      <SelectItem value="6">Monotributista → Factura B</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Tipo de factura: <strong>{formData.cbte_tipo === 1 ? "Factura A" : "Factura B"}</strong>
+                  </p>
+                </div>
+                <div className="flex items-end">
+                  {formData.receptor_condicion_iva === 1 && !formData.receptor_doc_nro || formData.receptor_doc_nro === '0' ? (
+                    <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 w-full">
+                      <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <span>Factura A requiere CUIT del receptor. Ingresá el CUIT en el campo de arriba.</span>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border border-green-200 bg-green-50 p-3 text-xs text-green-800 w-full">
+                      ✓ Tipo de comprobante determinado automáticamente por la condición IVA
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -934,11 +1085,11 @@ export default function NewInvoicePage() {
                         </Select>
                       </div>
                       <div>
-                        <Label>Subtotal</Label>
+                        <Label>Total c/IVA</Label>
                         <Input
-                          value={formatCurrency(itemTotals.subtotal)}
+                          value={formatCurrency(itemTotals.total)}
                           disabled
-                          className="bg-muted text-right"
+                          className="bg-muted text-right font-medium"
                         />
                       </div>
                     </div>
@@ -976,11 +1127,21 @@ export default function NewInvoicePage() {
                 </div>
               </div>
 
-              <div className="p-3 bg-muted rounded-lg">
+              <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  <strong>Tipo:</strong> {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                  <strong>Tipo:</strong>{" "}
+                  <span className={formData.cbte_tipo === 1 ? "text-blue-700 font-semibold" : "text-green-700 font-semibold"}>
+                    {COMPROBANTE_LABELS[formData.cbte_tipo as keyof typeof COMPROBANTE_LABELS]}
+                  </span>
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Condición receptor:</strong>{" "}
+                  {formData.receptor_condicion_iva === 1 ? "Responsable Inscripto"
+                    : formData.receptor_condicion_iva === 4 ? "Sujeto Exento"
+                    : formData.receptor_condicion_iva === 6 ? "Monotributista"
+                    : "Consumidor Final"}
+                </p>
+                <p className="text-xs text-muted-foreground">
                   <strong>Punto de Venta:</strong> {String(formData.pto_vta).padStart(4, '0')}
                 </p>
               </div>
@@ -994,10 +1155,10 @@ export default function NewInvoicePage() {
                   {saving ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : null}
-                  Crear Factura (Borrador)
+                  Crear y Autorizar con AFIP
                 </Button>
                 <p className="text-xs text-muted-foreground text-center">
-                  La factura se creará como borrador. Podrás autorizarla con AFIP después.
+                  La factura se creará y autorizará en AFIP automáticamente.
                 </p>
               </div>
             </CardContent>

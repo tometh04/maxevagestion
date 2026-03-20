@@ -118,6 +118,9 @@ export interface CreateInvoiceRequest {
     Id: string
     Valor: string
   }>
+
+  // Condición IVA del receptor (requerido por SDK)
+  CondicionIVAReceptorId?: number // 1=RI, 4=Exento, 5=ConsumidorFinal, 6=Monotributo
 }
 
 // Respuesta de AFIP al crear factura

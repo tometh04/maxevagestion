@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, FileText } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -35,7 +35,6 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import { EditOperationDialog } from "./edit-operation-dialog"
-import { NewInvoiceDialog } from "@/components/invoices/new-invoice-dialog"
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
@@ -107,7 +106,6 @@ export function OperationDetailClient({
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
-  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false)
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
 
@@ -192,12 +190,12 @@ export function OperationDetailClient({
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="secondary">{statusLabels[operation.status] || operation.status}</Badge>
-          {userRole !== "SELLER" && (
-            <Button variant="outline" size="sm" onClick={() => setInvoiceDialogOpen(true)}>
-              <FileText className="mr-2 h-4 w-4" />
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/operations/billing/new?operationId=${operation.id}`}>
+              <Receipt className="mr-2 h-4 w-4" />
               Facturar
-            </Button>
-          )}
+            </Link>
+          </Button>
           <Button onClick={() => setEditDialogOpen(true)}>
             <Pencil className="mr-2 h-4 w-4" />
             Editar
@@ -372,9 +370,31 @@ export function OperationDetailClient({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Vendedor</p>
-                  <p className="text-sm">{operation.sellers?.name || "-"}</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
+                  </p>
+                  <p className="text-sm">
+                    {operation.sellers?.name || "-"}
+                    {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        ({(operation as any).commission_split}% comisión)
+                      </span>
+                    )}
+                  </p>
                 </div>
+                {(operation as any).sellers_secondary && (
+                  <div>
+                    <p className="text-sm font-medium text-muted-foreground">Vendedor Secundario</p>
+                    <p className="text-sm">
+                      {(operation as any).sellers_secondary.name}
+                      {(operation as any).commission_split != null && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          ({100 - (operation as any).commission_split}% comisión)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                )}
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Operador</p>
                   <p className="text-sm">{operation.operators?.name || "-"}</p>
@@ -605,21 +625,6 @@ export function OperationDetailClient({
         sellers={sellers}
         operators={operators}
         userRole={userRole}
-      />
-
-      <NewInvoiceDialog
-        open={invoiceDialogOpen}
-        onOpenChange={setInvoiceDialogOpen}
-        agencyId={operation.agency_id}
-        operationId={operation.id}
-        operationData={{
-          destination: operation.destination,
-          sale_amount_total: operation.sale_amount_total,
-          currency: operation.currency,
-          departure_date: operation.departure_date,
-          return_date: operation.return_date,
-        }}
-        onSuccess={() => {}}
       />
     </div>
   )
