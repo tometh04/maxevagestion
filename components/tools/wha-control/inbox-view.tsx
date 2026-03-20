@@ -285,6 +285,10 @@ export function InboxView() {
                   {messages.map((msg) => {
                     const isOutbound = msg.direction === "outbound"
                     const typeIcon = getTypeIcon(msg.message_type)
+                    const isGroupChat = selectedChat?.is_group
+                    const participantName = msg.participant_jid
+                      ? msg.participant_jid.split("@")[0]
+                      : null
 
                     return (
                       <div
@@ -298,6 +302,11 @@ export function InboxView() {
                               : "bg-muted rounded-bl-md"
                           }`}
                         >
+                          {isGroupChat && !isOutbound && participantName && (
+                            <p className="text-xs font-semibold text-orange-600 mb-0.5">
+                              {participantName}
+                            </p>
+                          )}
                           {typeIcon && !msg.body_text && (
                             <span className="text-lg">{typeIcon} <span className="text-xs opacity-70">{msg.message_type}</span></span>
                           )}
