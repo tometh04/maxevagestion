@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ArrowDown, ArrowLeft, Loader2, MessageSquare, Search, User } from "lucide-react"
+import { ArrowDown, ArrowLeft, Loader2, MessageSquare, Search, User, Users } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -131,8 +131,14 @@ export function InboxView() {
     return () => clearInterval(interval)
   }, [fetchMessages, selectedChat])
 
-  const getChatName = (chat: Chat) =>
-    chat.contact_name || chat.push_name || chat.contact_phone || chat.remote_jid.split("@")[0]
+  const getChatName = (chat: Chat) => {
+    if (chat.is_group) {
+      // For groups: use group name (contact_name) or show "Grupo" + JID
+      return chat.contact_name || `Grupo ${chat.remote_jid.split("@")[0]}`
+    }
+    // For individuals: use contact_name, push_name, phone, or JID
+    return chat.contact_name || chat.push_name || chat.contact_phone || chat.remote_jid.split("@")[0]
+  }
 
   const formatTime = (date: string | null) => {
     if (!date) return ""
@@ -210,8 +216,8 @@ export function InboxView() {
                   className={`w-full text-left p-3 hover:bg-accent/50 transition-colors ${selectedChat?.id === chat.id ? "bg-accent" : ""}`}
                 >
                   <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted flex-shrink-0">
-                      <User className="h-5 w-5 text-muted-foreground" />
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full flex-shrink-0 ${chat.is_group ? "bg-orange-100" : "bg-muted"}`}>
+                      {chat.is_group ? <Users className="h-5 w-5 text-orange-600" /> : <User className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
@@ -252,13 +258,13 @@ export function InboxView() {
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
-                <User className="h-5 w-5 text-muted-foreground" />
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${selectedChat.is_group ? "bg-orange-100" : "bg-muted"}`}>
+                {selectedChat.is_group ? <Users className="h-5 w-5 text-orange-600" /> : <User className="h-5 w-5 text-muted-foreground" />}
               </div>
               <div className="flex-1">
                 <p className="font-medium text-sm">{getChatName(selectedChat)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {selectedChat.contact_phone || selectedChat.remote_jid.split("@")[0]}
+                  {selectedChat.is_group ? "Grupo" : (selectedChat.contact_phone || selectedChat.remote_jid.split("@")[0])}
                 </p>
               </div>
               <Button
