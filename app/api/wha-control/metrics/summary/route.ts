@@ -66,10 +66,22 @@ export async function GET(request: Request) {
     }
   }
 
-  // Initiated = chats where the first message was outbound (device started the conversation)
+  // Get chats created in this date range (new contacts only)
+  let newChatsForInitiatedQuery = supabase
+    .from("wa_chats")
+    .select("id")
+  if (deviceId && deviceId !== "all") {
+    newChatsForInitiatedQuery = newChatsForInitiatedQuery.eq("device_id", deviceId)
+  }
+  if (fromDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.gte("created_at", fromDate)
+  if (toDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.lte("created_at", toDate)
+  const { data: newChatsForInitiated } = await newChatsForInitiatedQuery
+  const newChatIds = new Set((newChatsForInitiated || []).map((c: any) => c.id))
+
+  // Initiated = NEW chats where the first message was outbound (device started conversation with new contact)
   let initiated_count = 0
-  chatFirstMessage.forEach((data) => {
-    if (data.direction === "outbound") initiated_count++
+  chatFirstMessage.forEach((data, chatId) => {
+    if (data.direction === "outbound" && newChatIds.has(chatId)) initiated_count++
   })
 
   // Responded = chats that have both inbound and outbound

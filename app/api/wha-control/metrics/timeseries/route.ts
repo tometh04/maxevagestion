@@ -34,6 +34,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Get chats created in range (new contacts only) for "initiated" metric
+  let newChatsQuery = supabase.from("wa_chats").select("id, created_at")
+  if (deviceId && deviceId !== "all") {
+    newChatsQuery = newChatsQuery.eq("device_id", deviceId)
+  }
+  if (fromDate) newChatsQuery = newChatsQuery.gte("created_at", fromDate)
+  if (toDate) newChatsQuery = newChatsQuery.lte("created_at", toDate)
+  const { data: newChats } = await newChatsQuery
+  const newChatIds = new Set((newChats || []).map((c: any) => c.id))
+
   // Group by date
   const byDate = new Map<string, {
     inbound: number; outbound: number; pdfs: number;
@@ -89,10 +99,10 @@ export async function GET(request: Request) {
         }
       })
 
-      // Count initiated conversations (first msg of chat is outbound)
+      // Count initiated conversations (first msg of NEW chat is outbound)
       let initiated = 0
-      data.chatFirstMsg.forEach((info) => {
-        if (info.direction === "outbound") initiated++
+      data.chatFirstMsg.forEach((info, chatId) => {
+        if (info.direction === "outbound" && newChatIds.has(chatId)) initiated++
       })
 
       return {
