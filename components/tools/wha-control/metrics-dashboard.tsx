@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, MessageCircle, MessageSquareText, Clock, Users, AlertCircle, UserPlus } from "lucide-react"
+import { Loader2, MessageCircle, MessageSquareText, Clock, Users, AlertCircle, UserPlus, Send, FileText } from "lucide-react"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend } from "recharts"
 
 interface Device {
@@ -21,12 +21,16 @@ interface Summary {
   responded_chats_count: number
   unanswered_chats_count: number
   avg_first_response_seconds: number | null
+  initiated_count: number
+  pdfs_sent_count: number
 }
 
 interface TimeseriesPoint {
   date: string
   inbound: number
   outbound: number
+  pdfs: number
+  initiated: number
   avg_response: number | null
 }
 
@@ -91,6 +95,8 @@ export function MetricsDashboard() {
     ? [
         { label: "Mensajes Recibidos", value: summary.inbound_count, icon: MessageCircle, color: "text-blue-600" },
         { label: "Mensajes Enviados", value: summary.outbound_count, icon: MessageSquareText, color: "text-green-600" },
+        { label: "Conversaciones Iniciadas", value: summary.initiated_count, icon: Send, color: "text-cyan-600" },
+        { label: "Cotizaciones (PDFs)", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600" },
         { label: "Tiempo Resp. Promedio", value: formatResponseTime(summary.avg_first_response_seconds), icon: Clock, color: "text-orange-600" },
         { label: "Chats Activos", value: summary.active_chats_count, icon: Users, color: "text-purple-600" },
         { label: "Sin Responder", value: summary.unanswered_chats_count, icon: AlertCircle, color: "text-red-600" },
@@ -135,7 +141,7 @@ export function MetricsDashboard() {
       ) : (
         <>
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {kpis.map((kpi) => (
               <Card key={kpi.label}>
                 <CardContent className="pt-6">
@@ -148,6 +154,32 @@ export function MetricsDashboard() {
               </Card>
             ))}
           </div>
+
+          {/* Cotizaciones + Iniciados chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">Cotizaciones (PDFs) e Iniciadas por día</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {timeseries.length > 0 ? (
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={timeseries}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="pdfs" name="Cotizaciones (PDFs)" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="initiated" name="Conv. Iniciadas" fill="#06b6d4" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-sm text-muted-foreground">
+                  Sin datos para el rango seleccionado
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Charts */}
           <div className="grid gap-4 md:grid-cols-2">

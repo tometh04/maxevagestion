@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   // Query all messages in range directly (real-time, no pre-aggregation)
   let msgQuery = supabase
     .from("wa_messages")
-    .select("id, device_id, chat_id, direction, sent_at")
+    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me")
 
   if (deviceId && deviceId !== "all") {
     msgQuery = msgQuery.eq("device_id", deviceId)
@@ -36,12 +36,15 @@ export async function GET(request: Request) {
 
   const msgs = messages || []
 
-  // Count inbound/outbound
+  // Count inbound/outbound + PDFs sent + initiated conversations
   let inbound_count = 0
   let outbound_count = 0
+  let pdfs_sent_count = 0
   const chatIds = new Set<string>()
   const inboundChatIds = new Set<string>()
   const outboundChatIds = new Set<string>()
+  // Track first message per chat to detect who initiated
+  const chatFirstMessage = new Map<string, { direction: string; sent_at: string }>()
 
   for (const m of msgs) {
     chatIds.add(m.chat_id)
@@ -51,8 +54,23 @@ export async function GET(request: Request) {
     } else if (m.direction === "outbound") {
       outbound_count++
       outboundChatIds.add(m.chat_id)
+      // Count PDFs (documents) sent by the device
+      if (m.message_type === "document") {
+        pdfs_sent_count++
+      }
+    }
+    // Track first message in each chat
+    const existing = chatFirstMessage.get(m.chat_id)
+    if (!existing || m.sent_at < existing.sent_at) {
+      chatFirstMessage.set(m.chat_id, { direction: m.direction, sent_at: m.sent_at })
     }
   }
+
+  // Initiated = chats where the first message was outbound (device started the conversation)
+  let initiated_count = 0
+  chatFirstMessage.forEach((data) => {
+    if (data.direction === "outbound") initiated_count++
+  })
 
   // Responded = chats that have both inbound and outbound
   let respondedCount = 0
@@ -112,6 +130,8 @@ export async function GET(request: Request) {
     responded_chats_count: respondedCount,
     unanswered_chats_count: unansweredCount,
     avg_first_response_seconds,
+    initiated_count,
+    pdfs_sent_count,
   }
 
   return NextResponse.json({ summary })
