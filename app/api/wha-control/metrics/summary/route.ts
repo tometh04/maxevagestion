@@ -107,6 +107,65 @@ export async function GET(request: Request) {
   const { count: newChatsCount } = await newChatsQuery
 
   // Calculate avg response time per chat (first inbound → first outbound)
+  // Only count business hours: Mon-Fri 9:00-17:00 (Argentina timezone UTC-3)
+  const WORK_START_HOUR = 9
+  const WORK_END_HOUR = 17
+  const ARG_OFFSET_MS = -3 * 60 * 60 * 1000 // UTC-3
+
+  function toArgentinaDate(iso: string): Date {
+    const utc = new Date(iso)
+    return new Date(utc.getTime() + ARG_OFFSET_MS)
+  }
+
+  function isBusinessHours(iso: string): boolean {
+    const arg = toArgentinaDate(iso)
+    const day = arg.getUTCDay() // 0=Sun, 6=Sat
+    if (day === 0 || day === 6) return false
+    const hour = arg.getUTCHours()
+    return hour >= WORK_START_HOUR && hour < WORK_END_HOUR
+  }
+
+  // Calculate business seconds between two timestamps
+  // Only counts time during Mon-Fri 9:00-17:00 Argentina time
+  function businessSecondsBetween(startIso: string, endIso: string): number {
+    const start = new Date(startIso).getTime()
+    const end = new Date(endIso).getTime()
+    if (end <= start) return 0
+
+    let totalSeconds = 0
+    const HOUR_MS = 60 * 60 * 1000
+    const BUSINESS_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR
+
+    // Walk through each day between start and end
+    const startArg = toArgentinaDate(startIso)
+    const endArg = toArgentinaDate(endIso)
+
+    // Simple approach: iterate day by day
+    const startDay = new Date(Date.UTC(startArg.getUTCFullYear(), startArg.getUTCMonth(), startArg.getUTCDate()))
+    const endDay = new Date(Date.UTC(endArg.getUTCFullYear(), endArg.getUTCMonth(), endArg.getUTCDate()))
+
+    const currentDay = new Date(startDay)
+    while (currentDay <= endDay) {
+      const dayOfWeek = currentDay.getUTCDay()
+      // Skip weekends
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        // Business start/end for this day in UTC (adjusted for Argentina)
+        const bizStartUtc = new Date(currentDay).getTime() + (WORK_START_HOUR * HOUR_MS) - ARG_OFFSET_MS
+        const bizEndUtc = new Date(currentDay).getTime() + (WORK_END_HOUR * HOUR_MS) - ARG_OFFSET_MS
+
+        const overlapStart = Math.max(start, bizStartUtc)
+        const overlapEnd = Math.min(end, bizEndUtc)
+
+        if (overlapEnd > overlapStart) {
+          totalSeconds += (overlapEnd - overlapStart) / 1000
+        }
+      }
+      currentDay.setUTCDate(currentDay.getUTCDate() + 1)
+    }
+
+    return totalSeconds
+  }
+
   // Group messages by chat
   const chatMessages = new Map<string, { inbound: string[]; outbound: string[] }>()
   for (const m of msgs) {
@@ -121,11 +180,14 @@ export async function GET(request: Request) {
   const responseTimes: number[] = []
   chatMessages.forEach((data) => {
     if (data.inbound.length > 0 && data.outbound.length > 0) {
-      const firstInbound = new Date(data.inbound.sort()[0]).getTime()
-      const firstOutbound = new Date(data.outbound.sort()[0]).getTime()
+      const firstInbound = data.inbound.sort()[0]
+      const firstOutbound = data.outbound.sort()[0]
       if (firstOutbound > firstInbound) {
-        const delta = (firstOutbound - firstInbound) / 1000
-        if (delta < 86400) responseTimes.push(delta)
+        const bizSeconds = businessSecondsBetween(firstInbound, firstOutbound)
+        // Only count if response happened within reasonable business time (max 5 business days)
+        if (bizSeconds > 0 && bizSeconds < BUSINESS_HOURS_PER_DAY * 5 * 3600) {
+          responseTimes.push(bizSeconds)
+        }
       }
     }
   })

@@ -85,17 +85,58 @@ export async function GET(request: Request) {
     }
   }
 
+  // Business hours helpers (Mon-Fri 9:00-17:00 Argentina UTC-3)
+  const WORK_START_HOUR = 9
+  const WORK_END_HOUR = 17
+  const ARG_OFFSET_MS = -3 * 60 * 60 * 1000
+  const HOUR_MS = 60 * 60 * 1000
+  const BUSINESS_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR
+
+  function toArgentinaDate(iso: string): Date {
+    return new Date(new Date(iso).getTime() + ARG_OFFSET_MS)
+  }
+
+  function businessSecondsBetween(startIso: string, endIso: string): number {
+    const start = new Date(startIso).getTime()
+    const end = new Date(endIso).getTime()
+    if (end <= start) return 0
+
+    let totalSeconds = 0
+    const startArg = toArgentinaDate(startIso)
+    const endArg = toArgentinaDate(endIso)
+    const startDay = new Date(Date.UTC(startArg.getUTCFullYear(), startArg.getUTCMonth(), startArg.getUTCDate()))
+    const endDay = new Date(Date.UTC(endArg.getUTCFullYear(), endArg.getUTCMonth(), endArg.getUTCDate()))
+
+    const currentDay = new Date(startDay)
+    while (currentDay <= endDay) {
+      const dayOfWeek = currentDay.getUTCDay()
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        const bizStartUtc = currentDay.getTime() + (WORK_START_HOUR * HOUR_MS) - ARG_OFFSET_MS
+        const bizEndUtc = currentDay.getTime() + (WORK_END_HOUR * HOUR_MS) - ARG_OFFSET_MS
+        const overlapStart = Math.max(start, bizStartUtc)
+        const overlapEnd = Math.min(end, bizEndUtc)
+        if (overlapEnd > overlapStart) {
+          totalSeconds += (overlapEnd - overlapStart) / 1000
+        }
+      }
+      currentDay.setUTCDate(currentDay.getUTCDate() + 1)
+    }
+    return totalSeconds
+  }
+
   // Build timeseries with response times
   const timeseries = Array.from(byDate.entries())
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, data]) => {
-      // Calculate avg response time for this day
+      // Calculate avg response time for this day (business hours only)
       const responseTimes: number[] = []
       data.chatFirstInbound.forEach((inboundAt, chatId) => {
         const outboundAt = data.chatFirstOutbound.get(chatId)
         if (outboundAt) {
-          const delta = (new Date(outboundAt).getTime() - new Date(inboundAt).getTime()) / 1000
-          if (delta > 0 && delta < 86400) responseTimes.push(delta)
+          const bizSeconds = businessSecondsBetween(inboundAt, outboundAt)
+          if (bizSeconds > 0 && bizSeconds < BUSINESS_HOURS_PER_DAY * 5 * 3600) {
+            responseTimes.push(bizSeconds)
+          }
         }
       })
 

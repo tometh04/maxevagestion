@@ -11,6 +11,7 @@ import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Responsive
 interface Device {
   id: string
   display_name: string
+  is_active?: boolean
 }
 
 interface Summary {
@@ -48,7 +49,8 @@ export function MetricsDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/wha-control/devices")
+    // Include inactive devices so metrics for deleted numbers are still accessible
+    fetch("/api/wha-control/devices?includeInactive=true")
       .then((r) => r.json())
       .then((d) => setDevices(d.devices || []))
       .catch(console.error)
@@ -118,7 +120,7 @@ export function MetricsDashboard() {
               <SelectItem value="all">Todos</SelectItem>
               {devices.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.display_name}
+                  {d.display_name}{d.is_active === false ? " (eliminado)" : ""}
                 </SelectItem>
               ))}
             </SelectContent>

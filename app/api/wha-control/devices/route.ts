@@ -3,17 +3,25 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 import { callConnector } from "@/lib/wha-control/connector-client"
 
-export async function GET() {
+export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
 
 
+  const { searchParams } = new URL(request.url)
+  const includeInactive = searchParams.get("includeInactive") === "true"
+
   const supabase = createAdminClient() as any
-  const { data: devices, error } = await supabase
+  let devicesQuery = supabase
     .from("wa_devices")
     .select("*")
-    .eq("is_active", true)
     .order("created_at", { ascending: false })
+
+  if (!includeInactive) {
+    devicesQuery = devicesQuery.eq("is_active", true)
+  }
+
+  const { data: devices, error } = await devicesQuery
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
