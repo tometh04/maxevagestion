@@ -111,6 +111,8 @@ export async function GET(request: Request) {
   const WORK_START_HOUR = 9
   const WORK_END_HOUR = 17
   const ARG_OFFSET_MS = -3 * 60 * 60 * 1000 // UTC-3
+  const HOUR_MS = 60 * 60 * 1000
+  const BUSINESS_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR
 
   function toArgentinaDate(iso: string): Date {
     const utc = new Date(iso)
@@ -133,8 +135,6 @@ export async function GET(request: Request) {
     if (end <= start) return 0
 
     let totalSeconds = 0
-    const HOUR_MS = 60 * 60 * 1000
-    const BUSINESS_HOURS_PER_DAY = WORK_END_HOUR - WORK_START_HOUR
 
     // Walk through each day between start and end
     const startArg = toArgentinaDate(startIso)
