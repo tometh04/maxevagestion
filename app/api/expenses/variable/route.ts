@@ -176,8 +176,9 @@ export async function POST(request: Request) {
       movement: { ...movement, ledger_movement_id: ledgerMovementId ?? null },
     })
   } catch (error: any) {
-    console.error("Error in POST /api/expenses/variable:", error)
-    return NextResponse.json({ error: error.message || "Error al crear gasto" }, { status: 500 })
+    const errMsg = error?.message || "Error desconocido al crear gasto"
+    console.error("Error in POST /api/expenses/variable:", errMsg, error?.stack)
+    return NextResponse.json({ error: errMsg }, { status: 500 })
   }
 }
 
