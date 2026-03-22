@@ -99,7 +99,7 @@ export async function POST(request: Request) {
       movement_date,
       notes: notes || null,
       is_touristic: false,
-      movement_category: categoryName,
+      movement_category: "ADMINISTRATIVE",
     }
 
     const { data: movement, error: movError } = await adminDb
