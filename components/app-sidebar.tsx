@@ -112,6 +112,8 @@ const allNavigation: NavItem[] = [
           { title: "Pagos", url: "/cash/payments" },
         ],
       },
+      // Gastos - Item directo (fijos + variables)
+      { title: "Gastos", url: "/expenses" },
       // Contabilidad - Submenú con nivel 3
       {
         title: "Contabilidad",
@@ -120,7 +122,6 @@ const allNavigation: NavItem[] = [
           { title: "Posición Mensual", url: "/accounting/monthly-position" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
-          { title: "Gastos Recurrentes", url: "/accounting/recurring-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
           { title: "Libro Mayor", url: "/accounting/ledger" },
           { title: "IVA", url: "/accounting/iva" },
