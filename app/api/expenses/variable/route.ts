@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import {
   createLedgerMovement,
@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+    const adminDb = createAdminClient() as any
     const body = await request.json()
 
     const {
@@ -101,14 +102,15 @@ export async function POST(request: Request) {
       movement_category: categoryName,
     }
 
-    const { data: movement, error: movError } = await (supabase.from("cash_movements") as any)
+    const { data: movement, error: movError } = await adminDb
+      .from("cash_movements")
       .insert(movementData)
       .select()
       .single()
 
     if (movError) {
-      console.error("Error creating variable expense:", movError)
-      return NextResponse.json({ error: "Error al crear gasto" }, { status: 500 })
+      console.error("Error creating variable expense:", movError.message, movError.code, movError.details, movError.hint)
+      return NextResponse.json({ error: `Error al crear gasto: ${movError.message}` }, { status: 500 })
     }
 
     // Calculate ARS equivalent
@@ -135,7 +137,7 @@ export async function POST(request: Request) {
     )
     if (!balanceCheck.valid) {
       // Rollback cash_movement
-      await (supabase.from("cash_movements") as any).delete().eq("id", movement.id)
+      await adminDb.from("cash_movements").delete().eq("id", movement.id)
       return NextResponse.json(
         { error: balanceCheck.error || "Saldo insuficiente en cuenta" },
         { status: 400 }
@@ -167,7 +169,7 @@ export async function POST(request: Request) {
 
     // Link ledger to cash_movement
     if (ledgerMovementId) {
-      await (supabase.from("cash_movements") as any)
+      await adminDb.from("cash_movements")
         .update({ ledger_movement_id: ledgerMovementId })
         .eq("id", movement.id)
     }
