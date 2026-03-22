@@ -35,6 +35,7 @@ interface FinancialAccount {
   id: string
   name: string
   currency: "ARS" | "USD"
+  current_balance?: number
   is_active?: boolean
 }
 
@@ -327,6 +328,14 @@ export function NewVariableExpenseDialog({
                           .map((account) => (
                             <SelectItem key={account.id} value={account.id}>
                               {account.name} ({account.currency})
+                              {account.current_balance !== undefined && (
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  — Saldo: {new Intl.NumberFormat("es-AR", {
+                                    style: "currency",
+                                    currency: account.currency === "USD" ? "USD" : "ARS",
+                                  }).format(account.current_balance)}
+                                </span>
+                              )}
                             </SelectItem>
                           ))}
                       </SelectContent>
