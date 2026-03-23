@@ -21,7 +21,30 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Loader2, Plus, FileText, DollarSign } from "lucide-react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
 import { NewVariableExpenseDialog } from "./new-variable-expense-dialog"
 import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
 
@@ -68,6 +91,16 @@ export function VariableExpensesTab() {
     expenseId: "",
     name: "",
   })
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; expense: Expense | null }>({
+    open: false,
+    expense: null,
+  })
+  const [editDialog, setEditDialog] = useState<{ open: boolean; expense: Expense | null }>({
+    open: false,
+    expense: null,
+  })
+  const [editForm, setEditForm] = useState({ category: "", notes: "", movement_date: "", category_id: "" })
+  const [saving, setSaving] = useState(false)
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true)
@@ -104,6 +137,62 @@ export function VariableExpensesTab() {
   useEffect(() => {
     fetchCategories()
   }, [])
+
+  const openEditDialog = (expense: Expense) => {
+    setEditForm({
+      category: expense.category || "",
+      notes: expense.notes || "",
+      movement_date: expense.movement_date?.split("T")[0] || "",
+      category_id: expense.category_id || "",
+    })
+    setEditDialog({ open: true, expense })
+  }
+
+  const handleEdit = async () => {
+    if (!editDialog.expense) return
+    setSaving(true)
+    try {
+      const categoryName = editForm.category_id
+        ? categories.find((c) => c.id === editForm.category_id)?.name || editForm.category
+        : editForm.category
+      const res = await fetch(`/api/expenses/variable/${editDialog.expense.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          category: categoryName,
+          category_id: editForm.category_id || null,
+          notes: editForm.notes || null,
+          movement_date: editForm.movement_date || undefined,
+        }),
+      })
+      if (res.ok) {
+        setEditDialog({ open: false, expense: null })
+        fetchExpenses()
+      }
+    } catch (err) {
+      console.error("Error editing expense:", err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteDialog.expense) return
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/expenses/variable/${deleteDialog.expense.id}`, {
+        method: "DELETE",
+      })
+      if (res.ok) {
+        setDeleteDialog({ open: false, expense: null })
+        fetchExpenses()
+      }
+    } catch (err) {
+      console.error("Error deleting expense:", err)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     fetchExpenses()
@@ -221,6 +310,7 @@ export function VariableExpensesTab() {
                 <TableHead className="text-right">Monto</TableHead>
                 <TableHead>Cuenta</TableHead>
                 <TableHead className="text-center">Comprobante</TableHead>
+                <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -281,6 +371,28 @@ export function VariableExpensesTab() {
                       )}
                     </Button>
                   </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => openEditDialog(expense)}>
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setDeleteDialog({ open: true, expense })}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Eliminar
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -301,6 +413,90 @@ export function VariableExpensesTab() {
         expenseId={receiptDialog.expenseId}
         expenseName={receiptDialog.name}
       />
+
+      {/* Edit Dialog */}
+      <Dialog open={editDialog.open} onOpenChange={(open) => setEditDialog({ open, expense: open ? editDialog.expense : null })}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Gasto</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Categoría</Label>
+              <Select value={editForm.category_id || "none"} onValueChange={(val) => setEditForm((f) => ({ ...f, category_id: val === "none" ? "" : val }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin categoría</SelectItem>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                        {cat.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Fecha</Label>
+              <Input
+                type="date"
+                value={editForm.movement_date}
+                onChange={(e) => setEditForm((f) => ({ ...f, movement_date: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Notas</Label>
+              <Input
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Notas adicionales..."
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditDialog({ open: false, expense: null })}>
+              Cancelar
+            </Button>
+            <Button onClick={handleEdit} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, expense: open ? deleteDialog.expense : null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar gasto</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDialog.expense && (
+                <>
+                  Vas a eliminar el gasto <strong>{deleteDialog.expense.category}</strong> por{" "}
+                  <strong>{formatCurrency(deleteDialog.expense.amount, deleteDialog.expense.currency)}</strong>.
+                  Esto revertirá el movimiento contable. Esta acción no se puede deshacer.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-600 hover:bg-red-700"
+              disabled={saving}
+            >
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
