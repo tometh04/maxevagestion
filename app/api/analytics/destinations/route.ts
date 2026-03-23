@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
       // Select sale_currency and departure_date for currency conversion
-      let query = supabase.from("operations").select("destination, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at")
+      let query = supabase.from("operations").select("destination, destination_id, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at, destinations:destination_id(name)")
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -82,9 +82,9 @@ export async function GET(request: Request) {
         console.error("Error building exchange rate map for destinations:", err)
       }
 
-      // Group by destination, converting ARS to USD
+      // Group by destination, using canonical name from destinations table when available
       const destinationStats = operationsArray.reduce((acc: any, op: any) => {
-        const destination = op.destination || "Sin destino"
+        const destination = op.destinations?.name || op.destination || "Sin destino"
 
         if (!acc[destination]) {
           acc[destination] = {

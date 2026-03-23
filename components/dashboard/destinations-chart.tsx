@@ -72,7 +72,11 @@ export function DestinationsChart({ data }: DestinationsChartProps) {
               tickLine={false}
               tickMargin={10}
               axisLine={false}
-              tickFormatter={(value) => `$${(value / 1000000).toFixed(1)}M`}
+              tickFormatter={(value) => {
+                if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
+                if (value >= 1000) return `$${Math.round(value / 1000)}K`
+                return `$${value}`
+              }}
             />
             <YAxis
               dataKey="name"
