@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
+import { Label } from "@/components/ui/label"
 import { Loader2, Upload, X, FileText } from "lucide-react"
 import { toast } from "sonner"
 
@@ -347,7 +348,7 @@ export function PayRecurringExpenseDialog({
 
             {/* Receipt upload */}
             <div className="space-y-2">
-              <FormLabel>Comprobante (Opcional)</FormLabel>
+              <Label>Comprobante (Opcional)</Label>
               {receiptFile ? (
                 <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
                   <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
