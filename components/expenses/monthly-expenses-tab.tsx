@@ -24,15 +24,15 @@ import { Loader2, DollarSign, Repeat, Receipt, TrendingDown } from "lucide-react
 
 interface Expense {
   id: string
-  concept: string
   description: string
+  provider_name: string | null
   expense_type: "recurring" | "variable"
   currency: string
-  amount_original: number
-  amount_ars_equivalent: number
-  method: string
+  amount: number
+  exchange_rate: number | null
   movement_date: string
   notes: string | null
+  category: string | null
   financial_accounts: { id: string; name: string; currency: string } | null
   users: { id: string; name: string } | null
 }
@@ -228,7 +228,7 @@ export function MonthlyExpensesTab() {
                     </Badge>
                   </TableCell>
                   <TableCell className={`text-right font-medium ${expense.currency === "USD" ? "text-emerald-600" : ""}`}>
-                    {formatCurrency(expense.amount_original, expense.currency)}
+                    {formatCurrency(expense.amount, expense.currency)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {expense.financial_accounts?.name || "—"}
