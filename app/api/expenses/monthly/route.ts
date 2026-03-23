@@ -63,7 +63,7 @@ export async function GET(request: Request) {
           users:user_id (id, name)
         `)
         .eq("type", "EXPENSE")
-        .neq("category", "OPERATOR_PAYMENT")
+        .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
         .order("movement_date", { ascending: false })
 
       if (dateFrom) query = query.gte("movement_date", `${dateFrom}T00:00:00`)
