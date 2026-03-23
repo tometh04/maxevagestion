@@ -5,10 +5,10 @@ import { roundMoney } from "@/lib/currency"
 
 /**
  * GET /api/expenses/monthly
- * Unified monthly expenses view combining:
- * 1. Active recurring expenses (always show for any month)
- * 2. Variable expenses from cash_movements (filtered by date)
- * Excludes OPERATOR_PAYMENT (those are operational costs, not agency expenses)
+ * Shows PAID expenses in the selected date range.
+ * Queries ledger_movements type=EXPENSE filtered by movement_date.
+ * Classifies as "recurring" or "variable" based on concept prefix.
+ * Excludes OPERATOR_PAYMENT concepts.
  */
 export async function GET(request: Request) {
   try {
@@ -21,80 +21,75 @@ export async function GET(request: Request) {
     const currencyParam = searchParams.get("currency")
     const typeFilter = searchParams.get("type") // "recurring", "variable", or null for all
 
+    // Query ledger_movements type=EXPENSE filtered by date
+    let query = (supabase.from("ledger_movements") as any)
+      .select(`
+        id, type, concept, currency, amount_original, amount_ars_equivalent,
+        exchange_rate, method, notes, receipt_number,
+        movement_date, created_at, account_id,
+        financial_accounts:account_id (id, name, currency),
+        users:created_by (id, name)
+      `)
+      .eq("type", "EXPENSE")
+      .order("movement_date", { ascending: false })
+
+    if (dateFrom) query = query.gte("movement_date", `${dateFrom}T00:00:00`)
+    if (dateTo) query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    if (currencyParam && currencyParam !== "ALL") query = query.eq("currency", currencyParam)
+    if (user.role === "SELLER") query = query.eq("created_by", user.id)
+
+    const { data: expenses, error } = await query
+
+    if (error) {
+      console.error("Error fetching monthly expenses:", error)
+      return NextResponse.json({ error: "Error al obtener egresos" }, { status: 500 })
+    }
+
+    // Filter and classify expenses
     const allExpenses: any[] = []
 
-    // 1. RECURRING EXPENSES: always show active ones for any selected month
-    if (!typeFilter || typeFilter === "recurring") {
-      const { data: recurring, error: recError } = await (supabase.from("recurring_payments") as any)
-        .select("*")
-        .eq("is_active", true)
+    for (const e of (expenses || [])) {
+      const concept = e.concept || ""
 
-      if (!recError && recurring) {
-        for (const r of recurring) {
-          if (currencyParam && currencyParam !== "ALL" && r.currency !== currencyParam) continue
+      // Skip operator payments
+      if (
+        concept.includes("OPERATOR_PAYMENT") ||
+        concept.includes("Pago operador") ||
+        concept.includes("Pago a operador") ||
+        concept.includes("Cobro cliente") ||
+        concept.includes("Pago Cliente")
+      ) continue
 
-          allExpenses.push({
-            id: `rec-${r.id}`,
-            recurring_id: r.id,
-            expense_type: "recurring",
-            description: r.description || r.provider_name || "Gasto recurrente",
-            provider_name: r.provider_name || null,
-            category: r.category_name || "Recurrente",
-            amount: Number(r.amount),
-            currency: r.currency || "ARS",
-            movement_date: r.next_due_date || r.created_at,
-            notes: r.notes || null,
-            financial_accounts: null,
-            users: null,
-            is_paid: false, // Can be enriched later with payment status
-          })
-        }
+      // Classify as recurring or variable
+      const isRecurring = concept.startsWith("Gasto recurrente:")
+      const expenseType = isRecurring ? "recurring" : "variable"
+
+      // Apply type filter
+      if (typeFilter && typeFilter !== expenseType) continue
+
+      // Clean description
+      let description = concept
+      if (isRecurring) {
+        description = concept.replace("Gasto recurrente: ", "").replace("Gasto recurrente:", "")
+      } else if (concept.startsWith("Gasto:")) {
+        description = concept.replace("Gasto: ", "").replace("Gasto:", "")
       }
+
+      allExpenses.push({
+        id: e.id,
+        expense_type: expenseType,
+        description: description.trim(),
+        provider_name: null,
+        category: isRecurring ? "Recurrente" : "Variable",
+        amount: Number(e.amount_original),
+        currency: e.currency,
+        movement_date: e.movement_date,
+        notes: e.notes,
+        financial_accounts: e.financial_accounts,
+        users: e.users,
+        is_paid: true, // All entries here are paid (they are ledger movements)
+      })
     }
-
-    // 2. VARIABLE EXPENSES: from cash_movements filtered by date
-    if (!typeFilter || typeFilter === "variable") {
-      let query = (supabase.from("cash_movements") as any)
-        .select(`
-          id, type, category, amount, currency,
-          movement_date, created_at, notes,
-          financial_account_id, category_id,
-          financial_accounts:financial_account_id (id, name, currency),
-          users:user_id (id, name)
-        `)
-        .eq("type", "EXPENSE")
-        .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
-        .order("movement_date", { ascending: false })
-
-      if (dateFrom) query = query.gte("movement_date", `${dateFrom}T00:00:00`)
-      if (dateTo) query = query.lte("movement_date", `${dateTo}T23:59:59`)
-      if (currencyParam && currencyParam !== "ALL") query = query.eq("currency", currencyParam)
-      if (user.role === "SELLER") query = query.eq("user_id", user.id)
-
-      const { data: variables, error: varError } = await query
-
-      if (!varError && variables) {
-        for (const v of variables) {
-          allExpenses.push({
-            id: v.id,
-            expense_type: "variable",
-            description: v.category || v.notes || "Gasto variable",
-            provider_name: null,
-            category: v.category || null,
-            amount: Number(v.amount),
-            currency: v.currency,
-            movement_date: v.movement_date,
-            notes: v.notes,
-            financial_accounts: v.financial_accounts,
-            users: v.users,
-            is_paid: true, // Variable expenses are always paid (they are cash movements)
-          })
-        }
-      }
-    }
-
-    // Sort all by movement_date descending
-    allExpenses.sort((a, b) => new Date(b.movement_date).getTime() - new Date(a.movement_date).getTime())
 
     // Calculate totals
     let totalARS = 0
