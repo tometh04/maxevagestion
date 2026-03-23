@@ -308,13 +308,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     })
     }
 
-    // Filtro por mes/año (mejorado: calcula vencimientos futuros según frecuencia)
-    if (monthFilter && monthFilter !== "ALL" && yearFilter && yearFilter !== "ALL") {
-      filtered = filtered.filter((p) => hasVencimientoInMonth(p, yearFilter, monthFilter))
-    }
-
     return filtered
-  }, [payments, providerFilter, monthFilter, yearFilter])
+  }, [payments, providerFilter])
 
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
@@ -557,8 +552,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                 </SelectContent>
               </Select>
 
-              {/* Filtro por Mes */}
-              <Select value={monthFilter} onValueChange={setMonthFilter}>
+              {/* Filtros de mes/año removidos - gastos recurrentes son definiciones fijas, no se filtran por fecha */}
+              {/* <Select value={monthFilter} onValueChange={setMonthFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Mes" />
                 </SelectTrigger>
@@ -574,25 +569,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                     )
                   })}
                 </SelectContent>
-              </Select>
-
-              {/* Filtro por Año */}
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Año" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos los años</SelectItem>
-                  {Array.from({ length: 5 }, (_, i) => {
-                    const year = new Date().getFullYear() - 2 + i
-                    return (
-                      <SelectItem key={year} value={String(year)}>
-                        {year}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
+              </Select> */}
 
               <Button onClick={() => setNewDialogOpen(true)}>
                 <Plus className="mr-2 h-4 w-4" />
