@@ -22,12 +22,11 @@ export async function GET(request: Request) {
     // Query cash_movements with type=EXPENSE
     let query = (supabase.from("cash_movements") as any)
       .select(`
-        id, type, category, amount, currency, exchange_rate,
-        movement_date, created_at, notes, reference,
-        account_id, payment_id, recurring_expense_id,
-        financial_accounts:account_id (id, name, currency),
-        users:user_id (id, name),
-        recurring_expenses:recurring_expense_id (id, description, provider_name)
+        id, type, category, amount, currency,
+        movement_date, created_at, notes,
+        financial_account_id, operation_id, category_id,
+        financial_accounts:financial_account_id (id, name, currency),
+        users:user_id (id, name)
       `)
       .eq("type", "EXPENSE")
       .order("movement_date", { ascending: false })
@@ -44,13 +43,16 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener egresos" }, { status: 500 })
     }
 
-    // Classify: recurring vs variable based on recurring_expense_id
-    const enriched = (expenses || []).map((e: any) => ({
-      ...e,
-      expense_type: e.recurring_expense_id ? "recurring" : "variable",
-      description: e.recurring_expenses?.description || e.category || e.notes || "Gasto",
-      provider_name: e.recurring_expenses?.provider_name || null,
-    }))
+    // Classify based on category text patterns
+    const enriched = (expenses || []).map((e: any) => {
+      const cat = (e.category || "").toLowerCase()
+      const isRecurring = cat.includes("recurrente") || cat.includes("recurring")
+      return {
+        ...e,
+        expense_type: isRecurring ? "recurring" : "variable",
+        description: e.category || e.notes || "Gasto",
+      }
+    })
 
     // Apply type filter if specified
     const filtered = typeFilter
