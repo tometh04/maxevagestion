@@ -22,11 +22,21 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info, Trash2 } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Tooltip,
@@ -82,6 +92,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [payingExpense, setPayingExpense] = useState<any | null>(null)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; payment: any | null }>({ open: false, payment: null })
   const [tableError, setTableError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
@@ -168,6 +179,24 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     } catch (error: any) {
       console.error("Error generating payments:", error)
       toast.error(error.message || "Error al generar pagos recurrentes")
+    }
+  }
+
+  async function handleDeleteRecurring() {
+    if (!deleteDialog.payment) return
+    try {
+      const response = await fetch(`/api/recurring-payments/${deleteDialog.payment.id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al eliminar")
+      }
+      toast.success("Gasto recurrente eliminado")
+      setDeleteDialog({ open: false, payment: null })
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar gasto recurrente")
     }
   }
 
@@ -668,6 +697,14 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                           >
                             Editar
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                            onClick={() => setDeleteDialog({ open: true, payment })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -897,6 +934,29 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         }}
         onSuccess={fetchData}
       />
+
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, payment: open ? deleteDialog.payment : null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar gasto recurrente</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDialog.payment && (
+                <>
+                  Vas a eliminar el gasto recurrente <strong>{deleteDialog.payment.description}</strong> de{" "}
+                  <strong>{formatCurrency(deleteDialog.payment.amount, deleteDialog.payment.currency)}</strong>.
+                  Esta acción no se puede deshacer.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteRecurring} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
