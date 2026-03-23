@@ -24,6 +24,15 @@ export async function GET(request: Request) {
 
   if (deviceId && deviceId !== "all") {
     query = query.eq("device_id", deviceId)
+  } else {
+    // When "all", only include messages from active devices
+    const { data: activeDevices } = await supabase
+      .from("wa_devices")
+      .select("id")
+      .eq("is_active", true)
+    if (activeDevices && activeDevices.length > 0) {
+      query = query.in("device_id", activeDevices.map((d: any) => d.id))
+    }
   }
   if (fromDate) query = query.gte("sent_at", fromDate)
   if (toDate) query = query.lte("sent_at", toDate)
