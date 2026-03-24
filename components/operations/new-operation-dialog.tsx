@@ -438,8 +438,31 @@ export function NewOperationDialog({
     setApiError(null)
     try {
       // Si se usan múltiples operadores, enviar el array; si no, usar formato antiguo
+      // Find or create destination in master table
+      let destinationId = null
+      if (values.destination && values.destination.trim()) {
+        try {
+          const destRes = await fetch("/api/destinations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: values.destination }),
+          })
+          if (destRes.ok) {
+            const destData = await destRes.json()
+            destinationId = destData.destination?.id || null
+            // Use the canonical name from the master table
+            if (destData.destination?.name) {
+              values.destination = destData.destination.name
+            }
+          }
+        } catch {
+          // Non-blocking — operation still saves with text destination
+        }
+      }
+
       const requestBody: any = {
         ...values,
+        destination_id: destinationId,
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
@@ -1024,20 +1047,36 @@ export function NewOperationDialog({
                       value={field.value || ""}
                       onChange={(value) => field.onChange(value || "")}
                       placeholder="Ciudad de destino..."
-                      searchPlaceholder="Buscar aeropuerto o ciudad..."
+                      searchPlaceholder="Buscar destino o aeropuerto..."
                       emptyMessage="No se encontraron resultados"
                       initialLabel={field.value || ""}
                       searchFn={async (query) => {
                         if (!query || query.length < 2) return []
-                        // Siempre incluir lo que el usuario escribió como primera opción (fallback libre)
-                        const options: ComboboxOption[] = [
-                          { value: query, label: query, subtitle: "Usar como destino" },
-                        ]
+                        const options: ComboboxOption[] = []
+                        // 1. Search in destinations master table first
+                        try {
+                          const destRes = await fetch(`/api/destinations?q=${encodeURIComponent(query)}`)
+                          if (destRes.ok) {
+                            const destData = await destRes.json()
+                            for (const dest of (destData.destinations || [])) {
+                              options.push({
+                                value: dest.name,
+                                label: dest.name,
+                                subtitle: dest.country || "Destino guardado",
+                              })
+                            }
+                          }
+                        } catch {
+                          // silencioso
+                        }
+                        // 2. Search airports
                         try {
                           const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
                           if (res.ok) {
                             const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
                             for (const airport of data) {
+                              // Skip if already in destinations list
+                              if (options.some(o => o.value === airport.city)) continue
                               options.push({
                                 value: airport.city,
                                 label: `${airport.code} — ${airport.city}`,
@@ -1046,7 +1085,15 @@ export function NewOperationDialog({
                             }
                           }
                         } catch {
-                          // silencioso — igual tenemos la opción de texto libre
+                          // silencioso
+                        }
+                        // 3. Always add free text option at the end
+                        if (!options.some(o => o.value.toLowerCase() === query.toLowerCase())) {
+                          options.push({
+                            value: query,
+                            label: `Crear: "${query}"`,
+                            subtitle: "Nuevo destino",
+                          })
                         }
                         return options
                       }}

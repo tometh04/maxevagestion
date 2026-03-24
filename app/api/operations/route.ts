@@ -34,6 +34,7 @@ export async function POST(request: Request) {
       customer_id, // Cliente seleccionado directamente
       origin,
       destination,
+      destination_id,
       operation_date,
       departure_date,
       return_date,
@@ -196,6 +197,7 @@ export async function POST(request: Request) {
       product_type: inferredProductType,
       origin: origin || null,
       destination,
+      destination_id: destination_id || null,
       operation_date: operation_date || new Date().toISOString().split("T")[0], // Fecha de operación (hoy por defecto)
       departure_date,
       return_date: return_date || null,

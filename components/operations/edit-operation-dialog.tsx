@@ -809,15 +809,30 @@ export function EditOperationDialog({
                       initialLabel={field.value || ""}
                       searchFn={async (query) => {
                         if (!query || query.length < 2) return []
-                        // Siempre incluir lo que el usuario escribió como primera opción (fallback libre)
-                        const options: ComboboxOption[] = [
-                          { value: query, label: query, subtitle: "Usar como destino" },
-                        ]
+                        const options: ComboboxOption[] = []
+                        // 1. Search in destinations master table first
+                        try {
+                          const destRes = await fetch(`/api/destinations?q=${encodeURIComponent(query)}`)
+                          if (destRes.ok) {
+                            const destData = await destRes.json()
+                            for (const dest of (destData.destinations || [])) {
+                              options.push({
+                                value: dest.name,
+                                label: dest.name,
+                                subtitle: dest.country || "Destino guardado",
+                              })
+                            }
+                          }
+                        } catch {
+                          // silencioso
+                        }
+                        // 2. Search airports
                         try {
                           const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
                           if (res.ok) {
                             const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
                             for (const airport of data) {
+                              if (options.some(o => o.value === airport.city)) continue
                               options.push({
                                 value: airport.city,
                                 label: `${airport.code} — ${airport.city}`,
@@ -826,7 +841,15 @@ export function EditOperationDialog({
                             }
                           }
                         } catch {
-                          // silencioso — igual tenemos la opción de texto libre
+                          // silencioso
+                        }
+                        // 3. Free text option
+                        if (!options.some(o => o.value.toLowerCase() === query.toLowerCase())) {
+                          options.push({
+                            value: query,
+                            label: `Crear: "${query}"`,
+                            subtitle: "Nuevo destino",
+                          })
                         }
                         return options
                       }}
