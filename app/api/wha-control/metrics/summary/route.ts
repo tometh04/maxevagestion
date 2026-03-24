@@ -104,12 +104,21 @@ export async function GET(request: Request) {
   // Unanswered = inbound chats without outbound reply
   const unansweredCount = inboundChatIds.size - respondedCount
 
-  // Count new chats in range
+  // Count new chats in range (only from active devices)
   let newChatsQuery = supabase
     .from("wa_chats")
     .select("id", { count: "exact", head: true })
   if (deviceId && deviceId !== "all") {
     newChatsQuery = newChatsQuery.eq("device_id", deviceId)
+  } else {
+    // Filter by active devices only
+    const { data: activeDevicesForChats } = await supabase
+      .from("wa_devices")
+      .select("id")
+      .eq("is_active", true)
+    if (activeDevicesForChats && activeDevicesForChats.length > 0) {
+      newChatsQuery = newChatsQuery.in("device_id", activeDevicesForChats.map((d: any) => d.id))
+    }
   }
   if (fromDate) newChatsQuery = newChatsQuery.gte("created_at", fromDate)
   if (toDate) newChatsQuery = newChatsQuery.lte("created_at", toDate)

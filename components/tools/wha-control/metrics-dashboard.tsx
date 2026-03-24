@@ -49,8 +49,8 @@ export function MetricsDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Include inactive devices so metrics for deleted numbers are still accessible
-    fetch("/api/wha-control/devices?includeInactive=true")
+    // Only show active devices in the dropdown
+    fetch("/api/wha-control/devices")
       .then((r) => r.json())
       .then((d) => setDevices(d.devices || []))
       .catch(console.error)
@@ -120,7 +120,7 @@ export function MetricsDashboard() {
               <SelectItem value="all">Todos</SelectItem>
               {devices.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
-                  {d.display_name}{d.is_active === false ? " (eliminado)" : ""}
+                  {d.display_name}
                 </SelectItem>
               ))}
             </SelectContent>
