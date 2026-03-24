@@ -618,7 +618,7 @@ export function OperationDetailClient({
         </TabsContent>
 
         <TabsContent value="itinerary" className="space-y-4">
-          <ItinerarySection operationId={operation.id} operation={operation} />
+          <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
         </TabsContent>
       </Tabs>
 
