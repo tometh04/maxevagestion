@@ -102,6 +102,47 @@ export function DataTable<TData, TValue>({
     }
   }, [debouncedSearch, searchKey, table])
 
+  // Sticky horizontal scrollbar: sync a bottom-sticky scrollbar with the table
+  const tableScrollRef = React.useRef<HTMLDivElement>(null)
+  const stickyScrollRef = React.useRef<HTMLDivElement>(null)
+  const innerRef = React.useRef<HTMLDivElement>(null)
+  const [scrollWidth, setScrollWidth] = React.useState(0)
+  const [showStickyScroll, setShowStickyScroll] = React.useState(false)
+  const syncing = React.useRef(false)
+
+  // Measure scroll width and check if we need sticky scrollbar
+  React.useEffect(() => {
+    const el = tableScrollRef.current
+    if (!el) return
+    const check = () => {
+      setScrollWidth(el.scrollWidth)
+      setShowStickyScroll(el.scrollWidth > el.clientWidth)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [data, columnVisibility])
+
+  // Sync scrolls
+  const onTableScroll = React.useCallback(() => {
+    if (syncing.current) return
+    syncing.current = true
+    if (stickyScrollRef.current && tableScrollRef.current) {
+      stickyScrollRef.current.scrollLeft = tableScrollRef.current.scrollLeft
+    }
+    syncing.current = false
+  }, [])
+
+  const onStickyScroll = React.useCallback(() => {
+    if (syncing.current) return
+    syncing.current = true
+    if (tableScrollRef.current && stickyScrollRef.current) {
+      tableScrollRef.current.scrollLeft = stickyScrollRef.current.scrollLeft
+    }
+    syncing.current = false
+  }, [])
+
   return (
     <div className="w-full space-y-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -116,7 +157,12 @@ export function DataTable<TData, TValue>({
         <DataTableViewOptions table={table} />
       </div>
       <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-gray-300 hover:scrollbar-thumb-gray-400" style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}>
+        <div
+          ref={tableScrollRef}
+          className="overflow-x-auto"
+          style={{ scrollbarWidth: 'none' }}
+          onScroll={onTableScroll}
+        >
           <Table className="min-w-[800px]">
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
@@ -167,6 +213,17 @@ export function DataTable<TData, TValue>({
         </Table>
         </div>
       </div>
+      {/* Sticky horizontal scrollbar */}
+      {showStickyScroll && (
+        <div
+          ref={stickyScrollRef}
+          className="sticky bottom-0 z-10 overflow-x-auto bg-background/80 backdrop-blur-sm border-t"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#d1d5db transparent' }}
+          onScroll={onStickyScroll}
+        >
+          <div style={{ width: scrollWidth, height: 1 }} />
+        </div>
+      )}
       {showPagination && <DataTablePagination table={table} />}
     </div>
   )
