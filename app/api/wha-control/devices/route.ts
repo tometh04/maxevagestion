@@ -32,8 +32,8 @@ export async function GET(request: Request) {
     (devices || []).map(async (device: any) => {
       try {
         const liveStatus = await callConnector(`/devices/${device.id}/status`)
-        if (liveStatus?.isRunning && device.status !== "CONNECTED") {
-          // Connector says it's running but DB is stale — fix it
+        // Only override status if it's NOT pending QR (don't mark as CONNECTED while waiting for scan)
+        if (liveStatus?.isRunning && device.status !== "CONNECTED" && device.status !== "PENDING_QR") {
           await supabase
             .from("wa_devices")
             .update({ status: "CONNECTED" })
@@ -41,7 +41,6 @@ export async function GET(request: Request) {
           return { ...device, status: "CONNECTED" }
         }
         if (liveStatus && !liveStatus.isRunning && device.status === "CONNECTED") {
-          // DB says connected but connector says it's not running
           await supabase
             .from("wa_devices")
             .update({ status: "DISCONNECTED" })
