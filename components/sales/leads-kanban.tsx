@@ -186,12 +186,14 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
     stopAutoScroll()
 
     try {
-      await fetch("/api/leads/update-status", {
+      const res = await fetch("/api/leads/update-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadId: draggedLead, status: newStatus }),
       })
-      window.location.reload()
+      if (res.ok && onRefresh) {
+        onRefresh()
+      }
     } catch (error) {
       console.error("Error updating status:", error)
     } finally {
