@@ -58,6 +58,14 @@ const allNavigation: NavItem[] = [
     module: "dashboard",
     collapsible: false,
   },
+  // Cerebro - AI Assistant (prominent placement)
+  {
+    title: "🧠 Cerebro",
+    url: "/tools/cerebro",
+    icon: Bot,
+    module: "tools",
+    collapsible: false,
+  },
   // Operaciones - Colapsable (moved to second position)
   {
     title: "Operaciones",
@@ -194,6 +202,10 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
         if (!shouldShowInSidebar(userRole, item.module)) {
           return null
         }
+      }
+      // Ocultar Cerebro para SELLER
+      if (item.url === "/tools/cerebro" && userRole === "SELLER") {
+        return null
       }
 
       // Filtrar subitems según permisos

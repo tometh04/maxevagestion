@@ -51,6 +51,7 @@ export default async function DashboardLayout({
       <TaskShortcutProvider
         currentUserId={user.id}
         agencyId={agencies[0]?.id || ""}
+        userRole={user.role}
       />
       <PushNotificationManager userId={user.id} />
     </SidebarProvider>
