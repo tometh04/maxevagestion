@@ -38,6 +38,7 @@ import { EditOperationDialog } from "./edit-operation-dialog"
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
+import { ItinerarySection } from "./itinerary-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -212,6 +213,7 @@ export function OperationDetailClient({
             <TabsTrigger value="payments">Pagos Operación ({operationBasePayments.length})</TabsTrigger>
           )}
           <TabsTrigger value="services">Servicios</TabsTrigger>
+          <TabsTrigger value="itinerary">Detalle de Compra</TabsTrigger>
           {userRole !== "SELLER" && (
             <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
           )}
@@ -613,6 +615,10 @@ export function OperationDetailClient({
             servicePayments={servicePayments}
             operationCurrency={operation.currency}
           />
+        </TabsContent>
+
+        <TabsContent value="itinerary" className="space-y-4">
+          <ItinerarySection operationId={operation.id} />
         </TabsContent>
       </Tabs>
 
