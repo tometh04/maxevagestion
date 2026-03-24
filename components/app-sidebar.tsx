@@ -63,7 +63,6 @@ const allNavigation: NavItem[] = [
     title: "🧠 Cerebro",
     url: "/tools/cerebro",
     icon: Bot,
-    module: "tools",
     collapsible: false,
   },
   // Operaciones - Colapsable (moved to second position)
