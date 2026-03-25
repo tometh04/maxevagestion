@@ -45,7 +45,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
       params.set("dateFrom", today)
       params.set("dateTo", nextMonthStr)
       params.set("status", "CONFIRMED")
-      params.set("limit", "10")
+      params.set("limit", "50")
       if (agencyId && agencyId !== "ALL") {
         params.set("agencyId", agencyId)
       }
