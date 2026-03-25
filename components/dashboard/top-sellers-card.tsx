@@ -66,7 +66,7 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
     } finally {
       setLoading(false)
     }
-  }, [agencyId, sellerId, dateFrom, dateTo])
+  }, [agencyId, sellerId])
 
   useEffect(() => {
     fetchTopSellers()

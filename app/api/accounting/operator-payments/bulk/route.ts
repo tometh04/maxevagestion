@@ -264,7 +264,8 @@ export async function POST(request: Request) {
           .eq("account_id", payment_account_id)
           .limit(1)
         if (existingBulk && existingBulk.length > 0) {
-          results.push({ operation_id, status: "skipped", reason: "Movimiento duplicado detectado" })
+          console.log(`[bulk] Skipping duplicate movement for operation ${operation_id}`)
+          errors.push(`Movimiento duplicado detectado para operación ${operation_id}, se omitió`)
           continue
         }
 
