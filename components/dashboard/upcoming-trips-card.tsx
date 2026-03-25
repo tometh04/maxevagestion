@@ -55,7 +55,16 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
       
       const response = await fetch(`/api/operations?${params.toString()}`)
       const data = await response.json()
-      setOperations(data.operations || [])
+      // Filter only future departures (departure_date >= today)
+      const todayDate = new Date()
+      todayDate.setHours(0, 0, 0, 0)
+      const futureOps = (data.operations || [])
+        .filter((op: Operation) => new Date(op.departure_date) >= todayDate)
+        .sort((a: Operation, b: Operation) =>
+          new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime()
+        )
+        .slice(0, 10)
+      setOperations(futureOps)
     } catch (error) {
       console.error("Error fetching upcoming trips:", error)
     } finally {

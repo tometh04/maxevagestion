@@ -56,9 +56,11 @@ export function UpcomingReturnsCard({ agencyId, sellerId }: UpcomingReturnsCardP
       const response = await fetch(`/api/operations?${params.toString()}`)
       const data = await response.json()
 
-      // Filter operations that have return_date and sort by return_date ascending
+      // Filter operations that have return_date >= today and sort by return_date ascending
+      const todayDate = new Date()
+      todayDate.setHours(0, 0, 0, 0)
       const withReturn = (data.operations || [])
-        .filter((op: Operation) => op.return_date)
+        .filter((op: Operation) => op.return_date && new Date(op.return_date) >= todayDate)
         .sort((a: Operation, b: Operation) =>
           new Date(a.return_date!).getTime() - new Date(b.return_date!).getTime()
         )
