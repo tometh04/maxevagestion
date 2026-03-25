@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -72,6 +72,7 @@ export default function NewInvoicePage() {
   
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerSearch, setCustomerSearch] = useState("")
   const [operations, setOperations] = useState<Operation[]>([])
   const [filteredOperations, setFilteredOperations] = useState<Operation[]>([])
   const [pointsOfSale, setPointsOfSale] = useState<Array<{
@@ -117,10 +118,45 @@ export default function NewInvoicePage() {
     loadData()
   }, [])
 
-  // Auto-preseleccionar operación si viene por URL
+  // Auto-preseleccionar operación y cliente si viene por URL
   useEffect(() => {
-    if (!loading && preselectedOperationId && operations.length > 0) {
-      handleOperationChange(preselectedOperationId)
+    if (!loading && preselectedOperationId && customers.length > 0) {
+      // Cargar la operación completa para obtener el cliente asociado
+      fetch(`/api/operations/${preselectedOperationId}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(async (data) => {
+          if (!data?.operation) {
+            handleOperationChange(preselectedOperationId)
+            return
+          }
+          const fullOp = data.operation
+          // Buscar el cliente: desde operation_customers o customer_id directo
+          const custId = fullOp.operation_customers?.[0]?.customer_id || fullOp.customer_id
+          if (custId) {
+            const customer = customers.find(c => c.id === custId)
+            if (customer) {
+              // Pre-popular cliente SIN limpiar operation_id
+              const receptorDefaults = getReceptorDefaults(customer)
+              setFormData(prev => ({
+                ...prev,
+                customer_id: custId,
+                receptor_nombre: `${customer.first_name} ${customer.last_name}`,
+                ...receptorDefaults,
+              }))
+              // Cargar operaciones del cliente
+              try {
+                const opsRes = await fetch(`/api/customers/${custId}/operations`)
+                if (opsRes.ok) {
+                  const opsData = await opsRes.json()
+                  setFilteredOperations(opsData.operations || [])
+                }
+              } catch {}
+            }
+          }
+          // Ahora seleccionar la operación para cargar items/montos
+          handleOperationChange(preselectedOperationId)
+        })
+        .catch(() => handleOperationChange(preselectedOperationId))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, preselectedOperationId])
@@ -272,6 +308,7 @@ export default function NewInvoicePage() {
           setSelectedOperation(fullOperation)
           
           // Si la operación está en USD, cargar tipo de cambio
+          let fetchedRate = 1
           if (fullOperation.sale_currency === 'USD') {
             setLoadingExchangeRate(true)
             try {
@@ -279,20 +316,20 @@ export default function NewInvoicePage() {
               const today = new Date()
               const yesterday = new Date(today)
               yesterday.setDate(yesterday.getDate() - 1)
-              
+
               // Intentar obtener TC del día hábil anterior
               const tcRes = await fetch(`/api/exchange-rates?date=${yesterday.toISOString().split('T')[0]}`)
               if (tcRes.ok) {
                 const tcData = await tcRes.json()
                 if (tcData.rate) {
-                  setExchangeRate(parseFloat(tcData.rate))
+                  fetchedRate = parseFloat(tcData.rate)
                 } else {
                   // Si no hay TC del día anterior, obtener el más reciente
                   const latestRes = await fetch('/api/exchange-rates/latest')
                   if (latestRes.ok) {
                     const latestData = await latestRes.json()
                     if (latestData.rate) {
-                      setExchangeRate(parseFloat(latestData.rate))
+                      fetchedRate = parseFloat(latestData.rate)
                     }
                   }
                 }
@@ -302,7 +339,9 @@ export default function NewInvoicePage() {
             } finally {
               setLoadingExchangeRate(false)
             }
-            
+
+            setExchangeRate(fetchedRate)
+
             // Por defecto, facturar en ARS cuando la operación está en USD
             setInvoiceCurrency('PES')
             setFormData({
@@ -321,14 +360,14 @@ export default function NewInvoicePage() {
               cotizacion: 1,
             })
           }
-          
+
           // Auto-completar items con información de la operación
-          // Agregar item de venta (siempre se factura)
+          // Usar fetchedRate (valor local) en vez de exchangeRate (state async)
           const precioOriginalUSD = fullOperation.sale_amount_total || 0
-          const precioEnARS = fullOperation.sale_currency === 'USD' 
-            ? precioOriginalUSD * exchangeRate 
+          const precioEnARS = fullOperation.sale_currency === 'USD'
+            ? precioOriginalUSD * fetchedRate
             : precioOriginalUSD
-          
+
           const montoVenta = invoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD
           
           // Calcular costo del operador
@@ -353,7 +392,7 @@ export default function NewInvoicePage() {
           
           let costoEnARS = 0
           if (costoOperadorCurrency === 'USD') {
-            costoEnARS = costoTotal * exchangeRate
+            costoEnARS = costoTotal * fetchedRate
           } else {
             costoEnARS = costoTotal
           }
@@ -803,19 +842,39 @@ export default function NewInvoicePage() {
                       Nuevo
                     </Button>
                   </div>
-                  <Select 
-                    value={formData.customer_id} 
+                  <Select
+                    value={formData.customer_id}
                     onValueChange={handleCustomerChange}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Buscar cliente..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {customers.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.first_name} {c.last_name} {c.cuit ? `- ${c.cuit}` : ''}
-                        </SelectItem>
-                      ))}
+                      <div className="px-2 pb-2">
+                        <Input
+                          placeholder="Buscar por nombre, apellido o CUIT..."
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          className="h-8 text-sm"
+                          autoFocus
+                        />
+                      </div>
+                      {customers
+                        .filter(c => {
+                          if (!customerSearch) return true
+                          const search = customerSearch.toLowerCase()
+                          return (
+                            c.first_name?.toLowerCase().includes(search) ||
+                            c.last_name?.toLowerCase().includes(search) ||
+                            `${c.first_name} ${c.last_name}`.toLowerCase().includes(search) ||
+                            c.cuit?.includes(search)
+                          )
+                        })
+                        .map(c => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.first_name} {c.last_name} {c.cuit ? `- ${c.cuit}` : ''}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>

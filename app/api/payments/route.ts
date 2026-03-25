@@ -251,7 +251,24 @@ export async function POST(request: Request) {
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
         const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
         
-        // 7. Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
+        // 7. Verificar que no exista un movimiento duplicado (misma operación, tipo, monto, cuenta)
+        if (operation_id) {
+          const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
+            .select("id")
+            .eq("operation_id", operation_id)
+            .eq("type", ledgerType)
+            .eq("amount_original", parseFloat(amount))
+            .eq("account_id", accountId)
+            .limit(1)
+          if (existingMovements && existingMovements.length > 0) {
+            return NextResponse.json(
+              { error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado." },
+              { status: 409 }
+            )
+          }
+        }
+
+        // Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
         // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
         const { id: ledgerMovementId } = await createLedgerMovement(
           {

@@ -255,6 +255,19 @@ export async function POST(request: Request) {
           }
         }
 
+        // Verificar duplicados antes de crear el movimiento
+        const { data: existingBulk } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("operation_id", operation_id)
+          .eq("type", "EXPENSE")
+          .eq("amount_original", expenseAmount)
+          .eq("account_id", payment_account_id)
+          .limit(1)
+        if (existingBulk && existingBulk.length > 0) {
+          results.push({ operation_id, status: "skipped", reason: "Movimiento duplicado detectado" })
+          continue
+        }
+
         const ledgerMovementResult = await createLedgerMovement(
           {
             operation_id,
