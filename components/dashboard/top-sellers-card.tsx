@@ -35,9 +35,9 @@ export function TopSellersCard({ agencyId, sellerId, dateFrom, dateTo }: TopSell
       const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       
       const params = new URLSearchParams()
-      // Usar fechas del filtro si están disponibles, sino usar el mes actual
-      params.set("dateFrom", dateFrom || firstDayOfMonth.toISOString().split("T")[0])
-      params.set("dateTo", dateTo || lastDayOfMonth.toISOString().split("T")[0])
+      // Siempre usar el mes en curso (no depender de filtros del dashboard)
+      params.set("dateFrom", firstDayOfMonth.toISOString().split("T")[0])
+      params.set("dateTo", lastDayOfMonth.toISOString().split("T")[0])
       if (agencyId && agencyId !== "ALL") {
         params.set("agencyId", agencyId)
       }

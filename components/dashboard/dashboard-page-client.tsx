@@ -8,7 +8,7 @@ import { DestinationsChart } from "./destinations-chart"
 import { DestinationsPieChart } from "./destinations-pie-chart"
 import { RegionsRadarChart } from "./regions-radar-chart"
 import { CashflowChart } from "./cashflow-chart"
-import { PendingAlertsCard } from "./pending-alerts-card"
+import { UpcomingReturnsCard } from "./upcoming-returns-card"
 import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
 import { PendingTasksCard } from "./pending-tasks-card"
@@ -355,13 +355,13 @@ export function DashboardPageClient({
       {/* Cumpleaños del día */}
       <BirthdaysTodayCard />
 
-      {/* Tareas, Alertas, Próximos Viajes y Top Vendedores */}
+      {/* Tareas, Próximas Salidas, Próximos Regresos y Top Vendedores */}
       <div className="grid gap-3 grid-cols-1 lg:grid-cols-2 xl:grid-cols-4">
         <PendingTasksCard />
-        <PendingAlertsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         <UpcomingTripsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
+        <UpcomingReturnsCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         {!isSeller && (
-          <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} dateFrom={filters.dateFrom} dateTo={filters.dateTo} />
+          <TopSellersCard agencyId={filters.agencyId} sellerId={filters.sellerId} />
         )}
       </div>
 
