@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/tooltip"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
+import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
 import {
   Breadcrumb,
@@ -520,6 +521,11 @@ export function OperationDetailClient({
                   : 10
               }
               operationServices={operationServices}
+            />
+            <PurchaseInvoicesSection
+              operationId={operation.id}
+              operators={operators}
+              currency={operation.currency || "USD"}
             />
           </TabsContent>
         )}
