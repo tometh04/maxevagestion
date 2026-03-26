@@ -105,10 +105,28 @@ export async function GET(request: Request) {
       })
     }
 
+    // Get percepciones IVA suffered in this period (credit fiscal adicional)
+    const taxPeriod = `${year}-${String(month).padStart(2, "0")}`
+    const { data: percepciones } = await (supabase.from("tax_withholdings") as any)
+      .select("id, type, amount, currency")
+      .eq("type", "PERCEPCION_IVA")
+      .eq("direction", "SUFFERED")
+      .eq("tax_period", taxPeriod)
+
+    const totalPercepcionesIva = (percepciones || []).reduce((s: number, p: any) => s + Number(p.amount), 0)
+
+    // Adjust IVA position with percepciones
+    const adjustedSummary = {
+      ...ivaSummary,
+      percepciones_iva: totalPercepcionesIva,
+      iva_to_pay_adjusted: (ivaSummary.iva_to_pay || 0) - totalPercepcionesIva,
+    }
+
     return NextResponse.json({
-      summary: ivaSummary,
+      summary: adjustedSummary,
       sales: filteredSalesIVA,
       purchases: filteredPurchasesIVA,
+      percepciones: percepciones || [],
       period: { year, month },
     })
   } catch (error) {
