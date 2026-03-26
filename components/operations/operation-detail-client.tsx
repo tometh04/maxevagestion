@@ -26,6 +26,7 @@ import {
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
+import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
 import {
   Breadcrumb,
@@ -217,6 +218,9 @@ export function OperationDetailClient({
           <TabsTrigger value="itinerary">Detalle de Compra</TabsTrigger>
           {userRole !== "SELLER" && (
             <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
+          )}
+          {userRole !== "SELLER" && (
+            <TabsTrigger value="metrics">Métricas</TabsTrigger>
           )}
           <TabsTrigger value="alerts">Alertas ({alerts?.length || 0})</TabsTrigger>
         </TabsList>
@@ -510,6 +514,16 @@ export function OperationDetailClient({
 
         {userRole !== "SELLER" && (
           <TabsContent value="accounting" className="space-y-4">
+            <PurchaseInvoicesSection
+              operationId={operation.id}
+              operators={operators}
+              currency={operation.currency || "USD"}
+            />
+            <OperationSaleInvoicesSection operationId={operation.id} />
+          </TabsContent>
+
+          {userRole !== "SELLER" && (
+          <TabsContent value="metrics" className="space-y-4">
             <OperationAccountingSection
               operationId={operation.id}
               saleAmount={operation.sale_amount_total || 0}
@@ -522,12 +536,8 @@ export function OperationDetailClient({
               }
               operationServices={operationServices}
             />
-            <PurchaseInvoicesSection
-              operationId={operation.id}
-              operators={operators}
-              currency={operation.currency || "USD"}
-            />
           </TabsContent>
+          )}
         )}
 
         <TabsContent value="alerts" className="space-y-4">
