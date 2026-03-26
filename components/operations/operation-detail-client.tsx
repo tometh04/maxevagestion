@@ -483,6 +483,72 @@ export function OperationDetailClient({
               </CardContent>
             </Card>
           )}
+
+          {/* Servicios cargados */}
+          {operationServices && operationServices.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Servicios Incluidos</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {operationServices.map((svc) => (
+                    <div key={svc.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          {svc.service_type === "HOTEL" ? "Hotel" :
+                           svc.service_type === "FLIGHT" ? "Vuelo" :
+                           svc.service_type === "TRANSFER" ? "Transfer" :
+                           svc.service_type === "ASSISTANCE" ? "Asistencia" :
+                           svc.service_type === "SEAT" ? "Asiento" :
+                           svc.service_type === "LUGGAGE" ? "Equipaje" :
+                           svc.service_type === "VISA" ? "Visa" : svc.service_type}
+                        </Badge>
+                        <span className="text-sm">{svc.name || svc.service_type}</span>
+                      </div>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span className="text-muted-foreground">
+                          Venta: {svc.currency} {svc.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                        </span>
+                        {userRole !== "SELLER" && (
+                          <span className="text-muted-foreground">
+                            Costo: {svc.currency} {svc.cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                        {userRole !== "SELLER" && svc.price - svc.cost !== 0 && (
+                          <span className={svc.price - svc.cost > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                            Margen: {svc.currency} {(svc.price - svc.cost).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {/* Totales */}
+                  {userRole !== "SELLER" && (
+                    <div className="flex items-center justify-between pt-3 border-t font-medium">
+                      <span className="text-sm">Total Servicios</span>
+                      <div className="flex items-center gap-4 text-sm">
+                        <span>
+                          Venta: {(() => {
+                            const byC: Record<string, number> = {}
+                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + s.price })
+                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
+                          })()}
+                        </span>
+                        <span className="text-green-600">
+                          Margen: {(() => {
+                            const byC: Record<string, number> = {}
+                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + (s.price - s.cost) })
+                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
