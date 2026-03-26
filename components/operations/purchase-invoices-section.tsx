@@ -13,7 +13,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
 import {
-  Upload, FileText, Loader2, Pencil, Trash2, Eye, Plus, Scan, Check, AlertCircle
+  Upload, FileText, Loader2, Pencil, Trash2, Eye, Plus, Scan, Check, AlertCircle, Receipt
 } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
