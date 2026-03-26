@@ -521,8 +521,9 @@ export function OperationDetailClient({
             />
             <OperationSaleInvoicesSection operationId={operation.id} />
           </TabsContent>
+        )}
 
-          {userRole !== "SELLER" && (
+        {userRole !== "SELLER" && (
           <TabsContent value="metrics" className="space-y-4">
             <OperationAccountingSection
               operationId={operation.id}
@@ -537,7 +538,6 @@ export function OperationDetailClient({
               operationServices={operationServices}
             />
           </TabsContent>
-          )}
         )}
 
         <TabsContent value="alerts" className="space-y-4">
