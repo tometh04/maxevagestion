@@ -278,9 +278,25 @@ export async function processCommissionsForOperations(operationIds?: string[]): 
   }
 
   for (const operation of (operations || []) as Operation[]) {
-    const commissionData = await calculateCommission(operation)
+    // Ensure numeric fields are actual numbers (Supabase returns strings for NUMERIC columns)
+    const numericOp = {
+      ...operation,
+      sale_amount_total: Number(operation.sale_amount_total) || 0,
+      operator_cost: Number(operation.operator_cost) || 0,
+      margin_amount: Number(operation.margin_amount) || 0,
+      margin_percentage: Number(operation.margin_percentage) || 0,
+    } as Operation
+
+    // Recalculate margin from actual values in case it's stale
+    const recalculatedMargin = numericOp.sale_amount_total - numericOp.operator_cost
+    if (Math.abs(recalculatedMargin - numericOp.margin_amount) > 1) {
+      console.log(`[Commissions] Margin mismatch for ${operation.id}: stored=${numericOp.margin_amount}, recalculated=${recalculatedMargin}. Using recalculated.`)
+      numericOp.margin_amount = recalculatedMargin
+    }
+
+    const commissionData = await calculateCommission(numericOp)
     if (commissionData.totalCommission > 0) {
-      await createOrUpdateCommissionRecords(operation, commissionData)
+      await createOrUpdateCommissionRecords(numericOp, commissionData)
     }
   }
 }
