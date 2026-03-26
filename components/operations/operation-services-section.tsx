@@ -105,6 +105,16 @@ interface ServicePayment {
   reference: string | null
 }
 
+interface OperationData {
+  destination: string
+  departure_date: string
+  return_date: string
+  adults: number
+  children: number
+  infants: number
+  origin: string
+}
+
 interface OperationServicesSectionProps {
   operationId: string
   operationStatus: string
@@ -112,6 +122,7 @@ interface OperationServicesSectionProps {
   userRole: string
   servicePayments?: ServicePayment[]
   operationCurrency?: string
+  operationData?: OperationData
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -210,6 +221,7 @@ export function OperationServicesSection({
   userRole,
   servicePayments = [],
   operationCurrency = "USD",
+  operationData,
 }: OperationServicesSectionProps) {
   const router = useRouter()
   const isSeller = userRole === "SELLER"
@@ -844,7 +856,31 @@ export function OperationServicesSection({
               <Label>Tipo de servicio *</Label>
               <Select
                 value={form.service_type}
-                onValueChange={(v) => setForm({ ...form, service_type: v as ServiceType })}
+                onValueChange={(v) => {
+                  const newForm = { ...form, service_type: v as ServiceType }
+                  // Auto-fill from operation data
+                  if (operationData) {
+                    if (v === "HOTEL") {
+                      newForm.checkin_date = newForm.checkin_date || operationData.departure_date?.split("T")[0] || ""
+                      newForm.checkout_date = newForm.checkout_date || operationData.return_date?.split("T")[0] || ""
+                      if (newForm.checkin_date && newForm.checkout_date) {
+                        const d1 = new Date(newForm.checkin_date)
+                        const d2 = new Date(newForm.checkout_date)
+                        const diffDays = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24))
+                        if (diffDays > 0) newForm.nights = diffDays.toString()
+                      }
+                      newForm.rooms = String(Math.max(1, Math.ceil((operationData.adults + operationData.children) / 2)))
+                    }
+                    if (v === "FLIGHT") {
+                      newForm.flight_route = newForm.flight_route || `${operationData.origin} → ${operationData.destination}`
+                      newForm.flight_date = newForm.flight_date || operationData.departure_date?.split("T")[0] || ""
+                      newForm.flight_return_date = newForm.flight_return_date || operationData.return_date?.split("T")[0] || ""
+                    }
+                  }
+                  newForm.sale_currency = (operationCurrency as Currency) || "USD"
+                  newForm.cost_currency = (operationCurrency as Currency) || "USD"
+                  setForm(newForm)
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccioná un tipo..." />

@@ -630,6 +630,15 @@ export function OperationDetailClient({
             userRole={userRole}
             servicePayments={servicePayments}
             operationCurrency={operation.currency}
+            operationData={{
+              destination: operation.destination || "",
+              departure_date: operation.departure_date || "",
+              return_date: operation.return_date || "",
+              adults: operation.adults || 0,
+              children: operation.children || 0,
+              infants: operation.infants || 0,
+              origin: operation.origin || "Buenos Aires",
+            }}
           />
         </TabsContent>
 
