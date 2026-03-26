@@ -499,6 +499,7 @@ export function OperationDetailClient({
                           {svc.service_type === "HOTEL" ? "Hotel" :
                            svc.service_type === "FLIGHT" ? "Vuelo" :
                            svc.service_type === "TRANSFER" ? "Transfer" :
+                           svc.service_type === "EXCURSION" ? "Excursión" :
                            svc.service_type === "ASSISTANCE" ? "Asistencia" :
                            svc.service_type === "SEAT" ? "Asiento" :
                            svc.service_type === "LUGGAGE" ? "Equipaje" :

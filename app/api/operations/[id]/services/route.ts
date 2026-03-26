@@ -7,17 +7,18 @@ import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
 // Tipos de servicios que generan comisión al vendedor
-const COMMISSION_SERVICE_TYPES = new Set(["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT"])
+const COMMISSION_SERVICE_TYPES = new Set(["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"])
 
 // Labels para conceptos contables
 const SERVICE_TYPE_LABELS: Record<string, string> = {
   HOTEL: "Hotel",
   FLIGHT: "Vuelo",
+  TRANSFER: "Transfer",
+  EXCURSION: "Excursión",
+  ASSISTANCE: "Asistencia",
   SEAT: "Asiento",
   LUGGAGE: "Equipaje",
   VISA: "Visa",
-  TRANSFER: "Transfer",
-  ASSISTANCE: "Asistencia",
 }
 
 // ─────────────────────────────────────────────
@@ -470,65 +471,76 @@ export async function POST(
         .eq("id", serviceId)
     }
 
-    // ── 8. Auto-crear itinerary_item para HOTEL, FLIGHT, TRANSFER ──
-    if (["HOTEL", "FLIGHT", "TRANSFER"].includes(service_type)) {
-      try {
-        // Get max sort_order
-        const { data: maxOrder } = await (supabase.from("itinerary_items") as any)
-          .select("sort_order")
-          .eq("operation_id", operationId)
-          .order("sort_order", { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        const nextOrder = (maxOrder?.sort_order || 0) + 1
+    // ── 8. Auto-crear itinerary_item para TODOS los servicios ──
+    try {
+      // Get max sort_order
+      const { data: maxOrder } = await (supabase.from("itinerary_items") as any)
+        .select("sort_order")
+        .eq("operation_id", operationId)
+        .order("sort_order", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const nextOrder = (maxOrder?.sort_order || 0) + 1
 
-        const itineraryInsert: any = {
-          operation_id: operationId,
-          sort_order: nextOrder,
-        }
-
-        if (service_type === "HOTEL") {
-          itineraryInsert.item_type = "HOTEL"
-          itineraryInsert.hotel_name = body.hotel_name || null
-          itineraryInsert.hotel_stars = body.hotel_stars ? Number(body.hotel_stars) : null
-          itineraryInsert.hotel_address = body.hotel_address || null
-          itineraryInsert.hotel_phone = body.hotel_phone || null
-          itineraryInsert.room_type = body.room_type || null
-          itineraryInsert.meal_plan = body.meal_plan || null
-          itineraryInsert.checkin_date = body.checkin_date || null
-          itineraryInsert.checkout_date = body.checkout_date || null
-          itineraryInsert.nights = body.nights ? Number(body.nights) : null
-          itineraryInsert.rooms = body.rooms ? Number(body.rooms) : 1
-          itineraryInsert.destination_city = operation.destination || null
-          itineraryInsert.date_from = body.checkin_date || null
-          itineraryInsert.date_to = body.checkout_date || null
-        } else if (service_type === "FLIGHT") {
-          itineraryInsert.item_type = "FLIGHT"
-          itineraryInsert.airline = body.airline || null
-          itineraryInsert.flight_route = body.flight_route || null
-          itineraryInsert.flight_date = body.flight_date || null
-          itineraryInsert.date_from = body.flight_date || null
-          itineraryInsert.date_to = body.flight_return_date || null
-        } else if (service_type === "TRANSFER") {
-          itineraryInsert.item_type = "TRANSFER"
-          itineraryInsert.transfer_description = description || "Traslado"
-        }
-
-        const { data: itineraryItem } = await (supabase.from("itinerary_items") as any)
-          .insert(itineraryInsert)
-          .select("id")
-          .single()
-
-        // Link the itinerary_item to the service
-        if (itineraryItem?.id) {
-          await (supabase.from("operation_services") as any)
-            .update({ itinerary_item_id: itineraryItem.id })
-            .eq("id", serviceId)
-        }
-      } catch (err) {
-        console.error("[Services POST] Error auto-creando itinerary_item:", err)
-        // Non-fatal: service still created successfully
+      // Map service_type to itinerary item_type
+      const typeMap: Record<string, string> = {
+        HOTEL: "HOTEL",
+        FLIGHT: "FLIGHT",
+        TRANSFER: "TRANSFER",
+        EXCURSION: "NOTE",
+        ASSISTANCE: "NOTE",
+        SEAT: "NOTE",
+        LUGGAGE: "NOTE",
+        VISA: "NOTE",
       }
+
+      const itineraryInsert: any = {
+        operation_id: operationId,
+        sort_order: nextOrder,
+        item_type: typeMap[service_type] || "NOTE",
+        destination_city: operation.destination || null,
+      }
+
+      if (service_type === "HOTEL") {
+        itineraryInsert.hotel_name = body.hotel_name || null
+        itineraryInsert.hotel_stars = body.hotel_stars ? Number(body.hotel_stars) : null
+        itineraryInsert.hotel_address = body.hotel_address || null
+        itineraryInsert.hotel_phone = body.hotel_phone || null
+        itineraryInsert.room_type = body.room_type || null
+        itineraryInsert.meal_plan = body.meal_plan || null
+        itineraryInsert.checkin_date = body.checkin_date || null
+        itineraryInsert.checkout_date = body.checkout_date || null
+        itineraryInsert.nights = body.nights ? Number(body.nights) : null
+        itineraryInsert.rooms = body.rooms ? Number(body.rooms) : 1
+        itineraryInsert.date_from = body.checkin_date || null
+        itineraryInsert.date_to = body.checkout_date || null
+      } else if (service_type === "FLIGHT") {
+        itineraryInsert.airline = body.airline || null
+        itineraryInsert.flight_route = body.flight_route || null
+        itineraryInsert.flight_date = body.flight_date || null
+        itineraryInsert.date_from = body.flight_date || null
+        itineraryInsert.date_to = body.flight_return_date || null
+      } else if (service_type === "TRANSFER") {
+        itineraryInsert.transfer_description = description || "Traslado"
+      } else {
+        // EXCURSION, ASSISTANCE, SEAT, LUGGAGE, VISA → NOTE with description
+        itineraryInsert.notes = `${serviceLabel}: ${description || ""}`
+      }
+
+      const { data: itineraryItem } = await (supabase.from("itinerary_items") as any)
+        .insert(itineraryInsert)
+        .select("id")
+        .single()
+
+      // Link the itinerary_item to the service
+      if (itineraryItem?.id) {
+        await (supabase.from("operation_services") as any)
+          .update({ itinerary_item_id: itineraryItem.id })
+          .eq("id", serviceId)
+      }
+    } catch (err) {
+      console.error("[Services POST] Error auto-creando itinerary_item:", err)
+      // Non-fatal: service still created successfully
     }
 
     // Retornar servicio completo con operador

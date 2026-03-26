@@ -53,7 +53,7 @@ import { es } from "date-fns/locale"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE" | "HOTEL" | "FLIGHT"
+type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE" | "HOTEL" | "FLIGHT" | "EXCURSION"
 type Currency = "ARS" | "USD"
 
 interface Operator {
@@ -131,6 +131,7 @@ const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: bo
   { value: "HOTEL", label: "Hotel", commissions: true },
   { value: "FLIGHT", label: "Vuelo / Aéreo", commissions: true },
   { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
+  { value: "EXCURSION", label: "Excursión", commissions: true },
   { value: "ASSISTANCE", label: "Asistencia", commissions: true },
   { value: "SEAT", label: "Asiento", commissions: false },
   { value: "LUGGAGE", label: "Equipaje", commissions: false },
@@ -140,11 +141,12 @@ const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: bo
 const SERVICE_LABELS: Record<ServiceType, string> = {
   HOTEL: "Hotel",
   FLIGHT: "Vuelo / Aéreo",
+  TRANSFER: "Traslado / Transfer",
+  EXCURSION: "Excursión",
+  ASSISTANCE: "Asistencia",
   SEAT: "Asiento",
   LUGGAGE: "Equipaje",
   VISA: "Visa",
-  TRANSFER: "Traslado / Transfer",
-  ASSISTANCE: "Asistencia",
 }
 
 const paymentMethods = [
@@ -1424,11 +1426,12 @@ export function OperationServicesSection({
 // ─── Info contextual por tipo de servicio ─────────────────────────────────────
 
 const COMMISSION_INFO: Record<ServiceType, string> = {
-  HOTEL: "Hotel: genera comisión al vendedor sobre el margen. Los datos del hotel se cargan automáticamente al Detalle de Compra.",
-  FLIGHT: "Vuelo: genera comisión al vendedor sobre el margen. Los datos del vuelo se cargan automáticamente al Detalle de Compra.",
-  SEAT: "Asiento: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  LUGGAGE: "Equipaje: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  VISA: "Visa: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  TRANSFER: "Traslado / Transfer: sí genera comisión al vendedor sobre el margen. Se carga automáticamente al Detalle de Compra.",
-  ASSISTANCE: "Asistencia: sí genera comisión al vendedor sobre el margen (usando las reglas de comisión activas).",
+  HOTEL: "Hotel: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  FLIGHT: "Vuelo: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  TRANSFER: "Transfer: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  EXCURSION: "Excursión: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  ASSISTANCE: "Asistencia: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  SEAT: "Asiento: no genera comisión. Se carga al Detalle de Compra.",
+  LUGGAGE: "Equipaje: no genera comisión. Se carga al Detalle de Compra.",
+  VISA: "Visa: no genera comisión. Se carga al Detalle de Compra.",
 }
