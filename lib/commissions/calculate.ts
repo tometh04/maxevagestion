@@ -14,7 +14,7 @@ interface CommissionRule {
 interface Operation {
   id: string
   agency_id: string
-  seller_id: string
+  seller_id: string // mapped from seller_primary_id
   seller_secondary_id?: string | null
   commission_split?: number | null
   destination: string
@@ -24,6 +24,7 @@ interface Operation {
   margin_amount: number
   margin_percentage: number
   currency: string
+  sale_currency?: string
   departure_date: string
 }
 
@@ -277,15 +278,19 @@ export async function processCommissionsForOperations(operationIds?: string[]): 
     return
   }
 
-  for (const operation of (operations || []) as Operation[]) {
-    // Ensure numeric fields are actual numbers (Supabase returns strings for NUMERIC columns)
-    const numericOp = {
-      ...operation,
-      sale_amount_total: Number(operation.sale_amount_total) || 0,
-      operator_cost: Number(operation.operator_cost) || 0,
-      margin_amount: Number(operation.margin_amount) || 0,
-      margin_percentage: Number(operation.margin_percentage) || 0,
-    } as Operation
+  for (const rawOp of (operations || []) as any[]) {
+    // Map DB column names to interface (seller_primary_id → seller_id)
+    const operation: Operation = {
+      ...rawOp,
+      seller_id: rawOp.seller_primary_id || rawOp.seller_id,
+      seller_secondary_id: rawOp.seller_secondary_id || null,
+      // Ensure numeric fields are actual numbers (Supabase returns strings for NUMERIC columns)
+      sale_amount_total: Number(rawOp.sale_amount_total) || 0,
+      operator_cost: Number(rawOp.operator_cost) || 0,
+      margin_amount: Number(rawOp.margin_amount) || 0,
+      margin_percentage: Number(rawOp.margin_percentage) || 0,
+    }
+    const numericOp = operation
 
     // Recalculate margin from actual values in case it's stale
     const recalculatedMargin = numericOp.sale_amount_total - numericOp.operator_cost
