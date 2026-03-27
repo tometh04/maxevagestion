@@ -22,11 +22,21 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info, Trash2 } from "lucide-react"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Tooltip,
@@ -82,6 +92,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [payingExpense, setPayingExpense] = useState<any | null>(null)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; payment: any | null }>({ open: false, payment: null })
   const [tableError, setTableError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
@@ -168,6 +179,24 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     } catch (error: any) {
       console.error("Error generating payments:", error)
       toast.error(error.message || "Error al generar pagos recurrentes")
+    }
+  }
+
+  async function handleDeleteRecurring() {
+    if (!deleteDialog.payment) return
+    try {
+      const response = await fetch(`/api/recurring-payments/${deleteDialog.payment.id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al eliminar")
+      }
+      toast.success("Gasto recurrente eliminado")
+      setDeleteDialog({ open: false, payment: null })
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar gasto recurrente")
     }
   }
 
@@ -308,13 +337,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     })
     }
 
-    // Filtro por mes/año (mejorado: calcula vencimientos futuros según frecuencia)
-    if (monthFilter && monthFilter !== "ALL" && yearFilter && yearFilter !== "ALL") {
-      filtered = filtered.filter((p) => hasVencimientoInMonth(p, yearFilter, monthFilter))
-    }
-
     return filtered
-  }, [payments, providerFilter, monthFilter, yearFilter])
+  }, [payments, providerFilter])
 
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
@@ -432,118 +456,133 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">Pagos Activos</p>
-          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{activeCount}</div>
-          <p className="text-xs text-muted-foreground mt-1">
-            {inactiveCount} inactivos
-          </p>
-        </div>
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
+            <CardTitle className="text-sm font-medium">Pagos Activos</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pt-2">
+            <div className="text-2xl font-bold">{activeCount}</div>
+            <p className="text-xs text-muted-foreground">
+              {inactiveCount} inactivos
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">Total Mensual ARS</p>
-          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">
-            {formatCurrency(totalMonthly - (totalMonthlyUSD * 1), "ARS")}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pagos mensuales en pesos
-          </p>
-        </div>
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
+            <CardTitle className="text-sm font-medium">Total Mensual ARS</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pt-2">
+            <div className="text-2xl font-bold">
+              {formatCurrency(totalMonthly - (totalMonthlyUSD * 1), "ARS")}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pagos mensuales en pesos
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">Total Mensual USD</p>
-          <div className="text-2xl font-semibold tabular-nums tracking-tight text-success mt-1">
-            {formatCurrency(totalMonthlyUSD, "USD")}
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Pagos mensuales en dólares
-          </p>
-        </div>
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
+            <CardTitle className="text-sm font-medium">Total Mensual USD</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pt-2">
+            <div className="text-2xl font-bold text-emerald-600">
+              {formatCurrency(totalMonthlyUSD, "USD")}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Pagos mensuales en dólares
+            </p>
+          </CardContent>
+        </Card>
 
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">Acciones</p>
-          <Button onClick={handleGeneratePayments} size="sm" className="h-8 rounded-full w-full mt-2" variant="outline">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Generar Pagos Hoy
-          </Button>
-        </div>
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
+            <CardTitle className="text-sm font-medium">Acciones</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pt-2">
+            <Button onClick={handleGeneratePayments} size="sm" variant="outline" className="w-full">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Generar Pagos Hoy
+            </Button>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Filters and Actions */}
-      <div className="rounded-xl border border-border/40">
-        <div className="p-5 pb-3">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-semibold">Gastos Recurrentes</h3>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="font-medium mb-1">¿Cómo funciona?</p>
-                      <p className="text-xs mb-2">
-                        <strong>Crear Gasto:</strong> Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios).
-                      </p>
-                      <p className="text-xs">
-                        <strong>Pagar Gasto:</strong> Procesa el pago cuando el gasto está vencido, impactando en tu caja.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Define gastos recurrentes y procesa sus pagos cuando correspondan
-              </p>
+      <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-tight">Gastos Recurrentes</h2>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-medium mb-1">¿Cómo funciona?</p>
+                    <p className="text-xs mb-2">
+                      <strong>Crear Gasto:</strong> Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios).
+                    </p>
+                    <p className="text-xs">
+                      <strong>Pagar Gasto:</strong> Procesa el pago cuando el gasto está vencido, impactando en tu caja.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Filtro por Proveedor */}
-              <Select value={providerFilter} onValueChange={setProviderFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <Filter className="mr-2 h-3 w-3" />
-                  <SelectValue placeholder="Proveedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos los proveedores</SelectItem>
-                  {uniqueProviders.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {provider}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <p className="text-sm text-muted-foreground">
+              Define gastos recurrentes y procesa sus pagos cuando correspondan
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro por Proveedor */}
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <Filter className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="Proveedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los proveedores</SelectItem>
+                {uniqueProviders.map((provider) => (
+                  <SelectItem key={provider} value={provider}>
+                    {provider}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Agencia */}
-              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue placeholder="Agencia" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Filtro por Agencia */}
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue placeholder="Agencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Estado */}
-              <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                  <SelectItem value="ACTIVE">Activos</SelectItem>
-                  <SelectItem value="INACTIVE">Inactivos</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Filtro por Estado */}
+            <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="ACTIVE">Activos</SelectItem>
+                <SelectItem value="INACTIVE">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Mes */}
-              <Select value={monthFilter} onValueChange={setMonthFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            {/* Filtros de mes/año removidos - gastos recurrentes son definiciones fijas, no se filtran por fecha */}
+            {/* <Select value={monthFilter} onValueChange={setMonthFilter}>
+                <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Mes" />
                 </SelectTrigger>
                 <SelectContent>
@@ -558,53 +597,33 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                     )
                   })}
                 </SelectContent>
-              </Select>
+              </Select> */}
 
-              {/* Filtro por Año */}
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px]">
-                  <SelectValue placeholder="Año" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos los años</SelectItem>
-                  {Array.from({ length: 5 }, (_, i) => {
-                    const year = new Date().getFullYear() - 2 + i
-                    return (
-                      <SelectItem key={year} value={String(year)}>
-                        {year}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-
-              <Button size="sm" className="h-8 rounded-full" onClick={() => setNewDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo Gasto Recurrente
-              </Button>
-            </div>
+            <Button size="sm" onClick={() => setNewDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Gasto Recurrente
+            </Button>
           </div>
         </div>
-        <div className="px-5 pb-5">
+        <div className="rounded-xl border border-border/40">
           {filteredPayments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {providerFilter !== "ALL"
+              {providerFilter !== "ALL" 
                 ? `No hay gastos recurrentes para "${providerFilter}"`
                 : "No se encontraron gastos recurrentes"
               }
             </div>
           ) : (
-            <div className="max-h-[60vh] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky top-0 bg-background z-10">Proveedor</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Descripción</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Monto</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Frecuencia</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Próximo Vencimiento</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Acciones</TableHead>
+                  <TableHead>Proveedor</TableHead>
+                  <TableHead>Descripción</TableHead>
+                  <TableHead>Monto</TableHead>
+                  <TableHead>Frecuencia</TableHead>
+                  <TableHead>Próximo Vencimiento</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -624,7 +643,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                       <TableCell className="max-w-[200px] truncate">
                         {payment.description}
                       </TableCell>
-                      <TableCell className={payment.currency === "USD" ? "text-success font-medium" : ""}>
+                      <TableCell className={payment.currency === "USD" ? "text-emerald-600 font-medium" : ""}>
                         {formatCurrency(payment.amount, payment.currency)}
                       </TableCell>
                       <TableCell>
@@ -640,12 +659,12 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                             })}
                           </span>
                           {daysUntilDue <= 0 && (
-                            <span className="text-xs text-destructive font-medium">
+                            <span className="text-xs text-red-500 font-medium">
                               {daysUntilDue === 0 ? "Vence hoy" : `Vencido hace ${Math.abs(daysUntilDue)} días`}
                             </span>
                           )}
                           {daysUntilDue > 0 && daysUntilDue <= 7 && (
-                            <span className="text-xs text-warning">
+                            <span className="text-xs text-amber-600">
                               {daysUntilDue === 1 ? "Mañana" : `En ${daysUntilDue} días`}
                             </span>
                           )}
@@ -676,6 +695,14 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                           >
                             Editar
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                            onClick={() => setDeleteDialog({ open: true, payment })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -683,7 +710,6 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                 })}
               </TableBody>
             </Table>
-            </div>
           )}
         </div>
       </div>
@@ -692,11 +718,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
       {filteredPayments.length > 0 && (
         <div className="grid gap-3 md:grid-cols-3">
           {/* Gráfico de barras: Gastos por categoría */}
-          <div className="rounded-xl border border-border/40 md:col-span-2">
-            <div className="py-3 px-4">
-              <p className="text-sm font-medium">Gastos por Categoría (Mensual)</p>
-            </div>
-            <div className="px-4 pb-4">
+          <Card className="md:col-span-2 rounded-xl border border-border/40">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Gastos por Categoría (Mensual)</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={expensesByCategory} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
@@ -721,15 +747,15 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Gráfico de torta: Distribución porcentual */}
-          <div className="rounded-xl border border-border/40">
-            <div className="py-3 px-4">
-              <p className="text-sm font-medium">Distribución por Categoría</p>
-            </div>
-            <div className="px-4 pb-4">
+          <Card className="rounded-xl border border-border/40">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Distribución por Categoría</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -777,15 +803,15 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   )
                 })}
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Gráfico de líneas: Evolución mensual */}
-          <div className="rounded-xl border border-border/40 md:col-span-3">
-            <div className="py-3 px-4">
-              <p className="text-sm font-medium">Evolución de Gastos por Categoría - Últimos 6 Meses</p>
-            </div>
-            <div className="px-4 pb-4">
+          <Card className="md:col-span-3 rounded-xl border border-border/40">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Evolución de Gastos por Categoría - Últimos 6 Meses</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
               <div className="h-[200px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={monthlyEvolution} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
@@ -831,24 +857,24 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   </LineChart>
                 </ResponsiveContainer>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Estadísticas adicionales */}
-          <div className="rounded-xl border border-border/40 md:col-span-3">
-            <div className="py-3 px-4">
-              <p className="text-sm font-medium">Estadísticas Adicionales</p>
-            </div>
-            <div className="px-4 pb-4">
+          <Card className="md:col-span-3 rounded-xl border border-border/40">
+            <CardHeader className="py-3 px-4">
+              <CardTitle className="text-sm font-medium">Estadísticas Adicionales</CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-info">
+                  <div className="text-2xl font-bold text-blue-600">
                     {filteredPayments.filter(p => p.is_active).length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">Gastos Activos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-warning">
+                  <div className="text-2xl font-bold text-orange-600">
                     {filteredPayments.filter(p => {
                       const daysUntilDue = Math.ceil(
                         (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -859,7 +885,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <div className="text-xs text-muted-foreground mt-1">Vencen Esta Semana</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-destructive">
+                  <div className="text-2xl font-bold text-red-600">
                     {filteredPayments.filter(p => {
                       const daysUntilDue = Math.ceil(
                         (new Date(p.next_due_date).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
@@ -870,14 +896,14 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                   <div className="text-xs text-muted-foreground mt-1">Vencidos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-success">
+                  <div className="text-2xl font-bold text-green-600">
                     {filteredPayments.filter(p => p.currency === "USD").length}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">En USD</div>
                 </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -906,6 +932,29 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         }}
         onSuccess={fetchData}
       />
+
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, payment: open ? deleteDialog.payment : null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar gasto recurrente</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDialog.payment && (
+                <>
+                  Vas a eliminar el gasto recurrente <strong>{deleteDialog.payment.description}</strong> de{" "}
+                  <strong>{formatCurrency(deleteDialog.payment.amount, deleteDialog.payment.currency)}</strong>.
+                  Esta acción no se puede deshacer.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteRecurring} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
