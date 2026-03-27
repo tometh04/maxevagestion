@@ -335,27 +335,35 @@ export function InterfaceSettings() {
         </div>
 
         {/* Custom color input */}
-        <div className="flex items-center gap-3 pt-1">
-          <div
-            className="h-10 w-10 rounded-full border-2 border-dashed border-border/60 flex-shrink-0 overflow-hidden"
-            style={{ backgroundColor: /^#[0-9a-fA-F]{6}$/.test(customHex.startsWith("#") ? customHex : `#${customHex}`) ? (customHex.startsWith("#") ? customHex : `#${customHex}`) : "transparent" }}
-          >
-            <input
-              type="color"
-              value={/^#[0-9a-fA-F]{6}$/.test(customHex.startsWith("#") ? customHex : `#${customHex}`) ? (customHex.startsWith("#") ? customHex : `#${customHex}`) : "#6366f1"}
-              onChange={(e) => handleCustomHexChange(e.target.value)}
-              className="h-full w-full cursor-pointer opacity-0"
-              title="Elegir color personalizado"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground font-medium">#</span>
+        <div className="flex items-center gap-3 mt-4">
+          <span className="text-xs text-muted-foreground">o color personalizado:</span>
+          <div className="flex items-center gap-1.5">
+            {customHex && /^#[0-9A-Fa-f]{6}$/.test(customHex) && (
+              <div
+                className={`h-8 w-8 rounded-full border-2 ${
+                  selectedColor && selectedColor === hexToHsl(customHex)
+                    ? "ring-2 ring-offset-2 ring-offset-background ring-primary border-border/40"
+                    : "border-border/40"
+                }`}
+                style={{ backgroundColor: customHex }}
+              />
+            )}
             <Input
-              value={customHex.replace("#", "")}
-              onChange={(e) => handleCustomHexChange(e.target.value)}
-              placeholder="6366f1"
+              value={customHex}
+              onChange={(e) => {
+                let val = e.target.value
+                if (!val.startsWith('#')) val = '#' + val
+                setCustomHex(val)
+                if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                  const hsl = hexToHsl(val)
+                  if (hsl) {
+                    handleColorSelect(hsl, val)
+                  }
+                }
+              }}
+              placeholder="#4F46E5"
+              className="w-28 h-8 text-xs font-mono"
               maxLength={7}
-              className="h-8 w-24 text-xs font-mono uppercase"
             />
           </div>
         </div>

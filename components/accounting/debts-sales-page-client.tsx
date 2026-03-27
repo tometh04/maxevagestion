@@ -467,7 +467,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/customers">Base de Datos Clientes</Link>
+              <Link href="/customers">Clientes</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
