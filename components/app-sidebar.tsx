@@ -128,7 +128,10 @@ const allNavigation: NavItem[] = [
         url: "/accounting/iva",
         items: [
           { title: "Posición IVA", url: "/accounting/iva" },
+          { title: "Libro IVA", url: "/accounting/libro-iva" },
           { title: "Percepciones y Retenciones", url: "/accounting/withholdings" },
+          { title: "IIBB", url: "/accounting/iibb" },
+          { title: "Ganancias", url: "/accounting/ganancias" },
           { title: "Posición Mensual", url: "/accounting/monthly-position" },
         ],
       },
