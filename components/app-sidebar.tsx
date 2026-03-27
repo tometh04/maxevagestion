@@ -12,6 +12,8 @@ import {
   GalleryVerticalEnd,
   Bot,
   BookOpen,
+  Wallet,
+  TrendingUp,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -58,6 +60,13 @@ const allNavigation: NavItem[] = [
     module: "dashboard",
     collapsible: false,
   },
+  // Cerebro - AI Assistant (prominent placement)
+  {
+    title: "🧠 Cerebro",
+    url: "/tools/cerebro",
+    icon: Bot,
+    collapsible: false,
+  },
   // Operaciones - Colapsable (moved to second position)
   {
     title: "Operaciones",
@@ -70,9 +79,9 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/operations/settings" },
     ],
   },
-  // Clientes
+  // Base de Datos Clientes - Colapsable (renamed from "Clientes")
   {
-    title: "Clientes",
+    title: "Base de Datos Clientes",
     url: "/customers",
     icon: Users,
     module: "customers",
@@ -93,45 +102,54 @@ const allNavigation: NavItem[] = [
       { title: "Estadísticas", url: "/sales/statistics" },
     ],
   },
-  // Finanzas - Colapsable (con submenús anidados)
+  // Finanzas - Colapsable (reorganizado)
   {
     title: "Finanzas",
     url: "/cash/summary",
     icon: DollarSign,
     module: "cash",
     items: [
-      // Caja - Submenú con nivel 3
-      {
-        title: "Caja",
-        url: "/cash/summary",
-        items: [
-          { title: "Resumen", url: "/cash/summary" },
-          { title: "Ingresos", url: "/cash/income" },
-          { title: "Egresos", url: "/cash/expenses" },
-          { title: "Movimientos", url: "/cash/movements" },
-          { title: "Pagos", url: "/cash/payments" },
-        ],
-      },
-      // Contabilidad - Submenú con nivel 3
+      { title: "Caja y Bancos", url: "/cash/summary" },
+      { title: "Movimientos", url: "/cash/movements" },
+      { title: "Gastos", url: "/expenses" },
       {
         title: "Contabilidad",
-        url: "/accounting/monthly-position",
+        url: "/accounting/ledger",
         items: [
-          { title: "Posición Mensual", url: "/accounting/monthly-position" },
+          { title: "Libro Mayor", url: "/accounting/ledger" },
+          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
-          { title: "Gastos Recurrentes", url: "/accounting/recurring-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
-          { title: "Libro Mayor", url: "/accounting/ledger" },
-          { title: "IVA", url: "/accounting/iva" },
-          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
         ],
       },
-      // Items directos sin submenú
-      { title: "Mi Balance", url: "/my/balance" },
-      { title: "Mis Comisiones", url: "/my/commissions" },
+      {
+        title: "Impuestos",
+        url: "/accounting/iva",
+        items: [
+          { title: "Posición IVA", url: "/accounting/iva" },
+          { title: "Libro IVA", url: "/accounting/libro-iva" },
+          { title: "Percepciones y Retenciones", url: "/accounting/withholdings" },
+          { title: "IIBB", url: "/accounting/iibb" },
+          { title: "Ganancias", url: "/accounting/ganancias" },
+          { title: "Posición Mensual", url: "/accounting/monthly-position" },
+        ],
+      },
       { title: "Configuración", url: "/finances/settings" },
     ],
+  },
+  // Mi Balance / Comisiones - Visible para vendedores (sin módulo restrictivo)
+  {
+    title: "Mi Balance",
+    url: "/my/balance",
+    icon: Wallet,
+    collapsible: false,
+  },
+  {
+    title: "Mis Comisiones",
+    url: "/my/commissions",
+    icon: TrendingUp,
+    collapsible: false,
   },
   // Recursos - Colapsable
   {
@@ -168,6 +186,7 @@ const allNavigation: NavItem[] = [
     items: [
       { title: "Tareas", url: "/tools/tasks" },
       { title: "Cerebro", url: "/tools/cerebro" },
+      { title: "WHA Control", url: "/tools/wha-control" },
     ],
   },
 ]
@@ -193,6 +212,10 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
           return null
         }
       }
+      // Ocultar Cerebro para SELLER
+      if (item.url === "/tools/cerebro" && userRole === "SELLER") {
+        return null
+      }
 
       // Filtrar subitems según permisos
       if (item.items) {
@@ -206,6 +229,11 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
             }
 
             // Ocultar Cerebro para SELLER
+
+            // Ocultar WHA Control para todos excepto maxi@erplozada.com
+            if (subItem.url === "/tools/wha-control" && user.email !== "maxi@erplozada.com") {
+              return null
+            }
             if (userRole === "SELLER" && subItem.url === "/tools/cerebro") {
               return null
             }
@@ -232,7 +260,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
     })
     .filter((item): item is NavItem => {
       if (!item) return false
-      // Items sin módulo (como "Mi Balance") para vendedores, ADMIN y SUPER_ADMIN (si tienen operaciones asignadas)
+      // "Mi Balance" y "Mis Comisiones" visibles para vendedores, ADMIN y SUPER_ADMIN
       if (item.url === "/my/balance" || item.url === "/my/commissions") {
         return userRole === "SELLER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN"
       }
@@ -249,7 +277,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <a href="/dashboard">
-                <GalleryVerticalEnd className="!size-4" />
+                <GalleryVerticalEnd className="!size-5" />
                 <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">Lozada Rosario</span>
               </a>
             </SidebarMenuButton>
