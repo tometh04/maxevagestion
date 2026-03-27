@@ -36,7 +36,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Cuenta</h1>
           <p className="text-sm text-muted-foreground">No tienes permisos para acceder a esta sección</p>
         </div>
       </div>
@@ -46,8 +46,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Configuración</h1>
-        <p className="text-sm text-muted-foreground">Gestiona la configuración del sistema</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Cuenta</h1>
+        <p className="text-sm text-muted-foreground">Gestiona tu cuenta, usuarios y operadores</p>
       </div>
 
       <SettingsPageClient defaultTab={defaultTab} agencies={agencies} firstAgencyId={firstAgencyId} userRole={user.role} />

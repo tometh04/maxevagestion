@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { UsersSettings } from "@/components/settings/users-settings"
@@ -13,12 +13,69 @@ import { MigrateHistoricalAccounting } from "@/components/settings/migrate-histo
 import { ImportSettings } from "@/components/settings/import-settings"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 import { AfipSettings } from "@/components/settings/afip-settings"
+import { OperatorsTable, Operator } from "@/components/operators/operators-table"
+import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
+import { Button } from "@/components/ui/button"
+import { Plus } from "lucide-react"
 
 interface SettingsPageClientProps {
   defaultTab: string
   agencies: Array<{ id: string; name: string }>
   firstAgencyId: string | null
   userRole: string
+}
+
+function OperatorsTab() {
+  const [operators, setOperators] = useState<Operator[]>([])
+  const [loading, setLoading] = useState(false)
+  const [newOperatorDialogOpen, setNewOperatorDialogOpen] = useState(false)
+
+  const fetchOperators = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await fetch("/api/operators")
+      const data = await response.json()
+      setOperators(data.operators || [])
+    } catch (error) {
+      console.error("Error fetching operators:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchOperators()
+  }, [fetchOperators])
+
+  const handleOperatorCreated = useCallback(() => {
+    fetchOperators()
+  }, [fetchOperators])
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">
+          Gestiona los operadores y proveedores de servicios turísticos.
+        </p>
+        <Button onClick={() => setNewOperatorDialogOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo Operador
+        </Button>
+      </div>
+
+      <OperatorsTable
+        operators={operators}
+        isLoading={loading}
+        emptyMessage="No hay operadores registrados"
+      />
+
+      <NewOperatorDialog
+        open={newOperatorDialogOpen}
+        onOpenChange={setNewOperatorDialogOpen}
+        onSuccess={handleOperatorCreated}
+      />
+    </div>
+  )
 }
 
 export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRole }: SettingsPageClientProps) {
@@ -35,21 +92,28 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
     }}>
       <TabsList className="flex-wrap">
         <TabsTrigger value="users">Usuarios</TabsTrigger>
+        <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
+        {/* Hidden tabs - kept for future use
         <TabsTrigger value="trello">Trello</TabsTrigger>
         <TabsTrigger value="commissions">Comisiones</TabsTrigger>
         <TabsTrigger value="ai">AI</TabsTrigger>
-        <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
-        <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         <TabsTrigger value="import">Importar Datos</TabsTrigger>
         {userRole === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
+        */}
+        <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
+        <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
       </TabsList>
       <TabsContent value="users" className="mt-6">
         <UsersSettings />
       </TabsContent>
+      <TabsContent value="operadores" className="mt-6">
+        <OperatorsTab />
+      </TabsContent>
       <TabsContent value="agencies" className="mt-6">
         <AgenciesSettings />
       </TabsContent>
+      {/* Hidden tab contents - kept for future use */}
       <TabsContent value="trello" className="mt-6">
         <TrelloSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
       </TabsContent>
@@ -59,14 +123,15 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       <TabsContent value="ai" className="mt-6">
         <AISettings />
       </TabsContent>
+      <TabsContent value="import" className="mt-6">
+        <ImportSettings />
+      </TabsContent>
+      {/* End hidden tab contents */}
       <TabsContent value="requirements" className="mt-6">
         <DestinationRequirementsClient />
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
-      <TabsContent value="import" className="mt-6">
-        <ImportSettings />
       </TabsContent>
       {userRole === "SUPER_ADMIN" && (
         <TabsContent value="seed" className="mt-6 space-y-6">

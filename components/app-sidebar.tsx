@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Users,
-  Building2,
   DollarSign,
   Plane,
   GalleryVerticalEnd,
@@ -162,20 +161,6 @@ const allNavigation: NavItem[] = [
       { title: "Calendario", url: "/calendar" },
       { title: "Mensajes", url: "/messages" },
       { title: "Templates", url: "/resources/templates" },
-    ],
-  },
-  // Agencia - Colapsable
-  {
-    title: "Agencia",
-    url: "/settings",
-    icon: Building2,
-    module: "settings",
-    items: [
-      { title: "Configuración", url: "/settings" },
-      { title: "Operadores", url: "/operators", module: "operators" as const },
-      { title: "Usuarios", url: "/settings/users" },
-      { title: "Equipos", url: "/settings/teams" },
-      { title: "Integraciones", url: "/settings/integrations" },
     ],
   },
   // Herramientas - Colapsable
