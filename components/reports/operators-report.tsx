@@ -125,7 +125,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Total Pagado</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid, "ARS")}</div>
+            <div className="text-2xl font-bold text-warning">{formatCurrency(totalPaid, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -143,7 +143,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
             <CardTitle className="text-sm font-medium">Vencidos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{formatCurrency(totalOverdue, "ARS")}</div>
+            <div className="text-2xl font-bold text-destructive">{formatCurrency(totalOverdue, "ARS")}</div>
           </CardContent>
         </Card>
       </div>
@@ -174,7 +174,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
                     <TableCell className="font-medium">{operator.name}</TableCell>
                     <TableCell className="text-right">{operator.operationsCount}</TableCell>
                     <TableCell className="text-right">{formatCurrency(operator.totalCost, "ARS")}</TableCell>
-                    <TableCell className="text-right text-amber-600">
+                    <TableCell className="text-right text-warning">
                       {formatCurrency(operator.totalPaid, "ARS")}
                     </TableCell>
                     <TableCell className="text-right">
@@ -184,7 +184,7 @@ export function OperatorsReport({ filters }: OperatorsReportProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       {operator.overduePayments > 0 ? (
-                        <Badge className="text-red-600">{formatCurrency(operator.overduePayments, "ARS")}</Badge>
+                        <Badge className="text-destructive">{formatCurrency(operator.overduePayments, "ARS")}</Badge>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}

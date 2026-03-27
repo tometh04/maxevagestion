@@ -369,13 +369,13 @@ export function SalesReport({ userRole, userId, sellers, agencies }: SalesReport
                     <TableCell className="text-right font-medium">
                       US$ {Math.round(s.sale_usd).toLocaleString("es-AR")}
                     </TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-success">
                       US$ {Math.round(s.margin_usd).toLocaleString("es-AR")}
                     </TableCell>
                     <TableCell className="text-right">
                       $ {Math.round(s.sale_ars).toLocaleString("es-AR")}
                     </TableCell>
-                    <TableCell className="text-right text-green-600">
+                    <TableCell className="text-right text-success">
                       $ {Math.round(s.margin_ars).toLocaleString("es-AR")}
                     </TableCell>
                   </TableRow>
