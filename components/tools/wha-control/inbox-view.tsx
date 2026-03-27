@@ -174,7 +174,7 @@ export function InboxView() {
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col gap-3 ${showThread ? "hidden md:flex" : "flex"}`}>
         {/* Device selector */}
         <Select value={selectedDeviceId} onValueChange={(v) => { setSelectedDeviceId(v); setSelectedChat(null); setShowThread(false) }}>
-          <SelectTrigger>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
             <SelectValue placeholder="Seleccionar dispositivo" />
           </SelectTrigger>
           <SelectContent>
@@ -193,12 +193,12 @@ export function InboxView() {
             placeholder="Buscar conversación..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-8 text-xs rounded-full border-border/60"
           />
         </div>
 
         {/* Chat list */}
-        <ScrollArea className="flex-1 rounded-lg border">
+        <ScrollArea className="flex-1 rounded-xl border border-border/40">
           {loadingChats ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -232,7 +232,7 @@ export function InboxView() {
                           {chat.last_message_preview || "Sin mensajes"}
                         </p>
                         {chat.unread_count > 0 && (
-                          <Badge variant="default" className="h-5 min-w-[20px] text-xs px-1.5 flex-shrink-0">
+                          <Badge variant="default" className="h-5 min-w-[20px] text-xs px-1.5 flex-shrink-0 bg-success/10 text-success">
                             {chat.unread_count}
                           </Badge>
                         )}
@@ -247,7 +247,7 @@ export function InboxView() {
       </div>
 
       {/* Message Thread Panel */}
-      <Card className={`flex-1 flex flex-col ${showThread ? "flex" : "hidden md:flex"}`}>
+      <Card className={`flex-1 flex flex-col rounded-xl border border-border/40 ${showThread ? "flex" : "hidden md:flex"}`}>
         {selectedChat ? (
           <>
             <div className="flex items-center gap-3 p-4 border-b">

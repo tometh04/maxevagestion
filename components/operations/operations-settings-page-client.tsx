@@ -172,12 +172,12 @@ export function OperationsSettingsPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Configuración de Operaciones</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Configuración de Operaciones</h1>
           <p className="text-muted-foreground">
             Configura alertas y validaciones para operaciones
           </p>
         </div>
-        <Button onClick={saveSettings} disabled={saving}>
+        <Button size="sm" onClick={saveSettings} disabled={saving}>
           {saving ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -200,7 +200,7 @@ export function OperationsSettingsPageClient() {
 
         {/* Tab: Alertas */}
         <TabsContent value="alerts" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle>Alertas Automáticas</CardTitle>
               <CardDescription>
@@ -209,7 +209,7 @@ export function OperationsSettingsPageClient() {
             </CardHeader>
             <CardContent className="space-y-4">
               {settings.auto_alerts.map((alert, index) => (
-                <div key={index} className="p-4 border rounded-lg space-y-4">
+                <div key={index} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <Switch
@@ -244,7 +244,7 @@ export function OperationsSettingsPageClient() {
 
         {/* Tab: Validaciones */}
         <TabsContent value="validations" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle>Validaciones de Campos</CardTitle>
               <CardDescription>

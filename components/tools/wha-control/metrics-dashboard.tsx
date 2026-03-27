@@ -113,7 +113,7 @@ export function MetricsDashboard() {
         <div className="space-y-1">
           <Label className="text-xs">Dispositivo</Label>
           <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-            <SelectTrigger className="w-[200px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Todos" />
             </SelectTrigger>
             <SelectContent>
@@ -128,11 +128,11 @@ export function MetricsDashboard() {
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Desde</Label>
-          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[160px]" />
+          <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]" />
         </div>
         <div className="space-y-1">
           <Label className="text-xs">Hasta</Label>
-          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[160px]" />
+          <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]" />
         </div>
       </div>
 
@@ -145,7 +145,7 @@ export function MetricsDashboard() {
           {/* KPI Cards */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {kpis.map((kpi) => (
-              <Card key={kpi.label}>
+              <Card key={kpi.label} className="rounded-xl border border-border/40">
                 <CardContent className="pt-6">
                   <div className="flex items-center gap-2 mb-2">
                     <kpi.icon className={`h-4 w-4 ${kpi.color}`} />
@@ -158,7 +158,7 @@ export function MetricsDashboard() {
           </div>
 
           {/* Cotizaciones + Iniciados chart */}
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="text-sm">Cotizaciones (PDFs) e Iniciadas por día</CardTitle>
             </CardHeader>
@@ -186,7 +186,7 @@ export function MetricsDashboard() {
           {/* Charts */}
           <div className="grid gap-4 md:grid-cols-2">
             {/* Messages per day */}
-            <Card>
+            <Card className="rounded-xl border border-border/40">
               <CardHeader>
                 <CardTitle className="text-sm">Mensajes por día</CardTitle>
               </CardHeader>
@@ -212,7 +212,7 @@ export function MetricsDashboard() {
             </Card>
 
             {/* Response time per day */}
-            <Card>
+            <Card className="rounded-xl border border-border/40">
               <CardHeader>
                 <CardTitle className="text-sm">Tiempo de respuesta promedio (min)</CardTitle>
               </CardHeader>

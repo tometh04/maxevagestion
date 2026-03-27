@@ -86,51 +86,38 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Mis Comisiones</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Mis Comisiones</h1>
         <p className="text-muted-foreground">Revisa tus comisiones ganadas</p>
       </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Comisiones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Comisiones</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">
               ${totalCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">
               ${pendingCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pagadas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Pagadas</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">
               ${paidCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </div>
-          </CardContent>
-        </Card>
+            </p>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+      <div className="flex items-center gap-2 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -141,7 +128,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
           </Select>
 
           <Select value={monthFilter} onValueChange={setMonthFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Mes" />
             </SelectTrigger>
             <SelectContent>
@@ -153,25 +140,21 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
               ))}
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="mt-4 flex justify-end">
-          <Button onClick={fetchCommissions} disabled={loading}>
+
+          <Button size="sm" onClick={fetchCommissions} disabled={loading} className="rounded-full">
             Actualizar
           </Button>
-        </div>
       </div>
 
       {/* Monthly Summary */}
       {monthlySummary.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen Mensual</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-xl border border-border/40 overflow-hidden">
+          <div className="p-5">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Resumen Mensual</p>
             <div className="space-y-2">
               {monthlySummary.map((summary) => (
-                <div key={summary.month} className="flex items-center justify-between p-2 border rounded">
+                <div key={summary.month} className="flex items-center justify-between p-2 border border-border/40 rounded-xl">
                   <div>
                     <p className="font-medium">
                       {new Date(summary.month + "-01").toLocaleDateString("es-AR", {
@@ -192,8 +175,8 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Commissions Table */}

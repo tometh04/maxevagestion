@@ -270,14 +270,14 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
         </p>
         <div className="flex gap-2">
           {items.length > 0 && (
-            <Button onClick={handleGeneratePdf} disabled={generatingPdf} className="bg-amber-600 hover:bg-amber-700">
+            <Button size="sm" onClick={handleGeneratePdf} disabled={generatingPdf} className="bg-amber-600 hover:bg-amber-700">
               {generatingPdf ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileDown className="h-4 w-4 mr-2" />}
               Descargar PDF
             </Button>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline"><Plus className="h-4 w-4 mr-2" /> Agregar</Button>
+              <Button variant="outline" size="sm"><Plus className="h-4 w-4 mr-2" /> Agregar</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               <DropdownMenuItem onClick={() => openNewDialog("FLIGHT")}><Plane className="h-4 w-4 mr-2" /> Vuelo</DropdownMenuItem>
@@ -291,7 +291,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
       </div>
 
       {/* PDF Preview */}
-      <div className="bg-white rounded-xl shadow-lg border max-w-[700px] mx-auto overflow-hidden">
+      <div className="bg-white rounded-xl shadow-lg border border-border/40 max-w-[700px] mx-auto overflow-hidden">
         {/* Header */}
         <div className="px-8 pt-6 pb-4 border-b flex items-start justify-between">
           <div>
@@ -458,14 +458,14 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
 
       {/* ═══ DIALOGS ═══ */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle>
               {editingItem ? "Editar" : "Agregar"}{" "}
               {selectedType === "HOTEL" ? "Hotel" : selectedType === "FLIGHT" ? "Vuelo" : selectedType === "TRANSFER" ? "Traslado" : selectedType === "CAR" ? "Auto" : "Nota"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="px-6 py-5 space-y-5">
             {(selectedType === "HOTEL") && (
               <>
                 <div className="grid grid-cols-3 gap-3">

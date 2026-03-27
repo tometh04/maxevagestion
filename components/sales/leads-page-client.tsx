@@ -285,7 +285,7 @@ export function LeadsPageClient({
         <div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold">Leads</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -330,7 +330,7 @@ export function LeadsPageClient({
             <div className="flex items-center gap-2">
               <Label htmlFor="agency-select" className="whitespace-nowrap">Agencia:</Label>
               <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-                <SelectTrigger id="agency-select" className="w-[180px]">
+                <SelectTrigger id="agency-select" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue placeholder="Seleccionar agencia" />
                 </SelectTrigger>
                 <SelectContent>
@@ -348,6 +348,7 @@ export function LeadsPageClient({
           )}
           <Button
             variant="outline"
+            size="sm"
             onClick={handleRefresh}
             disabled={refreshing}
           >
@@ -363,7 +364,7 @@ export function LeadsPageClient({
               </>
             )}
           </Button>
-          <Button onClick={() => setNewLeadDialogOpen(true)}>
+          <Button size="sm" onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
           </Button>

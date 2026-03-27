@@ -193,7 +193,7 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
   }
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Documentos</CardTitle>
         <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
@@ -207,7 +207,7 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
             <DialogHeader>
               <DialogTitle>Subir Documento</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
+            <div className="px-6 py-5 space-y-5">
               <div>
                 <label className="text-sm font-medium mb-2 block">Tipo de Documento</label>
                 <Select value={documentType} onValueChange={setDocumentType}>
@@ -268,7 +268,7 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
       </CardHeader>
       <CardContent>
         {documents.length === 0 ? (
-          <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-sm text-muted-foreground rounded-xl border border-border/40 bg-muted/20 p-4 text-center">
             No hay documentos subidos
           </div>
         ) : (
@@ -276,14 +276,14 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="bg-muted/50 rounded-lg p-4 space-y-3 border border-border"
+                className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="outline">{getDocumentTypeLabel(doc.type)}</Badge>
                       {doc.scanned_data && (
-                        <Badge variant="default" className="bg-green-600">
+                        <Badge variant="default" className="bg-success/10 text-success">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Escaneado
                         </Badge>

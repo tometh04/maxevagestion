@@ -107,14 +107,14 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
       </Breadcrumb>
 
       <div>
-        <h1 className="text-3xl font-bold">Alertas</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Alertas</h1>
         <p className="text-muted-foreground">Gestiona alertas y recordatorios importantes</p>
       </div>
 
       <AlertsFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
 
       <div className="flex justify-end">
-        <Button onClick={fetchAlerts} disabled={loading}>
+        <Button size="sm" onClick={fetchAlerts} disabled={loading} className="rounded-full">
           Actualizar
         </Button>
       </div>

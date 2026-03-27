@@ -26,7 +26,7 @@ export default async function IVAPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">IVA</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">IVA</h1>
         <p className="text-muted-foreground">
           Cálculo y seguimiento de IVA en ventas y compras
         </p>

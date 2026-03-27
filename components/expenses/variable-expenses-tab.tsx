@@ -210,30 +210,26 @@ export function VariableExpensesTab() {
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardContent className="pt-6">
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-4 w-4 text-blue-600" />
-              <span className="text-xs text-muted-foreground">Total ARS</span>
+              <span className="text-xs font-medium text-muted-foreground">Total ARS</span>
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.ars, "ARS")}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.ars, "ARS")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-4 w-4 text-green-600" />
-              <span className="text-xs text-muted-foreground">Total USD</span>
+              <span className="text-xs font-medium text-muted-foreground">Total USD</span>
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.usd, "USD")}</p>
-          </CardContent>
-        </Card>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.usd, "USD")}</p>
+        </div>
       </div>
 
       {/* Filters + Action */}
-      <div className="flex flex-wrap gap-4 items-end">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="space-y-1">
-          <Label className="text-xs">Desde</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Desde</Label>
           <Input
             type="date"
             value={dateFrom}
@@ -242,7 +238,7 @@ export function VariableExpensesTab() {
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Hasta</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Hasta</Label>
           <Input
             type="date"
             value={dateTo}
@@ -251,9 +247,9 @@ export function VariableExpensesTab() {
           />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Categoría</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -270,9 +266,9 @@ export function VariableExpensesTab() {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Moneda</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
           <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -283,7 +279,7 @@ export function VariableExpensesTab() {
           </Select>
         </div>
         <div className="ml-auto">
-          <Button onClick={() => setNewExpenseOpen(true)}>
+          <Button size="sm" onClick={() => setNewExpenseOpen(true)} className="rounded-full">
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Gasto
           </Button>
@@ -300,7 +296,8 @@ export function VariableExpensesTab() {
           No hay gastos variables en el período seleccionado
         </div>
       ) : (
-        <div className="border rounded-lg">
+        <div className="rounded-xl border border-border/40 overflow-hidden">
+          <div className="max-h-[60vh] overflow-y-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -397,6 +394,7 @@ export function VariableExpensesTab() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
 

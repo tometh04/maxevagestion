@@ -257,7 +257,7 @@ export function TeamsPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Equipos de Ventas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Equipos de Ventas</h1>
           <p className="text-muted-foreground">
             Organiza tu equipo y asigna metas de ventas
           </p>

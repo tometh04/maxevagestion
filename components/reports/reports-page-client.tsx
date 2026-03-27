@@ -54,7 +54,7 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold">Reportes</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Reportes</h1>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

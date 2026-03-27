@@ -17,23 +17,23 @@ export function WhaControlPage({ userId, userName }: WhaControlPageProps) {
     <PasswordGate>
       <div className="flex flex-1 flex-col p-4 md:p-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight">WHA Control</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">WHA Control</h1>
           <p className="text-sm text-muted-foreground">
             Monitoreo de WhatsApp de vendedores
           </p>
         </div>
 
         <Tabs defaultValue="devices" className="flex flex-1 flex-col">
-          <TabsList className="w-fit">
-            <TabsTrigger value="devices" className="gap-2">
+          <TabsList className="w-fit rounded-full">
+            <TabsTrigger value="devices" className="gap-2 rounded-full">
               <Smartphone className="h-4 w-4" />
               Dispositivos
             </TabsTrigger>
-            <TabsTrigger value="inbox" className="gap-2">
+            <TabsTrigger value="inbox" className="gap-2 rounded-full">
               <MessageSquare className="h-4 w-4" />
               Conversaciones
             </TabsTrigger>
-            <TabsTrigger value="metrics" className="gap-2">
+            <TabsTrigger value="metrics" className="gap-2 rounded-full">
               <BarChart3 className="h-4 w-4" />
               Métricas
             </TabsTrigger>

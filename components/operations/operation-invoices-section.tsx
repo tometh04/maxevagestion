@@ -70,7 +70,7 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
 
   const statusBadge = (status: string) => {
     switch (status) {
-      case "AUTHORIZED": return <Badge className="bg-green-100 text-green-700 text-xs">Autorizada</Badge>
+      case "AUTHORIZED": return <Badge className="bg-success/10 text-success text-xs">Autorizada</Badge>
       case "PENDING": return <Badge variant="secondary" className="text-xs">Pendiente</Badge>
       case "REJECTED": return <Badge variant="destructive" className="text-xs">Rechazada</Badge>
       default: return <Badge variant="outline" className="text-xs">{status}</Badge>
@@ -78,14 +78,14 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
   }
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
-              <FileText className="h-5 w-5 text-green-600" />
+              <FileText className="h-5 w-5 text-success" />
               Facturas Emitidas al Cliente
-              <Badge className="bg-green-100 text-green-700 text-xs ml-2">Venta</Badge>
+              <Badge className="bg-success/10 text-success text-xs ml-2">Venta</Badge>
             </CardTitle>
             <CardDescription>Facturas autorizadas por AFIP — Débito fiscal IVA</CardDescription>
           </div>
@@ -108,6 +108,7 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
             <p className="text-sm">No hay facturas emitidas para esta operación</p>
           </div>
         ) : (
+          <div className="rounded-xl border border-border/40 overflow-hidden">
           <Table>
             <TableHeader>
               <TableRow>
@@ -155,6 +156,7 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
               ))}
             </TableBody>
           </Table>
+          </div>
         )}
       </CardContent>
     </Card>

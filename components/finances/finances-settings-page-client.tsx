@@ -204,7 +204,7 @@ export function FinancesSettingsPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Configuración Financiera</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Configuración Financiera</h1>
           <p className="text-muted-foreground">
             Personaliza monedas, cuentas, métodos de pago y más
           </p>
@@ -237,7 +237,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Monedas */}
         <TabsContent value="currencies" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Configuración de Monedas</CardTitle>
               <CardDescription>
@@ -290,7 +290,7 @@ export function FinancesSettingsPageClient() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Tipos de Cambio</CardTitle>
               <CardDescription>
@@ -370,7 +370,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Métodos de Pago */}
         <TabsContent value="payments" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Métodos de Pago Habilitados</CardTitle>
               <CardDescription>
@@ -396,7 +396,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Comisiones */}
         <TabsContent value="commissions" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Configuración de Comisiones</CardTitle>
               <CardDescription>
@@ -425,7 +425,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Contabilidad */}
         <TabsContent value="accounting" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Configuración Contable</CardTitle>
               <CardDescription>
@@ -481,7 +481,7 @@ export function FinancesSettingsPageClient() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Cierre Mensual</CardTitle>
               <CardDescription>
@@ -529,7 +529,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Impuestos */}
         <TabsContent value="taxes" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>IVA</CardTitle>
               <CardDescription>Configuración de IVA para la agencia</CardDescription>
@@ -574,7 +574,7 @@ export function FinancesSettingsPageClient() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Retenciones</CardTitle>
               <CardDescription>Configuración de retenciones al pagar a operadores</CardDescription>
@@ -621,7 +621,7 @@ export function FinancesSettingsPageClient() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Ingresos Brutos (IIBB)</CardTitle>
               <CardDescription>Configuración para Convenio Multilateral</CardDescription>
@@ -690,7 +690,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Facturación */}
         <TabsContent value="invoicing" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Configuración de Facturación</CardTitle>
               <CardDescription>
@@ -737,7 +737,7 @@ export function FinancesSettingsPageClient() {
 
         {/* Tab: Cuentas (placeholder) */}
         <TabsContent value="accounts" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border-border/40">
             <CardHeader>
               <CardTitle>Cuentas Financieras por Defecto</CardTitle>
               <CardDescription>

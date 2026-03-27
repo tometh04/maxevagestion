@@ -41,16 +41,15 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Pagos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Pagos</h1>
         <p className="text-muted-foreground">Gestioná todos los pagos pendientes y registrados</p>
       </div>
 
       <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
 
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-3">
+      <div className="flex items-center gap-2 flex-wrap">
           <Select value={status} onValueChange={setStatus}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -62,7 +61,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
           </Select>
 
           <Select value={payerType} onValueChange={setPayerType}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Tipo de pagador" />
             </SelectTrigger>
             <SelectContent>
@@ -73,7 +72,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
           </Select>
 
           <Select value={direction} onValueChange={setDirection}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Dirección" />
             </SelectTrigger>
             <SelectContent>
@@ -82,18 +81,16 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
               <SelectItem value="EXPENSE">Egresos</SelectItem>
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => {
+
+          <Button variant="outline" size="sm" onClick={() => {
             setBaseFilters(defaultFilters)
             setStatus("ALL")
             setPayerType("ALL")
             setDirection("ALL")
-          }}>
+          }} className="rounded-full">
             Limpiar filtros
           </Button>
-        </div>
       </div>
 
       <PaymentsTable

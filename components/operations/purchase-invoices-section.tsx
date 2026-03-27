@@ -307,7 +307,7 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
   const totalNeto = invoices.reduce((sum, i) => sum + Number(i.net_amount || 0), 0)
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
@@ -370,21 +370,22 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
           <>
             {/* Summary */}
             <div className="grid grid-cols-3 gap-4 mb-4">
-              <div className="bg-muted/50 rounded-lg p-3">
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
                 <p className="text-xs text-muted-foreground">Neto Gravado</p>
                 <p className="text-lg font-bold">{formatMoney(totalNeto)}</p>
               </div>
-              <div className="bg-green-50 rounded-lg p-3">
-                <p className="text-xs text-green-600">IVA Crédito Fiscal</p>
-                <p className="text-lg font-bold text-green-700">{formatMoney(totalIva)}</p>
+              <div className="rounded-xl border border-border/40 bg-success/5 p-4">
+                <p className="text-xs text-success">IVA Crédito Fiscal</p>
+                <p className="text-lg font-bold text-success">{formatMoney(totalIva)}</p>
               </div>
-              <div className="bg-blue-50 rounded-lg p-3">
+              <div className="rounded-xl border border-border/40 bg-blue-50 p-4">
                 <p className="text-xs text-blue-600">Percepciones a Favor</p>
                 <p className="text-lg font-bold text-blue-700">{formatMoney(totalPercepciones)}</p>
               </div>
             </div>
 
             {/* Table */}
+            <div className="rounded-xl border border-border/40 overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -444,13 +445,14 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
                 ))}
               </TableBody>
             </Table>
+            </div>
           </>
         )}
       </CardContent>
 
       {/* Dialog for creating/editing */}
       <Dialog open={showDialog} onOpenChange={(open) => { if (!open) { setShowDialog(false); resetForm() } else setShowDialog(true) }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle>{editingInvoice ? "Editar Factura de Compra" : "Nueva Factura de Compra"}</DialogTitle>
             <DialogDescription>
@@ -458,7 +460,7 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="px-6 py-5 space-y-5">
             {/* Operator */}
             <div>
               <Label>Operador</Label>

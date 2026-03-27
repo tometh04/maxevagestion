@@ -182,7 +182,7 @@ export function PassengersSection({
   const companions = customers.filter(c => c.role === "COMPANION")
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle className="text-lg flex items-center gap-2">
@@ -224,7 +224,7 @@ export function PassengersSection({
           <div className="space-y-3">
             {/* Pasajero principal */}
             {mainPassenger && (
-              <div className="p-3 rounded-lg border-2 border-primary/20 bg-primary/5">
+              <div className="p-4 rounded-xl border border-border/40 bg-primary/5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-full bg-primary text-primary-foreground">
@@ -270,7 +270,7 @@ export function PassengersSection({
 
             {/* Acompañantes */}
             {companions.map((companion) => (
-              <div key={companion.id} className="p-3 rounded-lg border">
+              <div key={companion.id} className="p-4 rounded-xl border border-border/40 bg-muted/20">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-full bg-muted">
@@ -327,7 +327,7 @@ export function PassengersSection({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="px-6 py-5 space-y-5">
             {/* Búsqueda */}
             <div className="space-y-2">
               <Label>Buscar cliente</Label>

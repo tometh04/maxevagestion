@@ -12,7 +12,7 @@ export default async function CRMManychatPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">CRM Manychat</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">CRM Manychat</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a leads</p>
         </div>
       </div>

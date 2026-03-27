@@ -84,12 +84,11 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 items-end">
+    <div className="flex items-center gap-2 flex-wrap">
         <div className="space-y-1.5">
-          <Label className="text-xs">Tipo</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Tipo</Label>
           <Select value={filters.type} onValueChange={(newValue) => handleChange("type", newValue)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Seleccionar" />
             </SelectTrigger>
             <SelectContent>
@@ -103,9 +102,9 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Estado</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Estado</Label>
           <Select value={filters.status} onValueChange={(newValue) => handleChange("status", newValue)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Seleccionar" />
             </SelectTrigger>
             <SelectContent>
@@ -119,7 +118,7 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Desde</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Desde</Label>
           <DateInputWithCalendar
             value={parseDate(filters.dateFrom)}
             onChange={(date) => {
@@ -134,7 +133,7 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
           />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Hasta</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Hasta</Label>
           <DateInputWithCalendar
             value={parseDate(filters.dateTo)}
             onChange={(date) => {
@@ -149,9 +148,9 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
         </div>
 
         <div className="space-y-1.5">
-          <Label className="text-xs">Agencia</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Agencia</Label>
           <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Todas" />
             </SelectTrigger>
             <SelectContent>
@@ -164,13 +163,10 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
             </SelectContent>
           </Select>
         </div>
-      </div>
 
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" onClick={handleReset}>
+        <Button variant="outline" size="sm" onClick={handleReset} className="rounded-full">
           Reiniciar filtros
         </Button>
-      </div>
     </div>
   )
 }

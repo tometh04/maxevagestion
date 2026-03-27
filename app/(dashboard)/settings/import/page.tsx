@@ -60,7 +60,7 @@ export default function ImportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Importación de Datos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Importación de Datos</h1>
         <p className="text-muted-foreground">
           Importa datos masivos desde archivos CSV usando nuestras plantillas
         </p>

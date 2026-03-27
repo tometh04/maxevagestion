@@ -105,58 +105,50 @@ export function MonthlyExpensesTab() {
     <div className="space-y-4">
       {/* KPIs */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <TrendingDown className="h-4 w-4 text-red-600" />
-              <span className="text-xs text-muted-foreground">Total Egresos ARS</span>
+              <span className="text-xs font-medium text-muted-foreground">Total Egresos ARS</span>
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.ars, "ARS")}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.ars, "ARS")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <DollarSign className="h-4 w-4 text-green-600" />
-              <span className="text-xs text-muted-foreground">Total Egresos USD</span>
+              <span className="text-xs font-medium text-muted-foreground">Total Egresos USD</span>
             </div>
-            <p className="text-2xl font-bold">{formatCurrency(totals.usd, "USD")}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.usd, "USD")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <Repeat className="h-4 w-4 text-blue-600" />
-              <span className="text-xs text-muted-foreground">Gastos Fijos</span>
+              <span className="text-xs font-medium text-muted-foreground">Gastos Fijos</span>
             </div>
-            <p className="text-2xl font-bold">{totals.countRecurring}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countRecurring}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
             <div className="flex items-center gap-2 mb-2">
               <Receipt className="h-4 w-4 text-orange-600" />
-              <span className="text-xs text-muted-foreground">Gastos Variables</span>
+              <span className="text-xs font-medium text-muted-foreground">Gastos Variables</span>
             </div>
-            <p className="text-2xl font-bold">{totals.countVariable}</p>
-          </CardContent>
-        </Card>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{totals.countVariable}</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-end">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="space-y-1">
-          <Label className="text-xs">Desde</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Desde</Label>
           <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="w-[150px]" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Hasta</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Hasta</Label>
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="w-[150px]" />
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Tipo</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Tipo</Label>
           <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -167,9 +159,9 @@ export function MonthlyExpensesTab() {
           </Select>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs">Moneda</Label>
+          <Label className="text-xs font-medium text-muted-foreground">Moneda</Label>
           <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-            <SelectTrigger className="w-[100px]">
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -191,7 +183,8 @@ export function MonthlyExpensesTab() {
           No hay egresos en el período seleccionado
         </div>
       ) : (
-        <div className="border rounded-lg">
+        <div className="rounded-xl border border-border/40 overflow-hidden">
+          <div className="max-h-[60vh] overflow-y-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -240,6 +233,7 @@ export function MonthlyExpensesTab() {
               ))}
             </TableBody>
           </Table>
+          </div>
         </div>
       )}
     </div>

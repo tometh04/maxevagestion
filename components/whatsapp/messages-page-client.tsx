@@ -230,7 +230,7 @@ export function MessagesPageClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <MessageSquare className="h-8 w-8" />
             Centro de Mensajes
           </h1>
@@ -254,8 +254,8 @@ export function MessagesPageClient({
 
       {/* Stats - KPIs clickeables como filtros */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card 
-          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+        <Card
+          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
           onClick={() => setFilter("PENDING")}
         >
           <CardHeader className="pb-2">
@@ -268,8 +268,8 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold">{counts.PENDING}</div>
           </CardContent>
         </Card>
-        <Card 
-          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+        <Card
+          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
           onClick={() => setFilter("SENT")}
         >
           <CardHeader className="pb-2">
@@ -282,8 +282,8 @@ export function MessagesPageClient({
             <div className="text-2xl font-bold text-green-600">{counts.SENT}</div>
           </CardContent>
         </Card>
-        <Card 
-          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+        <Card
+          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
           onClick={() => setFilter("SKIPPED")}
         >
           <CardHeader className="pb-2">

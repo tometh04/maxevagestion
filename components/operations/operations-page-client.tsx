@@ -110,7 +110,7 @@ export function OperationsPageClient({
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Operaciones</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Operaciones</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -127,7 +127,7 @@ export function OperationsPageClient({
           </div>
           <p className="text-muted-foreground">Gestiona todas las operaciones de viajes</p>
         </div>
-        <Button onClick={() => setNewOperationDialogOpen(true)}>
+        <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nueva Operación
         </Button>

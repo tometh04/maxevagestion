@@ -97,7 +97,7 @@ export function OperatorDetailClient({
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">{operator.name}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{operator.name}</h1>
             <p className="text-muted-foreground">Detalle del operador</p>
           </div>
         </div>
@@ -109,7 +109,7 @@ export function OperatorDetailClient({
 
       {/* Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Operaciones</CardTitle>
           </CardHeader>
@@ -118,7 +118,7 @@ export function OperatorDetailClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
           </CardHeader>
@@ -129,7 +129,7 @@ export function OperatorDetailClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pagado</CardTitle>
           </CardHeader>
@@ -140,7 +140,7 @@ export function OperatorDetailClient({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Saldo Pendiente</CardTitle>
           </CardHeader>
@@ -155,7 +155,7 @@ export function OperatorDetailClient({
       </div>
 
       {/* Operator Info */}
-      <Card>
+      <Card className="rounded-xl border-border/40">
         <CardHeader>
           <CardTitle>Información de Contacto</CardTitle>
         </CardHeader>
@@ -198,7 +198,7 @@ export function OperatorDetailClient({
               <CardTitle>Operaciones</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="rounded-xl border border-border/40 overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -266,7 +266,7 @@ export function OperatorDetailClient({
               <CardTitle>Pagos Pendientes</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md border">
+              <div className="rounded-xl border border-border/40 overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>

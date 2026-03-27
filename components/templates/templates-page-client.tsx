@@ -294,7 +294,7 @@ export function TemplatesPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Templates PDF</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Templates PDF</h1>
           <p className="text-muted-foreground">
             Gestiona los templates para generar documentos PDF
           </p>
@@ -306,43 +306,39 @@ export function TemplatesPageClient() {
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar templates..."
-                  className="pl-10"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los tipos</SelectItem>
-                {Object.entries(templateTypeLabels).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {templateTypeIcons[value]} {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar templates..."
+              className="pl-10"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos los tipos</SelectItem>
+            {Object.entries(templateTypeLabels).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {templateTypeIcons[value]} {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Grid de templates */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates.map((template) => (
-          <Card 
+          <Card
             key={template.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className="cursor-pointer hover:shadow-md transition-shadow rounded-xl border-border/40"
             onClick={() => {
               setSelectedTemplate(template)
               setIsViewOpen(true)
@@ -356,7 +352,7 @@ export function TemplatesPageClient() {
                     {templateTypeLabels[template.template_type]}
                   </Badge>
                   {template.is_default && (
-                    <Badge className="bg-amber-500">
+                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>
@@ -434,7 +430,7 @@ export function TemplatesPageClient() {
 
       {/* Dialog crear template */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto px-6 py-5">
           <DialogHeader>
             <DialogTitle>Nuevo Template PDF</DialogTitle>
             <DialogDescription>
@@ -596,7 +592,7 @@ export function TemplatesPageClient() {
               <p className="text-sm text-muted-foreground">
                 Variables disponibles para el tipo de template seleccionado ({templateTypeLabels[formData.template_type]}):
               </p>
-              <div className="border rounded-md p-4 max-h-[400px] overflow-y-auto">
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
@@ -648,7 +644,7 @@ export function TemplatesPageClient() {
                     {templateTypeLabels[selectedTemplate.template_type]}
                   </Badge>
                   {selectedTemplate.is_default && (
-                    <Badge className="bg-amber-500">
+                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>
@@ -676,7 +672,7 @@ export function TemplatesPageClient() {
 
                 <div>
                   <Label>Vista previa del HTML</Label>
-                  <div className="border rounded-md p-4 bg-muted/50 max-h-[400px] overflow-auto">
+                  <div className="rounded-xl border border-border/40 bg-muted/20 p-4 max-h-[400px] overflow-auto">
                     <pre className="text-xs whitespace-pre-wrap">
                       {selectedTemplate.html_content.substring(0, 2000)}
                       {selectedTemplate.html_content.length > 2000 && '...'}

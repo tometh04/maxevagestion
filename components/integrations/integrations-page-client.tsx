@@ -273,25 +273,25 @@ export function IntegrationsPageClient() {
     <div className="space-y-6">
       {/* Header Stats */}
       <div className="grid grid-cols-4 gap-4">
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold">{stats.total}</div>
             <p className="text-xs text-muted-foreground">Total Integraciones</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-green-600">{stats.active}</div>
             <p className="text-xs text-muted-foreground">Activas</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-gray-600">{stats.inactive}</div>
             <p className="text-xs text-muted-foreground">Inactivas</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardContent className="pt-6">
             <div className="text-2xl font-bold text-destructive">{stats.error}</div>
             <p className="text-xs text-muted-foreground">Con Error</p>
@@ -301,7 +301,7 @@ export function IntegrationsPageClient() {
 
       <div className="grid grid-cols-3 gap-6">
         {/* Lista de Integraciones */}
-        <Card className="col-span-2">
+        <Card className="col-span-2 rounded-xl border-border/40">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle>Integraciones</CardTitle>
@@ -314,7 +314,7 @@ export function IntegrationsPageClient() {
                   Nueva Integración
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md">
+              <DialogContent className="max-w-md px-6 py-5 space-y-5">
                 <DialogHeader>
                   <DialogTitle>Nueva Integración</DialogTitle>
                   <DialogDescription>
@@ -528,7 +528,7 @@ export function IntegrationsPageClient() {
                   return (
                     <div 
                       key={integration.id}
-                      className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                      className={`p-4 rounded-xl border border-border/40 cursor-pointer transition-colors ${
                         selectedIntegration?.id === integration.id ? 'bg-muted' : 'hover:bg-muted/50'
                       }`}
                       onClick={() => setSelectedIntegration(integration)}
@@ -571,7 +571,7 @@ export function IntegrationsPageClient() {
         </Card>
 
         {/* Panel de Detalle */}
-        <Card>
+        <Card className="rounded-xl border-border/40">
           <CardHeader>
             <CardTitle className="text-base">
               {selectedIntegration ? selectedIntegration.name : 'Detalles'}
@@ -677,7 +677,7 @@ export function IntegrationsPageClient() {
       </div>
 
       {/* Integraciones Disponibles */}
-      <Card>
+      <Card className="rounded-xl border-border/40">
         <CardHeader>
           <CardTitle>Integraciones Disponibles</CardTitle>
           <CardDescription>Conecta MAXEVA GESTION con estos servicios</CardDescription>
@@ -687,7 +687,7 @@ export function IntegrationsPageClient() {
             {integrationTypes.filter(t => t.value !== 'other').map(type => (
               <div 
                 key={type.value}
-                className="p-4 border rounded-lg text-center hover:bg-muted/50 cursor-pointer transition-colors"
+                className="p-4 rounded-xl border border-border/40 text-center hover:bg-muted/50 cursor-pointer transition-colors"
                 onClick={() => {
                   setFormData({ ...formData, integration_type: type.value, name: type.label })
                   setShowNewDialog(true)

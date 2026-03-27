@@ -91,7 +91,7 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     dateTo !== ""
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardContent className="pt-6">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <div className="space-y-2">
@@ -112,7 +112,7 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
           <div className="space-y-2">
             <Label htmlFor="status">Estado</Label>
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger id="status">
+              <SelectTrigger id="status" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Seleccionar estado" />
               </SelectTrigger>
               <SelectContent>
@@ -128,7 +128,7 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
           <div className="space-y-2">
             <Label htmlFor="region">Región</Label>
             <Select value={region} onValueChange={setRegion}>
-              <SelectTrigger id="region">
+              <SelectTrigger id="region" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Seleccionar región" />
               </SelectTrigger>
               <SelectContent>
@@ -144,7 +144,7 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
           <div className="space-y-2">
             <Label htmlFor="seller">Vendedor</Label>
             <Select value={sellerId} onValueChange={setSellerId}>
-              <SelectTrigger id="seller">
+              <SelectTrigger id="seller" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Seleccionar vendedor" />
               </SelectTrigger>
               <SelectContent>
@@ -180,9 +180,9 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
         </div>
 
         <div className="mt-4 flex items-center gap-2">
-          <Button onClick={handleApplyFilters}>Aplicar Filtros</Button>
+          <Button size="sm" onClick={handleApplyFilters}>Aplicar Filtros</Button>
           {hasActiveFilters && (
-            <Button variant="outline" onClick={handleClearFilters}>
+            <Button variant="outline" size="sm" onClick={handleClearFilters}>
               <X className="mr-2 h-4 w-4" />
               Limpiar
             </Button>

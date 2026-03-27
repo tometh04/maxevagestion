@@ -21,7 +21,7 @@ export default async function CashExpensesPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Egresos</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Egresos</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a caja</p>
         </div>
       </div>

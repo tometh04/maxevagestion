@@ -29,7 +29,7 @@ export default async function OperatorPaymentsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Pagos a Operadores</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Pagos a Operadores</h1>
         <p className="text-muted-foreground">
           Gestión de cuentas a pagar a operadores
         </p>

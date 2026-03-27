@@ -91,12 +91,10 @@ export function ReportsFilters({
   }
 
   return (
-    <Card className="w-full">
-      <CardContent className="pt-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-end">
+    <div className="flex items-center gap-2 flex-wrap w-full">
           {/* Date From */}
           <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="dateFrom">
+            <Label className="text-xs font-medium text-muted-foreground" htmlFor="dateFrom">
               Desde
             </Label>
             <DateInputWithCalendar
@@ -108,7 +106,7 @@ export function ReportsFilters({
 
           {/* Date To */}
           <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="dateTo">
+            <Label className="text-xs font-medium text-muted-foreground" htmlFor="dateTo">
               Hasta
             </Label>
             <DateInputWithCalendar
@@ -121,11 +119,11 @@ export function ReportsFilters({
 
           {/* Agency */}
           <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="agencyId">
+            <Label className="text-xs font-medium text-muted-foreground" htmlFor="agencyId">
               Agencia
             </Label>
             <Select value={filters.agencyId} onValueChange={(value) => handleFilterChange("agencyId", value)}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Todas" />
               </SelectTrigger>
               <SelectContent>
@@ -141,11 +139,11 @@ export function ReportsFilters({
 
           {/* Seller */}
           <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="sellerId">
+            <Label className="text-xs font-medium text-muted-foreground" htmlFor="sellerId">
               Vendedor
             </Label>
             <Select value={filters.sellerId} onValueChange={(value) => handleFilterChange("sellerId", value)}>
-              <SelectTrigger className="w-full">
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
@@ -161,14 +159,12 @@ export function ReportsFilters({
 
           {/* Reset Button */}
           <div className="flex items-end">
-            <Button variant="outline" onClick={handleReset} className="w-full sm:w-auto">
+            <Button variant="outline" size="sm" onClick={handleReset} className="rounded-full">
               <RotateCcw className="mr-2 h-4 w-4" />
               <span className="hidden sm:inline">Reiniciar</span>
             </Button>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+    </div>
   )
 }
 

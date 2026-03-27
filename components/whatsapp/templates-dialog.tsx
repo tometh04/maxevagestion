@@ -222,7 +222,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto px-6 py-5 space-y-5">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code className="h-5 w-5" />
@@ -234,7 +234,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
         </DialogHeader>
 
         {/* Variables disponibles */}
-        <Card className="bg-muted/50">
+        <Card className="rounded-xl border-border/40 bg-muted/20">
           <CardHeader className="py-3">
             <CardTitle className="text-sm flex items-center gap-2">
               <Info className="h-4 w-4" />
@@ -277,7 +277,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
 
         {/* Formulario nuevo template */}
         {showNewForm && (
-          <Card>
+          <Card className="rounded-xl border-border/40 bg-muted/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm">Crear nuevo template</CardTitle>
             </CardHeader>
@@ -372,7 +372,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3">
                     {group.templates.map((template) => (
-                      <Card key={template.id} className={!template.is_active ? "opacity-50" : ""}>
+                      <Card key={template.id} className={`rounded-xl border-border/40 ${!template.is_active ? "opacity-50" : ""}`}>
                         <CardContent className="p-4">
                           {editingId === template.id ? (
                             // Edit Mode
@@ -484,7 +484,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
               ))}
           </Accordion>
         ) : (
-          <Card className="p-8 text-center">
+          <Card className="p-8 text-center rounded-xl border-border/40 bg-muted/20">
             <div className="text-muted-foreground">
               <p className="text-lg font-medium mb-2">No hay templates configurados</p>
               <p className="text-sm mb-4">

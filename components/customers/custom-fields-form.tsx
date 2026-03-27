@@ -70,7 +70,7 @@ export function CustomFieldsForm({ control, customFields }: CustomFieldsFormProp
                       value={formField.value || field.default_value || ''}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="rounded-xl border-border/60">
                           <SelectValue placeholder={`Seleccionar ${field.label}`} />
                         </SelectTrigger>
                       </FormControl>

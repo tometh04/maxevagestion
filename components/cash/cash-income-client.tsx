@@ -61,7 +61,7 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Ingresos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Ingresos</h1>
         <p className="text-muted-foreground">Todos los ingresos de las operaciones</p>
       </div>
 
@@ -80,22 +80,14 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
 
       {/* KPIs de totales */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ingresos ARS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalIncome.ars, "ARS")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ingresos USD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalIncome.usd, "USD")}</div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Ingresos ARS</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalIncome.ars, "ARS")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Ingresos USD</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalIncome.usd, "USD")}</p>
+        </div>
       </div>
 
       <PaymentsTable

@@ -52,16 +52,16 @@ export function PasswordGate({ children }: PasswordGateProps) {
 
   return (
     <div className="flex flex-1 items-center justify-center p-6">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm rounded-xl border border-border/40">
         <CardHeader className="text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/30">
             <Lock className="h-8 w-8 text-orange-600 dark:text-orange-400" />
           </div>
-          <CardTitle className="text-xl">WHA Control</CardTitle>
+          <CardTitle className="text-2xl font-semibold tracking-tight">WHA Control</CardTitle>
           <CardDescription>Ingresá el PIN para acceder</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
             <Input
               type="password"
               placeholder="••••"

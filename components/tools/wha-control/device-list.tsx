@@ -123,7 +123,7 @@ export function DeviceList() {
       </div>
 
       {devices.length === 0 ? (
-        <Card>
+        <Card className="rounded-xl border border-border/40">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Smartphone className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <h3 className="font-semibold text-lg mb-1">No hay dispositivos</h3>
@@ -143,7 +143,7 @@ export function DeviceList() {
             const isLoading = actionLoading === device.id
 
             return (
-              <Card key={device.id}>
+              <Card key={device.id} className="rounded-xl border border-border/40">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-base">{device.display_name}</CardTitle>
@@ -195,7 +195,7 @@ export function DeviceList() {
                       size="sm"
                       onClick={() => handleDelete(device.id)}
                       disabled={isLoading}
-                      className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
                     >
                       <Trash2 className="h-3 w-3" />
                     </Button>

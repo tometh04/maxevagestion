@@ -283,7 +283,7 @@ export function CRMManychatPageClient({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">CRM Manychat</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">CRM Manychat</h1>
             <div 
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                 realtimeConnected 
@@ -314,7 +314,7 @@ export function CRMManychatPageClient({
             <div className="flex items-center gap-2">
               <Label htmlFor="agency-select" className="whitespace-nowrap">Agencia:</Label>
               <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-                <SelectTrigger id="agency-select" className="w-[180px]">
+                <SelectTrigger id="agency-select" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue placeholder="Seleccionar agencia" />
                 </SelectTrigger>
                 <SelectContent>
@@ -330,7 +330,7 @@ export function CRMManychatPageClient({
               </Select>
             </div>
           )}
-          <Button variant="outline" onClick={handleRefresh} disabled={loading}>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={loading}>
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -343,7 +343,7 @@ export function CRMManychatPageClient({
               </>
             )}
           </Button>
-          <Button onClick={() => setNewLeadDialogOpen(true)}>
+          <Button size="sm" onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
           </Button>
