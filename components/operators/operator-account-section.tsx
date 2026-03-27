@@ -169,16 +169,16 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
           
           <div className={`p-4 rounded-lg border ${
             exceedsCreditLimit 
-              ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800"
-              : summary.totalOwed > 0 
-                ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800" 
+              ? "bg-destructive/10 border-destructive"
+              : summary.totalOwed > 0
+                ? "bg-warning/10 border-warning"
                 : "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
           }`}>
             <div className={`flex items-center gap-2 ${
-              exceedsCreditLimit 
-                ? "text-red-600 dark:text-red-400"
-                : summary.totalOwed > 0 
-                  ? "text-yellow-600 dark:text-yellow-400" 
+              exceedsCreditLimit
+                ? "text-destructive"
+                : summary.totalOwed > 0
+                  ? "text-warning"
                   : "text-gray-600"
             }`}>
               <TrendingDown className="h-4 w-4" />
@@ -206,11 +206,11 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
           
           <div className={`p-4 rounded-lg border ${
             summary.overduePayments > 0 
-              ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800" 
+              ? "bg-destructive/10 border-destructive"
               : ""
           }`}>
             <div className={`flex items-center gap-2 ${
-              summary.overduePayments > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+              summary.overduePayments > 0 ? "text-destructive" : "text-muted-foreground"
             }`}>
               <AlertCircle className="h-4 w-4" />
               <span className="text-sm font-medium">Vencidos</span>

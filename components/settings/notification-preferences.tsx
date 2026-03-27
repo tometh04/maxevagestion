@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -94,7 +93,7 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
   }, [fetchPreferences])
 
   function handleToggle(type: string) {
-    setPreferences(prev => prev.map(p => 
+    setPreferences(prev => prev.map(p =>
       p.type === type ? { ...p, enabled: !p.enabled } : p
     ))
     setSaved(false)
@@ -119,7 +118,7 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
 
       setSaved(true)
       toast.success("Preferencias guardadas")
-      
+
       setTimeout(() => setSaved(false), 2000)
     } catch (error: any) {
       toast.error(error.message)
@@ -139,29 +138,28 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Bell className="h-5 w-5" />
-              Preferencias de Notificaciones
-            </CardTitle>
-            <CardDescription>
-              Configura qué notificaciones deseas recibir
-            </CardDescription>
+    <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+              <Bell className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Preferencias de Notificaciones</h4>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={handleEnableAll}>
-              Activar todas
-            </Button>
-            <Button variant="outline" size="sm" onClick={handleDisableAll}>
-              Desactivar todas
-            </Button>
-          </div>
+          <p className="text-sm text-muted-foreground ml-8">Configura qué notificaciones deseas recibir</p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={handleEnableAll}>
+            Activar todas
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleDisableAll}>
+            Desactivar todas
+          </Button>
+        </div>
+      </div>
+
+      <div className="space-y-4">
         {preferences.map((pref, index) => {
           const Icon = pref.icon
           return (
@@ -169,7 +167,7 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
               {index > 0 && <Separator className="my-4" />}
               <div className="flex items-center justify-between">
                 <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-lg bg-muted">
+                  <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-muted">
                     <Icon className="h-4 w-4" />
                   </div>
                   <div>
@@ -190,28 +188,27 @@ export function NotificationPreferences({ userId }: NotificationPreferencesProps
             </div>
           )
         })}
+      </div>
 
-        <Separator className="my-6" />
+      <Separator className="my-6" />
 
-        <div className="flex justify-end">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Guardando...
-              </>
-            ) : saved ? (
-              <>
-                <Check className="h-4 w-4 mr-2" />
-                Guardado
-              </>
-            ) : (
-              "Guardar Preferencias"
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <div className="flex justify-end">
+        <Button size="sm" onClick={handleSave} disabled={saving}>
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Guardando...
+            </>
+          ) : saved ? (
+            <>
+              <Check className="h-4 w-4 mr-2" />
+              Guardado
+            </>
+          ) : (
+            "Guardar Preferencias"
+          )}
+        </Button>
+      </div>
+    </div>
   )
 }
-

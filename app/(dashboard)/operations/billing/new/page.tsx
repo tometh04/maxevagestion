@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+// Card imports removed - using modern border/rounded divs
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -704,7 +704,7 @@ export default function NewInvoicePage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Nueva Factura Electrónica</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Nueva Factura Electrónica</h1>
           <p className="text-muted-foreground">
             Crea una nueva factura para autorizar con AFIP
           </p>
@@ -715,12 +715,11 @@ export default function NewInvoicePage() {
         {/* Formulario principal */}
         <div className="lg:col-span-2 space-y-6">
           {/* Datos del comprobante */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tipo de Comprobante</CardTitle>
-              <CardDescription>Selecciona el tipo de factura a emitir</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Tipo de Comprobante</h3>
+              <p className="text-xs text-muted-foreground">Selecciona el tipo de factura a emitir</p>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Comprobante *</Label>
@@ -817,16 +816,14 @@ export default function NewInvoicePage() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </div>
 
           {/* Datos del receptor */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Datos del Cliente</CardTitle>
-              <CardDescription>Información del receptor de la factura</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Datos del Cliente</h3>
+              <p className="text-xs text-muted-foreground">Información del receptor de la factura</p>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -1062,24 +1059,20 @@ export default function NewInvoicePage() {
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
 
           {/* Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Conceptos / Items</CardTitle>
-                  <CardDescription>Detalle de los servicios a facturar</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Item
-                </Button>
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Conceptos / Items</h3>
+                <p className="text-xs text-muted-foreground">Detalle de los servicios a facturar</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={addItem}>
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Item
+              </Button>
+            </div>
               {items.map((item, index) => {
                 const itemTotals = calculateItemTotal(item)
                 return (
@@ -1155,20 +1148,16 @@ export default function NewInvoicePage() {
                   </div>
                 )
               })}
-            </CardContent>
-          </Card>
+          </div>
         </div>
 
         {/* Resumen */}
         <div className="space-y-6">
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Resumen
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4 sticky top-6">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Calculator className="h-4 w-4" />
+              Resumen
+            </h3>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Subtotal</span>
@@ -1179,9 +1168,9 @@ export default function NewInvoicePage() {
                   <span>{formatCurrency(totals.iva)}</span>
                 </div>
                 <div className="border-t pt-2">
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Total</span>
-                    <span>{formatCurrency(totals.total)}</span>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-semibold">Total</span>
+                    <span className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.total)}</span>
                   </div>
                 </div>
               </div>
@@ -1220,8 +1209,7 @@ export default function NewInvoicePage() {
                   La factura se creará y autorizará en AFIP automáticamente.
                 </p>
               </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       </div>
 

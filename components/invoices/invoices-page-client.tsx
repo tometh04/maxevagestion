@@ -2,12 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Plus, FileText, Send, Eye, Download, Search, Filter } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -39,7 +38,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -205,12 +203,12 @@ export function InvoicesPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Facturación Electrónica</h1>
-          <p className="text-muted-foreground">
+          <h1 className="text-2xl font-semibold tracking-tight">Facturación Electrónica</h1>
+          <p className="text-sm text-muted-foreground">
             Gestión de facturas electrónicas AFIP
           </p>
         </div>
-        <Button asChild>
+        <Button size="sm" className="h-8 rounded-full" asChild>
           <Link href="/operations/billing/new">
             <Plus className="mr-2 h-4 w-4" />
             Nueva Factura
@@ -219,43 +217,37 @@ export function InvoicesPageClient() {
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por cliente, CUIT, número o CAE..."
-                  className="pl-10"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[200px]">
-                <Filter className="mr-2 h-4 w-4" />
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los estados</SelectItem>
-                <SelectItem value="draft">Borrador</SelectItem>
-                <SelectItem value="pending">Pendiente</SelectItem>
-                <SelectItem value="authorized">Autorizada</SelectItem>
-                <SelectItem value="rejected">Rechazada</SelectItem>
-                <SelectItem value="cancelled">Anulada</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por cliente, CUIT, número o CAE..."
+            className="pl-10 h-8 text-xs rounded-full"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+            <Filter className="mr-2 h-3.5 w-3.5" />
+            <SelectValue placeholder="Estado" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos los estados</SelectItem>
+            <SelectItem value="draft">Borrador</SelectItem>
+            <SelectItem value="pending">Pendiente</SelectItem>
+            <SelectItem value="authorized">Autorizada</SelectItem>
+            <SelectItem value="rejected">Rechazada</SelectItem>
+            <SelectItem value="cancelled">Anulada</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabla de facturas */}
-      <Card>
-        <CardContent className="pt-6">
+      <div className="rounded-xl border border-border/40 overflow-hidden">
+        <div className="max-h-[60vh] overflow-y-auto">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
                 <TableHead>Comprobante</TableHead>
                 <TableHead>Cliente</TableHead>
@@ -357,8 +349,8 @@ export function InvoicesPageClient() {
               )}
             </TableBody>
           </Table>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Dialog de detalle de factura */}
       <Dialog open={!!selectedInvoice} onOpenChange={() => setSelectedInvoice(null)}>
@@ -435,7 +427,7 @@ export function InvoicesPageClient() {
               <div className="flex justify-end">
                 <div className="text-right">
                   <p className="text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold">{formatCurrency(selectedInvoice.imp_total)}</p>
+                  <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(selectedInvoice.imp_total)}</p>
                 </div>
               </div>
             </div>

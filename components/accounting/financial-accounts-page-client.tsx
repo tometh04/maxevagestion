@@ -370,7 +370,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Cuentas Financieras</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Cuentas Financieras</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -388,21 +388,21 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
           <p className="text-muted-foreground">Gestiona todas las cuentas y cajas de las agencias</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setTransferDialogOpen(true)}>
+          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => setTransferDialogOpen(true)}>
             <ArrowRightLeft className="h-4 w-4 mr-2" />
             Transferir
           </Button>
           {accounts.length > 0 && (
             <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
               <DialogTrigger asChild>
-                <Button variant="destructive">
+                <Button variant="destructive" size="sm" className="h-8 rounded-full">
                   <Trash2 className="h-4 w-4 mr-2" />
                   Limpiar Todas
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle className="flex items-center gap-2 text-red-600">
+                  <DialogTitle className="flex items-center gap-2 text-destructive">
                     <AlertTriangle className="h-5 w-5" />
                     ¿Eliminar todas las cuentas?
                   </DialogTitle>
@@ -441,7 +441,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                         ) : deleteStep === "confirm" ? (
                           <p>
                             La cuenta <strong>{accountToDelete.displayName}</strong> tiene{" "}
-                            <strong className={accountToDelete.balance >= 0 ? "text-amber-600" : "text-red-600"}>
+                            <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
                               {formatCurrency(accountToDelete.balance, accountToDelete.currency)}
                             </strong>{" "}
                             de saldo. ¿Quieres transferirlo a otra cuenta?
@@ -450,7 +450,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                           <>
                             <p>
                               Transferir{" "}
-                              <strong className={accountToDelete.balance >= 0 ? "text-amber-600" : "text-red-600"}>
+                              <strong className={accountToDelete.balance >= 0 ? "text-warning" : "text-destructive"}>
                                 {formatCurrency(Math.abs(accountToDelete.balance), accountToDelete.currency)}
                               </strong>{" "}
                               a:
@@ -480,7 +480,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                                 a.currency === accountToDelete.currency &&
                                 a.is_active !== false
                             ).length === 0 && (
-                              <p className="text-sm text-amber-600">
+                              <p className="text-sm text-warning">
                                 No hay otras cuentas en {accountToDelete.currency} para transferir.
                               </p>
                             )}
@@ -534,7 +534,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
 
           <Dialog open={openDialog} onOpenChange={setOpenDialog}>
             <DialogTrigger asChild>
-              <Button>
+              <Button size="sm" className="h-8 rounded-full">
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Cuenta
               </Button>
@@ -802,115 +802,111 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       </div>
 
       {/* Filtro de agencia */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex items-center gap-4">
-            <Label htmlFor="agency-filter" className="text-sm font-medium whitespace-nowrap">
-              Filtrar por agencia:
-            </Label>
-            <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-              <SelectTrigger id="agency-filter" className="w-[250px]">
-                <SelectValue placeholder="Selecciona una agencia" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas las agencias</SelectItem>
-                {agencies.map((agency) => (
-                  <SelectItem key={agency.id} value={agency.id}>
-                    {agency.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedAgencyId !== "ALL" && (
-              <p className="text-sm text-muted-foreground">
-                Mostrando cuentas de {agencies.find((a) => a.id === selectedAgencyId)?.name || "la agencia seleccionada"}
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Label htmlFor="agency-filter" className="text-xs font-medium whitespace-nowrap">
+          Agencia:
+        </Label>
+        <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
+          <SelectTrigger id="agency-filter" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue placeholder="Selecciona una agencia" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todas las agencias</SelectItem>
+            {agencies.map((agency) => (
+              <SelectItem key={agency.id} value={agency.id}>
+                {agency.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {selectedAgencyId !== "ALL" && (
+          <p className="text-xs text-muted-foreground">
+            Mostrando cuentas de {agencies.find((a) => a.id === selectedAgencyId)?.name || "la agencia seleccionada"}
+          </p>
+        )}
+      </div>
 
       {/* Tabla de cuentas por agencia */}
       {Object.keys(accountsByAgency).length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center">
-            <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No hay cuentas financieras</h3>
-            <p className="text-muted-foreground mb-4">
-              Comienza creando tu primera cuenta financiera
-            </p>
-            <Button onClick={() => setOpenDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Crear Primera Cuenta
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 py-12 text-center">
+          <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No hay cuentas financieras</h3>
+          <p className="text-muted-foreground mb-4">
+            Comienza creando tu primera cuenta financiera
+          </p>
+          <Button size="sm" className="h-8 rounded-full" onClick={() => setOpenDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Crear Primera Cuenta
+          </Button>
+        </div>
       ) : (
         <div className="space-y-6">
           {Object.entries(accountsByAgency).map(([agencyId, data]: [string, any]) => (
-            <Card key={agencyId}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
+            <div key={agencyId} className="rounded-xl border border-border/40">
+              <div className="p-5 pb-3">
+                <h3 className="text-base font-semibold flex items-center gap-2">
+                  <Building2 className="h-5 w-5 text-muted-foreground" />
                   {data.agency?.name || "Sin agencia"}
-                </CardTitle>
-                <CardDescription>
+                </h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {data.accounts.length} cuenta{data.accounts.length !== 1 ? "s" : ""}
-                </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Moneda</TableHead>
-                <TableHead className="text-right">Saldo Inicial</TableHead>
-                <TableHead className="text-right">Balance Actual</TableHead>
-                <TableHead className="w-[80px]">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.accounts.map((account: any) => (
-                <TableRow key={account.id}>
-                  <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">
-                      {accountTypeLabels[account.type] || account.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{account.currency}</Badge>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(account.initial_balance ?? 0, account.currency)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <span
-                      className={`font-bold ${
-                        (account.current_balance ?? 0) >= 0 ? "text-amber-600" : "text-red-600"
-                      }`}
-                    >
-                      {formatCurrency(account.current_balance ?? 0, account.currency)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => openDeleteAccount(account)}
-                      title="Eliminar cuenta"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                </p>
+              </div>
+              <div className="px-5 pb-5">
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="sticky top-0 bg-background z-10">Nombre</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10">Moneda</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 text-right">Saldo Inicial</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 text-right">Balance Actual</TableHead>
+                        <TableHead className="sticky top-0 bg-background z-10 w-[80px]">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.accounts.map((account: any) => (
+                        <TableRow key={account.id}>
+                          <TableCell className="font-medium">{getDisplayName(account)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {accountTypeLabels[account.type] || account.type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary">{account.currency}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {formatCurrency(account.initial_balance ?? 0, account.currency)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span
+                              className={`font-bold ${
+                                (account.current_balance ?? 0) >= 0 ? "text-warning" : "text-destructive"
+                              }`}
+                            >
+                              {formatCurrency(account.current_balance ?? 0, account.currency)}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => openDeleteAccount(account)}
+                              title="Eliminar cuenta"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            </div>
           ))}
         </div>
       )}

@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
-import { Loader2 } from "lucide-react"
+import { Loader2, ClipboardList, Users, Calendar, Link2 } from "lucide-react"
 import { toast } from "sonner"
 
 const taskSchema = z.object({
@@ -282,114 +282,32 @@ export function TaskDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{editTask ? "Editar Tarea" : "Nueva Tarea"}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Título *</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Ej: Llamar a cliente por pago pendiente"
-                      autoFocus
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripción</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Detalles adicionales..."
-                      className="resize-none"
-                      rows={3}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Información de la Tarea */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Información</h4>
+              </div>
               <FormField
                 control={form.control}
-                name="assigned_to"
+                name="title"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Asignar a *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar usuario" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {users.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="priority"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Prioridad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {PRIORITY_OPTIONS.map((p) => (
-                          <SelectItem key={p.value} value={p.value}>
-                            {p.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="due_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fecha límite</FormLabel>
+                    <FormLabel>Título *</FormLabel>
                     <FormControl>
-                      <DatePicker
-                        value={field.value || ""}
-                        onChange={field.onChange}
-                        placeholder="Sin fecha"
+                      <Input
+                        placeholder="Ej: Llamar a cliente por pago pendiente"
+                        autoFocus
+                        {...field}
                       />
                     </FormControl>
                     <FormMessage />
@@ -397,29 +315,51 @@ export function TaskDialog({
                 )}
               />
 
-              {dueDate && (
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descripción</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Detalles adicionales..."
+                        className="resize-none"
+                        rows={3}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Asignación y Prioridad */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <Users className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Asignación</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
                 <FormField
                   control={form.control}
-                  name="reminder_minutes"
+                  name="assigned_to"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Recordatorio</FormLabel>
-                      <Select
-                        onValueChange={field.onChange}
-                        value={field.value || ""}
-                      >
+                      <FormLabel>Asignar a *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Sin recordatorio" />
+                            <SelectValue placeholder="Seleccionar usuario" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {REMINDER_OPTIONS.map((r) => (
-                            <SelectItem
-                              key={r.value || "none"}
-                              value={r.value || "none"}
-                            >
-                              {r.label}
+                          {users.map((u) => (
+                            <SelectItem key={u.id} value={u.id}>
+                              {u.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -428,53 +368,149 @@ export function TaskDialog({
                     </FormItem>
                   )}
                 />
-              )}
+
+                <FormField
+                  control={form.control}
+                  name="priority"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Prioridad</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {PRIORITY_OPTIONS.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="operation_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vincular a operación</FormLabel>
-                    <FormControl>
-                      <SearchableCombobox
-                        value={field.value || ""}
-                        onChange={(val) => field.onChange(val)}
-                        searchFn={searchOperations}
-                        placeholder="Buscar operación..."
-                        searchPlaceholder="Código, destino o cliente..."
-                        emptyMessage="No se encontraron operaciones"
-                        initialLabel={operationLabel}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {/* Fecha y Recordatorio */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Fecha</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="due_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha límite</FormLabel>
+                      <FormControl>
+                        <DatePicker
+                          value={field.value || ""}
+                          onChange={field.onChange}
+                          placeholder="Sin fecha"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="customer_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vincular a cliente</FormLabel>
-                    <FormControl>
-                      <SearchableCombobox
-                        value={field.value || ""}
-                        onChange={(val) => field.onChange(val)}
-                        searchFn={searchCustomers}
-                        placeholder="Buscar cliente..."
-                        searchPlaceholder="Nombre o email..."
-                        emptyMessage="No se encontraron clientes"
-                        initialLabel={customerLabel}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                {dueDate && (
+                  <FormField
+                    control={form.control}
+                    name="reminder_minutes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Recordatorio</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          value={field.value || ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Sin recordatorio" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {REMINDER_OPTIONS.map((r) => (
+                              <SelectItem
+                                key={r.value || "none"}
+                                value={r.value || "none"}
+                              >
+                                {r.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 )}
-              />
+              </div>
+            </div>
+
+            {/* Vincular */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                  <Link2 className="h-3.5 w-3.5 text-violet-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Vincular</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="operation_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vincular a operación</FormLabel>
+                      <FormControl>
+                        <SearchableCombobox
+                          value={field.value || ""}
+                          onChange={(val) => field.onChange(val)}
+                          searchFn={searchOperations}
+                          placeholder="Buscar operación..."
+                          searchPlaceholder="Código, destino o cliente..."
+                          emptyMessage="No se encontraron operaciones"
+                          initialLabel={operationLabel}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="customer_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vincular a cliente</FormLabel>
+                      <FormControl>
+                        <SearchableCombobox
+                          value={field.value || ""}
+                          onChange={(val) => field.onChange(val)}
+                          searchFn={searchCustomers}
+                          placeholder="Buscar cliente..."
+                          searchPlaceholder="Nombre o email..."
+                          emptyMessage="No se encontraron clientes"
+                          initialLabel={customerLabel}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <DialogFooter>

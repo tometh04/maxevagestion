@@ -12,21 +12,21 @@ import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 import { toast } from "sonner"
 
 const statusColumns = [
-  { id: "NEW", label: "Nuevo", color: "bg-orange-50 dark:bg-orange-950/30" },
-  { id: "IN_PROGRESS", label: "En Progreso", color: "bg-orange-100 dark:bg-orange-900/30" },
-  { id: "QUOTED", label: "Cotizado", color: "bg-amber-100 dark:bg-amber-900/30" },
-  { id: "WON", label: "Ganado", color: "bg-green-100 dark:bg-green-900/30" },
-  { id: "LOST", label: "Perdido", color: "bg-red-100 dark:bg-red-900/30" },
+  { id: "NEW", label: "Nuevo", color: "bg-primary/10" },
+  { id: "IN_PROGRESS", label: "En Progreso", color: "bg-primary/15" },
+  { id: "QUOTED", label: "Cotizado", color: "bg-warning/10" },
+  { id: "WON", label: "Ganado", color: "bg-success/10" },
+  { id: "LOST", label: "Perdido", color: "bg-destructive/10" },
 ]
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-blue-500",
+  ARGENTINA: "bg-info",
   CARIBE: "bg-cyan-500",
-  BRASIL: "bg-green-500",
+  BRASIL: "bg-success",
   EUROPA: "bg-purple-500",
-  EEUU: "bg-red-500",
+  EEUU: "bg-destructive",
   OTROS: "bg-gray-500",
-  CRUCEROS: "bg-orange-500",
+  CRUCEROS: "bg-primary",
 }
 
 interface Lead {
@@ -186,14 +186,12 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
     stopAutoScroll()
 
     try {
-      const res = await fetch("/api/leads/update-status", {
+      await fetch("/api/leads/update-status", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ leadId: draggedLead, status: newStatus }),
       })
-      if (res.ok && onRefresh) {
-        onRefresh()
-      }
+      window.location.reload()
     } catch (error) {
       console.error("Error updating status:", error)
     } finally {
@@ -268,7 +266,7 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
                           {lead.region}
                         </Badge>
                         {lead.has_deposit && lead.deposit_amount && (
-                          <Badge variant="outline" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/50">
+                          <Badge variant="outline" className="bg-warning/20 text-warning border-warning/50">
                             <DollarSign className="h-3 w-3 mr-1" />
                             {lead.deposit_amount} {lead.deposit_currency || "ARS"}
                           </Badge>
@@ -293,7 +291,7 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="h-7 px-2 text-xs text-orange-600 hover:bg-orange-100 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+                          className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                           onClick={(e) => handleClaimLead(lead.id, e)}
                           disabled={claimingLeadId === lead.id}
                         >

@@ -38,7 +38,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2 } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
@@ -828,7 +828,7 @@ export function OperationPaymentsSection({
               {" / "} Total: {currencySymbol} {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {customerDebt <= 0 && (
-              <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
+              <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
           </CardContent>
         </Card>
@@ -849,7 +849,7 @@ export function OperationPaymentsSection({
               {" / "} Total: {currencySymbol} {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {operatorDebt <= 0 && (
-              <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
+              <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
           </CardContent>
         </Card>
@@ -864,7 +864,7 @@ export function OperationPaymentsSection({
                 onClick={handleDeletePendingPayments} 
                 size="sm" 
                 variant="outline"
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive/80"
                 disabled={isDeleting}
               >
                 {isDeleting ? (
@@ -969,7 +969,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                              className="h-8 w-8 text-info hover:text-info/80 hover:bg-info/10"
                               onClick={() => handleDownloadReceipt(payment.id)}
                               disabled={downloadingReceiptId === payment.id}
                               title="Descargar recibo PDF"
@@ -983,7 +983,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-green-500 hover:text-green-700 hover:bg-green-100"
+                              className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
                               onClick={() => handleSendReceiptWhatsApp(payment.id)}
                               disabled={sendingReceiptId === payment.id}
                               title="Enviar recibo por WhatsApp"
@@ -1001,7 +1001,7 @@ export function OperationPaymentsSection({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-amber-500 hover:text-amber-700 hover:bg-amber-100"
+                            className="h-8 w-8 text-warning hover:text-warning/80 hover:bg-warning/10"
                             onClick={() => handleOpenEditDialog(payment)}
                             title="Editar pago"
                           >
@@ -1012,7 +1012,7 @@ export function OperationPaymentsSection({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100"
+                          className="h-8 w-8 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
                           onClick={() => handleDeletePayment(payment.id)}
                           disabled={deletingPaymentId === payment.id}
                           title="Eliminar pago"
@@ -1042,55 +1042,21 @@ export function OperationPaymentsSection({
               Registra un cobro recibido del cliente.
             </DialogDescription>
           </DialogHeader>
-          
+
           <Form {...incomeForm}>
-            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="space-y-4">
-              <FormField
-                control={incomeForm.control}
-                name="method"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Método de Pago</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {paymentMethods.map((method) => (
-                          <SelectItem key={method.value} value={method.value}>
-                            {method.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-              <FormField
-                  control={incomeForm.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Monto</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min="0" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
+            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="px-6 py-5 space-y-5">
+              {/* Sub-card: Método y Monto */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium text-foreground/70">Pago</span>
+                </div>
                 <FormField
                   control={incomeForm.control}
-                  name="currency"
+                  name="method"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Moneda</FormLabel>
+                      <FormLabel>Método de Pago</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -1098,14 +1064,55 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.value} value={method.value}>
+                              {method.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={incomeForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" min="0" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={incomeForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
               {/* Tipo de cambio - solo visible cuando moneda es ARS */}
@@ -1117,16 +1124,16 @@ export function OperationPaymentsSection({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          min="0" 
-                          placeholder="Ej: 1200" 
-                          {...field} 
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Ej: 1200"
+                          {...field}
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        {field.value && incomeForm.watch("amount") 
+                        {field.value && incomeForm.watch("amount")
                           ? `Equivale a USD ${(incomeForm.watch("amount") / field.value).toFixed(2)}`
                           : "Ingrese el tipo de cambio para calcular el equivalente en USD"
                         }
@@ -1137,86 +1144,95 @@ export function OperationPaymentsSection({
                 />
               )}
 
-              <FormField
-                control={incomeForm.control}
-                name="date_paid"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha del Cobro</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Sub-card: Fecha y Cuenta */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-xs font-medium text-foreground/70">Destino del cobro</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={incomeForm.control}
+                    name="date_paid"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha del Cobro</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: es })
+                                ) : (
+                                  <span>Seleccionar fecha</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={incomeForm.control}
-                name="financial_account_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Financiera *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {financialAccounts
-                          .filter((acc) => acc.currency === incomeForm.watch("currency"))
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({account.currency})
-                              {account.current_balance !== undefined && userRole !== "SELLER" && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                    style: "currency",
-                                    currency: account.currency,
-                                  })}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={incomeForm.control}
+                    name="financial_account_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Financiera *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cuenta" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {financialAccounts
+                              .filter((acc) => acc.currency === incomeForm.watch("currency"))
+                              .map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  {account.name} ({account.currency})
+                                  {account.current_balance !== undefined && userRole !== "SELLER" && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                        style: "currency",
+                                        currency: account.currency,
+                                      })}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
 
               <FormField
                 control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notas (opcional)</FormLabel>
+                    <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                     <FormControl>
                       <Input placeholder="Referencia, comprobante, etc." {...field} />
                     </FormControl>
@@ -1264,53 +1280,19 @@ export function OperationPaymentsSection({
             </DialogHeader>
 
             <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4">
-                <FormField
-                  control={editForm.control}
-                  name="method"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Método de Pago</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {paymentMethods.map((method) => (
-                            <SelectItem key={method.value} value={method.value}>
-                              {method.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="px-6 py-5 space-y-5">
+                {/* Sub-card: Método y Monto */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-foreground/70">Pago</span>
+                  </div>
                   <FormField
                     control={editForm.control}
-                    name="amount"
+                    name="method"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Monto</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" min="0" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="currency"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Moneda</FormLabel>
+                        <FormLabel>Método de Pago</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
@@ -1318,14 +1300,55 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="ARS">ARS</SelectItem>
-                            <SelectItem value="USD">USD</SelectItem>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monto</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" min="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={editForm.control}
+                      name="currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
 
                 {editForm.watch("currency") === "ARS" && (
@@ -1356,108 +1379,115 @@ export function OperationPaymentsSection({
                   />
                 )}
 
-                <FormField
-                  control={editForm.control}
-                  name="date_paid"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Fecha del Pago</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP", { locale: es })
-                              ) : (
-                                <span>Seleccionar fecha</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Switch para marcar como pagado - solo para PENDING de operador */}
-                {editingPayment?.status === "PENDING" && editingPayment?.payer_type === "OPERATOR" && (
-                  <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        <span className="text-sm font-medium">Marcar como pagado</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Registra este pago como realizado y selecciona la cuenta de origen
-                      </p>
-                    </div>
-                    <Switch
-                      checked={markAsPaid}
-                      onCheckedChange={setMarkAsPaid}
-                    />
+                {/* Sub-card: Fecha y Estado */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Fecha y Cuenta</span>
                   </div>
-                )}
-
-                {/* Cuenta financiera - si el pago está PAID o se está marcando como pagado */}
-                {(editingPayment?.status === "PAID" || markAsPaid) && (
                   <FormField
                     control={editForm.control}
-                    name="financial_account_id"
+                    name="date_paid"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Cuenta Financiera *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar cuenta" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {financialAccounts
-                              .filter((acc) => acc.currency === editForm.watch("currency"))
-                              .map((account) => (
-                                <SelectItem key={account.id} value={account.id}>
-                                  {account.name} ({account.currency})
-                                  {account.current_balance !== undefined && (
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                        style: "currency",
-                                        currency: account.currency,
-                                      })}
-                                    </span>
-                                  )}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha del Pago</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: es })
+                                ) : (
+                                  <span>Seleccionar fecha</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
+
+                  {/* Switch para marcar como pagado - solo para PENDING de operador */}
+                  {editingPayment?.status === "PENDING" && editingPayment?.payer_type === "OPERATOR" && (
+                    <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background p-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <span className="text-sm font-medium">Marcar como pagado</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Registra este pago como realizado y selecciona la cuenta de origen
+                        </p>
+                      </div>
+                      <Switch
+                        checked={markAsPaid}
+                        onCheckedChange={setMarkAsPaid}
+                      />
+                    </div>
+                  )}
+
+                  {/* Cuenta financiera - si el pago está PAID o se está marcando como pagado */}
+                  {(editingPayment?.status === "PAID" || markAsPaid) && (
+                    <FormField
+                      control={editForm.control}
+                      name="financial_account_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cuenta Financiera *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar cuenta" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {financialAccounts
+                                .filter((acc) => acc.currency === editForm.watch("currency"))
+                                .map((account) => (
+                                  <SelectItem key={account.id} value={account.id}>
+                                    {account.name} ({account.currency})
+                                    {account.current_balance !== undefined && (
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                          style: "currency",
+                                          currency: account.currency,
+                                        })}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
 
                 <FormField
                   control={editForm.control}
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Notas (opcional)</FormLabel>
+                      <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
                         <Input placeholder="Referencia, comprobante, etc." {...field} />
                       </FormControl>
@@ -1501,182 +1531,198 @@ export function OperationPaymentsSection({
             </DialogHeader>
             
             <Form {...expenseForm}>
-              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="space-y-4">
-                <FormField
-                  control={expenseForm.control}
-                name="method"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Método de Pago</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {paymentMethods.map((method) => (
-                          <SelectItem key={method.value} value={method.value}>
-                            {method.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
+              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="px-6 py-5 space-y-5">
+                {/* Sub-card: Método y Monto */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Banknote className="h-3.5 w-3.5 text-warning" />
+                    <span className="text-xs font-medium text-foreground/70">Pago al Operador</span>
+                  </div>
+                  <FormField
                     control={expenseForm.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Monto</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min="0" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    name="method"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Método de Pago</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={expenseForm.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monto</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" min="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
+                      name="currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Tipo de cambio - solo visible cuando moneda es ARS */}
+                {expenseForm.watch("currency") === "ARS" && (
+                  <FormField
                     control={expenseForm.control}
-                  name="currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Moneda</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    name="exchange_rate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Ej: 1200"
+                            {...field}
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                        <p className="text-xs text-muted-foreground">
+                          {field.value && expenseForm.watch("amount")
+                            ? `Equivale a USD ${(expenseForm.watch("amount") / field.value).toFixed(2)}`
+                            : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                          }
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
-              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-              {expenseForm.watch("currency") === "ARS" && (
+                {/* Sub-card: Fecha y Cuenta */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Destino del pago</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={expenseForm.control}
+                      name="date_paid"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Fecha del Pago</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant={"outline"}
+                                  className={cn(
+                                    "w-full pl-3 text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                >
+                                  {field.value ? (
+                                    format(field.value, "PPP", { locale: es })
+                                  ) : (
+                                    <span>Seleccionar fecha</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
+                      name="financial_account_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cuenta Financiera *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar cuenta" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {financialAccounts
+                                .filter((acc) => acc.currency === expenseForm.watch("currency"))
+                                .map((account) => (
+                                  <SelectItem key={account.id} value={account.id}>
+                                    {account.name} ({account.currency})
+                                    {account.current_balance !== undefined && (
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                          style: "currency",
+                                          currency: account.currency,
+                                        })}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
                 <FormField
                   control={expenseForm.control}
-                  name="exchange_rate"
+                  name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                      <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          min="0" 
-                          placeholder="Ej: 1200" 
-                          {...field} 
-                        />
+                        <Input placeholder="Referencia, comprobante, etc." {...field} />
                       </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        {field.value && expenseForm.watch("amount") 
-                          ? `Equivale a USD ${(expenseForm.watch("amount") / field.value).toFixed(2)}`
-                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
-                        }
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              <FormField
-                  control={expenseForm.control}
-                name="date_paid"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha del Pago</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={expenseForm.control}
-                name="financial_account_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Financiera *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {financialAccounts
-                          .filter((acc) => acc.currency === expenseForm.watch("currency"))
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({account.currency})
-                              {account.current_balance !== undefined && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                    style: "currency",
-                                    currency: account.currency,
-                                  })}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                  control={expenseForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notas (opcional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Referencia, comprobante, etc." {...field} />
-                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

@@ -30,8 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Label } from "@/components/ui/label"
-import { Loader2, Upload, X, FileText } from "lucide-react"
+import { Loader2, Wallet, Calendar } from "lucide-react"
 import { toast } from "sonner"
 
 type PayRecurringExpenseFormValues = {
@@ -75,7 +74,6 @@ export function PayRecurringExpenseDialog({
   const [loading, setLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [paymentCurrency, setPaymentCurrency] = useState<"ARS" | "USD">("USD")
-  const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
   // Verificar si necesita tipo de cambio
   const needsExchangeRate = () => {
@@ -113,7 +111,6 @@ export function PayRecurringExpenseDialog({
     } else {
       form.reset()
       setFinancialAccounts([])
-      setReceiptFile(null)
     }
   }, [open, form])
 
@@ -175,31 +172,8 @@ export function PayRecurringExpenseDialog({
         throw new Error(error.error || "Error al procesar el pago")
       }
 
-      // Upload receipt if provided
-      if (receiptFile) {
-        try {
-          const formData = new FormData()
-          formData.append("file", receiptFile)
-          formData.append("recurring_payment_id", expense.id)
-
-          const receiptRes = await fetch("/api/expenses/receipts", {
-            method: "POST",
-            body: formData,
-          })
-
-          if (!receiptRes.ok) {
-            console.error("Error uploading receipt, but payment was processed")
-            toast.warning("Pago procesado pero no se pudo subir el comprobante")
-          }
-        } catch (receiptError) {
-          console.error("Error uploading receipt:", receiptError)
-          toast.warning("Pago procesado pero no se pudo subir el comprobante")
-        }
-      }
-
       toast.success("Pago procesado exitosamente")
       form.reset()
-      setReceiptFile(null)
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
@@ -233,167 +207,135 @@ export function PayRecurringExpenseDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="financial_account_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cuenta Financiera *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar cuenta" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {financialAccounts.map((account) => (
-                        <SelectItem key={account.id} value={account.id}>
-                          {account.name} ({account.currency})
-                          {account.current_balance !== undefined && (
-                            <span className="text-xs text-muted-foreground ml-2">
-                              - Balance: {new Intl.NumberFormat("es-AR", {
-                                style: "currency",
-                                currency: account.currency === "USD" ? "USD" : "ARS",
-                              }).format(account.current_balance)}
-                            </span>
-                          )}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {needsExchangeRate() && (
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Cuenta y Cambio */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Wallet className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cuenta de Pago</h4>
+              </div>
               <FormField
                 control={form.control}
-                name="exchange_rate"
+                name="financial_account_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tipo de Cambio *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="Ej: 1200"
-                        {...field}
-                        onChange={(e) => field.onChange(parseFloat(e.target.value) || "")}
-                      />
-                    </FormControl>
-                    <p className="text-xs text-muted-foreground">
-                      Requerido para convertir {expenseCurrency} a {paymentCurrency}
-                    </p>
+                    <FormLabel>Cuenta Financiera *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar cuenta" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {financialAccounts.map((account) => (
+                          <SelectItem key={account.id} value={account.id}>
+                            {account.name} ({account.currency})
+                            {account.current_balance !== undefined && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                - Balance: {new Intl.NumberFormat("es-AR", {
+                                  style: "currency",
+                                  currency: account.currency === "USD" ? "USD" : "ARS",
+                                }).format(account.current_balance)}
+                              </span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            )}
 
-            {needsExchangeRate() && form.watch("exchange_rate") && (
-              <div className="bg-muted p-3 rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  Monto a pagar en {paymentCurrency}:
+              {needsExchangeRate() && (
+                <FormField
+                  control={form.control}
+                  name="exchange_rate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Cambio *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Ej: 1200"
+                          {...field}
+                          onChange={(e) => field.onChange(parseFloat(e.target.value) || "")}
+                        />
+                      </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Requerido para convertir {expenseCurrency} a {paymentCurrency}
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+
+              {needsExchangeRate() && form.watch("exchange_rate") && (
+                <div className="bg-background p-3 rounded-lg border border-border/30">
+                  <div className="text-sm text-muted-foreground">
+                    Monto a pagar en {paymentCurrency}:
+                  </div>
+                  <div className="text-lg font-bold">
+                    {paymentCurrency === "USD"
+                      ? new Intl.NumberFormat("es-AR", {
+                          style: "currency",
+                          currency: "USD",
+                        }).format(expenseAmount / (form.watch("exchange_rate") || 1))
+                      : new Intl.NumberFormat("es-AR", {
+                          style: "currency",
+                          currency: "ARS",
+                        }).format(expenseAmount * (form.watch("exchange_rate") || 1))}
+                  </div>
                 </div>
-                <div className="text-lg font-bold">
-                  {paymentCurrency === "USD"
-                    ? new Intl.NumberFormat("es-AR", {
-                        style: "currency",
-                        currency: "USD",
-                      }).format(expenseAmount / (form.watch("exchange_rate") || 1))
-                    : new Intl.NumberFormat("es-AR", {
-                        style: "currency",
-                        currency: "ARS",
-                      }).format(expenseAmount * (form.watch("exchange_rate") || 1))}
+              )}
+            </div>
+
+            {/* Fecha y Referencia */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <Calendar className="h-3.5 w-3.5 text-blue-500" />
                 </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Detalles del Pago</h4>
               </div>
-            )}
+              <FormField
+                control={form.control}
+                name="payment_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha de Pago *</FormLabel>
+                    <FormControl>
+                      <DatePicker
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Seleccionar fecha"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="payment_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fecha de Pago *</FormLabel>
-                  <FormControl>
-                    <DatePicker
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="Seleccionar fecha"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Referencia / Comprobante (opcional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Ej: Transferencia #12345, Recibo #456"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Receipt upload */}
-            <div className="space-y-2">
-              <Label>Comprobante (Opcional)</Label>
-              {receiptFile ? (
-                <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
-                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                  <span className="text-sm truncate flex-1">{receiptFile.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-6 w-6 p-0"
-                    onClick={() => setReceiptFile(null)}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <div>
-                  <label
-                    htmlFor="receipt-upload-recurring"
-                    className="flex items-center gap-2 px-4 py-2 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors w-fit"
-                  >
-                    <Upload className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Adjuntar comprobante</span>
-                  </label>
-                  <input
-                    id="receipt-upload-recurring"
-                    type="file"
-                    className="hidden"
-                    accept=".jpg,.jpeg,.png,.webp,.pdf"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        if (file.size > 10 * 1024 * 1024) {
-                          toast.error("El archivo no puede superar 10MB")
-                          return
-                        }
-                        setReceiptFile(file)
-                      }
-                      e.target.value = ""
-                    }}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    JPG, PNG, WebP o PDF. Max 10MB.
-                  </p>
-                </div>
-              )}
+              <FormField
+                control={form.control}
+                name="reference"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Referencia / Comprobante (opcional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Ej: Transferencia #12345, Recibo #456"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             <DialogFooter>

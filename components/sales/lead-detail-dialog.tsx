@@ -26,13 +26,13 @@ import {
 import { toast } from "sonner"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-amber-400 dark:bg-amber-600",
-  CARIBE: "bg-amber-500 dark:bg-amber-500",
-  BRASIL: "bg-amber-600 dark:bg-amber-400",
-  EUROPA: "bg-amber-700 dark:bg-amber-300",
-  EEUU: "bg-amber-800 dark:bg-amber-200",
-  OTROS: "bg-amber-300 dark:bg-amber-700",
-  CRUCEROS: "bg-amber-900 dark:bg-amber-100",
+  ARGENTINA: "bg-warning/80",
+  CARIBE: "bg-warning/70",
+  BRASIL: "bg-warning/60",
+  EUROPA: "bg-warning/50",
+  EEUU: "bg-warning/40",
+  OTROS: "bg-warning/90",
+  CRUCEROS: "bg-warning/30",
 }
 
 const statusLabels: Record<string, string> = {
@@ -518,22 +518,22 @@ export function LeadDetailDialog({
             <>
               <div className="space-y-3">
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  <CheckCircle2 className="h-4 w-4 text-success" />
                   Lead Convertido
                 </h3>
                 <div className="space-y-2">
                   {/* Link a Operación */}
                   {lead.operations && lead.operations.length > 0 && (
                     <Link href={`/operations/${lead.operations[0].id}`}>
-                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors cursor-pointer">
+                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-success/10 border border-success/30 hover:bg-success/15 transition-colors cursor-pointer">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <Briefcase className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-semibold text-green-900 dark:text-green-100">
+                            <Briefcase className="h-4 w-4 text-success" />
+                            <span className="text-sm font-semibold">
                               Operación Creada
                             </span>
                           </div>
-                          <ExternalLink className="h-4 w-4 text-green-600" />
+                          <ExternalLink className="h-4 w-4 text-success" />
                         </div>
                         <div className="text-sm space-y-1 ml-6">
                           {lead.operations[0].file_code && (
@@ -751,7 +751,7 @@ export function LeadDetailDialog({
                 variant="default"
                 onClick={handleClaimLead}
                 disabled={claiming}
-                className="flex-1 sm:flex-initial bg-orange-500 hover:bg-orange-600 text-white"
+                className="flex-1 sm:flex-initial bg-primary hover:bg-primary/90 text-white"
               >
                 {claiming ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -774,7 +774,7 @@ export function LeadDetailDialog({
               <Button
                 variant="default"
                 asChild
-                className="flex-1 sm:flex-initial bg-green-600 hover:bg-green-700"
+                className="flex-1 sm:flex-initial bg-success hover:bg-success/90"
               >
                 <Link href={`/operations/${lead.operations[0].id}`}>
                   <Briefcase className="mr-2 h-4 w-4" />
@@ -797,7 +797,7 @@ export function LeadDetailDialog({
             {onArchive && (
               <Button
                 variant="ghost"
-                className="text-amber-600 flex-1 sm:flex-initial hover:text-amber-700 hover:bg-amber-50"
+                className="text-warning flex-1 sm:flex-initial hover:text-warning hover:bg-warning/10"
                 onClick={handleArchive}
                 disabled={archiving}
               >
@@ -814,7 +814,7 @@ export function LeadDetailDialog({
             {onDelete && !isFromTrello && (
               <Button
                 variant="ghost"
-                className="text-red-600 flex-1 sm:flex-initial hover:text-red-700 hover:bg-red-50"
+                className="text-destructive flex-1 sm:flex-initial hover:text-destructive hover:bg-destructive/10"
                 onClick={() => setDeleteDialogOpen(true)}
               >
                 <Trash2 className="mr-2 h-4 w-4" />

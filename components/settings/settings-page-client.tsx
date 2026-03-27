@@ -33,7 +33,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       params.set("tab", value)
       router.push(`/settings?${params.toString()}`, { scroll: false })
     }}>
-      <TabsList>
+      <TabsList className="flex-wrap">
         <TabsTrigger value="users">Usuarios</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
         <TabsTrigger value="trello">Trello</TabsTrigger>
@@ -42,38 +42,34 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         <TabsTrigger value="import">Importar Datos</TabsTrigger>
-        <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
         {userRole === "SUPER_ADMIN" && <TabsTrigger value="seed">Seed Data</TabsTrigger>}
       </TabsList>
-      <TabsContent value="users">
+      <TabsContent value="users" className="mt-6">
         <UsersSettings />
       </TabsContent>
-      <TabsContent value="agencies">
+      <TabsContent value="agencies" className="mt-6">
         <AgenciesSettings />
       </TabsContent>
-      <TabsContent value="trello">
+      <TabsContent value="trello" className="mt-6">
         <TrelloSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
       </TabsContent>
-      <TabsContent value="commissions">
+      <TabsContent value="commissions" className="mt-6">
         <CommissionsSettings />
       </TabsContent>
-      <TabsContent value="ai">
+      <TabsContent value="ai" className="mt-6">
         <AISettings />
       </TabsContent>
-      <TabsContent value="requirements">
+      <TabsContent value="requirements" className="mt-6">
         <DestinationRequirementsClient />
       </TabsContent>
-      <TabsContent value="afip" className="pt-4">
+      <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
       </TabsContent>
-      <TabsContent value="import">
+      <TabsContent value="import" className="mt-6">
         <ImportSettings />
       </TabsContent>
-      <TabsContent value="afip">
-        <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
-      </TabsContent>
       {userRole === "SUPER_ADMIN" && (
-        <TabsContent value="seed" className="space-y-4">
+        <TabsContent value="seed" className="mt-6 space-y-6">
           <SeedMockData />
           <MigrateHistoricalAccounting />
         </TabsContent>

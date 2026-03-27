@@ -68,68 +68,69 @@ export function DashboardFilters({
   }
 
   return (
-    <div className="rounded-lg border bg-card p-3 shadow-sm sm:p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 items-end">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Desde</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateFrom)}
-            onChange={(date) => {
-              setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
-            }}
-            placeholder="dd/MM/yyyy"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Hasta</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateTo)}
-            onChange={(date) => {
-              setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
-            }}
-            placeholder="dd/MM/yyyy"
-            minDate={parseDate(filters.dateFrom)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Agencia</Label>
-          <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              {agencies.map((agency) => (
-                <SelectItem key={agency.id} value={agency.id}>
-                  {agency.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Vendedor</Label>
-          <Select value={filters.sellerId} onValueChange={(newValue) => handleChange("sellerId", newValue)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos</SelectItem>
-              {sellers.map((seller) => (
-                <SelectItem key={seller.id} value={seller.id}>
-                  {seller.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">Desde</Label>
+        <DateInputWithCalendar
+          value={parseDate(filters.dateFrom)}
+          onChange={(date) => {
+            setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
+          }}
+          placeholder="dd/MM/yyyy"
+          className="h-8 text-xs"
+        />
       </div>
 
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" onClick={handleReset}>
-          Reiniciar filtros
-        </Button>
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">Hasta</Label>
+        <DateInputWithCalendar
+          value={parseDate(filters.dateTo)}
+          onChange={(date) => {
+            setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
+          }}
+          placeholder="dd/MM/yyyy"
+          minDate={parseDate(filters.dateFrom)}
+          className="h-8 text-xs"
+        />
       </div>
+
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">Agencia</Label>
+        <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue placeholder="Todas" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todas</SelectItem>
+            {agencies.map((agency) => (
+              <SelectItem key={agency.id} value={agency.id}>
+                {agency.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-center gap-1.5">
+        <Label className="text-xs text-muted-foreground whitespace-nowrap">Vendedor</Label>
+        <Select value={filters.sellerId} onValueChange={(newValue) => handleChange("sellerId", newValue)}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue placeholder="Todos" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos</SelectItem>
+            {sellers.map((seller) => (
+              <SelectItem key={seller.id} value={seller.id}>
+                {seller.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Button variant="ghost" size="sm" onClick={handleReset} className="text-xs text-muted-foreground">
+        Reiniciar filtros
+      </Button>
     </div>
   )
 }

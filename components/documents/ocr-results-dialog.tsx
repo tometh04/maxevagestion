@@ -115,7 +115,7 @@ export function OCRResultsDialog({
         </DialogHeader>
 
         {isExpired && (
-          <Alert className="text-red-600">
+          <Alert className="text-destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
               ⚠️ Este documento está vencido. Se generará una alerta automáticamente.
@@ -124,7 +124,7 @@ export function OCRResultsDialog({
         )}
 
         {error && (
-          <Alert className="text-red-600">
+          <Alert className="text-destructive">
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}

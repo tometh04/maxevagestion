@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2 } from "lucide-react"
+import { CalendarIcon, Plus, Trash2, AlertCircle, Loader2, Building2, User, Plane, DollarSign, Ticket, MapPin, Users, Package } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
@@ -438,31 +438,8 @@ export function NewOperationDialog({
     setApiError(null)
     try {
       // Si se usan múltiples operadores, enviar el array; si no, usar formato antiguo
-      // Find or create destination in master table
-      let destinationId = null
-      if (values.destination && values.destination.trim()) {
-        try {
-          const destRes = await fetch("/api/destinations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: values.destination }),
-          })
-          if (destRes.ok) {
-            const destData = await destRes.json()
-            destinationId = destData.destination?.id || null
-            // Use the canonical name from the master table
-            if (destData.destination?.name) {
-              values.destination = destData.destination.name
-            }
-          }
-        } catch {
-          // Non-blocking — operation still saves with text destination
-        }
-      }
-
       const requestBody: any = {
         ...values,
-        destination_id: destinationId,
         // Incluir lead_id si hay un lead
         ...(lead ? { lead_id: lead.id } : {}),
         operator_id: useMultipleOperators ? null : (values.operator_id || null),
@@ -556,19 +533,23 @@ export function NewOperationDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent 
-          className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto"
+        <DialogContent
+          className="max-w-[95vw] sm:max-w-4xl max-h-[95vh]"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >
         <DialogHeader>
           <DialogTitle>{lead ? "Convertir Lead a Operación" : "Nueva Operación"}</DialogTitle>
           <DialogDescription>
-            {lead 
-              ? "Completa los datos para convertir este lead en una operación. Todos los campos están disponibles, incluyendo OCR para crear cliente." 
+            {lead
+              ? "Completa los datos para convertir este lead en una operación. Todos los campos están disponibles, incluyendo OCR para crear cliente."
               : "Crear una nueva operación manualmente"}
           </DialogDescription>
         </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)}>
+        <div className="px-6 py-6 space-y-7 max-h-[75vh] overflow-y-auto">
 
         {/* Mostrar error del API */}
         {apiError && (
@@ -589,196 +570,230 @@ export function NewOperationDialog({
           </div>
         )}
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="agency_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Agencia *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar agencia" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {agencies.map((agency) => (
-                          <SelectItem key={agency.id} value={agency.id}>
-                            {agency.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="seller_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vendedor Principal *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar vendedor" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {sellers.map((seller) => (
-                          <SelectItem key={seller.id} value={seller.id}>
-                            {seller.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="customer_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cliente {settings?.require_customer && <span className="text-red-500">*</span>}</FormLabel>
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <SearchableCombobox
-                          value={field.value || ""}
-                          onChange={(value) => field.onChange(value || null)}
-                          placeholder="Buscar cliente..."
-                          searchPlaceholder="Escribí el nombre..."
-                          emptyMessage="No se encontró el cliente"
-                          disabled={loadingCustomers}
-                          initialLabel={
-                            field.value
-                              ? customers.find(c => c.id === field.value)
-                                ? `${customers.find(c => c.id === field.value)!.first_name} ${customers.find(c => c.id === field.value)!.last_name}`
-                                : ""
-                              : ""
-                          }
-                          searchFn={async (query) => {
-                            const filtered = query
-                              ? customers.filter(c =>
-                                  `${c.first_name} ${c.last_name}`.toLowerCase().includes(query.toLowerCase())
-                                )
-                              : customers
-                            return filtered.slice(0, 50).map(c => ({
-                              value: c.id,
-                              label: `${c.first_name} ${c.last_name}`,
-                            }))
-                          }}
-                        />
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setShowNewCustomerDialog(true)}
-                        title="Crear nuevo cliente"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="seller_secondary_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vendedor Secundario</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sin vendedor secundario" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sin vendedor secundario</SelectItem>
-                        {sellers.map((seller) => (
-                          <SelectItem key={seller.id} value={seller.id}>
-                            {seller.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {/* Split de comisión - solo visible con vendedor secundario */}
-            {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (
-              <div className="grid gap-4 md:grid-cols-2">
-                {["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "") ? (
-                  <FormField
-                    control={form.control}
-                    name="commission_split"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Split comisión (% vendedor principal)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step={1}
-                            value={field.value ?? 50}
-                            onChange={(e) => field.onChange(Number(e.target.value))}
-                            onFocus={(e) => e.target.select()}
-                          />
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Principal: {field.value ?? 50}% · Secundario: {100 - (field.value ?? 50)}%
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                ) : (
-                  <div className="text-xs text-muted-foreground pt-2">
-                    Split comisión: {form.watch("commission_split") ?? 50}% / {100 - (form.watch("commission_split") ?? 50)}%
-                  </div>
-                )}
+            {/* Section: General */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Building2 className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">General</h4>
               </div>
-            )}
+              <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="agency_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Agencia *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar agencia" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agencies.map((agency) => (
+                            <SelectItem key={agency.id} value={agency.id}>
+                              {agency.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            {/* Toggle entre operador único y múltiples operadores */}
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="checkbox"
-                id="useMultipleOperators"
-                checked={useMultipleOperators}
-                onChange={(e) => {
-                  setUseMultipleOperators(e.target.checked)
-                  if (!e.target.checked) {
-                    setOperatorList([])
-                    form.setValue("operators", undefined)
-                  }
-                }}
-                className="rounded"
-              />
-              <label htmlFor="useMultipleOperators" className="text-sm font-medium cursor-pointer">
-                Usar múltiples operadores
-              </label>
+                <FormField
+                  control={form.control}
+                  name="seller_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vendedor Principal *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar vendedor" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {sellers.map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
+
+            <div className="border-t border-border/40 -mx-6" />
+
+            {/* Section: Cliente */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-info/10">
+                  <User className="h-3.5 w-3.5 text-info" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cliente</h4>
+              </div>
+              <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="customer_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cliente {settings?.require_customer && <span className="text-destructive">*</span>}</FormLabel>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <SearchableCombobox
+                            value={field.value || ""}
+                            onChange={(value) => field.onChange(value || null)}
+                            placeholder="Buscar cliente..."
+                            searchPlaceholder="Escribí el nombre..."
+                            emptyMessage="No se encontró el cliente"
+                            disabled={loadingCustomers}
+                            initialLabel={
+                              field.value
+                                ? customers.find(c => c.id === field.value)
+                                  ? `${customers.find(c => c.id === field.value)!.first_name} ${customers.find(c => c.id === field.value)!.last_name}`
+                                  : ""
+                                : ""
+                            }
+                            searchFn={async (query) => {
+                              const filtered = query
+                                ? customers.filter(c =>
+                                    `${c.first_name} ${c.last_name}`.toLowerCase().includes(query.toLowerCase())
+                                  )
+                                : customers
+                              return filtered.slice(0, 50).map(c => ({
+                                value: c.id,
+                                label: `${c.first_name} ${c.last_name}`,
+                              }))
+                            }}
+                          />
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setShowNewCustomerDialog(true)}
+                          title="Crear nuevo cliente"
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="seller_secondary_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vendedor Secundario</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sin vendedor secundario" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin vendedor secundario</SelectItem>
+                          {sellers.map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {/* Split de comisión - solo visible con vendedor secundario */}
+              {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (
+                <div className="grid gap-x-6 gap-y-5 md:grid-cols-2 mt-4">
+                  {["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "") ? (
+                    <FormField
+                      control={form.control}
+                      name="commission_split"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Split comisión (% vendedor principal)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={1}
+                              value={field.value ?? 50}
+                              onChange={(e) => field.onChange(Number(e.target.value))}
+                              onFocus={(e) => e.target.select()}
+                            />
+                          </FormControl>
+                          <p className="text-xs text-muted-foreground">
+                            Principal: {field.value ?? 50}% · Secundario: {100 - (field.value ?? 50)}%
+                          </p>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  ) : (
+                    <div className="text-xs text-muted-foreground pt-2">
+                      Split comisión: {form.watch("commission_split") ?? 50}% / {100 - (form.watch("commission_split") ?? 50)}%
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-border/40 -mx-6" />
+
+            {/* Section: Datos del viaje */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <Plane className="h-3.5 w-3.5 text-success" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos del viaje</h4>
+              </div>
+
+              {/* Sub-group: Operador & Tipo */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">Operador & Tipo de Producto</span>
+                  </div>
+                  <label htmlFor="useMultipleOperators" className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="useMultipleOperators"
+                      checked={useMultipleOperators}
+                      onChange={(e) => {
+                        setUseMultipleOperators(e.target.checked)
+                        if (!e.target.checked) {
+                          setOperatorList([])
+                          form.setValue("operators", undefined)
+                        }
+                      }}
+                      className="rounded h-3.5 w-3.5"
+                    />
+                    <span className="text-xs text-muted-foreground">Múltiples operadores</span>
+                  </label>
+                </div>
 
             {useMultipleOperators ? (
               <div className="space-y-4 border rounded-lg p-5 mb-4 bg-muted/30">
@@ -808,7 +823,7 @@ export function NewOperationDialog({
                           variant="ghost"
                           size="sm"
                           onClick={() => removeOperator(index)}
-                          className="text-red-600 hover:text-red-700 h-7 w-7 p-0"
+                          className="text-destructive hover:text-destructive/80 h-7 w-7 p-0"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -908,7 +923,7 @@ export function NewOperationDialog({
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="font-medium text-muted-foreground">Margen Calculado:</span>
-                      <span className={`font-bold ${calculatedMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <span className={`font-bold ${calculatedMargin >= 0 ? "text-success" : "text-destructive"}`}>
                         {form.watch("sale_currency") || form.watch("currency") || "USD"} {calculatedMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({calculatedMarginPercent.toFixed(1)}%)
                       </span>
                     </div>
@@ -927,13 +942,13 @@ export function NewOperationDialog({
                 )}
               </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
                 <FormField
                   control={form.control}
                   name="operator_id"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Operador {settings?.require_operator && <span className="text-red-500">*</span>}</FormLabel>
+                      <FormLabel>Operador {settings?.require_operator && <span className="text-destructive">*</span>}</FormLabel>
                       <div className="flex gap-2">
                         <Select
                           onValueChange={(value) => field.onChange(value === "none" ? null : value)}
@@ -994,8 +1009,15 @@ export function NewOperationDialog({
                 />
               </div>
             )}
+              </div>{/* End Operador & Tipo card */}
 
-            <div className="grid gap-4 md:grid-cols-2">
+              {/* Sub-group: Ruta */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <MapPin className="h-4 w-4 text-emerald-500" />
+                  <span className="text-xs font-medium text-muted-foreground">Ruta del Viaje</span>
+                </div>
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="origin"
@@ -1047,36 +1069,20 @@ export function NewOperationDialog({
                       value={field.value || ""}
                       onChange={(value) => field.onChange(value || "")}
                       placeholder="Ciudad de destino..."
-                      searchPlaceholder="Buscar destino o aeropuerto..."
+                      searchPlaceholder="Buscar aeropuerto o ciudad..."
                       emptyMessage="No se encontraron resultados"
                       initialLabel={field.value || ""}
                       searchFn={async (query) => {
                         if (!query || query.length < 2) return []
-                        const options: ComboboxOption[] = []
-                        // 1. Search in destinations master table first
-                        try {
-                          const destRes = await fetch(`/api/destinations?q=${encodeURIComponent(query)}`)
-                          if (destRes.ok) {
-                            const destData = await destRes.json()
-                            for (const dest of (destData.destinations || [])) {
-                              options.push({
-                                value: dest.name,
-                                label: dest.name,
-                                subtitle: dest.country || "Destino guardado",
-                              })
-                            }
-                          }
-                        } catch {
-                          // silencioso
-                        }
-                        // 2. Search airports
+                        // Siempre incluir lo que el usuario escribió como primera opción (fallback libre)
+                        const options: ComboboxOption[] = [
+                          { value: query, label: query, subtitle: "Usar como destino" },
+                        ]
                         try {
                           const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
                           if (res.ok) {
                             const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
                             for (const airport of data) {
-                              // Skip if already in destinations list
-                              if (options.some(o => o.value === airport.city)) continue
                               options.push({
                                 value: airport.city,
                                 label: `${airport.code} — ${airport.city}`,
@@ -1085,15 +1091,7 @@ export function NewOperationDialog({
                             }
                           }
                         } catch {
-                          // silencioso
-                        }
-                        // 3. Always add free text option at the end
-                        if (!options.some(o => o.value.toLowerCase() === query.toLowerCase())) {
-                          options.push({
-                            value: query,
-                            label: `Crear: "${query}"`,
-                            subtitle: "Nuevo destino",
-                          })
+                          // silencioso — igual tenemos la opción de texto libre
                         }
                         return options
                       }}
@@ -1104,7 +1102,7 @@ export function NewOperationDialog({
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-2">
               <FormField
                 control={form.control}
                 name="departure_date"
@@ -1146,8 +1144,15 @@ export function NewOperationDialog({
                 }}
               />
             </div>
+              </div>{/* End Ruta card */}
 
-            <div className="grid gap-4 md:grid-cols-3">
+              {/* Sub-group: Pasajeros */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users className="h-4 w-4 text-blue-500" />
+                  <span className="text-xs font-medium text-muted-foreground">Pasajeros</span>
+                </div>
+            <div className="grid gap-x-6 gap-y-5 md:grid-cols-3">
               <FormField
                 control={form.control}
                 name="adults"
@@ -1172,7 +1177,7 @@ export function NewOperationDialog({
                 name="children"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Children</FormLabel>
+                    <FormLabel>Niños</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -1205,210 +1210,249 @@ export function NewOperationDialog({
                 )}
               />
             </div>
+              </div>{/* End Pasajeros card */}
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Estado</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="RESERVED">Reservado</SelectItem>
-                        <SelectItem value="CONFIRMED">Confirmado</SelectItem>
-                        <SelectItem value="CANCELLED">Cancelado</SelectItem>
-                        <SelectItem value="TRAVELLING">En viaje</SelectItem>
-                        <SelectItem value="TRAVELLED">Viajado</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="currency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Moneda (Compatibilidad)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
 
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-4">Monedas Separadas</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="sale_currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Moneda de Venta</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            <div className="border-t border-border/40 -mx-6" />
 
-                <FormField
-                  control={form.control}
-                  name="operator_cost_currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Moneda de Costo de Operador</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+            {/* Section: Financiero */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
+                  <DollarSign className="h-3.5 w-3.5 text-warning" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Financiero</h4>
               </div>
-            </div>
 
-            {/* Códigos de Reserva */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Códigos de Reserva</h3>
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="reservation_code_air"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Código de Reserva Aéreo</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ej: ABC123"
-                          {...field}
-                          value={field.value || ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="reservation_code_hotel"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Código de Reserva Hotel</FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ej: XYZ789"
-                          {...field}
-                          value={field.value || ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="sale_amount_total"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Monto de Venta Total *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        {...field}
-                        value={field.value || ""}
-                        onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                        onFocus={(e) => e.target.select()}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {!useMultipleOperators && (
-                <FormField
-                  control={form.control}
-                  name="operator_cost"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Costo de Operador *</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          {...field}
-                          value={field.value || ""}
-                          onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
-                          onFocus={(e) => e.target.select()}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-              {useMultipleOperators && (
-                <div className="flex items-end">
-                  <div className="w-full">
-                    <label className="text-sm font-medium mb-1 block">Costo Total (Calculado)</label>
-                    <Input
-                      type="text"
-                      value={totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                      disabled
-                      className="bg-muted"
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Sub-card: Estado & Monedas */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 text-warning"><circle cx="12" cy="12" r="8"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span className="text-xs font-medium text-foreground/70">Estado & Monedas</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Estado</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="RESERVED">Reservado</SelectItem>
+                            <SelectItem value="CONFIRMED">Confirmado</SelectItem>
+                            <SelectItem value="CANCELLED">Cancelado</SelectItem>
+                            <SelectItem value="TRAVELLING">En viaje</SelectItem>
+                            <SelectItem value="TRAVELLED">Viajado</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda (Compatibilidad)</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="sale_currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda Venta</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Suma automática de todos los operadores
-                    </p>
+                    <FormField
+                      control={form.control}
+                      name="operator_cost_currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda Costo</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   </div>
                 </div>
-              )}
+
+                {/* Sub-card: Montos */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Montos</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="sale_amount_total"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto de Venta Total *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            {...field}
+                            value={field.value || ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {!useMultipleOperators && (
+                    <FormField
+                      control={form.control}
+                      name="operator_cost"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Costo de Operador *</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              {...field}
+                              value={field.value || ""}
+                              onChange={(e) => field.onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+                              onFocus={(e) => e.target.select()}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                  {useMultipleOperators && (
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Costo Total (Calculado)</label>
+                      <Input
+                        type="text"
+                        value={totalOperatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                        disabled
+                        className="bg-muted"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Suma automática de todos los operadores
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
+
+            <div className="border-t border-border/40 -mx-6" />
+
+            {/* Section: Códigos de Reserva */}
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                  <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Códigos de reserva</h4>
+              </div>
+              <div className="grid md:grid-cols-2 gap-4">
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Plane className="h-3.5 w-3.5 text-sky-500" />
+                    <span className="text-xs font-medium text-foreground/70">Aéreo</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="reservation_code_air"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Código de Reserva</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: ABC123"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Building2 className="h-3.5 w-3.5 text-violet-500" />
+                    <span className="text-xs font-medium text-foreground/70">Hotel</span>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="reservation_code_hotel"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Código de Reserva</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: XYZ789"
+                            {...field}
+                            value={field.value || ""}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+        </div>{/* End scrollable content wrapper */}
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
@@ -1419,7 +1463,7 @@ export function NewOperationDialog({
               </Button>
             </DialogFooter>
           </form>
-        </Form>
+          </Form>
       </DialogContent>
 
       {/* Diálogo para crear nuevo operador */}
@@ -1431,7 +1475,7 @@ export function NewOperationDialog({
               Crea un nuevo operador/proveedor para asignarlo a esta operación
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-4 px-6 py-5">
             <div className="space-y-2">
               <Label htmlFor="new-operator-name">Nombre del operador *</Label>
               <Input

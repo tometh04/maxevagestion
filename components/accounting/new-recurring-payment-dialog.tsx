@@ -39,7 +39,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
-import { Check, ChevronsUpDown, Plus, Search } from "lucide-react"
+import { Check, ChevronsUpDown, Plus, Search, Building2, DollarSign, Calendar, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const recurringPaymentSchema = z.object({
@@ -226,7 +226,7 @@ export function NewRecurringPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Nuevo Pago Recurrente</DialogTitle>
           <DialogDescription>
@@ -235,309 +235,345 @@ export function NewRecurringPaymentDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              {/* Proveedor con Combobox */}
-              <FormField
-                control={form.control}
-                name="provider_name"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Proveedor *</FormLabel>
-                    <Popover open={providerOpen} onOpenChange={setProviderOpen}>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            role="combobox"
-                            aria-expanded={providerOpen}
-                            className={cn(
-                              "w-full justify-between",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value || "Seleccionar o crear proveedor..."}
-                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[300px] p-0" align="start">
-                        <Command shouldFilter={false}>
-                          <div className="flex items-center border-b px-3">
-                            <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                            <input
-                              placeholder="Buscar o crear proveedor..."
-                              value={providerSearch}
-                              onChange={(e) => setProviderSearch(e.target.value)}
-                              className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                            />
-                          </div>
-                          <CommandList>
-                            {/* Opción de crear nuevo siempre arriba */}
-                            {isNewProvider && (
-                              <>
-                                <CommandGroup heading="Crear nuevo">
-                                  <CommandItem
-                                    onSelect={handleCreateNewProvider}
-                                    className="cursor-pointer"
-                                  >
-                                    <Plus className="mr-2 h-4 w-4 text-green-500" />
-                                    <span>Crear &quot;{providerSearch}&quot;</span>
-                                  </CommandItem>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Proveedor y Frecuencia */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Building2 className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Proveedor y Frecuencia</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                {/* Proveedor con Combobox */}
+                <FormField
+                  control={form.control}
+                  name="provider_name"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel>Proveedor *</FormLabel>
+                      <Popover open={providerOpen} onOpenChange={setProviderOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              aria-expanded={providerOpen}
+                              className={cn(
+                                "w-full justify-between",
+                                !field.value && "text-muted-foreground"
+                              )}
+                            >
+                              {field.value || "Seleccionar o crear proveedor..."}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[300px] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <div className="flex items-center border-b px-3">
+                              <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                              <input
+                                placeholder="Buscar o crear proveedor..."
+                                value={providerSearch}
+                                onChange={(e) => setProviderSearch(e.target.value)}
+                                className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                              />
+                            </div>
+                            <CommandList>
+                              {/* Opción de crear nuevo siempre arriba */}
+                              {isNewProvider && (
+                                <>
+                                  <CommandGroup heading="Crear nuevo">
+                                    <CommandItem
+                                      onSelect={handleCreateNewProvider}
+                                      className="cursor-pointer"
+                                    >
+                                      <Plus className="mr-2 h-4 w-4 text-success" />
+                                      <span>Crear &quot;{providerSearch}&quot;</span>
+                                    </CommandItem>
+                                  </CommandGroup>
+                                  <CommandSeparator />
+                                </>
+                              )}
+
+                              {loadingProviders ? (
+                                <div className="p-4 text-center text-sm text-muted-foreground">
+                                  Cargando proveedores...
+                                </div>
+                              ) : filteredProviders.length === 0 && !isNewProvider ? (
+                                <CommandEmpty>
+                                  {providerSearch.length < 3
+                                    ? "Escribe al menos 3 caracteres para crear uno nuevo"
+                                    : "No se encontraron proveedores"
+                                  }
+                                </CommandEmpty>
+                              ) : (
+                                <CommandGroup heading="Proveedores existentes">
+                                  {filteredProviders.map((provider) => (
+                                    <CommandItem
+                                      key={provider}
+                                      value={provider}
+                                      onSelect={() => handleSelectProvider(provider)}
+                                      className="cursor-pointer"
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          selectedProvider === provider
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {provider}
+                                    </CommandItem>
+                                  ))}
                                 </CommandGroup>
-                                <CommandSeparator />
-                              </>
-                            )}
-                            
-                            {loadingProviders ? (
-                              <div className="p-4 text-center text-sm text-muted-foreground">
-                                Cargando proveedores...
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="frequency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Frecuencia *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {frequencyOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Descripción *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ej: Servidor Vercel, Alquiler oficina" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="category_id"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Categoría (Opcional)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar categoría" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin categoría</SelectItem>
+                          {categories.map((category) => (
+                            <SelectItem key={category.id} value={category.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: category.color }}
+                                />
+                                {category.name}
                               </div>
-                            ) : filteredProviders.length === 0 && !isNewProvider ? (
-                              <CommandEmpty>
-                                {providerSearch.length < 3 
-                                  ? "Escribe al menos 3 caracteres para crear uno nuevo"
-                                  : "No se encontraron proveedores"
-                                }
-                              </CommandEmpty>
-                            ) : (
-                              <CommandGroup heading="Proveedores existentes">
-                                {filteredProviders.map((provider) => (
-                                  <CommandItem
-                                    key={provider}
-                                    value={provider}
-                                    onSelect={() => handleSelectProvider(provider)}
-                                    className="cursor-pointer"
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        selectedProvider === provider
-                                          ? "opacity-100"
-                                          : "opacity-0"
-                                      )}
-                                    />
-                                    {provider}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
-              <FormField
-                control={form.control}
-                name="frequency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Frecuencia *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+            {/* Monto y Moneda */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Monto</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monto *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <Input type="number" step="0.01" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {frequencyOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Moneda *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="amount"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Monto *</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="currency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Moneda *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+            {/* Fechas */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <Calendar className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Fechas</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="start_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha de Inicio *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
+                        <Input type="date" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="end_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        <div className="flex items-center gap-2">
+                          <span>Fecha de Fin (Opcional)</span>
+                          <Switch
+                            checked={hasEndDate}
+                            onCheckedChange={(checked) => {
+                              setHasEndDate(checked)
+                              if (!checked) {
+                                field.onChange(null)
+                              }
+                            }}
+                          />
+                        </div>
+                      </FormLabel>
+                      {hasEndDate && (
+                        <FormControl>
+                          <Input type="date" {...field} value={field.value || ""} />
+                        </FormControl>
+                      )}
+                      {!hasEndDate && (
+                        <p className="text-sm text-muted-foreground">
+                          Si no se especifica, el pago continuará indefinidamente
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="start_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fecha de Inicio *</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="end_date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      <div className="flex items-center gap-2">
-                        <span>Fecha de Fin (Opcional)</span>
-                        <Switch
-                          checked={hasEndDate}
-                          onCheckedChange={(checked) => {
-                            setHasEndDate(checked)
-                            if (!checked) {
-                              field.onChange(null)
-                            }
-                          }}
-                        />
-                      </div>
-                    </FormLabel>
-                    {hasEndDate && (
+            {/* Referencias */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                  <FileText className="h-3.5 w-3.5 text-violet-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Referencias</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="invoice_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número de Factura (Opcional)</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} value={field.value || ""} />
+                        <Input placeholder="Ej: FAC-001-2025" {...field} value={field.value || ""} />
                       </FormControl>
-                    )}
-                    {!hasEndDate && (
-                      <p className="text-sm text-muted-foreground">
-                        Si no se especifica, el pago continuará indefinidamente
-                      </p>
-                    )}
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripción *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: Servidor Vercel, Alquiler oficina" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="category_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Categoría (Opcional)</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ""}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar categoría" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="none">Sin categoría</SelectItem>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          <div className="flex items-center gap-2">
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: category.color }}
-                            />
-                            {category.name}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="invoice_number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Número de Factura (Opcional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Ej: FAC-001-2025" {...field} value={field.value || ""} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="reference"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Referencia (Opcional)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Referencia adicional" {...field} value={field.value || ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               <FormField
                 control={form.control}
-                name="reference"
+                name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Referencia (Opcional)</FormLabel>
+                    <FormLabel>Notas (Opcional)</FormLabel>
                     <FormControl>
-                      <Input placeholder="Referencia adicional" {...field} value={field.value || ""} />
+                      <Textarea
+                        placeholder="Notas adicionales sobre este pago recurrente"
+                        {...field}
+                        value={field.value || ""}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas (Opcional)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Notas adicionales sobre este pago recurrente"
-                      {...field}
-                      value={field.value || ""}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

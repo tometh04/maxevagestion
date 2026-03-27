@@ -35,11 +35,11 @@ interface OperationRequirementsSectionProps {
 }
 
 const typeConfig: Record<string, { icon: any; label: string; color: string }> = {
-  VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-red-500" },
-  FORM: { icon: FileText, label: "Formulario", color: "bg-blue-500" },
+  VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-destructive" },
+  FORM: { icon: FileText, label: "Formulario", color: "bg-info" },
   VISA: { icon: CreditCard, label: "Visa", color: "bg-purple-500" },
-  INSURANCE: { icon: Shield, label: "Seguro", color: "bg-green-500" },
-  DOCUMENT: { icon: File, label: "Documento", color: "bg-orange-500" },
+  INSURANCE: { icon: Shield, label: "Seguro", color: "bg-success" },
+  DOCUMENT: { icon: File, label: "Documento", color: "bg-warning" },
   OTHER: { icon: Info, label: "Otro", color: "bg-gray-500" },
 }
 
@@ -123,7 +123,7 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-base flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <AlertTriangle className="h-4 w-4 text-warning" />
             Requisitos del Destino
           </CardTitle>
           {matchedDestinations.length > 0 && (
@@ -137,7 +137,7 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
         {/* Requisitos obligatorios */}
         {requiredItems.length > 0 && (
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-red-600 uppercase">Obligatorios</p>
+            <p className="text-xs font-semibold text-destructive uppercase">Obligatorios</p>
             {requiredItems.map((req) => {
               const config = typeConfig[req.requirement_type]
               const Icon = config.icon
@@ -146,7 +146,7 @@ export function OperationRequirementsSection({ destination, departureDate }: Ope
               return (
                 <div 
                   key={req.id} 
-                  className={`p-3 rounded-lg border ${urgent ? "bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800" : "bg-muted/50"}`}
+                  className={`p-3 rounded-lg border ${urgent ? "bg-destructive/10 border-destructive/20" : "bg-muted/50"}`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`p-1.5 rounded ${config.color} text-white shrink-0`}>

@@ -60,11 +60,11 @@ const typeLabels: Record<string, string> = {
 }
 
 const typeColors: Record<string, string> = {
-  INCOME: "bg-amber-500",
-  EXPENSE: "bg-red-500",
-  FX_GAIN: "bg-amber-500",
-  FX_LOSS: "bg-orange-500",
-  COMMISSION: "bg-blue-500",
+  INCOME: "bg-warning",
+  EXPENSE: "bg-destructive",
+  FX_GAIN: "bg-warning",
+  FX_LOSS: "bg-primary",
+  COMMISSION: "bg-info",
   OPERATOR_PAYMENT: "bg-purple-500",
 }
 
@@ -116,18 +116,18 @@ export function LedgerTable({ filters }: LedgerTableProps) {
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="max-h-[60vh] overflow-y-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Concepto</TableHead>
-            <TableHead className="text-right">Monto Original</TableHead>
-            <TableHead className="text-right">ARS Equivalente</TableHead>
-            <TableHead>Cuenta</TableHead>
-            <TableHead>Operación</TableHead>
-            <TableHead>Vendedor</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Fecha</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Concepto</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10 text-right">Monto Original</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10 text-right">ARS Equivalente</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Cuenta</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
+            <TableHead className="sticky top-0 bg-background z-10">Vendedor</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

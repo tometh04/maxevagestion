@@ -25,7 +25,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { toast } from "sonner"
-import { ArrowRight, Loader2 } from "lucide-react"
+import { ArrowRight, ArrowUpFromLine, ArrowDownToLine, CalendarIcon, Loader2, StickyNote } from "lucide-react"
 
 interface FinancialAccount {
   id: string
@@ -204,167 +204,181 @@ export function TransferAccountDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="from_account_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cuenta Origen *</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value)
-                      form.setValue("to_account_id", "")
-                      form.setValue("exchange_rate", undefined)
-                    }}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona cuenta origen" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {financialAccounts
-                        .filter((acc) => acc.is_active !== false)
-                        .map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.currency}) - Balance:{" "}
-                            {formatCurrency(account.current_balance ?? 0, account.currency)}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                  {fromAccount && (
-                    <p className="text-xs text-muted-foreground">
-                      Saldo disponible: {formatCurrency(fromBalance, fromAccount.currency)}
-                    </p>
-                  )}
-                </FormItem>
-              )}
-            />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <ArrowUpFromLine className="h-3.5 w-3.5 text-destructive" />
+                <span className="text-xs font-medium text-foreground/70">Origen</span>
+              </div>
 
-            <FormField
-              control={form.control}
-              name="to_account_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cuenta Destino *</FormLabel>
-                  <Select
-                    value={field.value}
-                    onValueChange={(value) => {
-                      field.onChange(value)
-                      form.setValue("exchange_rate", undefined)
-                    }}
-                    disabled={!fromAccountId}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder={fromAccountId ? "Selecciona cuenta destino" : "Primero selecciona cuenta origen"} />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {filteredToAccounts.length === 0 ? (
-                        <SelectItem value="no-accounts" disabled>
-                          No hay cuentas disponibles
-                        </SelectItem>
-                      ) : (
-                        filteredToAccounts.map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.currency}) - Balance:{" "}
-                            {formatCurrency(account.current_balance ?? 0, account.currency)}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className={`grid gap-4 ${isCrossCurrency ? "grid-cols-3" : "grid-cols-2"}`}>
               <FormField
                 control={form.control}
-                name="amount"
+                name="from_account_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monto *</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        placeholder="0.00"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.value)}
-                        onFocus={(e) => e.target.select()}
-                      />
-                    </FormControl>
+                    <FormLabel>Cuenta Origen *</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        form.setValue("to_account_id", "")
+                        form.setValue("exchange_rate", undefined)
+                      }}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona cuenta origen" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {financialAccounts
+                          .filter((acc) => acc.is_active !== false)
+                          .map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({account.currency}) - Balance:{" "}
+                              {formatCurrency(account.current_balance ?? 0, account.currency)}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
-                    {fromAccount && watchAmount > fromBalance && (
-                      <p className="text-xs text-red-600">
-                        Saldo insuficiente. Disponible: {formatCurrency(fromBalance, fromAccount.currency)}
+                    {fromAccount && (
+                      <p className="text-xs text-muted-foreground">
+                        Saldo disponible: {formatCurrency(fromBalance, fromAccount.currency)}
                       </p>
                     )}
                   </FormItem>
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="currency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Moneda *</FormLabel>
-                    <Select
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      disabled={true}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    <p className="text-xs text-muted-foreground">
-                      Auto-detectada desde cuenta origen
-                    </p>
-                  </FormItem>
-                )}
-              />
-
-              {isCrossCurrency && (
+              <div className={`grid gap-4 ${isCrossCurrency ? "grid-cols-3" : "grid-cols-2"}`}>
                 <FormField
                   control={form.control}
-                  name="exchange_rate"
+                  name="amount"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tipo de Cambio *</FormLabel>
+                      <FormLabel>Monto *</FormLabel>
                       <FormControl>
                         <Input
                           type="number"
                           step="0.01"
-                          placeholder="Ej: 1450"
-                          value={field.value ?? ""}
-                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          placeholder="0.00"
+                          {...field}
+                          onChange={(e) => field.onChange(e.target.value)}
                           onFocus={(e) => e.target.select()}
                         />
                       </FormControl>
                       <FormMessage />
+                      {fromAccount && watchAmount > fromBalance && (
+                        <p className="text-xs text-destructive">
+                          Saldo insuficiente. Disponible: {formatCurrency(fromBalance, fromAccount.currency)}
+                        </p>
+                      )}
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Moneda *</FormLabel>
+                      <Select
+                        value={field.value}
+                        onValueChange={field.onChange}
+                        disabled={true}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
                       <p className="text-xs text-muted-foreground">
-                        1 USD = X ARS
+                        Auto-detectada desde cuenta origen
                       </p>
                     </FormItem>
                   )}
                 />
-              )}
+
+                {isCrossCurrency && (
+                  <FormField
+                    control={form.control}
+                    name="exchange_rate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Cambio *</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="Ej: 1450"
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                            onFocus={(e) => e.target.select()}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                        <p className="text-xs text-muted-foreground">
+                          1 USD = X ARS
+                        </p>
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <ArrowDownToLine className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Destino</span>
+              </div>
+
+              <FormField
+                control={form.control}
+                name="to_account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cuenta Destino *</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        form.setValue("exchange_rate", undefined)
+                      }}
+                      disabled={!fromAccountId}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={fromAccountId ? "Selecciona cuenta destino" : "Primero selecciona cuenta origen"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {filteredToAccounts.length === 0 ? (
+                          <SelectItem value="no-accounts" disabled>
+                            No hay cuentas disponibles
+                          </SelectItem>
+                        ) : (
+                          filteredToAccounts.map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({account.currency}) - Balance:{" "}
+                              {formatCurrency(account.current_balance ?? 0, account.currency)}
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </div>
 
             {/* Preview de conversión cross-currency */}
@@ -372,11 +386,11 @@ export function TransferAccountDialog({
               <div className="rounded-lg border bg-muted/50 p-3 space-y-1">
                 <p className="text-sm font-medium">Resumen de la operación:</p>
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="text-red-600 font-medium">
+                  <span className="text-destructive font-medium">
                     Sale: {formatCurrency(watchAmount, fromAccount!.currency)}
                   </span>
                   <ArrowRight className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-green-600 font-medium">
+                  <span className="text-success font-medium">
                     Entra: {formatCurrency(convertedAmount, toAccount!.currency)}
                   </span>
                 </div>
@@ -386,40 +400,50 @@ export function TransferAccountDialog({
               </div>
             )}
 
-            <FormField
-              control={form.control}
-              name="transfer_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fecha de Transferencia *</FormLabel>
-                  <FormControl>
-                    <DateInputWithCalendar
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="dd/MM/yyyy"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <CalendarIcon className="h-3.5 w-3.5 text-sky-500" />
+                <span className="text-xs font-medium text-foreground/70">Detalles</span>
+              </div>
 
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas (opcional)</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="Notas adicionales sobre la transferencia..."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="transfer_date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Fecha de Transferencia *</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1.5">
+                      <StickyNote className="h-3.5 w-3.5" />
+                      Notas (opcional)
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Notas adicionales sobre la transferencia..."
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button

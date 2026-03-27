@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from "react"
 import { createBrowserClient } from "@supabase/ssr"
 import { Bell, ChevronRight, Check, Calendar, DollarSign, FileText, AlertTriangle, CheckSquare, BellRing, BellOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import {
   Popover,
   PopoverContent,
@@ -34,9 +33,9 @@ interface Alert {
 
 const alertTypeConfig: Record<string, { icon: any; color: string }> = {
   PAYMENT_DUE: { icon: DollarSign, color: "text-yellow-500" },
-  UPCOMING_TRIP: { icon: Calendar, color: "text-blue-500" },
-  MISSING_DOCUMENT: { icon: FileText, color: "text-orange-500" },
-  LOW_MARGIN: { icon: AlertTriangle, color: "text-red-500" },
+  UPCOMING_TRIP: { icon: Calendar, color: "text-info" },
+  MISSING_DOCUMENT: { icon: FileText, color: "text-warning" },
+  LOW_MARGIN: { icon: AlertTriangle, color: "text-destructive" },
   QUOTATION_EXPIRING: { icon: Bell, color: "text-purple-500" },
   TASK_REMINDER: { icon: CheckSquare, color: "text-indigo-500" },
   TASK_ASSIGNED: { icon: CheckSquare, color: "text-green-500" },
@@ -192,17 +191,12 @@ export function NotificationBell() {
         <Button variant="ghost" size="icon" className="relative">
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
-            <Badge
-              variant="destructive"
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
-            >
-              {unreadCount > 9 ? "9+" : unreadCount}
-            </Badge>
+            <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-background" />
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <div className="flex items-center justify-between p-3 border-b">
+      <PopoverContent className="w-96 p-0" align="end">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
           <h4 className="font-semibold text-sm">Notificaciones</h4>
           <Link href="/alerts" onClick={() => setOpen(false)}>
             <Button variant="ghost" size="sm" className="text-xs">
@@ -227,12 +221,14 @@ export function NotificationBell() {
                 return (
                   <div
                     key={alert.id}
-                    className="p-3 hover:bg-muted/50 transition-colors"
+                    className="px-4 py-3 hover:bg-muted/40 transition-colors"
                   >
                     <div className="flex items-start gap-3">
-                      <Icon className={`h-4 w-4 mt-0.5 ${config.color}`} />
+                      <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted/60 ${config.color}`}>
+                        <Icon className="h-3.5 w-3.5" />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm line-clamp-2">
+                        <p className="text-sm leading-snug line-clamp-2">
                           {alert.description}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
@@ -245,18 +241,18 @@ export function NotificationBell() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-6 w-6 shrink-0"
+                        className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                         onClick={(e) => markAsDone(alert.id, e)}
                         title="Marcar como completada"
                       >
-                        <Check className="h-3 w-3" />
+                        <Check className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                     {alert.operation_id && (
                       <Link
                         href={`/operations/${alert.operation_id}`}
                         onClick={() => setOpen(false)}
-                        className="text-xs text-primary hover:underline ml-7 mt-1 block"
+                        className="text-xs text-primary hover:underline ml-10 mt-1 block"
                       >
                         Ver operación →
                       </Link>

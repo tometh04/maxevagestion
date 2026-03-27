@@ -441,7 +441,7 @@ export function ImportSection({
               )}
               {errorCount > 0 && (
                 <span className="flex items-center gap-1">
-                  <XCircle className="h-4 w-4 text-red-500" />
+                  <XCircle className="h-4 w-4 text-destructive" />
                   {errorCount} errores
                 </span>
               )}
@@ -463,7 +463,7 @@ export function ImportSection({
                   {parsedData.slice(0, 50).map((row, index) => (
                     <TableRow 
                       key={index}
-                      className={row.errors.length > 0 ? "bg-red-50 dark:bg-red-950/20" : 
+                      className={row.errors.length > 0 ? "bg-destructive/10" :
                                 row.warnings.length > 0 ? "bg-yellow-50 dark:bg-yellow-950/20" : ""}
                     >
                       <TableCell className="font-mono text-xs">{row.rowNumber}</TableCell>
@@ -570,8 +570,8 @@ export function ImportSection({
                 <p className="text-2xl font-bold text-yellow-600">{importResult.warnings}</p>
                 <p className="text-sm text-muted-foreground">Advertencias</p>
               </div>
-              <div className="p-4 rounded-lg bg-red-50 dark:bg-red-950/20">
-                <p className="text-2xl font-bold text-red-600">{importResult.errors}</p>
+              <div className="p-4 rounded-lg bg-destructive/10">
+                <p className="text-2xl font-bold text-destructive">{importResult.errors}</p>
                 <p className="text-sm text-muted-foreground">Errores</p>
               </div>
             </div>

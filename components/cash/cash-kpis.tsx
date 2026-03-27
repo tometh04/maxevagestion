@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/currency"
 
 export interface CashSummary {
@@ -35,16 +34,12 @@ export function CashKPIs({
       <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{currencyLabel}</h3>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         {items.map((item) => (
-          <Card key={item.label}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">{item.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">
-                {formatCurrency(item.value, displayCurrency)}
-              </div>
-            </CardContent>
-          </Card>
+          <div key={item.label} className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight mt-1">
+              {formatCurrency(item.value, displayCurrency)}
+            </p>
+          </div>
         ))}
       </div>
     </div>

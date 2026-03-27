@@ -56,8 +56,8 @@ interface MessageCardProps {
 }
 
 const categoryColors: Record<string, string> = {
-  PAYMENT: "bg-amber-100 text-amber-800",
-  TRIP: "bg-blue-100 text-blue-800",
+  PAYMENT: "bg-warning/10 text-warning",
+  TRIP: "bg-info/10 text-info",
   QUOTATION: "bg-purple-100 text-purple-800",
   BIRTHDAY: "bg-pink-100 text-pink-800",
   ANNIVERSARY: "bg-rose-100 text-rose-800",

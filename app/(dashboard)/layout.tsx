@@ -25,8 +25,8 @@ export default async function DashboardLayout({
     <SidebarProvider
       style={
         {
-          "--sidebar-width": "16rem",
-          "--header-height": "3rem",
+          "--sidebar-width": "14rem",
+          "--header-height": "3.5rem",
         } as React.CSSProperties
       }
     >
@@ -43,7 +43,7 @@ export default async function DashboardLayout({
       <SidebarInset className="min-w-0">
         <SiteHeader />
         <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-6 md:p-8">
+          <div className="flex-1 overflow-y-auto p-4 md:p-6">
             {children}
           </div>
         </div>
@@ -51,7 +51,6 @@ export default async function DashboardLayout({
       <TaskShortcutProvider
         currentUserId={user.id}
         agencyId={agencies[0]?.id || ""}
-        userRole={user.role}
       />
       <PushNotificationManager userId={user.id} />
     </SidebarProvider>

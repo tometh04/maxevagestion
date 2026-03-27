@@ -1,32 +1,18 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+// Card removed in redesign - using sub-cards directly
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+// Table import removed - not used in detail view
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt } from "lucide-react"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, Receipt, Plane, MapPin, Calendar, Users, DollarSign, Building2, UserCheck, Briefcase, TrendingUp } from "lucide-react"
+// Tooltips removed in redesign
 import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
-import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
-import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
 import {
   Breadcrumb,
@@ -40,7 +26,6 @@ import { EditOperationDialog } from "./edit-operation-dialog"
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
-import { ItinerarySection } from "./itinerary-section"
 import { useRouter } from "next/navigation"
 
 const statusLabels: Record<string, string> = {
@@ -181,26 +166,42 @@ export function OperationDetailClient({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link href="/operations">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
+              <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">Operación #{operation.id.slice(0, 8)}</h1>
-            <p className="text-muted-foreground">{operation.destination}</p>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-semibold tracking-tight">
+                {operation.destination || "Operación"}
+              </h1>
+              <Badge
+                variant="secondary"
+                className={
+                  operation.status === "CONFIRMED" ? "bg-success/10 text-success border-success/20" :
+                  operation.status === "CANCELLED" ? "bg-destructive/10 text-destructive border-destructive/20" :
+                  operation.status === "TRAVELLING" ? "bg-primary/10 text-primary border-primary/20" :
+                  operation.status === "TRAVELLED" ? "bg-muted text-muted-foreground" :
+                  "bg-warning/10 text-warning border-warning/20"
+                }
+              >
+                {statusLabels[operation.status] || operation.status}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              #{operation.id.slice(0, 8)} · {typeLabels[operation.type] || operation.type} · {operation.agencies?.name || "Sin agencia"}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant="secondary">{statusLabels[operation.status] || operation.status}</Badge>
-          <Button variant="outline" size="sm" asChild>
+          <Button variant="outline" size="sm" className="h-8" asChild>
             <Link href={`/operations/billing/new?operationId=${operation.id}`}>
-              <Receipt className="mr-2 h-4 w-4" />
+              <Receipt className="mr-1.5 h-3.5 w-3.5" />
               Facturar
             </Link>
           </Button>
-          <Button onClick={() => setEditDialogOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
+          <Button size="sm" className="h-8" onClick={() => setEditDialogOpen(true)}>
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
             Editar
           </Button>
         </div>
@@ -215,213 +216,237 @@ export function OperationDetailClient({
             <TabsTrigger value="payments">Pagos Operación ({operationBasePayments.length})</TabsTrigger>
           )}
           <TabsTrigger value="services">Servicios</TabsTrigger>
-          <TabsTrigger value="itinerary">Detalle de Compra</TabsTrigger>
           {userRole !== "SELLER" && (
             <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
-          )}
-          {userRole !== "SELLER" && (
-            <TabsTrigger value="metrics">Métricas</TabsTrigger>
           )}
           <TabsTrigger value="alerts">Alertas ({alerts?.length || 0})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Información Básica</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Datos generales de la operación: tipo de viaje, destino, fechas y cantidad de pasajeros. Esta información se usa para generación automática de alertas y reportes.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+        <TabsContent value="info" className="space-y-6">
+          {/* Row 1: Datos del Viaje + Financiero */}
+          <div className="grid gap-5 md:grid-cols-2">
+            {/* Datos del Viaje */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Plane className="h-3.5 w-3.5 text-primary" />
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Tipo</p>
-                    <p className="text-sm">{typeLabels[operation.type] || operation.type}</p>
+                <h3 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos del Viaje</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Ruta */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 col-span-2">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Ruta</span>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Estado</p>
-                    <Badge variant="secondary">{statusLabels[operation.status] || operation.status}</Badge>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Origen</p>
-                    <p className="text-sm">{operation.origin || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Destino</p>
-                    <p className="text-sm">{operation.destination}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Fecha Operación</p>
-                    <p className="text-sm font-semibold">
-                      {(() => {
-                        try {
-                          const dateStr = operation.operation_date || operation.created_at
-                          if (!dateStr) return "-"
-                          const d = dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00'
-                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
-                        } catch { return "-" }
-                      })()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "Fecha Salida"}
-                    </p>
-                    <p className="text-sm">
-                      {(() => {
-                        try {
-                          if (!operation.departure_date) return "-"
-                          return format(new Date(operation.departure_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
-                        } catch { return "-" }
-                      })()}
-                    </p>
-                  </div>
-                  {operation.return_date && (
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {operation.type === "ASSISTANCE" ? "Fin Cobertura" : "Fecha Regreso"}
+                      <p className="text-[11px] text-muted-foreground mb-0.5">Origen</p>
+                      <p className="text-sm font-medium">{operation.origin || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-0.5">Destino</p>
+                      <p className="text-sm font-medium">{operation.destination}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fechas */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Calendar className="h-3.5 w-3.5 text-sky-500" />
+                    <span className="text-xs font-medium text-foreground/70">Fechas</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-0.5">
+                        {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "Salida"}
                       </p>
-                      <p className="text-sm">
+                      <p className="text-sm font-medium">
                         {(() => {
                           try {
-                            return format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
+                            if (!operation.departure_date) return "-"
+                            return format(new Date(operation.departure_date + 'T12:00:00'), "dd MMM yyyy", { locale: es })
                           } catch { return "-" }
                         })()}
                       </p>
                     </div>
-                  )}
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Pasajeros</p>
-                    <p className="text-sm">
-                      {operation.adults} adultos, {operation.children} niños, {operation.infants} infantes
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {userRole !== "SELLER" && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Financiero</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Montos de venta, costo de operadores y margen bruto calculado automáticamente. El margen es la ganancia antes de gastos operativos (venta - costo operador).</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Monto Venta</p>
-                    <p className="text-lg font-semibold">
-                      {operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Costo Operador</p>
-                    <p className="text-lg font-semibold">
-                      {operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Margen</p>
-                    <p className="text-lg font-semibold text-green-600">
-                      {operation.currency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Margen %</p>
-                    <p className="text-lg font-semibold text-green-600">
-                      {operation.margin_percentage.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            )}
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Asignaciones</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Vendedor asignado (para cálculo de comisiones), operador que provee el servicio, y agencia responsable. El vendedor determina quién recibe la comisión de la venta.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
-                  </p>
-                  <p className="text-sm">
-                    {operation.sellers?.name || "-"}
-                    {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({(operation as any).commission_split}% comisión)
-                      </span>
+                    {operation.return_date && (
+                      <div>
+                        <p className="text-[11px] text-muted-foreground mb-0.5">
+                          {operation.type === "ASSISTANCE" ? "Fin Cobertura" : "Regreso"}
+                        </p>
+                        <p className="text-sm font-medium">
+                          {(() => {
+                            try {
+                              return format(new Date(operation.return_date + 'T12:00:00'), "dd MMM yyyy", { locale: es })
+                            } catch { return "-" }
+                          })()}
+                        </p>
+                      </div>
                     )}
-                  </p>
-                </div>
-                {(operation as any).sellers_secondary && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Vendedor Secundario</p>
-                    <p className="text-sm">
-                      {(operation as any).sellers_secondary.name}
-                      {(operation as any).commission_split != null && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          ({100 - (operation as any).commission_split}% comisión)
-                        </span>
-                      )}
-                    </p>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground mb-0.5">Creación</p>
+                      <p className="text-sm font-medium">
+                        {(() => {
+                          try {
+                            const dateStr = operation.operation_date || operation.created_at
+                            if (!dateStr) return "-"
+                            const d = dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00'
+                            return format(new Date(d), "dd MMM yyyy", { locale: es })
+                          } catch { return "-" }
+                        })()}
+                      </p>
+                    </div>
                   </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Operador</p>
-                  <p className="text-sm">{operation.operators?.name || "-"}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Agencia</p>
-                  <p className="text-sm">{operation.agencies?.name || "-"}</p>
-                </div>
-                {operation.leads && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Lead Original</p>
-                    <Link href={`/sales/leads?leadId=${operation.leads.id}`}>
-                      <Button variant="link" className="p-0 h-auto">
-                        {operation.leads.contact_name}
-                      </Button>
-                    </Link>
+
+                {/* Pasajeros */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <Users className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs font-medium text-foreground/70">Pasajeros</span>
                   </div>
-                )}
-              </CardContent>
-            </Card>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground">Adultos</p>
+                      <p className="text-sm font-semibold tabular-nums">{operation.adults}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground">Niños</p>
+                      <p className="text-sm font-semibold tabular-nums">{operation.children}</p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-[11px] text-muted-foreground">Infantes</p>
+                      <p className="text-sm font-semibold tabular-nums">{operation.infants}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financiero + Asignaciones */}
+            <div className="space-y-5">
+              {userRole !== "SELLER" && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
+                      <DollarSign className="h-3.5 w-3.5 text-warning" />
+                    </div>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Financiero</h3>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Montos */}
+                    <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                        <span className="text-xs font-medium text-foreground/70">Venta</span>
+                      </div>
+                      <p className="text-xl font-semibold tabular-nums tracking-tight">
+                        {operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-border/30">
+                        <p className="text-[11px] text-muted-foreground mb-0.5">Costo Operador</p>
+                        <p className="text-sm font-medium tabular-nums">
+                          {operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Margen */}
+                    <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <TrendingUp className="h-3.5 w-3.5 text-success" />
+                        <span className="text-xs font-medium text-foreground/70">Margen</span>
+                      </div>
+                      <p className="text-xl font-semibold tabular-nums tracking-tight text-success">
+                        {operation.currency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-border/30">
+                        <p className="text-[11px] text-muted-foreground mb-0.5">Porcentaje</p>
+                        <p className="text-sm font-semibold text-success tabular-nums">
+                          {operation.margin_percentage.toFixed(1)}%
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Asignaciones */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                    <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                  </div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Asignaciones</h3>
+                </div>
+
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <UserCheck className="h-3 w-3 text-violet-500" />
+                        <p className="text-[11px] text-muted-foreground">
+                          {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium">
+                        {operation.sellers?.name || "-"}
+                        {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
+                          <span className="ml-1.5 text-[10px] text-muted-foreground">
+                            ({(operation as any).commission_split}%)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    {(operation as any).sellers_secondary && (
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Users className="h-3 w-3 text-violet-400" />
+                          <p className="text-[11px] text-muted-foreground">Vendedor Secundario</p>
+                        </div>
+                        <p className="text-sm font-medium">
+                          {(operation as any).sellers_secondary.name}
+                          {(operation as any).commission_split != null && (
+                            <span className="ml-1.5 text-[10px] text-muted-foreground">
+                              ({100 - (operation as any).commission_split}%)
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Briefcase className="h-3 w-3 text-sky-500" />
+                        <p className="text-[11px] text-muted-foreground">Operador</p>
+                      </div>
+                      <p className="text-sm font-medium">{operation.operators?.name || "-"}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <Building2 className="h-3 w-3 text-amber-500" />
+                        <p className="text-[11px] text-muted-foreground">Agencia</p>
+                      </div>
+                      <p className="text-sm font-medium">{operation.agencies?.name || "-"}</p>
+                    </div>
+                    {operation.leads && (
+                      <div className="col-span-2">
+                        <p className="text-[11px] text-muted-foreground mb-1">Lead Original</p>
+                        <Link href={`/sales/leads?leadId=${operation.leads.id}`}>
+                          <Button variant="link" className="p-0 h-auto text-sm">
+                            {operation.leads.contact_name}
+                          </Button>
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Requisitos del destino */}
@@ -432,123 +457,54 @@ export function OperationDetailClient({
 
           {/* Resumen financiero global (operación + servicios) */}
           {servicePayments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Resumen Financiero Global</CardTitle>
-                <CardDescription>
-                  Totales combinados de la operación base y sus servicios adicionales
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Venta operación</p>
-                    <p className="font-semibold">
-                      {operation.currency} {Number(operation.sale_amount_total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Cobrado en servicios</p>
-                    {(() => {
-                      const totals: Record<string, number> = {}
-                      servicePayments.filter(p => p.direction === "INCOME" && p.status === "PAID").forEach(p => {
-                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
-                      })
-                      return Object.keys(totals).length > 0
-                        ? Object.entries(totals).map(([cur, amt]) => (
-                            <p key={cur} className="font-semibold text-green-700">
-                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                            </p>
-                          ))
-                        : <p className="text-muted-foreground text-sm">Sin cobros</p>
-                    })()}
-                  </div>
-                  <div className="rounded-lg border p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Pagado a proveedores (servicios)</p>
-                    {(() => {
-                      const totals: Record<string, number> = {}
-                      servicePayments.filter(p => p.direction === "EXPENSE" && p.status === "PAID").forEach(p => {
-                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
-                      })
-                      return Object.keys(totals).length > 0
-                        ? Object.entries(totals).map(([cur, amt]) => (
-                            <p key={cur} className="font-semibold text-red-700">
-                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                            </p>
-                          ))
-                        : <p className="text-muted-foreground text-sm">Sin pagos</p>
-                    })()}
-                  </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <TrendingUp className="h-3.5 w-3.5 text-primary" />
                 </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Servicios cargados */}
-          {operationServices && operationServices.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Servicios Incluidos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {operationServices.map((svc) => (
-                    <div key={svc.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {svc.service_type === "HOTEL" ? "Hotel" :
-                           svc.service_type === "FLIGHT" ? "Vuelo" :
-                           svc.service_type === "TRANSFER" ? "Transfer" :
-                           svc.service_type === "EXCURSION" ? "Excursión" :
-                           svc.service_type === "ASSISTANCE" ? "Asistencia" :
-                           svc.service_type === "SEAT" ? "Asiento" :
-                           svc.service_type === "LUGGAGE" ? "Equipaje" :
-                           svc.service_type === "VISA" ? "Visa" : svc.service_type}
-                        </Badge>
-                        <span className="text-sm">{svc.name || svc.service_type}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm">
-                        <span className="text-muted-foreground">
-                          Venta: {svc.currency} {svc.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        </span>
-                        {userRole !== "SELLER" && (
-                          <span className="text-muted-foreground">
-                            Costo: {svc.currency} {svc.cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                          </span>
-                        )}
-                        {userRole !== "SELLER" && svc.price - svc.cost !== 0 && (
-                          <span className={svc.price - svc.cost > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-                            Margen: {svc.currency} {(svc.price - svc.cost).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {/* Totales */}
-                  {userRole !== "SELLER" && (
-                    <div className="flex items-center justify-between pt-3 border-t font-medium">
-                      <span className="text-sm">Total Servicios</span>
-                      <div className="flex items-center gap-4 text-sm">
-                        <span>
-                          Venta: {(() => {
-                            const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + s.price })
-                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
-                          })()}
-                        </span>
-                        <span className="text-green-600">
-                          Margen: {(() => {
-                            const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + (s.price - s.cost) })
-                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                <h3 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Resumen Financiero Global</h3>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <p className="text-[11px] text-muted-foreground mb-1">Venta operación</p>
+                  <p className="text-base font-semibold tabular-nums">
+                    {operation.currency} {Number(operation.sale_amount_total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <p className="text-[11px] text-muted-foreground mb-1">Cobrado en servicios</p>
+                  {(() => {
+                    const totals: Record<string, number> = {}
+                    servicePayments.filter(p => p.direction === "INCOME" && p.status === "PAID").forEach(p => {
+                      totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
+                    })
+                    return Object.keys(totals).length > 0
+                      ? Object.entries(totals).map(([cur, amt]) => (
+                          <p key={cur} className="text-base font-semibold text-success tabular-nums">
+                            {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        ))
+                      : <p className="text-muted-foreground text-sm">Sin cobros</p>
+                  })()}
+                </div>
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <p className="text-[11px] text-muted-foreground mb-1">Pagado a proveedores</p>
+                  {(() => {
+                    const totals: Record<string, number> = {}
+                    servicePayments.filter(p => p.direction === "EXPENSE" && p.status === "PAID").forEach(p => {
+                      totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
+                    })
+                    return Object.keys(totals).length > 0
+                      ? Object.entries(totals).map(([cur, amt]) => (
+                          <p key={cur} className="text-base font-semibold text-destructive tabular-nums">
+                            {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          </p>
+                        ))
+                      : <p className="text-muted-foreground text-sm">Sin pagos</p>
+                  })()}
+                </div>
+              </div>
+            </div>
           )}
         </TabsContent>
 
@@ -581,17 +537,6 @@ export function OperationDetailClient({
 
         {userRole !== "SELLER" && (
           <TabsContent value="accounting" className="space-y-4">
-            <PurchaseInvoicesSection
-              operationId={operation.id}
-              operators={operators}
-              currency={operation.currency || "USD"}
-            />
-            <OperationSaleInvoicesSection operationId={operation.id} />
-          </TabsContent>
-        )}
-
-        {userRole !== "SELLER" && (
-          <TabsContent value="metrics" className="space-y-4">
             <OperationAccountingSection
               operationId={operation.id}
               saleAmount={operation.sale_amount_total || 0}
@@ -608,85 +553,99 @@ export function OperationDetailClient({
         )}
 
         <TabsContent value="alerts" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Alertas de la Operación</CardTitle>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Check-in, vencimientos de documentos, pagos pendientes
-                </p>
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-destructive/10">
+                  <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+                </div>
+                <div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Alertas</h3>
+                  <p className="text-[11px] text-muted-foreground">Check-in, vencimientos, pagos pendientes</p>
+                </div>
               </div>
               <div className="flex gap-2">
                 {alerts && alerts.length > 0 && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
-                    className="text-red-600 hover:text-red-700"
+                    className="h-8 text-destructive hover:text-destructive/80"
                     onClick={handleDeleteAlerts}
                     disabled={isDeletingAlerts}
                   >
                     {isDeletingAlerts ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
+                      <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     )}
                     Limpiar
                   </Button>
                 )}
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
+                  className="h-8"
                   onClick={handleGenerateAlerts}
                   disabled={isGeneratingAlerts}
                 >
                   {isGeneratingAlerts ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
                   ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
+                    <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
                   )}
-                  Regenerar alertas
+                  Regenerar
                 </Button>
               </div>
-            </CardHeader>
-            <CardContent>
+            </div>
+
               {!alerts || alerts.length === 0 ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <div className="text-center py-12">
+                  <div className="flex items-center justify-center h-10 w-10 rounded-xl bg-muted mx-auto mb-3">
+                    <AlertCircle className="h-5 w-5 text-muted-foreground" />
+                  </div>
                   <p className="text-sm text-muted-foreground">No hay alertas para esta operación</p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Usa &quot;Regenerar alertas&quot; para crear alertas de check-in y vencimientos
+                    Usa &quot;Regenerar&quot; para crear alertas automáticas
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {alerts.map((alert: any) => (
-                    <div key={alert.id} className="flex items-start justify-between p-3 border rounded-lg">
+                    <div key={alert.id} className="flex items-start justify-between p-3 rounded-xl border border-border/40 bg-muted/20">
                       <div className="flex items-start gap-3">
-                        <AlertCircle className="h-5 w-5 text-muted-foreground mt-0.5" />
+                        <div className="flex items-center justify-center h-7 w-7 rounded-lg bg-warning/10 mt-0.5">
+                          <AlertCircle className="h-3.5 w-3.5 text-warning" />
+                        </div>
                         <div>
                           <p className="text-sm font-medium">{alertTypeLabels[alert.type] || alert.type}</p>
-                          <p className="text-xs text-muted-foreground">{alert.description}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{alert.description}</p>
                           {alert.date_due && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Fecha: {(() => {
+                              {(() => {
                                 try {
                                   const d = alert.date_due.includes('T') ? alert.date_due : alert.date_due + 'T12:00:00'
-                                  return format(new Date(d), "dd/MM/yyyy", { locale: es })
+                                  return format(new Date(d), "dd MMM yyyy", { locale: es })
                                 } catch { return "-" }
                               })()}
                             </p>
                           )}
                         </div>
                       </div>
-                      <Badge variant={alert.status === "DONE" ? "default" : "secondary"}>
+                      <Badge
+                        variant="secondary"
+                        className={
+                          alert.status === "DONE" ? "bg-success/10 text-success" :
+                          alert.status === "IGNORED" ? "bg-muted text-muted-foreground" :
+                          "bg-warning/10 text-warning"
+                        }
+                      >
                         {alert.status === "DONE" ? "Completada" : alert.status === "IGNORED" ? "Ignorada" : "Pendiente"}
                       </Badge>
                     </div>
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="services" className="space-y-4">
@@ -697,20 +656,7 @@ export function OperationDetailClient({
             userRole={userRole}
             servicePayments={servicePayments}
             operationCurrency={operation.currency}
-            operationData={{
-              destination: operation.destination || "",
-              departure_date: operation.departure_date || "",
-              return_date: operation.return_date || "",
-              adults: operation.adults || 0,
-              children: operation.children || 0,
-              infants: operation.infants || 0,
-              origin: operation.origin || "Buenos Aires",
-            }}
           />
-        </TabsContent>
-
-        <TabsContent value="itinerary" className="space-y-4">
-          <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
         </TabsContent>
       </Tabs>
 

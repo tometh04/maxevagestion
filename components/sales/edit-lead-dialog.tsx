@@ -27,9 +27,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Switch } from "@/components/ui/switch"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, User, MapPin, UserCheck, StickyNote } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
@@ -298,7 +296,7 @@ export function EditLeadDialog({
           <DialogTitle>Editar Lead</DialogTitle>
           <DialogDescription>
             {isSyncedWithTrello && (
-              <span className="text-amber-600 dark:text-amber-400">
+              <span className="text-warning">
                 ⚠️ Este lead está sincronizado con Trello. Solo puedes editar ciertos campos.
               </span>
             )}
@@ -306,255 +304,265 @@ export function EditLeadDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-            {/* Información General */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Información General</CardTitle>
-                <CardDescription>Datos básicos del lead y asignación</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="agency_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Agencia</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar agencia" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {agencies.map((agency) => (
-                              <SelectItem key={agency.id} value={agency.id}>
-                                {agency.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="source"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Origen</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar origen" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="Manychat">Manychat</SelectItem>
-                            <SelectItem value="Instagram">Instagram</SelectItem>
-                            <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                            <SelectItem value="Meta Ads">Meta Ads</SelectItem>
-                            <SelectItem value="Referido">Referido</SelectItem>
-                            <SelectItem value="Cliente">Cliente</SelectItem>
-                            <SelectItem value="Other">Otro</SelectItem>
-                            <SelectItem value="Trello">Trello</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="status"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Estado</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar estado" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="NEW">Nuevo</SelectItem>
-                            <SelectItem value="IN_PROGRESS">En Progreso</SelectItem>
-                            <SelectItem value="QUOTED">Cotizado</SelectItem>
-                            <SelectItem value="WON">Ganado</SelectItem>
-                            <SelectItem value="LOST">Perdido</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="region"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Región</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar región" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="ARGENTINA">Argentina</SelectItem>
-                            <SelectItem value="CARIBE">Caribe</SelectItem>
-                            <SelectItem value="BRASIL">Brasil</SelectItem>
-                            <SelectItem value="EUROPA">Europa</SelectItem>
-                            <SelectItem value="EEUU">EEUU</SelectItem>
-                            <SelectItem value="OTROS">Otros</SelectItem>
-                            <SelectItem value="CRUCEROS">Cruceros</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="destination"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Destino</FormLabel>
-                        <FormControl>
-                          <DestinationCombobox
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Ej: Cancún, México"
-                            disabled={!!isSyncedWithTrello}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="assigned_seller_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Vendedor Asignado</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                          value={field.value || "none"}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Sin asignar" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="none">Sin asignar</SelectItem>
-                            {sellers.map((seller) => (
-                              <SelectItem key={seller.id} value={seller.id}>
-                                {seller.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Información de Contacto */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Información de Contacto</CardTitle>
-                <CardDescription>Datos de contacto del cliente</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <FormField
-                    control={form.control}
-                    name="contact_name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Nombre de Contacto</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Nombre completo" {...field} disabled={!!isSyncedWithTrello} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="contact_phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Teléfono</FormLabel>
-                        <FormControl>
-                          <Input placeholder="+54 11 1234-5678" {...field} disabled={!!isSyncedWithTrello} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="contact_email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" placeholder="email@ejemplo.com" {...field} disabled={!!isSyncedWithTrello} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="contact_instagram"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Instagram</FormLabel>
-                        <FormControl>
-                          <Input placeholder="@usuario" {...field} disabled={!!isSyncedWithTrello} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5">
+            {/* Contacto */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Contacto</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="contact_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre de Contacto</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Nombre completo" {...field} disabled={!!isSyncedWithTrello} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
-                  name="notes"
+                  name="contact_phone"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Notas</FormLabel>
+                      <FormLabel>Teléfono</FormLabel>
                       <FormControl>
-                        <Textarea
-                          placeholder="Información adicional sobre el lead..."
-                          className="min-h-[100px]"
-                          {...field}
+                        <Input placeholder="+54 11 1234-5678" {...field} disabled={!!isSyncedWithTrello} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="email@ejemplo.com" {...field} disabled={!!isSyncedWithTrello} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_instagram"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Instagram</FormLabel>
+                      <FormControl>
+                        <Input placeholder="@usuario" {...field} disabled={!!isSyncedWithTrello} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Viaje */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Viaje</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="destination"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Destino</FormLabel>
+                      <FormControl>
+                        <DestinationCombobox
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Ej: Cancún, México"
+                          disabled={!!isSyncedWithTrello}
                         />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-              </CardContent>
-            </Card>
+
+                <FormField
+                  control={form.control}
+                  name="region"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Región</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar región" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARGENTINA">Argentina</SelectItem>
+                          <SelectItem value="CARIBE">Caribe</SelectItem>
+                          <SelectItem value="BRASIL">Brasil</SelectItem>
+                          <SelectItem value="EUROPA">Europa</SelectItem>
+                          <SelectItem value="EEUU">EEUU</SelectItem>
+                          <SelectItem value="OTROS">Otros</SelectItem>
+                          <SelectItem value="CRUCEROS">Cruceros</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Asignación */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs font-medium text-foreground/70">Asignación</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="assigned_seller_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vendedor Asignado</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sin asignar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin asignar</SelectItem>
+                          {sellers.map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="agency_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Agencia</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar agencia" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agencies.map((agency) => (
+                            <SelectItem key={agency.id} value={agency.id}>
+                              {agency.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar estado" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="NEW">Nuevo</SelectItem>
+                        <SelectItem value="IN_PROGRESS">En Progreso</SelectItem>
+                        <SelectItem value="QUOTED">Cotizado</SelectItem>
+                        <SelectItem value="WON">Ganado</SelectItem>
+                        <SelectItem value="LOST">Perdido</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Detalles */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <StickyNote className="h-3.5 w-3.5 text-sky-500" />
+                <span className="text-xs font-medium text-foreground/70">Detalles</span>
+              </div>
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Información adicional sobre el lead..."
+                        className="min-h-[100px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="source"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Origen</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ""} disabled={!!isSyncedWithTrello}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar origen" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Manychat">Manychat</SelectItem>
+                        <SelectItem value="Instagram">Instagram</SelectItem>
+                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                        <SelectItem value="Meta Ads">Meta Ads</SelectItem>
+                        <SelectItem value="Referido">Referido</SelectItem>
+                        <SelectItem value="Cliente">Cliente</SelectItem>
+                        <SelectItem value="Other">Otro</SelectItem>
+                        <SelectItem value="Trello">Trello</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

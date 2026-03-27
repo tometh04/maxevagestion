@@ -33,9 +33,9 @@ function parseLocalDate(dateStr: string): Date {
 }
 
 const PRIORITY_CONFIG = {
-  URGENT: { label: "Urgente", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", dot: "bg-red-500" },
-  HIGH: { label: "Alta", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", dot: "bg-orange-500" },
-  MEDIUM: { label: "Media", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", dot: "bg-blue-500" },
+  URGENT: { label: "Urgente", className: "bg-destructive/10 text-destructive", dot: "bg-destructive" },
+  HIGH: { label: "Alta", className: "bg-warning/10 text-warning", dot: "bg-warning" },
+  MEDIUM: { label: "Media", className: "bg-info/10 text-info", dot: "bg-info" },
   LOW: { label: "Baja", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400", dot: "bg-gray-400" },
 } as const
 
@@ -114,8 +114,8 @@ export function TaskCard({
         className={cn(
           "group flex items-start gap-1.5 p-2 rounded-md border text-sm cursor-pointer transition-colors",
           isDone && "opacity-50 bg-muted/30",
-          isOverdue && "border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20",
-          isDueToday && "border-orange-300 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20",
+          isOverdue && "border-destructive bg-destructive/10",
+          isDueToday && "border-warning bg-warning/10",
           !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
         )}
       >
@@ -159,8 +159,8 @@ export function TaskCard({
       className={cn(
         "flex items-start gap-3 p-4 rounded-lg border transition-colors",
         isDone && "opacity-60 bg-muted/30",
-        isOverdue && "border-red-300 dark:border-red-800",
-        isDueToday && "border-orange-300 dark:border-orange-800",
+        isOverdue && "border-destructive",
+        isDueToday && "border-warning",
         !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
       )}
     >
@@ -211,8 +211,8 @@ export function TaskCard({
             <span
               className={cn(
                 "flex items-center gap-1",
-                isOverdue && "text-red-600 font-medium",
-                isDueToday && "text-orange-600 font-medium"
+                isOverdue && "text-destructive font-medium",
+                isDueToday && "text-warning font-medium"
               )}
             >
               <Clock className="h-3 w-3" />

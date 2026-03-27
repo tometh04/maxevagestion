@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import {
@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle } from "lucide-react"
+import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -343,7 +343,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold">Caja</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Caja</h1>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -358,13 +358,12 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
             </Tooltip>
           </TooltipProvider>
         </div>
-        <p className="text-muted-foreground">Monitorea el estado de la caja y sus movimientos</p>
+        <p className="text-sm text-muted-foreground mt-0.5">Monitorea el estado de la caja y sus movimientos</p>
       </div>
 
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="flex flex-wrap items-end gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="agency-filter-caja" className="text-sm font-medium">Agencia</Label>
+      <div className="flex items-center gap-2 flex-wrap">
+          <div className="space-y-1">
+            <Label htmlFor="agency-filter-caja" className="text-xs">Agencia</Label>
             <Select
               value={selectedAgencyId}
               onValueChange={(v) => {
@@ -373,7 +372,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 setAccountMovements({})
               }}
             >
-              <SelectTrigger id="agency-filter-caja" className="w-[220px]">
+              <SelectTrigger id="agency-filter-caja" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Selecciona una agencia" />
               </SelectTrigger>
               <SelectContent>
@@ -384,8 +383,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="account-filter-caja" className="text-sm font-medium">Cuenta</Label>
+          <div className="space-y-1">
+            <Label htmlFor="account-filter-caja" className="text-xs">Cuenta</Label>
             <Select
               value={selectedAccountId}
               onValueChange={(v) => {
@@ -393,7 +392,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 setAccountMovements({})
               }}
             >
-              <SelectTrigger id="account-filter-caja" className="w-[220px]">
+              <SelectTrigger id="account-filter-caja" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                 <SelectValue placeholder="Todas las cuentas" />
               </SelectTrigger>
               <SelectContent>
@@ -408,8 +407,8 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2 flex-1 min-w-[200px]">
-            <Label className="text-sm font-medium">Rango de fechas</Label>
+          <div className="space-y-1 flex-1 min-w-[200px]">
+            <Label className="text-xs">Rango de fechas</Label>
             <div className="flex items-center gap-2">
               <div className="space-y-1.5 flex-1">
                 <Label className="text-xs">Desde</Label>
@@ -444,7 +443,6 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
               </div>
             </div>
           </div>
-        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
@@ -457,20 +455,22 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
         {/* TAB: Resumen */}
         <TabsContent value="resumen" className="space-y-6">
           {/* Lista de todas las cuentas con sus saldos */}
-        <Card>
-            <CardHeader>
-              <CardTitle>Cuentas Financieras</CardTitle>
-              <CardDescription>Balance actual de todas las cuentas</CardDescription>
-          </CardHeader>
-          <CardContent>
-              <div className="space-y-4">
+          <div className="space-y-6">
+              <div>
+                <h2 className="text-lg font-semibold tracking-tight">Cuentas Financieras</h2>
+                <p className="text-sm text-muted-foreground">Balance actual de todas las cuentas</p>
+              </div>
+              <div className="space-y-6">
                 <div>
-                  <h3 className="text-sm font-medium mb-2">Cuentas USD</h3>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Cuentas USD</span>
+                  </div>
                   <div className="space-y-2">
                     {usdAccounts.map(account => (
-                      <div key={account.id} className="flex items-center justify-between p-2 border rounded">
-                        <span className="text-sm">{account.name}</span>
-                        <span className="font-medium">{formatCurrency(account.current_balance ?? 0, "USD")}</span>
+                      <div key={account.id} className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-muted/20">
+                        <span className="text-sm font-medium">{account.name}</span>
+                        <span className="text-base font-semibold tabular-nums">{formatCurrency(account.current_balance ?? 0, "USD")}</span>
                       </div>
                     ))}
                     {usdAccounts.length === 0 && (
@@ -479,12 +479,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-medium mb-2">Cuentas ARS</h3>
+                  <div className="flex items-center gap-1.5 mb-3">
+                    <DollarSign className="h-3.5 w-3.5 text-blue-500" />
+                    <span className="text-xs font-medium text-foreground/70">Cuentas ARS</span>
+                  </div>
                   <div className="space-y-2">
                     {arsAccounts.map(account => (
-                      <div key={account.id} className="flex items-center justify-between p-2 border rounded">
-                        <span className="text-sm">{account.name}</span>
-                        <span className="font-medium">{formatCurrency(account.current_balance ?? 0, "ARS")}</span>
+                      <div key={account.id} className="flex items-center justify-between p-3 rounded-xl border border-border/40 bg-muted/20">
+                        <span className="text-sm font-medium">{account.name}</span>
+                        <span className="text-base font-semibold tabular-nums">{formatCurrency(account.current_balance ?? 0, "ARS")}</span>
                       </div>
                     ))}
                     {arsAccounts.length === 0 && (
@@ -493,8 +496,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                   </div>
                 </div>
               </div>
-          </CardContent>
-        </Card>
+          </div>
         </TabsContent>
 
         {/* TAB: Caja USD */}
@@ -518,44 +520,39 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 const isLoading = loadingMovements[account.id] || false
 
                 return (
-                  <Card key={account.id}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-lg">{account.name}</CardTitle>
-                          <CardDescription>{account.type.replace("_", " ")}</CardDescription>
-                        </div>
-                        <Badge variant="outline" className="text-lg font-semibold">
-                          {formatCurrency(account.current_balance ?? 0, "USD")}
-                        </Badge>
+                  <div key={account.id} className="rounded-xl border border-border/40 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold">{account.name}</h3>
+                        <p className="text-xs text-muted-foreground">{account.type.replace("_", " ")}</p>
                       </div>
-          </CardHeader>
-                    <CardContent className="space-y-4">
+                      <p className="text-xl font-semibold tabular-nums tracking-tight">{formatCurrency(account.current_balance ?? 0, "USD")}</p>
+                    </div>
                       {/* Resumen de ingresos y egresos */}
                       <div className="grid gap-4 md:grid-cols-3">
-                        <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                          <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <div className="flex items-center gap-2 p-3 bg-success/5 rounded-xl border border-border/40">
+                          <ArrowUpCircle className="h-5 w-5 text-success" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                            <p className="text-lg font-semibold tabular-nums text-success">
                               {formatCurrency(stats.income, "USD")}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                          <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                        <div className="flex items-center gap-2 p-3 bg-destructive/5 rounded-xl border border-border/40">
+                          <ArrowDownCircle className="h-5 w-5 text-destructive" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                            <p className="text-lg font-semibold tabular-nums text-destructive">
                               {formatCurrency(stats.expenses, "USD")}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                          <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-xl border border-border/40">
+                          <Wallet className="h-5 w-5 text-primary" />
                           <div>
                             <p className="text-xs text-muted-foreground">Balance</p>
-                            <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                            <p className="text-lg font-semibold tabular-nums text-primary">
                               {formatCurrency(account.current_balance ?? 0, "USD")}
                             </p>
                           </div>
@@ -566,7 +563,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       {!accountMovements[account.id] && !isLoading && (
                         <button
                           onClick={() => fetchAccountMovements(account.id)}
-                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                          className="w-full py-2 text-sm rounded-xl border border-border/40 hover:bg-muted/50 transition-colors text-muted-foreground"
                         >
                           Ver Movimientos
                         </button>
@@ -580,9 +577,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           {movements.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
                           ) : (
-                            <div className="border rounded-md overflow-hidden">
+                            <div className="rounded-xl border border-border/40 max-h-[40vh] overflow-y-auto">
                               <Table>
-                                <TableHeader>
+                                <TableHeader className="sticky top-0 bg-background z-10">
                                   <TableRow>
                                     <TableHead>Fecha</TableHead>
                                     <TableHead>Tipo</TableHead>
@@ -597,7 +594,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
                                       </TableCell>
                                       <TableCell>
-                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
+                                        <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
                                           {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
                                         </Badge>
                                       </TableCell>
@@ -609,7 +606,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                           </span>
                                         )}
                                       </TableCell>
-                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-success" : "text-destructive"}`}>
                                         {movement.type === "INCOME" ? "+" : "-"}
                                         {formatCurrency(movement.amount_original, movement.currency)}
                                       </TableCell>
@@ -621,8 +618,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           )}
                         </div>
                       )}
-          </CardContent>
-        </Card>
+                  </div>
                 )
               })}
       </div>
@@ -650,44 +646,39 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                 const isLoading = loadingMovements[account.id] || false
 
                       return (
-                  <Card key={account.id}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-lg">{account.name}</CardTitle>
-                          <CardDescription>{account.type.replace("_", " ")}</CardDescription>
-                        </div>
-                        <Badge variant="outline" className="text-lg font-semibold">
-                          {formatCurrency(account.current_balance ?? 0, "ARS")}
-                        </Badge>
+                  <div key={account.id} className="rounded-xl border border-border/40 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold">{account.name}</h3>
+                        <p className="text-xs text-muted-foreground">{account.type.replace("_", " ")}</p>
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
+                      <p className="text-xl font-semibold tabular-nums tracking-tight">{formatCurrency(account.current_balance ?? 0, "ARS")}</p>
+                    </div>
                       {/* Resumen de ingresos y egresos */}
                       <div className="grid gap-4 md:grid-cols-3">
-                        <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                          <ArrowUpCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <div className="flex items-center gap-2 p-3 bg-success/5 rounded-xl border border-border/40">
+                          <ArrowUpCircle className="h-5 w-5 text-success" />
                           <div>
                             <p className="text-xs text-muted-foreground">Ingresos</p>
-                            <p className="text-lg font-semibold text-green-600 dark:text-green-400">
+                            <p className="text-lg font-semibold tabular-nums text-success">
                               {formatCurrency(stats.income, "ARS")}
                             </p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                          <ArrowDownCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                        <div className="flex items-center gap-2 p-3 bg-destructive/5 rounded-xl border border-border/40">
+                          <ArrowDownCircle className="h-5 w-5 text-destructive" />
                           <div>
                             <p className="text-xs text-muted-foreground">Egresos</p>
-                            <p className="text-lg font-semibold text-red-600 dark:text-red-400">
+                            <p className="text-lg font-semibold tabular-nums text-destructive">
                               {formatCurrency(stats.expenses, "ARS")}
                             </p>
                           </div>
-                            </div>
-                        <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                          <Wallet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-xl border border-border/40">
+                          <Wallet className="h-5 w-5 text-primary" />
                           <div>
                             <p className="text-xs text-muted-foreground">Balance</p>
-                            <p className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                            <p className="text-lg font-semibold tabular-nums text-primary">
                               {formatCurrency(account.current_balance ?? 0, "ARS")}
                             </p>
                           </div>
@@ -698,7 +689,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       {!accountMovements[account.id] && !isLoading && (
                         <button
                           onClick={() => fetchAccountMovements(account.id)}
-                          className="w-full py-2 text-sm border rounded-md hover:bg-muted"
+                          className="w-full py-2 text-sm rounded-xl border border-border/40 hover:bg-muted/50 transition-colors text-muted-foreground"
                         >
                           Ver Movimientos
                         </button>
@@ -712,9 +703,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           {movements.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
                           ) : (
-                            <div className="border rounded-md overflow-hidden">
+                            <div className="rounded-xl border border-border/40 max-h-[40vh] overflow-y-auto">
                               <Table>
-                                <TableHeader>
+                                <TableHeader className="sticky top-0 bg-background z-10">
                                   <TableRow>
                                     <TableHead>Fecha</TableHead>
                                     <TableHead>Tipo</TableHead>
@@ -729,7 +720,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
                                       </TableCell>
                                       <TableCell>
-                                        <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
+                                        <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}>
                                           {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
                                         </Badge>
                                       </TableCell>
@@ -741,7 +732,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                           </span>
                                         )}
                                       </TableCell>
-                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+                                      <TableCell className={`text-right font-medium ${movement.type === "INCOME" ? "text-success" : "text-destructive"}`}>
                                         {movement.type === "INCOME" ? "+" : "-"}
                                         {formatCurrency(movement.amount_original, movement.currency)}
                                       </TableCell>
@@ -753,8 +744,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                           )}
                         </div>
                       )}
-        </CardContent>
-      </Card>
+                  </div>
                 )
               })}
             </div>

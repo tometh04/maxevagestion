@@ -306,7 +306,7 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                   <div className="flex items-center gap-2 mb-2 flex-wrap">
                     <Badge variant="outline">{getDocumentTypeLabel(doc.type)}</Badge>
                     {doc.scanned_data && (
-                      <Badge variant="default" className="bg-green-600">
+                      <Badge variant="default" className="bg-success">
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Escaneado
                       </Badge>
@@ -406,7 +406,7 @@ export function LeadDocumentsSection({ leadId }: LeadDocumentsSectionProps) {
                                 </Badge>
                               )}
                               {status.status === "OK" && (
-                                <Badge variant="outline" className="ml-2 border-green-500 text-green-600">
+                                <Badge variant="outline" className="ml-2 border-success text-success">
                                   <CheckCircle2 className="h-3 w-3 mr-1" />
                                   {status.message}
                                 </Badge>

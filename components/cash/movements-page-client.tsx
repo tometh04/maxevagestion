@@ -78,10 +78,10 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Movimientos de Caja</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Movimientos de Caja</h1>
           <p className="text-muted-foreground">Revisa todos los movimientos registrados en la caja</p>
         </div>
-        <Button onClick={() => setNewMovementDialogOpen(true)}>
+        <Button size="sm" className="h-8" onClick={() => setNewMovementDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo Movimiento
         </Button>
@@ -89,10 +89,9 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
 
       <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
 
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-3">
+      <div className="flex items-center gap-3 flex-wrap">
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[160px]">
               <SelectValue placeholder="Tipo de movimiento" />
             </SelectTrigger>
             <SelectContent>
@@ -101,17 +100,13 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
               <SelectItem value="EXPENSE">Egresos</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => {
+          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => {
             setBaseFilters(defaultFilters)
             setType("ALL")
           }}>
             Limpiar filtros
           </Button>
-          <Button onClick={handleExport}>Exportar CSV</Button>
-        </div>
+          <Button size="sm" className="h-8 rounded-full" onClick={handleExport}>Exportar CSV</Button>
       </div>
 
       <MovementsTable

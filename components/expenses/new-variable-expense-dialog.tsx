@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { Upload, FileText } from "lucide-react"
+import { Upload, FileText, Receipt, Landmark, StickyNote } from "lucide-react"
 
 interface Category {
   id: string
@@ -178,204 +178,221 @@ export function NewVariableExpenseDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Descripción *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: Taxi a reunión, Yerba mate..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Receipt className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Gasto</span>
+              </div>
               <FormField
                 control={form.control}
-                name="provider_name"
+                name="description"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Proveedor (Opcional)</FormLabel>
+                    <FormLabel>Descripción *</FormLabel>
                     <FormControl>
-                      <Input placeholder="Nombre del proveedor" {...field} />
+                      <Input placeholder="Ej: Taxi a reunión, Yerba mate..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="category_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Categoría</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="provider_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Proveedor (Opcional)</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar categoría" />
-                        </SelectTrigger>
+                        <Input placeholder="Nombre del proveedor" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-3 h-3 rounded-full"
-                                style={{ backgroundColor: cat.color }}
-                              />
-                              {cat.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="category_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Categoría</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar categoría" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {categories.map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id}>
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: cat.color }}
+                                />
+                                {cat.name}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monto *</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Moneda *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
-                name="amount"
+                name="exchange_rate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monto *</FormLabel>
+                    <FormLabel className="text-orange-600">
+                      Tipo de Cambio (ARS por 1 USD) *
+                    </FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         step="0.01"
-                        min="0"
+                        placeholder="Ej: 1200"
                         {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
                       />
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="currency"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Moneda *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Ingresá el tipo de cambio para calcular el equivalente en USD
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="exchange_rate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-orange-600">
-                    Tipo de Cambio (ARS por 1 USD) *
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      placeholder="Ej: 1200"
-                      {...field}
-                      onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                    />
-                  </FormControl>
-                  <p className="text-xs text-muted-foreground">
-                    Ingresá el tipo de cambio para calcular el equivalente en USD
-                  </p>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Cuenta</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="financial_account_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Cuenta Financiera *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar cuenta" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {financialAccounts
+                            .filter((acc) => acc.currency === watchCurrency)
+                            .map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name} ({account.currency})
+                                {account.current_balance !== undefined && (
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    — Saldo: {new Intl.NumberFormat("es-AR", {
+                                      style: "currency",
+                                      currency: account.currency === "USD" ? "USD" : "ARS",
+                                    }).format(account.current_balance)}
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="financial_account_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Financiera *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                <FormField
+                  control={form.control}
+                  name="movement_date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta" />
-                        </SelectTrigger>
+                        <Input type="datetime-local" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {financialAccounts
-                          .filter((acc) => acc.currency === watchCurrency)
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({account.currency})
-                              {account.current_balance !== undefined && (
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  — Saldo: {new Intl.NumberFormat("es-AR", {
-                                    style: "currency",
-                                    currency: account.currency === "USD" ? "USD" : "ARS",
-                                  }).format(account.current_balance)}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
 
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <StickyNote className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs font-medium text-foreground/70">Notas</span>
+              </div>
               <FormField
                 control={form.control}
-                name="movement_date"
+                name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Fecha *</FormLabel>
+                    <FormLabel>Notas</FormLabel>
                     <FormControl>
-                      <Input type="datetime-local" {...field} />
+                      <Textarea placeholder="Notas adicionales..." {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            </div>
 
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Notas adicionales..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Receipt upload */}
-            <div className="border rounded-lg p-4 space-y-2">
+              {/* Receipt upload */}
+              <div className="border rounded-lg p-4 space-y-2">
               <p className="text-sm font-medium">Comprobante (Opcional)</p>
               <input
                 ref={fileInputRef}
@@ -412,6 +429,7 @@ export function NewVariableExpenseDialog({
                 </Button>
               )}
               <p className="text-xs text-muted-foreground">JPG, PNG, WebP o PDF. Máx 10MB.</p>
+              </div>
             </div>
 
             <DialogFooter>

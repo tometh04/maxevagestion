@@ -68,7 +68,7 @@ export function MovementsTable({
   
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(50)
+  const [limit, setLimit] = useState(20)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [hasMore, setHasMore] = useState(false)
@@ -147,7 +147,7 @@ export function MovementsTable({
           {format(new Date(movement.movement_date), "dd/MM/yyyy HH:mm", { locale: es })}
         </TableCell>
         <TableCell>
-          <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
+          <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success border-success/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
             {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
           </Badge>
         </TableCell>
@@ -165,7 +165,7 @@ export function MovementsTable({
             <p className="text-xs text-muted-foreground">{movement.operations?.id || "-"}</p>
           </div>
         </TableCell>
-        <TableCell className="text-right">
+        <TableCell className={`text-right ${movement.type === "INCOME" ? "text-success" : "text-destructive"}`}>
           {movement.currency} {movement.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
         </TableCell>
         <TableCell>{movement.users?.name || "-"}</TableCell>
@@ -176,9 +176,9 @@ export function MovementsTable({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border">
+      <div className="rounded-xl border border-border/40 max-h-[60vh] overflow-y-auto">
         <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
             <TableHead>Fecha</TableHead>
             <TableHead>Tipo</TableHead>
@@ -206,7 +206,7 @@ export function MovementsTable({
             setLimit(newLimit)
             setPage(1) // Resetear a página 1
           }}
-          limitOptions={[25, 50, 100, 200]}
+          limitOptions={[20, 50, 100]}
         />
       )}
     </div>

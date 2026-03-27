@@ -18,7 +18,6 @@ const LedgerTable = dynamic(
     ),
   }
 )
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { HelpCircle } from "lucide-react"
 import {
   Tooltip,
@@ -44,7 +43,7 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold">Libro Mayor (Ledger)</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Libro Mayor (Ledger)</h1>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -59,30 +58,22 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
             </Tooltip>
           </TooltipProvider>
         </div>
-        <p className="text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Vista completa de todos los movimientos contables del sistema
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-          <CardDescription>Filtrar movimientos por fecha, tipo y moneda</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <LedgerFilters agencies={agencies} onFiltersChange={setFilters} />
-        </CardContent>
-      </Card>
+      <LedgerFilters agencies={agencies} onFiltersChange={setFilters} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Movimientos</CardTitle>
-          <CardDescription>Lista completa de movimientos del ledger</CardDescription>
-        </CardHeader>
-        <CardContent>
+      <div className="rounded-xl border border-border/40">
+        <div className="p-5 pb-3">
+          <h3 className="text-base font-semibold">Movimientos</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Lista completa de movimientos del ledger</p>
+        </div>
+        <div className="px-5 pb-5">
           <LedgerTable filters={filters} />
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

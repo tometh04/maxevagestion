@@ -144,7 +144,7 @@ export function DebtsSalesPageClient() {
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600">
+            <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
               <p>{error}</p>
             </div>
@@ -212,7 +212,7 @@ export function DebtsSalesPageClient() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
+            <div className="text-2xl font-bold text-destructive">
               {debtors.length > 0 ? formatCurrency(totalDebt, debtors[0]?.currency || "ARS") : "$ 0"}
             </div>
             <p className="text-xs text-muted-foreground">Monto total pendiente</p>
@@ -278,7 +278,7 @@ export function DebtsSalesPageClient() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-red-600">
+                            <div className="text-2xl font-bold text-destructive">
                               {formatCurrency(debtor.totalDebt, debtor.currency)}
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -337,10 +337,10 @@ export function DebtsSalesPageClient() {
                                 <TableCell className="text-right">
                                   {formatCurrency(op.sale_amount_total, op.currency)}
                                 </TableCell>
-                                <TableCell className="text-right text-green-600">
+                                <TableCell className="text-right text-success">
                                   {formatCurrency(op.paid, op.currency)}
                                 </TableCell>
-                                <TableCell className="text-right font-semibold text-red-600">
+                                <TableCell className="text-right font-semibold text-destructive">
                                   {formatCurrency(op.debt, op.currency)}
                                 </TableCell>
                                 <TableCell>

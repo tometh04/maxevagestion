@@ -52,10 +52,10 @@ interface NotificationsPageClientProps {
 }
 
 const severityConfig: Record<string, { icon: any; color: string; bg: string }> = {
-  CRITICAL: { icon: AlertCircle, color: "text-red-600", bg: "bg-red-100" },
-  WARNING: { icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-100" },
-  INFO: { icon: Info, color: "text-blue-600", bg: "bg-blue-100" },
-  SUCCESS: { icon: CheckCircle, color: "text-green-600", bg: "bg-green-100" },
+  CRITICAL: { icon: AlertCircle, color: "text-destructive", bg: "bg-destructive/10" },
+  WARNING: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning/10" },
+  INFO: { icon: Info, color: "text-info", bg: "bg-info/10" },
+  SUCCESS: { icon: CheckCircle, color: "text-success", bg: "bg-success/10" },
 }
 
 const typeLabels: Record<string, string> = {
@@ -143,7 +143,7 @@ export function NotificationsPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
+            <div className="text-2xl font-bold text-destructive">
               {alerts.filter((a) => a.severity === "CRITICAL" && !a.is_resolved).length}
             </div>
           </CardContent>
@@ -155,7 +155,7 @@ export function NotificationsPageClient({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">
+            <div className="text-2xl font-bold text-warning">
               {alerts.filter((a) => a.severity === "WARNING" && !a.is_resolved).length}
             </div>
           </CardContent>
@@ -249,7 +249,7 @@ export function NotificationsPageClient({
                               {typeLabels[alert.alert_type] || alert.alert_type}
                             </Badge>
                             {!alert.is_resolved && (
-                              <span className="h-2 w-2 rounded-full bg-blue-500" />
+                              <span className="h-2 w-2 rounded-full bg-info" />
                             )}
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">

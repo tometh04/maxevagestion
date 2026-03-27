@@ -53,7 +53,7 @@ import { es } from "date-fns/locale"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE" | "HOTEL" | "FLIGHT" | "EXCURSION"
+type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE"
 type Currency = "ARS" | "USD"
 
 interface Operator {
@@ -105,16 +105,6 @@ interface ServicePayment {
   reference: string | null
 }
 
-interface OperationData {
-  destination: string
-  departure_date: string
-  return_date: string
-  adults: number
-  children: number
-  infants: number
-  origin: string
-}
-
 interface OperationServicesSectionProps {
   operationId: string
   operationStatus: string
@@ -122,31 +112,24 @@ interface OperationServicesSectionProps {
   userRole: string
   servicePayments?: ServicePayment[]
   operationCurrency?: string
-  operationData?: OperationData
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: boolean }[] = [
-  { value: "HOTEL", label: "Hotel", commissions: true },
-  { value: "FLIGHT", label: "Vuelo / Aéreo", commissions: true },
-  { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
-  { value: "EXCURSION", label: "Excursión", commissions: true },
-  { value: "ASSISTANCE", label: "Asistencia", commissions: true },
   { value: "SEAT", label: "Asiento", commissions: false },
   { value: "LUGGAGE", label: "Equipaje", commissions: false },
   { value: "VISA", label: "Visa", commissions: false },
+  { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
+  { value: "ASSISTANCE", label: "Asistencia", commissions: true },
 ]
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
-  HOTEL: "Hotel",
-  FLIGHT: "Vuelo / Aéreo",
-  TRANSFER: "Traslado / Transfer",
-  EXCURSION: "Excursión",
-  ASSISTANCE: "Asistencia",
   SEAT: "Asiento",
   LUGGAGE: "Equipaje",
   VISA: "Visa",
+  TRANSFER: "Traslado / Transfer",
+  ASSISTANCE: "Asistencia",
 }
 
 const paymentMethods = [
@@ -194,24 +177,6 @@ const emptyServiceForm = () => ({
   cost_amount: "",
   cost_currency: "ARS" as Currency,
   description: "",
-  // Hotel fields
-  hotel_name: "",
-  hotel_stars: "",
-  hotel_address: "",
-  hotel_phone: "",
-  room_type: "",
-  meal_plan: "",
-  checkin_date: "",
-  checkout_date: "",
-  nights: "",
-  rooms: "1",
-  // Flight fields
-  airline: "",
-  flight_route: "",
-  flight_date: "",
-  flight_return_date: "",
-  flight_stops: "0",
-  flight_class: "",
 })
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -223,7 +188,6 @@ export function OperationServicesSection({
   userRole,
   servicePayments = [],
   operationCurrency = "USD",
-  operationData,
 }: OperationServicesSectionProps) {
   const router = useRouter()
   const isSeller = userRole === "SELLER"
@@ -374,7 +338,7 @@ export function OperationServicesSection({
     setFormError(null)
 
     try {
-      const payload: any = {
+      const payload = {
         service_type: form.service_type,
         operator_id: form.operator_id || null,
         sale_amount: Number(form.sale_amount),
@@ -382,30 +346,6 @@ export function OperationServicesSection({
         cost_amount: Number(form.cost_amount),
         cost_currency: form.cost_currency,
         description: form.description || null,
-      }
-
-      // Add hotel-specific fields
-      if (form.service_type === "HOTEL") {
-        payload.hotel_name = form.hotel_name || null
-        payload.hotel_stars = form.hotel_stars ? Number(form.hotel_stars) : null
-        payload.hotel_address = form.hotel_address || null
-        payload.hotel_phone = form.hotel_phone || null
-        payload.room_type = form.room_type || null
-        payload.meal_plan = form.meal_plan || null
-        payload.checkin_date = form.checkin_date || null
-        payload.checkout_date = form.checkout_date || null
-        payload.nights = form.nights ? Number(form.nights) : null
-        payload.rooms = form.rooms ? Number(form.rooms) : 1
-      }
-
-      // Add flight-specific fields
-      if (form.service_type === "FLIGHT") {
-        payload.airline = form.airline || null
-        payload.flight_route = form.flight_route || null
-        payload.flight_date = form.flight_date || null
-        payload.flight_return_date = form.flight_return_date || null
-        payload.flight_stops = form.flight_stops ? Number(form.flight_stops) : 0
-        payload.flight_class = form.flight_class || null
       }
 
       const res = await fetch(`/api/operations/${operationId}/services`, {
@@ -639,7 +579,7 @@ export function OperationServicesSection({
                           </TableCell>
                           <TableCell className="text-right">
                             {s.margin_amount !== null ? (
-                              <span className={s.margin_amount >= 0 ? "text-green-600" : "text-red-600"}>
+                              <span className={s.margin_amount >= 0 ? "text-success" : "text-destructive"}>
                                 {formatCurrency(s.margin_amount, s.sale_currency)}
                               </span>
                             ) : (
@@ -706,7 +646,7 @@ export function OperationServicesSection({
                     {Object.entries(serviceTotals.margin).map(([currency, amount]) => (
                       <p
                         key={currency}
-                        className={`font-semibold ${amount >= 0 ? "text-green-600" : "text-red-600"}`}
+                        className={`font-semibold ${amount >= 0 ? "text-success" : "text-destructive"}`}
                       >
                         {formatCurrency(amount, currency as Currency)}
                       </p>
@@ -858,31 +798,7 @@ export function OperationServicesSection({
               <Label>Tipo de servicio *</Label>
               <Select
                 value={form.service_type}
-                onValueChange={(v) => {
-                  const newForm = { ...form, service_type: v as ServiceType }
-                  // Auto-fill from operation data
-                  if (operationData) {
-                    if (v === "HOTEL") {
-                      newForm.checkin_date = newForm.checkin_date || operationData.departure_date?.split("T")[0] || ""
-                      newForm.checkout_date = newForm.checkout_date || operationData.return_date?.split("T")[0] || ""
-                      if (newForm.checkin_date && newForm.checkout_date) {
-                        const d1 = new Date(newForm.checkin_date)
-                        const d2 = new Date(newForm.checkout_date)
-                        const diffDays = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24))
-                        if (diffDays > 0) newForm.nights = diffDays.toString()
-                      }
-                      newForm.rooms = String(Math.max(1, Math.ceil((operationData.adults + operationData.children) / 2)))
-                    }
-                    if (v === "FLIGHT") {
-                      newForm.flight_route = newForm.flight_route || `${operationData.origin} → ${operationData.destination}`
-                      newForm.flight_date = newForm.flight_date || operationData.departure_date?.split("T")[0] || ""
-                      newForm.flight_return_date = newForm.flight_return_date || operationData.return_date?.split("T")[0] || ""
-                    }
-                  }
-                  newForm.sale_currency = (operationCurrency as Currency) || "USD"
-                  newForm.cost_currency = (operationCurrency as Currency) || "USD"
-                  setForm(newForm)
-                }}
+                onValueChange={(v) => setForm({ ...form, service_type: v as ServiceType })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccioná un tipo..." />
@@ -975,128 +891,6 @@ export function OperationServicesSection({
                 </Select>
               </div>
             </div>
-
-            {/* Hotel-specific fields */}
-            {form.service_type === "HOTEL" && (
-              <div className="space-y-3 rounded-md border p-3 bg-blue-50/30">
-                <p className="text-xs font-semibold text-blue-700">Datos del Hotel</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Nombre del Hotel *</Label>
-                    <Input placeholder="Ej: Grand Palladium" value={form.hotel_name} onChange={(e) => setForm({ ...form, hotel_name: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Estrellas</Label>
-                    <Select value={form.hotel_stars} onValueChange={(v) => setForm({ ...form, hotel_stars: v })}>
-                      <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="3">★★★ 3</SelectItem>
-                        <SelectItem value="4">★★★★ 4</SelectItem>
-                        <SelectItem value="5">★★★★★ 5</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Dirección</Label>
-                    <Input placeholder="Dirección del hotel" value={form.hotel_address} onChange={(e) => setForm({ ...form, hotel_address: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Teléfono</Label>
-                    <Input placeholder="Teléfono" value={form.hotel_phone} onChange={(e) => setForm({ ...form, hotel_phone: e.target.value })} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">Tipo Habitación</Label>
-                    <Input placeholder="Ej: Doble, Suite" value={form.room_type} onChange={(e) => setForm({ ...form, room_type: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Régimen</Label>
-                    <Select value={form.meal_plan} onValueChange={(v) => setForm({ ...form, meal_plan: v })}>
-                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Solo Alojamiento">Solo Alojamiento</SelectItem>
-                        <SelectItem value="Con Desayuno">Con Desayuno</SelectItem>
-                        <SelectItem value="Media Pensión">Media Pensión</SelectItem>
-                        <SelectItem value="Pensión Completa">Pensión Completa</SelectItem>
-                        <SelectItem value="All Inclusive">All Inclusive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Habitaciones</Label>
-                    <Input type="number" min="1" value={form.rooms} onChange={(e) => setForm({ ...form, rooms: e.target.value })} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">Check-in</Label>
-                    <Input type="date" value={form.checkin_date} onChange={(e) => setForm({ ...form, checkin_date: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Check-out</Label>
-                    <Input type="date" value={form.checkout_date} onChange={(e) => setForm({ ...form, checkout_date: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Noches</Label>
-                    <Input type="number" min="1" value={form.nights} onChange={(e) => setForm({ ...form, nights: e.target.value })} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Flight-specific fields */}
-            {form.service_type === "FLIGHT" && (
-              <div className="space-y-3 rounded-md border p-3 bg-orange-50/30">
-                <p className="text-xs font-semibold text-orange-700">Datos del Vuelo</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs">Aerolínea *</Label>
-                    <Input placeholder="Ej: LATAM, Aerolíneas" value={form.airline} onChange={(e) => setForm({ ...form, airline: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Ruta *</Label>
-                    <Input placeholder="Ej: Buenos Aires → Roma" value={form.flight_route} onChange={(e) => setForm({ ...form, flight_route: e.target.value })} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs">Fecha Ida</Label>
-                    <Input type="date" value={form.flight_date} onChange={(e) => setForm({ ...form, flight_date: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Fecha Vuelta</Label>
-                    <Input type="date" value={form.flight_return_date} onChange={(e) => setForm({ ...form, flight_return_date: e.target.value })} />
-                  </div>
-                  <div>
-                    <Label className="text-xs">Escalas</Label>
-                    <Select value={form.flight_stops} onValueChange={(v) => setForm({ ...form, flight_stops: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">Directo</SelectItem>
-                        <SelectItem value="1">1 escala</SelectItem>
-                        <SelectItem value="2">2 escalas</SelectItem>
-                        <SelectItem value="3">3+ escalas</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs">Clase</Label>
-                  <Select value={form.flight_class} onValueChange={(v) => setForm({ ...form, flight_class: v })}>
-                    <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Economy">Economy</SelectItem>
-                      <SelectItem value="Premium Economy">Premium Economy</SelectItem>
-                      <SelectItem value="Business">Business</SelectItem>
-                      <SelectItem value="First">First</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
 
             {/* Descripción */}
             <div className="grid gap-1.5">
@@ -1426,12 +1220,9 @@ export function OperationServicesSection({
 // ─── Info contextual por tipo de servicio ─────────────────────────────────────
 
 const COMMISSION_INFO: Record<ServiceType, string> = {
-  HOTEL: "Hotel: genera comisión. Se carga automáticamente al Detalle de Compra.",
-  FLIGHT: "Vuelo: genera comisión. Se carga automáticamente al Detalle de Compra.",
-  TRANSFER: "Transfer: genera comisión. Se carga automáticamente al Detalle de Compra.",
-  EXCURSION: "Excursión: genera comisión. Se carga automáticamente al Detalle de Compra.",
-  ASSISTANCE: "Asistencia: genera comisión. Se carga automáticamente al Detalle de Compra.",
-  SEAT: "Asiento: no genera comisión. Se carga al Detalle de Compra.",
-  LUGGAGE: "Equipaje: no genera comisión. Se carga al Detalle de Compra.",
-  VISA: "Visa: no genera comisión. Se carga al Detalle de Compra.",
+  SEAT: "Asiento: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
+  LUGGAGE: "Equipaje: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
+  VISA: "Visa: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
+  TRANSFER: "Traslado / Transfer: sí genera comisión al vendedor sobre el margen (usando las reglas de comisión activas).",
+  ASSISTANCE: "Asistencia: sí genera comisión al vendedor sobre el margen (usando las reglas de comisión activas).",
 }

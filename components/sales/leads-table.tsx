@@ -19,13 +19,13 @@ import { ConvertLeadDialog } from "./convert-lead-dialog"
 import { ServerPagination } from "@/components/ui/server-pagination"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-blue-500",
+  ARGENTINA: "bg-info",
   CARIBE: "bg-cyan-500",
-  BRASIL: "bg-green-500",
+  BRASIL: "bg-success",
   EUROPA: "bg-purple-500",
-  EEUU: "bg-red-500",
+  EEUU: "bg-destructive",
   OTROS: "bg-gray-500",
-  CRUCEROS: "bg-orange-500",
+  CRUCEROS: "bg-primary",
 }
 
 const statusLabels: Record<string, string> = {

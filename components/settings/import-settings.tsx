@@ -2,9 +2,8 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ImportSection } from "@/components/settings/import-section"
-import { Users, CreditCard, Building2, Wallet, FileSpreadsheet } from "lucide-react"
+import { Users, CreditCard, Building2, Wallet, FileSpreadsheet, Upload, Info } from "lucide-react"
 
 const importTypes = [
   {
@@ -59,23 +58,30 @@ export function ImportSettings() {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Importación Masiva de Datos</CardTitle>
-          <CardDescription>
-            Importa datos desde archivos CSV para migrar información existente al sistema
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          <p className="font-medium mb-2">Sigue estos pasos para importar datos correctamente:</p>
-          <ol className="list-decimal list-inside space-y-1">
-            <li><strong>Descarga la plantilla</strong> del tipo de dato que quieres importar</li>
-            <li><strong>Completa los datos</strong> en la plantilla siguiendo el formato indicado</li>
-            <li><strong>Sube el archivo</strong> y revisa la vista previa</li>
-            <li><strong>Confirma la importación</strong> si los datos son correctos</li>
-          </ol>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+          <Upload className="h-4 w-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">Importación Masiva de Datos</h2>
+          <p className="text-sm text-muted-foreground">Importa datos desde archivos CSV para migrar información existente al sistema</p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+            <Info className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Instrucciones</h4>
+        </div>
+        <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+          <li><strong>Descarga la plantilla</strong> del tipo de dato que quieres importar</li>
+          <li><strong>Completa los datos</strong> en la plantilla siguiendo el formato indicado</li>
+          <li><strong>Sube el archivo</strong> y revisa la vista previa</li>
+          <li><strong>Confirma la importación</strong> si los datos son correctos</li>
+        </ol>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-5">
@@ -103,4 +109,3 @@ export function ImportSettings() {
     </div>
   )
 }
-

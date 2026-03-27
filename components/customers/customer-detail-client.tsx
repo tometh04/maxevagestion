@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil } from "lucide-react"
+import { ArrowLeft, Pencil, User, Phone, Mail, AtSign, Calendar, Globe, FileText, CreditCard, Plane, TrendingUp } from "lucide-react"
 import { DocumentsSection } from "@/components/documents/documents-section"
 import {
   Breadcrumb,
@@ -110,10 +109,10 @@ export function CustomerDetailClient({
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">
+            <h1 className="text-2xl font-semibold tracking-tight">
               {customer.first_name} {customer.last_name}
             </h1>
-            <p className="text-muted-foreground">{customer.email}</p>
+            <p className="text-xs font-medium text-muted-foreground">{customer.email}</p>
           </div>
         </div>
         <Button onClick={() => setEditDialogOpen(true)}>
@@ -124,7 +123,7 @@ export function CustomerDetailClient({
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="info">Información</TabsTrigger>
+          <TabsTrigger value="info">Informacion</TabsTrigger>
           <TabsTrigger value="operations">Operaciones ({operations.length})</TabsTrigger>
           <TabsTrigger value="payments">Pagos ({payments.length})</TabsTrigger>
           <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
@@ -134,112 +133,155 @@ export function CustomerDetailClient({
 
         <TabsContent value="info" className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle>Información Personal</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Nombre</p>
-                    <p className="text-sm">
-                      {customer.first_name} {customer.last_name}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Teléfono</p>
-                    <p className="text-sm">{customer.phone}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Email</p>
-                    <p className="text-sm">{customer.email}</p>
-                  </div>
-                  {customer.instagram_handle && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Instagram</p>
-                      <p className="text-sm">@{customer.instagram_handle}</p>
-                    </div>
-                  )}
-                  {customer.document_type && customer.document_number && (
-                    <>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Tipo Documento</p>
-                        <p className="text-sm">{customer.document_type}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Número Documento</p>
-                        <p className="text-sm">{customer.document_number}</p>
-                      </div>
-                    </>
-                  )}
-                  {customer.date_of_birth && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Fecha de Nacimiento</p>
-                      <p className="text-sm">
-                        {format(new Date(customer.date_of_birth), "dd/MM/yyyy", { locale: es })}
-                      </p>
-                    </div>
-                  )}
-                  {customer.nationality && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">Nacionalidad</p>
-                      <p className="text-sm">{customer.nationality}</p>
-                    </div>
-                  )}
+            {/* Datos Personales */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <User className="h-3.5 w-3.5 text-primary" />
                 </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Estadísticas</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total de Viajes</p>
-                  <p className="text-2xl font-bold">{operations.length}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Total Gastado</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {(() => {
-                      // Sumar todos los pagos pagados del cliente (INCOME = pagos recibidos del cliente)
-                      const totalPaid = payments
-                        .filter((p: any) => p.status === "PAID" && p.direction === "INCOME")
-                        .reduce((sum: number, p: any) => {
-                          // Convertir a ARS si es necesario
-                          const amount = parseFloat(p.amount || 0)
-                          if (p.currency === "USD") {
-                            // Buscar el exchange_rate en el payment o usar tasa aproximada
-                            // Los pagos pueden tener exchange_rate si se guardó al crear el pago
-                            const exchangeRate = p.exchange_rate || 1450 // Fallback si no hay tasa guardada
-                            return sum + (amount * exchangeRate)
-                          }
-                          return sum + amount
-                        }, 0)
-                      
-                      return `ARS ${totalPaid.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-                    })()}
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos Personales</h4>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <User className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">Nombre</p>
+                  </div>
+                  <p className="text-sm font-medium">
+                    {customer.first_name} {customer.last_name}
                   </p>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">Telefono</p>
+                  </div>
+                  <p className="text-sm font-medium">{customer.phone}</p>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3 w-3 text-muted-foreground" />
+                    <p className="text-xs font-medium text-muted-foreground">Email</p>
+                  </div>
+                  <p className="text-sm font-medium">{customer.email}</p>
+                </div>
+                {customer.instagram_handle && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <AtSign className="h-3 w-3 text-muted-foreground" />
+                      <p className="text-xs font-medium text-muted-foreground">Instagram</p>
+                    </div>
+                    <p className="text-sm font-medium">@{customer.instagram_handle}</p>
+                  </div>
+                )}
+                {customer.date_of_birth && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <p className="text-xs font-medium text-muted-foreground">Fecha de Nacimiento</p>
+                    </div>
+                    <p className="text-sm font-medium">
+                      {format(new Date(customer.date_of_birth), "dd/MM/yyyy", { locale: es })}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Documento */}
+            <div className="space-y-4">
+              {(customer.document_type || customer.document_number || customer.nationality) && (
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                      <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                    </div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documento</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {customer.document_type && customer.document_number && (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Tipo Documento</p>
+                          <p className="text-sm font-medium">{customer.document_type}</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">Numero Documento</p>
+                          <p className="text-sm font-medium">{customer.document_number}</p>
+                        </div>
+                      </>
+                    )}
+                    {customer.nationality && (
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Globe className="h-3 w-3 text-muted-foreground" />
+                          <p className="text-xs font-medium text-muted-foreground">Nacionalidad</p>
+                        </div>
+                        <p className="text-sm font-medium">{customer.nationality}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Estadisticas */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <TrendingUp className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Estadisticas</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Total de Viajes</p>
+                    <p className="text-2xl font-semibold tabular-nums tracking-tight">{operations.length}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Total Gastado</p>
+                    <p className="text-2xl font-semibold tabular-nums tracking-tight text-success">
+                      {(() => {
+                        // Sumar todos los pagos pagados del cliente (INCOME = pagos recibidos del cliente)
+                        const totalPaid = payments
+                          .filter((p: any) => p.status === "PAID" && p.direction === "INCOME")
+                          .reduce((sum: number, p: any) => {
+                            // Convertir a ARS si es necesario
+                            const amount = parseFloat(p.amount || 0)
+                            if (p.currency === "USD") {
+                              // Buscar el exchange_rate en el payment o usar tasa aproximada
+                              // Los pagos pueden tener exchange_rate si se guardo al crear el pago
+                              const exchangeRate = p.exchange_rate || 1450 // Fallback si no hay tasa guardada
+                              return sum + (amount * exchangeRate)
+                            }
+                            return sum + amount
+                          }, 0)
+
+                        return `ARS ${totalPaid.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                      })()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </TabsContent>
 
         <TabsContent value="operations" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Operaciones del Cliente</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {operations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay operaciones</p>
-              ) : (
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <Plane className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Operaciones del Cliente</h4>
+            </div>
+            {operations.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay operaciones</p>
+            ) : (
+              <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-border/40">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead>Código</TableHead>
+                    <TableRow className="sticky top-0 bg-background z-10">
+                      <TableHead>Codigo</TableHead>
                       <TableHead>Destino</TableHead>
                       <TableHead>Fechas</TableHead>
                       <TableHead>Vendedor</TableHead>
@@ -287,27 +329,30 @@ export function CustomerDetailClient({
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="payments" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historial de Pagos</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {payments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay pagos registrados</p>
-              ) : (
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                <CreditCard className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Historial de Pagos</h4>
+            </div>
+            {payments.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No hay pagos registrados</p>
+            ) : (
+              <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-border/40">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                    <TableRow className="sticky top-0 bg-background z-10">
                       <TableHead>Monto</TableHead>
                       <TableHead>Fecha Vencimiento</TableHead>
                       <TableHead>Fecha Pago</TableHead>
-                      <TableHead>Método</TableHead>
+                      <TableHead>Metodo</TableHead>
                       <TableHead>Estado</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -343,9 +388,9 @@ export function CustomerDetailClient({
                     ))}
                   </TableBody>
                 </Table>
-              )}
-            </CardContent>
-          </Card>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="documents" className="space-y-4">
@@ -353,7 +398,7 @@ export function CustomerDetailClient({
         </TabsContent>
 
         <TabsContent value="interactions" className="space-y-4">
-          <CustomerInteractions 
+          <CustomerInteractions
             customerId={customer.id}
             customerName={`${customer.first_name} ${customer.last_name}`}
           />
@@ -378,4 +423,3 @@ export function CustomerDetailClient({
     </div>
   )
 }
-

@@ -44,61 +44,23 @@ import { CSS } from "@dnd-kit/utilities"
 
 // Colores de borde izquierdo por región
 const regionBorderColors: Record<string, string> = {
-  ARGENTINA: "border-l-blue-500",
+  ARGENTINA: "border-l-info",
   CARIBE: "border-l-cyan-500",
-  BRASIL: "border-l-green-500",
+  BRASIL: "border-l-success",
   EUROPA: "border-l-purple-500",
-  EEUU: "border-l-red-500",
+  EEUU: "border-l-destructive",
   OTROS: "border-l-gray-400",
-  CRUCEROS: "border-l-orange-500",
+  CRUCEROS: "border-l-primary",
 }
 
 const regionDotColors: Record<string, string> = {
-  ARGENTINA: "bg-blue-500",
+  ARGENTINA: "bg-info",
   CARIBE: "bg-cyan-500",
-  BRASIL: "bg-green-500",
+  BRASIL: "bg-success",
   EUROPA: "bg-purple-500",
-  EEUU: "bg-red-500",
+  EEUU: "bg-destructive",
   OTROS: "bg-gray-400",
-  CRUCEROS: "bg-orange-500",
-}
-
-// Extrae el nombre de la persona limpio del contact_name
-// Maneja formatos legacy: "Destino - Nombre - +Teléfono", "Nombre - +Teléfono - Bucket", etc.
-function getDisplayName(lead: { contact_name: string; contact_instagram?: string | null; contact_phone?: string }): string {
-  const name = (lead.contact_name || "").trim()
-  if (!name) return lead.contact_instagram ? `@${lead.contact_instagram}` : "Sin nombre"
-
-  // Sin separador → devolver tal cual
-  if (!name.includes("-")) return name
-
-  // Separar por " - " y variantes
-  const parts = name.split(/\s*-\s*/).map(p => p.trim()).filter(Boolean)
-  if (parts.length <= 1) return name
-
-  // Filtrar teléfonos y variables de template sin resolver
-  const filtered = parts.filter(p => {
-    if (p.startsWith("{{")) return false       // {{full_name}}, {{phone}}, etc.
-    if (/^\+/.test(p)) return false            // +54..., +1...
-    if (/^[\d\s]{7,}$/.test(p)) return false  // cadenas solo de dígitos/espacios (teléfono sin +)
-    return true
-  })
-
-  if (filtered.length === 0) return parts[0]
-
-  // Saltar el primer segmento si es un destino/región conocida
-  const regionKeywords = [
-    "europa", "caribe", "brasil", "exoticos", "argentina", "eeuu",
-    "bayahibe", "punta cana", "cancun", "aruba", "curazao", "miami",
-    "cruceros", "machu pichu", "orlando", "disney",
-  ]
-  for (const part of filtered) {
-    const lower = part.toLowerCase()
-    const isRegion = regionKeywords.some(k => lower === k || lower.startsWith(k + " ") || lower.endsWith(" " + k))
-    if (!isRegion) return part
-  }
-
-  return filtered[0]
+  CRUCEROS: "bg-primary",
 }
 
 interface Lead {
@@ -620,7 +582,7 @@ export function LeadsKanbanManychat({
           onClick={() => setViewMode("archivados")}
           className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
             viewMode === "archivados"
-              ? "bg-amber-500 text-white shadow-sm"
+              ? "bg-warning text-white shadow-sm"
               : "bg-white/60 dark:bg-gray-900/60 text-muted-foreground hover:bg-white/80 dark:hover:bg-gray-800/80"
           }`}
         >
@@ -691,15 +653,15 @@ export function LeadsKanbanManychat({
                 const listLeads = archivedLeadsByListName[listName]
                 return (
                   <div key={listName} className="flex-shrink-0 w-80">
-                    <div className="rounded-xl bg-amber-50/60 dark:bg-amber-900/20 backdrop-blur-sm shadow-sm border border-amber-200/40 dark:border-amber-700/30">
+                    <div className="rounded-xl bg-warning/10 backdrop-blur-sm shadow-sm border border-warning/30">
                       {/* Header columna archivada */}
-                      <div className="p-3 border-b border-amber-200/40 dark:border-amber-700/30">
+                      <div className="p-3 border-b border-warning/30">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 min-w-0">
-                            <Archive className="h-4 w-4 text-amber-500 shrink-0" />
+                            <Archive className="h-4 w-4 text-warning shrink-0" />
                             <span className="font-semibold text-sm text-foreground truncate">{listName}</span>
                           </div>
-                          <span className="text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full font-medium shrink-0 ml-2">
+                          <span className="text-xs text-warning bg-warning/15 px-2 py-0.5 rounded-full font-medium shrink-0 ml-2">
                             {listLeads.length}
                           </span>
                         </div>
@@ -713,8 +675,8 @@ export function LeadsKanbanManychat({
                             onClick={() => { setSelectedLead(lead); setDialogOpen(true) }}
                           >
                             <div className="flex items-start justify-between gap-2 mb-1">
-                              <p className="font-medium text-sm line-clamp-2 leading-snug">{getDisplayName(lead)}</p>
-                              <Archive className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
+                              <p className="font-medium text-sm leading-tight truncate">{lead.contact_name}</p>
+                              <Archive className="h-3 w-3 text-warning shrink-0 mt-0.5" />
                             </div>
                             {lead.destination && (
                               <p className="text-xs text-muted-foreground truncate flex items-center gap-1">
@@ -773,7 +735,7 @@ export function LeadsKanbanManychat({
                               className="flex-1 px-3 py-1.5 text-sm bg-white/90 dark:bg-gray-800/90 border border-primary/30 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
                               autoFocus
                             />
-                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleSaveListName(listName)}>
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-success hover:text-success hover:bg-success/10" onClick={() => handleSaveListName(listName)}>
                               <Check className="h-4 w-4" />
                             </Button>
                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:bg-muted/50" onClick={() => { setEditingListName(null); setNewListNameValue("") }}>
@@ -888,7 +850,7 @@ export function LeadsKanbanManychat({
                                 {/* Nombre + Claim button */}
                                 <div className="flex items-start justify-between gap-2">
                                   <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-sm line-clamp-2 leading-snug">{getDisplayName(lead)}</p>
+                                    <p className="font-semibold text-sm truncate">{lead.contact_name}</p>
                                     {lead.destination && (
                                       <div className="flex items-center gap-1 mt-0.5">
                                         <MapPin className="h-3 w-3 text-muted-foreground/60 flex-shrink-0" />
@@ -938,7 +900,7 @@ export function LeadsKanbanManychat({
                                       </div>
                                     )}
                                     {lead.has_deposit && (
-                                      <span className="inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                      <span className="inline-flex items-center gap-1 bg-success/10 text-success rounded-full px-2 py-0.5 text-[10px] font-medium">
                                         <DollarSign className="h-2.5 w-2.5" />
                                         {lead.deposit_amount} {lead.deposit_currency}
                                       </span>

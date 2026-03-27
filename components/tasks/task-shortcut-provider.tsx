@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useRouter } from "next/navigation"
 import { TaskDialog } from "./task-dialog"
 import { TaskFAB } from "./task-fab"
 import { VoiceTaskRecorder } from "./voice-task-recorder"
@@ -9,14 +8,12 @@ import { VoiceTaskRecorder } from "./voice-task-recorder"
 interface TaskShortcutProviderProps {
   currentUserId: string
   agencyId: string
-  userRole?: string
 }
 
-export function TaskShortcutProvider({ currentUserId, agencyId, userRole }: TaskShortcutProviderProps) {
+export function TaskShortcutProvider({ currentUserId, agencyId }: TaskShortcutProviderProps) {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [voiceOpen, setVoiceOpen] = useState(false)
   const [prefill, setPrefill] = useState<any>(null)
-  const router = useRouter()
 
   const openDialog = useCallback(() => {
     setPrefill(null)
@@ -39,16 +36,11 @@ export function TaskShortcutProvider({ currentUserId, agencyId, userRole }: Task
         e.preventDefault()
         openVoice()
       }
-      // Cmd+K (Mac) or Ctrl+K (Win) → Open Cerebro
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault()
-        router.push("/tools/cerebro")
-      }
     }
 
     document.addEventListener("keydown", handleKeyDown)
     return () => document.removeEventListener("keydown", handleKeyDown)
-  }, [openDialog, openVoice, router])
+  }, [openDialog, openVoice])
 
   function handleVoiceResult(data: any) {
     setVoiceOpen(false)
@@ -58,7 +50,7 @@ export function TaskShortcutProvider({ currentUserId, agencyId, userRole }: Task
 
   return (
     <>
-      <TaskFAB onClick={openDialog} showCerebro={userRole !== "SELLER"} />
+      <TaskFAB onClick={openDialog} />
 
       <TaskDialog
         open={dialogOpen}

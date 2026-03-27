@@ -18,7 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning style={{ margin: 0, padding: 0 }}>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning style={{ margin: 0, padding: 0 }}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

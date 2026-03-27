@@ -53,8 +53,8 @@ const statusLabels: Record<string, string> = {
 
 const statusColors: Record<string, string> = {
   PENDING: "bg-yellow-500",
-  PAID: "bg-amber-500",
-  OVERDUE: "bg-red-500",
+  PAID: "bg-warning",
+  OVERDUE: "bg-destructive",
 }
 
 interface OperatorPaymentsPageClientProps {
@@ -317,56 +317,39 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">pagos pendientes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Vencidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{overdueCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">pagos vencidos</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Deuda Total</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {totalDebtUSD > 0 && (
-              <div className="text-2xl font-bold">{formatCurrency(totalDebtUSD, "USD")}</div>
-            )}
-            {totalDebtARS > 0 && (
-              <div className={`${totalDebtUSD > 0 ? "text-lg" : "text-2xl"} font-bold ${totalDebtUSD > 0 ? "mt-1" : ""}`}>
-                {formatCurrency(totalDebtARS, "ARS")}
-              </div>
-            )}
-            {totalDebtUSD === 0 && totalDebtARS === 0 && (
-              <div className="text-2xl font-bold text-green-600">$0</div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">deuda pendiente</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{pendingCount}</div>
+          <p className="text-xs text-muted-foreground mt-1">pagos pendientes</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Vencidos</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight text-destructive mt-1">{overdueCount}</div>
+          <p className="text-xs text-muted-foreground mt-1">pagos vencidos</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Deuda Total</p>
+          {totalDebtUSD > 0 && (
+            <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{formatCurrency(totalDebtUSD, "USD")}</div>
+          )}
+          {totalDebtARS > 0 && (
+            <div className={`${totalDebtUSD > 0 ? "text-lg" : "text-2xl"} font-semibold tabular-nums tracking-tight ${totalDebtUSD > 0 ? "mt-1" : "mt-1"}`}>
+              {formatCurrency(totalDebtARS, "ARS")}
+            </div>
+          )}
+          {totalDebtUSD === 0 && totalDebtARS === 0 && (
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-success mt-1">$0</div>
+          )}
+          <p className="text-xs text-muted-foreground mt-1">deuda pendiente</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 items-end">
+      <div className="flex items-end gap-2 flex-wrap">
             <div className="space-y-1.5">
               <Label className="text-xs">Agencia</Label>
               <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -382,7 +365,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             <div className="space-y-1.5">
               <Label className="text-xs">Operador</Label>
               <Select value={operatorFilter} onValueChange={setOperatorFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -398,7 +381,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             <div className="space-y-1.5">
               <Label className="text-xs">Estado</Label>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -464,7 +447,6 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 onChange={(e) => setOperationSearchInput(e.target.value)}
               />
             </div>
-          </div>
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
             statusFilter !== "UNPAID" ||
@@ -473,9 +455,11 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             amountMin ||
             amountMax ||
             operationSearch) && (
-            <div className="mt-4">
+            <div className="mt-2">
               <Button
                 variant="outline"
+                size="sm"
+                className="h-8 rounded-full"
                 onClick={() => {
                   setAgencyFilter("ALL")
                   setOperatorFilter("ALL")
@@ -495,16 +479,15 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Payments Table */}
-      <Card>
-        <CardHeader>
+      <div className="rounded-xl border border-border/40">
+        <div className="p-5 pb-3">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle>Pagos a Operadores</CardTitle>
+                <h3 className="text-base font-semibold">Pagos a Operadores</h3>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -519,40 +502,41 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <CardDescription>Cuentas a pagar a operadores</CardDescription>
+              <p className="text-xs text-muted-foreground mt-0.5">Cuentas a pagar a operadores</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleExportExcel} disabled={payments.length === 0}>
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={handleExportExcel} disabled={payments.length === 0}>
                 <Download className="h-4 w-4 mr-2" />
                 Exportar Excel
               </Button>
-              <Button variant="outline" onClick={() => setManualPaymentOpen(true)}>
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => setManualPaymentOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Deuda Manual
               </Button>
-              <Button onClick={() => setBulkPaymentOpen(true)}>
+              <Button size="sm" className="h-8 rounded-full" onClick={() => setBulkPaymentOpen(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
                 Cargar Pago Masivo
               </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div className="px-5 pb-5">
           {payments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No se encontraron pagos
             </div>
           ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Operación</TableHead>
-                  <TableHead>Operador</TableHead>
-                  <TableHead>Deuda</TableHead>
-                  <TableHead>Fecha Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Operador</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Deuda</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Fecha Vencimiento</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
-                    <TableHead>Fecha Pago</TableHead>
+                    <TableHead className="sticky top-0 bg-background z-10">Fecha Pago</TableHead>
                   )}
                 </TableRow>
               </TableHeader>
@@ -603,7 +587,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         <div className="flex items-center gap-2">
                           {format(new Date(payment.due_date), "dd/MM/yyyy", { locale: es })}
                           {isOverdue && (
-                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                            <AlertTriangle className="h-4 w-4 text-destructive" />
                           )}
                         </div>
                       </TableCell>
@@ -629,9 +613,10 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Bulk Payment Dialog */}
       <BulkPaymentDialog

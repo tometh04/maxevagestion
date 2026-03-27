@@ -24,7 +24,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
-import { Loader2 } from "lucide-react"
+import { Loader2, Building2, Phone, DollarSign } from "lucide-react"
 
 const operatorSchema = z.object({
   name: z.string().min(1, "Nombre es requerido"),
@@ -126,44 +126,20 @@ export function EditOperatorDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nombre del Operador *</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Ej: Despegar, Avantrip" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="contact_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Nombre del Contacto</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Nombre de la persona de contacto" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid gap-4 md:grid-cols-2">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Datos del Operador</span>
+              </div>
               <FormField
                 control={form.control}
-                name="contact_email"
+                name="name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Email de Contacto</FormLabel>
+                    <FormLabel>Nombre del Operador *</FormLabel>
                     <FormControl>
-                      <Input type="email" placeholder="contacto@operador.com" {...field} />
+                      <Input placeholder="Ej: Despegar, Avantrip" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -172,12 +148,12 @@ export function EditOperatorDialog({
 
               <FormField
                 control={form.control}
-                name="contact_phone"
+                name="contact_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Teléfono de Contacto</FormLabel>
+                    <FormLabel>Nombre del Contacto</FormLabel>
                     <FormControl>
-                      <Input placeholder="+54 11 1234-5678" {...field} />
+                      <Input placeholder="Nombre de la persona de contacto" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -185,22 +161,64 @@ export function EditOperatorDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="credit_limit"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Límite de Crédito</FormLabel>
-                  <FormControl>
-                    <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
-                  </FormControl>
-                  <FormDescription>
-                    Monto máximo de crédito permitido con este operador
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Contacto</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="contact_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email de Contacto</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="contacto@operador.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono de Contacto</FormLabel>
+                      <FormControl>
+                        <Input placeholder="+54 11 1234-5678" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs font-medium text-foreground/70">Financiero</span>
+              </div>
+              <FormField
+                control={form.control}
+                name="credit_limit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Límite de Crédito</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" min="0" placeholder="0.00" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Monto máximo de crédito permitido con este operador
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button

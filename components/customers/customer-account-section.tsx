@@ -102,7 +102,7 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
     const isOverdue = status === "PENDING" && new Date(dateDue) < new Date()
     
     if (status === "PAID") {
-      return <Badge variant="default" className="bg-green-500">Pagado</Badge>
+      return <Badge variant="default" className="bg-success">Pagado</Badge>
     }
     if (isOverdue) {
       return <Badge variant="destructive">Vencido</Badge>
@@ -144,8 +144,8 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
       <CardContent className="space-y-6">
         {/* Resumen */}
         <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-          <div className="p-4 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800">
-            <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+          <div className="p-4 rounded-lg border bg-success/10 border-success/30">
+            <div className="flex items-center gap-2 text-success">
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm font-medium">Total Pagado</span>
             </div>
@@ -182,11 +182,11 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
           
           <div className={`p-4 rounded-lg border ${
             summary.overduePayments > 0 
-              ? "bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-800" 
+              ? "bg-destructive/10 border-destructive/30"
               : ""
           }`}>
             <div className={`flex items-center gap-2 ${
-              summary.overduePayments > 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+              summary.overduePayments > 0 ? "text-destructive" : "text-muted-foreground"
             }`}>
               <AlertCircle className="h-4 w-4" />
               <span className="text-sm font-medium">Vencidos</span>
@@ -216,11 +216,11 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
                     <div className="flex items-center gap-3">
                       <div className={`p-2 rounded-full ${
                         payment.status === "PAID" 
-                          ? "bg-green-100 dark:bg-green-900/30" 
+                          ? "bg-success/10"
                           : "bg-yellow-100 dark:bg-yellow-900/30"
                       }`}>
                         {payment.status === "PAID" ? (
-                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <CheckCircle className="h-4 w-4 text-success" />
                         ) : (
                           <Clock className="h-4 w-4 text-yellow-600" />
                         )}

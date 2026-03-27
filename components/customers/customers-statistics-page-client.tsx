@@ -297,8 +297,8 @@ export function CustomersStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
-              <Users className="h-3.5 w-3.5 text-blue-600" />
+            <div className="p-1.5 rounded bg-info/10">
+              <Users className="h-3.5 w-3.5 text-info" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total</p>
@@ -310,16 +310,16 @@ export function CustomersStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
+            <div className={`p-1.5 rounded ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'bg-success/10' : 'bg-destructive/10'}`}>
               {(stats.overview.growthPercentage ?? 0) >= 0 ? (
-                <TrendingUp className={`h-3.5 w-3.5 ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`} />
+                <TrendingUp className={`h-3.5 w-3.5 ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`} />
               ) : (
-                <TrendingDown className="h-3.5 w-3.5 text-red-600" />
+                <TrendingDown className="h-3.5 w-3.5 text-destructive" />
               )}
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Crecimiento</p>
-              <p className={`text-base font-semibold ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              <p className={`text-base font-semibold ${(stats.overview.growthPercentage ?? 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
                 {(stats.overview.growthPercentage ?? 0) >= 0 ? '+' : ''}{stats.overview.growthPercentage ?? 0}%
               </p>
             </div>
@@ -328,12 +328,12 @@ export function CustomersStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="p-1.5 rounded bg-success/10">
+              <DollarSign className="h-3.5 w-3.5 text-success" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Gasto Total</p>
-              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalSpent)}</p>
+              <p className="text-base font-semibold text-success">{formatFullCurrency(stats.overview.totalSpent)}</p>
               <p className="text-[10px] text-muted-foreground">Prom: {formatFullCurrency(stats.overview.avgSpentPerCustomer)}</p>
             </div>
           </div>
@@ -428,11 +428,11 @@ export function CustomersStatisticsPageClient() {
             </div>
             <div className="flex justify-center gap-3 mt-2 text-xs">
               <div className="flex items-center gap-1">
-                <UserCheck className="h-3 w-3 text-green-600" />
+                <UserCheck className="h-3 w-3 text-success" />
                 <span>{stats.overview.activeCustomers ?? 0} activos</span>
               </div>
               <div className="flex items-center gap-1">
-                <UserX className="h-3 w-3 text-red-600" />
+                <UserX className="h-3 w-3 text-destructive" />
                 <span>{stats.overview.inactiveCustomers ?? 0} inactivos</span>
               </div>
             </div>

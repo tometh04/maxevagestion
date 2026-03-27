@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,18 +32,20 @@ import {
 } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { toast } from "sonner"
-import { 
-  Plus, 
-  Pencil, 
-  Trash2, 
-  Syringe, 
-  FileText, 
-  CreditCard, 
-  Shield, 
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  Syringe,
+  FileText,
+  CreditCard,
+  Shield,
   File,
   Info,
   ExternalLink,
-  Loader2
+  Loader2,
+  Globe,
+  MapPin
 } from "lucide-react"
 
 interface Requirement {
@@ -61,11 +62,11 @@ interface Requirement {
 }
 
 const typeConfig: Record<string, { icon: any; label: string; color: string }> = {
-  VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-red-500" },
-  FORM: { icon: FileText, label: "Formulario", color: "bg-blue-500" },
+  VACCINE: { icon: Syringe, label: "Vacuna", color: "bg-destructive" },
+  FORM: { icon: FileText, label: "Formulario", color: "bg-info" },
   VISA: { icon: CreditCard, label: "Visa", color: "bg-purple-500" },
   INSURANCE: { icon: Shield, label: "Seguro", color: "bg-green-500" },
-  DOCUMENT: { icon: File, label: "Documento", color: "bg-orange-500" },
+  DOCUMENT: { icon: File, label: "Documento", color: "bg-warning" },
   OTHER: { icon: Info, label: "Otro", color: "bg-gray-500" },
 }
 
@@ -221,148 +222,173 @@ export function DestinationRequirementsClient() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <Input
-          placeholder="Filtrar por destino..."
-          value={filterDestination}
-          onChange={(e) => setFilterDestination(e.target.value)}
-          className="max-w-xs"
-        />
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={handleOpenCreate}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nuevo Requisito
-            </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+            <Globe className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">Requisitos por Destino</h2>
+            <p className="text-sm text-muted-foreground">Gestiona los requisitos de viaje para cada destino</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            placeholder="Filtrar por destino..."
+            value={filterDestination}
+            onChange={(e) => setFilterDestination(e.target.value)}
+            className="max-w-xs"
+          />
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" onClick={handleOpenCreate}>
+                <Plus className="h-3.5 w-3.5 mr-2" />
+                Nuevo Requisito
+              </Button>
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>{editingId ? "Editar Requisito" : "Nuevo Requisito"}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Código País *</Label>
-                  <Input
-                    placeholder="BR, US, EU..."
-                    value={formData.destination_code}
-                    onChange={(e) => setFormData({ ...formData, destination_code: e.target.value.toUpperCase() })}
-                    maxLength={5}
-                  />
+            <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Destino */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Destino</h4>
                 </div>
-                <div className="space-y-2">
-                  <Label>Nombre Destino *</Label>
-                  <Input
-                    placeholder="Brasil, Estados Unidos..."
-                    value={formData.destination_name}
-                    onChange={(e) => setFormData({ ...formData, destination_name: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Tipo *</Label>
-                  <Select
-                    value={formData.requirement_type}
-                    onValueChange={(value) => setFormData({ ...formData, requirement_type: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="VACCINE">Vacuna</SelectItem>
-                      <SelectItem value="VISA">Visa</SelectItem>
-                      <SelectItem value="FORM">Formulario</SelectItem>
-                      <SelectItem value="INSURANCE">Seguro</SelectItem>
-                      <SelectItem value="DOCUMENT">Documento</SelectItem>
-                      <SelectItem value="OTHER">Otro</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Nombre Requisito *</Label>
-                  <Input
-                    placeholder="Fiebre Amarilla, ESTA..."
-                    value={formData.requirement_name}
-                    onChange={(e) => setFormData({ ...formData, requirement_name: e.target.value })}
-                  />
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Código País *</Label>
+                    <Input
+                      placeholder="BR, US, EU..."
+                      value={formData.destination_code}
+                      onChange={(e) => setFormData({ ...formData, destination_code: e.target.value.toUpperCase() })}
+                      maxLength={5}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nombre Destino *</Label>
+                    <Input
+                      placeholder="Brasil, Estados Unidos..."
+                      value={formData.destination_name}
+                      onChange={(e) => setFormData({ ...formData, destination_name: e.target.value })}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Descripción</Label>
-                <Textarea
-                  placeholder="Detalles adicionales..."
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={2}
-                />
-              </div>
+              {/* Requisito */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                    <FileText className="h-3.5 w-3.5 text-blue-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Requisito</h4>
+                </div>
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Tipo *</Label>
+                    <Select
+                      value={formData.requirement_type}
+                      onValueChange={(value) => setFormData({ ...formData, requirement_type: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="VACCINE">Vacuna</SelectItem>
+                        <SelectItem value="VISA">Visa</SelectItem>
+                        <SelectItem value="FORM">Formulario</SelectItem>
+                        <SelectItem value="INSURANCE">Seguro</SelectItem>
+                        <SelectItem value="DOCUMENT">Documento</SelectItem>
+                        <SelectItem value="OTHER">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Nombre Requisito *</Label>
+                    <Input
+                      placeholder="Fiebre Amarilla, ESTA..."
+                      value={formData.requirement_name}
+                      onChange={(e) => setFormData({ ...formData, requirement_name: e.target.value })}
+                    />
+                  </div>
+                </div>
 
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>URL (más info)</Label>
-                  <Input
-                    placeholder="https://..."
-                    value={formData.url}
-                    onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  <Label>Descripción</Label>
+                  <Textarea
+                    placeholder="Detalles adicionales..."
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    rows={2}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Días antes para alertar</Label>
-                  <Input
-                    type="number"
-                    value={formData.days_before_trip}
-                    onChange={(e) => setFormData({ ...formData, days_before_trip: parseInt(e.target.value) || 30 })}
-                  />
-                </div>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <Switch
-                  checked={formData.is_required}
-                  onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked })}
-                />
-                <Label>Es obligatorio</Label>
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>URL (más info)</Label>
+                    <Input
+                      placeholder="https://..."
+                      value={formData.url}
+                      onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Días antes para alertar</Label>
+                    <Input
+                      type="number"
+                      value={formData.days_before_trip}
+                      onChange={(e) => setFormData({ ...formData, days_before_trip: parseInt(e.target.value) || 30 })}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={formData.is_required}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_required: checked })}
+                  />
+                  <Label>Es obligatorio</Label>
+                </div>
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
-              <Button onClick={handleSave} disabled={saving}>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
                 {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {editingId ? "Guardar" : "Crear"}
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {filteredGroups.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            No hay requisitos configurados
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 bg-muted/20 py-8 text-center text-muted-foreground text-sm">
+          No hay requisitos configurados
+        </div>
       ) : (
         <div className="space-y-4">
           {filteredGroups.map(([destinationName, reqs]) => (
-            <Card key={destinationName}>
-              <CardHeader className="py-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Badge variant="outline">{reqs[0].destination_code}</Badge>
-                  {destinationName}
-                  <span className="text-muted-foreground font-normal text-sm">
-                    ({reqs.length} requisito{reqs.length !== 1 ? "s" : ""})
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
+            <div key={destinationName} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">{reqs[0].destination_code}</Badge>
+                <h4 className="text-sm font-semibold">{destinationName}</h4>
+                <span className="text-muted-foreground text-xs">
+                  ({reqs.length} requisito{reqs.length !== 1 ? "s" : ""})
+                </span>
+              </div>
+              <div className="rounded-xl border border-border/40 overflow-hidden">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="sticky top-0 bg-muted/50">
                     <TableRow>
                       <TableHead>Tipo</TableHead>
                       <TableHead>Requisito</TableHead>
@@ -441,8 +467,8 @@ export function DestinationRequirementsClient() {
                     })}
                   </TableBody>
                 </Table>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
         </div>
       )}

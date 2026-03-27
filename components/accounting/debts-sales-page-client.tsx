@@ -296,7 +296,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         ),
         cell: ({ row }) => {
           return (
-            <div className="text-right text-green-600 font-medium">
+            <div className="text-right text-success font-medium">
               {formatCurrency(row.original.paid, row.original.currency)}
             </div>
           )
@@ -309,7 +309,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
         ),
         cell: ({ row }) => {
           return (
-            <div className="text-right font-semibold text-red-600">
+            <div className="text-right font-semibold text-destructive">
               {formatCurrency(row.original.debt, row.original.currency)}
             </div>
           )
@@ -442,7 +442,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600">
+            <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
               <p>{error}</p>
             </div>
@@ -478,7 +478,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Deudores por Ventas</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Deudores por Ventas</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -498,11 +498,11 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => setManualPaymentOpen(true)}>
+          <Button size="sm" className="h-8 rounded-full" onClick={() => setManualPaymentOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Nueva Cuenta por Cobrar
           </Button>
-          <Button variant="outline" asChild>
+          <Button variant="outline" size="sm" className="h-8 rounded-full" asChild>
             <Link href="/accounting/ledger">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver a Contabilidad
@@ -512,20 +512,12 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="h-5 w-5" />
-            Filtros
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 items-end">
+      <div className="flex items-end gap-2 flex-wrap">
             {/* Filtro por Moneda */}
             <div className="space-y-1.5">
               <Label className="text-xs">Moneda</Label>
               <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue placeholder="Todas" />
                 </SelectTrigger>
                 <SelectContent>
@@ -540,7 +532,7 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
             <div className="space-y-1.5">
               <Label className="text-xs">Vendedor</Label>
               <Select value={sellerFilter} onValueChange={setSellerFilter}>
-                <SelectTrigger>
+                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue placeholder="Todos" />
                 </SelectTrigger>
                 <SelectContent>
@@ -594,12 +586,13 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
                 minDate={dateFromFilter}
               />
             </div>
-          </div>
-          
+
           {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL") && (
-            <div className="mt-4 flex justify-end">
+            <div className="mt-2">
               <Button
                 variant="outline"
+                size="sm"
+                className="h-8 rounded-full"
                 onClick={() => {
                   setCurrencyFilter("ALL")
                   setSellerFilter("ALL")
@@ -613,57 +606,38 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
               </Button>
             </div>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Deudores
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalDebtors}</div>
-            <p className="text-xs text-muted-foreground">Clientes con deuda</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Deuda Total
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {filteredDebtors.length > 0 ? formatCurrency(totalDebt, filteredDebtors[0]?.currency || "USD") : "$ 0"}
-            </div>
-            <p className="text-xs text-muted-foreground">Monto total pendiente</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Operaciones con Deuda
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {filteredDebtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
-            </div>
-            <p className="text-xs text-muted-foreground">Total de operaciones</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Total Deudores</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{totalDebtors}</div>
+          <p className="text-xs text-muted-foreground mt-1">Clientes con deuda</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Deuda Total</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight text-destructive mt-1">
+            {filteredDebtors.length > 0 ? formatCurrency(totalDebt, filteredDebtors[0]?.currency || "USD") : "$ 0"}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Monto total pendiente</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Operaciones con Deuda</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">
+            {filteredDebtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Total de operaciones</p>
+        </div>
       </div>
 
       {/* Tabla de operaciones con deuda */}
-      <Card>
-        <CardHeader>
+      <div className="rounded-xl border border-border/40">
+        <div className="p-5 pb-3">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle>Operaciones con Deuda</CardTitle>
+                <h3 className="text-base font-semibold">Operaciones con Deuda</h3>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -675,12 +649,14 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <CardDescription>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 {filteredOperations.length} operación{filteredOperations.length !== 1 ? "es" : ""} con deuda pendiente
-              </CardDescription>
+              </p>
             </div>
             <Button
               variant="outline"
+              size="sm"
+              className="h-8 rounded-full"
               onClick={handleExportExcel}
               disabled={filteredOperations.length === 0}
             >
@@ -688,8 +664,8 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
               Exportar Excel
             </Button>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div className="px-5 pb-5">
           {filteredOperations.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               {allOperations.length === 0
@@ -704,8 +680,8 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
               searchPlaceholder="Buscar por cliente..."
             />
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Dialog para cobranza manual */}
       <ManualPaymentDialog

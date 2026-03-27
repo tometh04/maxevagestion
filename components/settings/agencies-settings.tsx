@@ -17,6 +17,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
+import { Building2, Plus, Pencil } from "lucide-react"
 
 const agencySchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
@@ -100,58 +101,77 @@ export function AgenciesSettings() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Agencias</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+            <Building2 className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">Agencias</h2>
+            <p className="text-sm text-muted-foreground">Gestiona las sucursales de tu empresa</p>
+          </div>
+        </div>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button onClick={handleNew}>Nueva Agencia</Button>
+            <Button size="sm" onClick={handleNew}>
+              <Plus className="mr-2 h-3.5 w-3.5" />
+              Nueva Agencia
+            </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>{editingAgency ? "Editar Agencia" : "Nueva Agencia"}</DialogTitle>
             </DialogHeader>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nombre</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="city"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Ciudad</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="timezone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Timezone</FormLabel>
-                      <FormControl>
-                        <Input {...field} placeholder="America/Argentina/Buenos_Aires" />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                      <Building2 className="h-3.5 w-3.5 text-primary" />
+                    </div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos de la Agencia</h4>
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nombre</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Ciudad</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="timezone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Timezone</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="America/Argentina/Buenos_Aires" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
                 <Button type="submit" className="w-full">
                   {editingAgency ? "Actualizar" : "Crear"}
                 </Button>
@@ -161,47 +181,55 @@ export function AgenciesSettings() {
         </Dialog>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nombre</TableHead>
-              <TableHead>Ciudad</TableHead>
-              <TableHead>Timezone</TableHead>
-              <TableHead>Acciones</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+            <Building2 className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Sucursales</h4>
+        </div>
+        <div className="rounded-xl border border-border/40 overflow-hidden">
+          <Table>
+            <TableHeader className="sticky top-0 bg-muted/50">
               <TableRow>
-                <TableCell colSpan={4} className="text-center">
-                  Cargando...
-                </TableCell>
+                <TableHead>Nombre</TableHead>
+                <TableHead>Ciudad</TableHead>
+                <TableHead>Timezone</TableHead>
+                <TableHead>Acciones</TableHead>
               </TableRow>
-            ) : agencies.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
-                  No hay agencias
-                </TableCell>
-              </TableRow>
-            ) : (
-              agencies.map((agency) => (
-                <TableRow key={agency.id}>
-                  <TableCell>{agency.name}</TableCell>
-                  <TableCell>{agency.city}</TableCell>
-                  <TableCell>{agency.timezone}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(agency)}>
-                      Editar
-                    </Button>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center">
+                    Cargando...
                   </TableCell>
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ) : agencies.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-muted-foreground">
+                    No hay agencias
+                  </TableCell>
+                </TableRow>
+              ) : (
+                agencies.map((agency) => (
+                  <TableRow key={agency.id}>
+                    <TableCell className="font-medium">{agency.name}</TableCell>
+                    <TableCell>{agency.city}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm font-mono">{agency.timezone}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(agency)}>
+                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                        Editar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
     </div>
   )
 }
-

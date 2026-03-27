@@ -301,7 +301,7 @@ export function OperationsTable({
                     <DropdownMenuSeparator />
                     <DropdownMenuItem 
                       onClick={() => handleDeleteClick(operation)}
-                      className="text-red-600 focus:text-red-600"
+                      className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Eliminar
@@ -510,7 +510,7 @@ export function OperationsTable({
         cell: ({ row }) => {
           const paid = row.original.paid_amount || 0
           return (
-            <div className="text-xs text-green-600 font-medium text-right">
+            <div className="text-xs text-success font-medium text-right">
               {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
             </div>
           )
@@ -526,7 +526,7 @@ export function OperationsTable({
           const total = row.original.sale_amount_total || 0
           const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
           return (
-            <div className="text-xs text-orange-600 font-medium text-right">
+            <div className="text-xs text-warning font-medium text-right">
               {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
             </div>
           )
@@ -540,7 +540,7 @@ export function OperationsTable({
         cell: ({ row }) => {
           const operatorPaid = row.original.operator_paid_amount || 0
           return (
-            <div className="text-xs text-blue-600 font-medium text-right">
+            <div className="text-xs text-info font-medium text-right">
               {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
             </div>
           )
@@ -556,7 +556,7 @@ export function OperationsTable({
           const operatorCost = row.original.operator_cost || 0
           const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
           return (
-            <div className="text-xs text-red-600 font-medium text-right">
+            <div className="text-xs text-destructive font-medium text-right">
               {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
             </div>
           )
@@ -648,10 +648,10 @@ export function OperationsTable({
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span className="font-semibold text-orange-600">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
-                  <span className="text-green-600">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
-                  <span className="text-orange-600">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
-                  <span className="text-emerald-700 font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
+                  <span className="font-semibold text-warning">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
+                  <span className="text-success">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
+                  <span className="text-warning">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
+                  <span className="text-success font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
                   {Object.keys(totals).length > 1 && <span className="text-muted-foreground">|</span>}
                 </div>
               ))}
@@ -718,10 +718,10 @@ export function OperationsTable({
                 <li>Alertas y documentos</li>
                 <li>Comisiones calculadas</li>
               </ul>
-              <p className="text-sm font-medium text-amber-600 mt-2">
+              <p className="text-sm font-medium text-warning mt-2">
                 ⚠️ El cliente asociado NO se eliminará.
               </p>
-              <p className="text-sm font-medium text-red-600">
+              <p className="text-sm font-medium text-destructive">
                 Esta acción no se puede deshacer.
               </p>
             </AlertDialogDescription>
@@ -731,7 +731,7 @@ export function OperationsTable({
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               {deleting ? "Eliminando..." : "Eliminar operación"}
             </AlertDialogAction>

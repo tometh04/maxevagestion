@@ -72,9 +72,8 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-5 items-end">
-        <div className="space-y-1.5">
+    <div className="flex items-center gap-2 flex-wrap">
+        <div className="space-y-1">
           <Label className="text-xs">Desde</Label>
           <DateInputWithCalendar
             value={parseDate(filters.dateFrom)}
@@ -89,7 +88,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
             placeholder="dd/MM/yyyy"
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Hasta</Label>
           <DateInputWithCalendar
             value={parseDate(filters.dateTo)}
@@ -103,10 +102,10 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
             minDate={parseDate(filters.dateFrom)}
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Agencia</Label>
           <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Todas" />
             </SelectTrigger>
             <SelectContent>
@@ -119,10 +118,10 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Moneda</Label>
           <Select value={filters.currency} onValueChange={(newValue) => handleChange("currency", newValue)}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Seleccionar" />
             </SelectTrigger>
             <SelectContent>
@@ -134,13 +133,11 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" onClick={handleReset}>
-          Reiniciar filtros
-        </Button>
-      </div>
+        <div className="flex items-end">
+          <Button variant="outline" size="sm" className="rounded-full" onClick={handleReset}>
+            Reiniciar filtros
+          </Button>
+        </div>
     </div>
   )
 }

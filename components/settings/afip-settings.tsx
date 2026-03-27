@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/form"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+
 import { useToast } from "@/hooks/use-toast"
 import {
   CheckCircle2,
@@ -317,12 +317,17 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold">Facturación Electrónica AFIP</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Conectá tu CUIT con el sistema de facturación electrónica de AFIP para emitir facturas
-          directamente desde las operaciones.
-        </p>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+          <Settings2 className="h-4 w-4 text-primary" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">Facturación Electrónica AFIP</h2>
+          <p className="text-sm text-muted-foreground">
+            Conectá tu CUIT con el sistema de facturación electrónica de AFIP para emitir facturas
+            directamente desde las operaciones.
+          </p>
+        </div>
       </div>
 
       {/* Selector de agencia */}
@@ -362,46 +367,41 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
       {/* Estado actual */}
       {isLoadingStatus ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Verificando configuración...</span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-6">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Verificando configuración...</span>
+          </div>
+        </div>
       ) : afipStatus?.configured && !showReconfigureForm ? (
-        <Card className={needsRecert
-          ? "border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20"
+        <div className={`rounded-xl border p-4 space-y-4 ${needsRecert
+          ? "border-warning bg-warning/10"
           : "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
-        }>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {needsRecert
-                  ? <AlertCircle className="h-5 w-5 text-amber-600" />
-                  : <CheckCircle2 className="h-5 w-5 text-green-600" />
-                }
-                <CardTitle className={`text-base ${needsRecert ? "text-amber-700 dark:text-amber-400" : "text-green-700 dark:text-green-400"}`}>
-                  {needsRecert ? "AFIP: Certificado pendiente" : "AFIP Configurado"}
-                </CardTitle>
-              </div>
-              <Badge
-                variant="outline"
-                className={needsRecert
-                  ? "border-amber-600 text-amber-700 dark:text-amber-400"
-                  : "border-green-600 text-green-700 dark:text-green-400"
-                }
-              >
-                {needsRecert ? "Incompleto" : "Activo"}
-              </Badge>
+        }`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {needsRecert
+                ? <AlertCircle className="h-5 w-5 text-warning" />
+                : <CheckCircle2 className="h-5 w-5 text-green-600" />
+              }
+              <h4 className={`text-sm font-semibold ${needsRecert ? "text-warning" : "text-success"}`}>
+                {needsRecert ? "AFIP: Certificado pendiente" : "AFIP Configurado"}
+              </h4>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+            <Badge
+              variant="outline"
+              className={needsRecert
+                ? "border-warning text-warning"
+                : "border-success text-success"
+              }
+            >
+              {needsRecert ? "Incompleto" : "Activo"}
+            </Badge>
+          </div>
             {needsRecert && (
-              <Alert className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20">
-                <AlertCircle className="h-4 w-4 text-amber-600" />
-                <AlertDescription className="text-amber-700 dark:text-amber-400 text-sm">
+              <Alert className="border-warning bg-warning/10">
+                <AlertCircle className="h-4 w-4 text-warning" />
+                <AlertDescription className="text-warning text-sm">
                   Falta el certificado digital. Hacé clic en <strong>Reconfigurar</strong> para crear el certificado e ingresar tu Clave Fiscal.
                 </AlertDescription>
               </Alert>
@@ -447,27 +447,28 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 Reconfigurar
               </Button>
             </div>
-          </CardContent>
-        </Card>
+        </div>
       ) : null}
 
       {/* Formulario de configuración */}
       {showForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+          <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+              <Settings2 className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
               {showReconfigureForm ? "Reconfigurar AFIP" : "Configurar AFIP"}
-            </CardTitle>
-            <CardDescription>
-              {needsCuit || needsPassword
-                ? "Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena."
-                : "Seleccioná el punto de venta y entorno para esta agencia."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Alert className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20">
-              <Info className="h-4 w-4 text-blue-600" />
-              <AlertDescription className="text-blue-700 dark:text-blue-400 text-sm">
+            </h4>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {needsCuit || needsPassword
+              ? "Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena."
+              : "Seleccioná el punto de venta y entorno para esta agencia."}
+          </p>
+            <Alert className="mb-6 border-info bg-info/10">
+              <Info className="h-4 w-4 text-info" />
+              <AlertDescription className="text-info text-sm">
                 El proceso crea automáticamente un certificado digital y autoriza el Web Service de
                 Facturación (WSFE) en AFIP. Puede tardar hasta 2 minutos.
               </AlertDescription>
@@ -505,17 +506,17 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
             {/* Error inline */}
             {setupError && (
-              <Alert className="mb-6 border-red-300 bg-red-50 dark:border-red-900 dark:bg-red-950/20">
-                <XCircle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-700 dark:text-red-400 text-sm space-y-1">
+              <Alert className="mb-6 border-destructive bg-destructive/10">
+                <XCircle className="h-4 w-4 text-destructive" />
+                <AlertDescription className="text-destructive text-sm space-y-1">
                   <p className="font-medium">Error al configurar AFIP:</p>
-                  <p className="font-mono text-xs bg-red-100 dark:bg-red-950 p-2 rounded break-all">
+                  <p className="font-mono text-xs bg-destructive/10 p-2 rounded break-all">
                     {setupError.message}
                   </p>
                   {certStepDone && (
                     <div className="flex gap-3 mt-2 text-xs">
                       <span className="text-green-600">✓ Certificado creado</span>
-                      <span className="text-red-600">✗ Web Service</span>
+                      <span className="text-destructive">✗ Web Service</span>
                     </div>
                   )}
                 </AlertDescription>
@@ -659,8 +660,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 </div>
               </form>
             </Form>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {/* Info adicional */}

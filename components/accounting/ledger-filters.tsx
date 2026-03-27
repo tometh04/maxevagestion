@@ -51,9 +51,9 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   }
 
   return (
-    <div className="space-y-4 rounded-lg border p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-6 items-end">
-        <div className="space-y-1.5">
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="space-y-1">
           <Label className="text-xs">Desde</Label>
           <DateInputWithCalendar
             value={dateFrom}
@@ -66,7 +66,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             placeholder="dd/MM/yyyy"
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Hasta</Label>
           <DateInputWithCalendar
             value={dateTo}
@@ -80,10 +80,10 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             minDate={dateFrom}
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Agencia</Label>
           <Select value={agencyId} onValueChange={setAgencyId}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -96,10 +96,10 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Tipo</Label>
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -113,10 +113,10 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <Label className="text-xs">Moneda</Label>
           <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -126,12 +126,12 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
             </SelectContent>
           </Select>
         </div>
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button onClick={handleApply} className="w-full sm:w-auto">Aplicar Filtros</Button>
-        <Button variant="outline" onClick={handleReset} className="w-full sm:w-auto">
-          Reiniciar
-        </Button>
+        <div className="flex items-end gap-2 pt-4">
+          <Button size="sm" className="h-8 rounded-full" onClick={handleApply}>Aplicar Filtros</Button>
+          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={handleReset}>
+            Reiniciar
+          </Button>
+        </div>
       </div>
     </div>
   )

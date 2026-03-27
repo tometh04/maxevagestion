@@ -188,13 +188,13 @@ export function OperationAccountingSection({
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               {isProfitable ? (
-                <ArrowUp className="h-3 w-3 text-emerald-500" />
+                <ArrowUp className="h-3 w-3 text-success" />
               ) : totalMargin < 0 ? (
-                <ArrowDown className="h-3 w-3 text-red-500" />
+                <ArrowDown className="h-3 w-3 text-destructive" />
               ) : (
                 <Minus className="h-3 w-3 text-muted-foreground" />
               )}
-              <span className={`text-[10px] font-medium ${isProfitable ? 'text-emerald-500' : totalMargin < 0 ? 'text-red-500' : 'text-muted-foreground'}`}>
+              <span className={`text-[10px] font-medium ${isProfitable ? 'text-success' : totalMargin < 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                 {formatPercent(totalMarginPercent)} del total
               </span>
             </div>
@@ -228,7 +228,7 @@ export function OperationAccountingSection({
             <Calculator className="h-3.5 w-3.5 text-muted-foreground" />
           </CardHeader>
           <CardContent className="px-3 pb-3 pt-0">
-            <div className={`text-lg font-bold lg:text-xl truncate ${ivaAPagar >= 0 ? 'text-amber-600' : ''}`}>
+            <div className={`text-lg font-bold lg:text-xl truncate ${ivaAPagar >= 0 ? 'text-warning' : ''}`}>
               {formatCurrency(Math.abs(ivaAPagar), currency)}
             </div>
             <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -324,7 +324,7 @@ export function OperationAccountingSection({
                   </div>
                   <div className="flex justify-between py-1.5 px-2">
                     <span className="text-muted-foreground text-xs">IVA Débito</span>
-                    <span className="text-xs text-amber-600">{formatCurrency(ivaVentas, currency)}</span>
+                    <span className="text-xs text-warning">{formatCurrency(ivaVentas, currency)}</span>
                   </div>
                 </div>
               </div>
@@ -390,7 +390,7 @@ export function OperationAccountingSection({
                       {commissionPercent}%
                     </Badge>
                   </div>
-                  <p className="text-base font-bold text-amber-600">
+                  <p className="text-base font-bold text-warning">
                     -{formatCurrency(comisionEstimada, currency)}
                   </p>
                   <p className="text-[10px] text-muted-foreground mt-2">
@@ -443,7 +443,7 @@ export function OperationAccountingSection({
                   </div>
                   <div>
                     <div className="text-muted-foreground">Margen</div>
-                    <div className="font-medium text-emerald-600">{formatCurrency(marginBruto, currency)}</div>
+                    <div className="font-medium text-success">{formatCurrency(marginBruto, currency)}</div>
                   </div>
                 </div>
               </div>
@@ -458,7 +458,7 @@ export function OperationAccountingSection({
                         {service.currency}
                       </Badge>
                       {service.generates_commission ? (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-amber-100 text-amber-700">
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-warning/10 text-warning">
                           Comisiona
                         </Badge>
                       ) : (
@@ -479,7 +479,7 @@ export function OperationAccountingSection({
                     </div>
                     <div>
                       <div className="text-muted-foreground">Margen</div>
-                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-success" : "text-destructive"}`}>
                         {formatCurrency(service.price - service.cost, service.currency)}
                       </div>
                     </div>
@@ -493,11 +493,11 @@ export function OperationAccountingSection({
                   <div>
                     <span className="font-medium">{service.name || serviceTypeLabels[service.service_type] || service.service_type}</span>
                     <div className="flex gap-1.5 mt-0.5">
-                      <Badge variant="outline" className="text-[10px] h-4 px-1 bg-blue-50 text-blue-600 border-blue-200">
+                      <Badge variant="outline" className="text-[10px] h-4 px-1 bg-info/10 text-info border-info/20">
                         {service.currency} — otra moneda
                       </Badge>
                       {service.generates_commission ? (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-amber-100 text-amber-700">
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-warning/10 text-warning">
                           Comisiona
                         </Badge>
                       ) : null}
@@ -514,7 +514,7 @@ export function OperationAccountingSection({
                     </div>
                     <div>
                       <div className="text-muted-foreground">Margen</div>
-                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-success" : "text-destructive"}`}>
                         {formatCurrency(service.price - service.cost, service.currency)}
                       </div>
                     </div>
@@ -537,25 +537,25 @@ export function OperationAccountingSection({
                     </div>
                     <div>
                       <div className="text-muted-foreground">Margen</div>
-                      <div className="font-bold text-emerald-600">{formatCurrency(totalMargin, currency)}</div>
+                      <div className="font-bold text-success">{formatCurrency(totalMargin, currency)}</div>
                     </div>
                   </div>
                 </div>
 
                 {servicesInOtherCurrency.length > 0 && (
-                  <div className="flex justify-between px-2 py-1 rounded bg-blue-50 font-medium text-sm">
-                    <span className="text-blue-700">Total {otherCurrency} (servicios)</span>
-                    <div className="flex gap-6 text-xs text-right text-blue-700">
+                  <div className="flex justify-between px-2 py-1 rounded bg-info/10 font-medium text-sm">
+                    <span className="text-info">Total {otherCurrency} (servicios)</span>
+                    <div className="flex gap-6 text-xs text-right text-info">
                       <div>
-                        <div className="text-blue-500">Venta</div>
+                        <div className="text-info/70">Venta</div>
                         <div className="font-bold">{formatCurrency(servicesSaleOther, otherCurrency)}</div>
                       </div>
                       <div>
-                        <div className="text-blue-500">Costo</div>
+                        <div className="text-info/70">Costo</div>
                         <div className="font-bold">{formatCurrency(servicesCostOther, otherCurrency)}</div>
                       </div>
                       <div>
-                        <div className="text-blue-500">Margen</div>
+                        <div className="text-info/70">Margen</div>
                         <div className="font-bold">{formatCurrency(servicesSaleOther - servicesCostOther, otherCurrency)}</div>
                       </div>
                     </div>
@@ -597,7 +597,7 @@ export function OperationAccountingSection({
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-muted-foreground">IVA 21%</span>
-                        <span className="font-medium text-amber-600">{formatCurrency(sale.iva_amount, sale.currency)}</span>
+                        <span className="font-medium text-warning">{formatCurrency(sale.iva_amount, sale.currency)}</span>
                       </div>
                     </div>
                   ))

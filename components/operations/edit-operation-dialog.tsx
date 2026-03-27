@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2, Plus, Trash2 } from "lucide-react"
+import { CalendarIcon, Loader2, Plus, Trash2, Building2, MapPin, Users, DollarSign, Ticket } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
@@ -72,10 +72,10 @@ const operationTypeOptions = [
 ]
 
 const standardStatusOptions = [
-  { value: "RESERVED", label: "Reservado", color: "bg-blue-500" },
-  { value: "CONFIRMED", label: "Confirmado", color: "bg-green-500" },
-  { value: "CANCELLED", label: "Cancelado", color: "bg-red-500" },
-  { value: "TRAVELLING", label: "En viaje", color: "bg-orange-500" },
+  { value: "RESERVED", label: "Reservado", color: "bg-info" },
+  { value: "CONFIRMED", label: "Confirmado", color: "bg-success" },
+  { value: "CANCELLED", label: "Cancelado", color: "bg-destructive" },
+  { value: "TRAVELLING", label: "En viaje", color: "bg-warning" },
   { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
 ]
 
@@ -401,7 +401,7 @@ export function EditOperationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Editar Operación</DialogTitle>
           <DialogDescription>
@@ -425,13 +425,13 @@ export function EditOperationDialog({
                 <p className="text-sm text-muted-foreground">Margen Calculado</p>
                 <p className={cn(
                   "text-2xl font-bold",
-                  marginInfo.isPositive ? "text-green-600" : "text-red-600"
+                  marginInfo.isPositive ? "text-success" : "text-destructive"
                 )}>
                   {form.watch("currency")} {marginInfo.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                 </p>
                 <p className={cn(
                   "text-sm",
-                  marginInfo.isPositive ? "text-green-600" : "text-red-600"
+                  marginInfo.isPositive ? "text-success" : "text-destructive"
                 )}>
                   ({marginInfo.percentage.toFixed(1)}%)
                 </p>
@@ -441,7 +441,13 @@ export function EditOperationDialog({
         </Card>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* General */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">General</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -575,7 +581,7 @@ export function EditOperationDialog({
                           variant="ghost"
                           size="sm"
                           onClick={() => removeOperator(index)}
-                          className="text-red-600 hover:text-red-700 h-7 w-7 p-0"
+                          className="text-destructive hover:text-destructive/80 h-7 w-7 p-0"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -751,7 +757,14 @@ export function EditOperationDialog({
                 )}
               />
             </div>
+            </div>
 
+            {/* Ruta y Fechas */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Ruta y Fechas</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -809,30 +822,15 @@ export function EditOperationDialog({
                       initialLabel={field.value || ""}
                       searchFn={async (query) => {
                         if (!query || query.length < 2) return []
-                        const options: ComboboxOption[] = []
-                        // 1. Search in destinations master table first
-                        try {
-                          const destRes = await fetch(`/api/destinations?q=${encodeURIComponent(query)}`)
-                          if (destRes.ok) {
-                            const destData = await destRes.json()
-                            for (const dest of (destData.destinations || [])) {
-                              options.push({
-                                value: dest.name,
-                                label: dest.name,
-                                subtitle: dest.country || "Destino guardado",
-                              })
-                            }
-                          }
-                        } catch {
-                          // silencioso
-                        }
-                        // 2. Search airports
+                        // Siempre incluir lo que el usuario escribió como primera opción (fallback libre)
+                        const options: ComboboxOption[] = [
+                          { value: query, label: query, subtitle: "Usar como destino" },
+                        ]
                         try {
                           const res = await fetch(`/api/airports?q=${encodeURIComponent(query)}`)
                           if (res.ok) {
                             const data: Array<{ code: string; name: string; city: string; country: string }> = await res.json()
                             for (const airport of data) {
-                              if (options.some(o => o.value === airport.city)) continue
                               options.push({
                                 value: airport.city,
                                 label: `${airport.code} — ${airport.city}`,
@@ -841,15 +839,7 @@ export function EditOperationDialog({
                             }
                           }
                         } catch {
-                          // silencioso
-                        }
-                        // 3. Free text option
-                        if (!options.some(o => o.value.toLowerCase() === query.toLowerCase())) {
-                          options.push({
-                            value: query,
-                            label: `Crear: "${query}"`,
-                            subtitle: "Nuevo destino",
-                          })
+                          // silencioso — igual tenemos la opción de texto libre
                         }
                         return options
                       }}
@@ -901,7 +891,14 @@ export function EditOperationDialog({
                 }}
               />
             </div>
+            </div>
 
+            {/* Pasajeros */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium text-foreground/70">Pasajeros</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-4">
               <FormField
                 control={form.control}
@@ -985,7 +982,14 @@ export function EditOperationDialog({
                 )}
               />
             </div>
+            </div>
 
+            {/* Financiero */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs font-medium text-foreground/70">Financiero</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-3">
               <FormField
                 control={form.control}
@@ -1068,10 +1072,14 @@ export function EditOperationDialog({
                 />
               )}
             </div>
+            </div>
 
-            {/* Códigos de Reserva */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Códigos de Reserva</h3>
+            {/* Codigos */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs font-medium text-foreground/70">Codigos de Reserva</span>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField
                   control={form.control}

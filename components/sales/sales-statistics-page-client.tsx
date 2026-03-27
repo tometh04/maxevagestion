@@ -339,8 +339,8 @@ export function SalesStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
-              <Users className="h-3.5 w-3.5 text-blue-600" />
+            <div className="p-1.5 rounded bg-info/10">
+              <Users className="h-3.5 w-3.5 text-info" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Leads</p>
@@ -352,12 +352,12 @@ export function SalesStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-orange-100 dark:bg-orange-900/30">
-              <Target className="h-3.5 w-3.5 text-orange-600" />
+            <div className="p-1.5 rounded bg-primary/10">
+              <Target className="h-3.5 w-3.5 text-primary" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Activos</p>
-              <p className="text-base font-semibold text-orange-600">{stats.overview.activeLeads}</p>
+              <p className="text-base font-semibold text-primary">{stats.overview.activeLeads}</p>
               <p className="text-[10px] text-muted-foreground">en proceso</p>
             </div>
           </div>
@@ -365,12 +365,12 @@ export function SalesStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-green-100 dark:bg-green-900/30' : stats.overview.conversionRate >= 10 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-green-600' : stats.overview.conversionRate >= 10 ? 'text-yellow-600' : 'text-red-600'}`} />
+            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-success/10' : stats.overview.conversionRate >= 10 ? 'bg-warning/10' : 'bg-destructive/10'}`}>
+              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`} />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Conversión</p>
-              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-green-600' : stats.overview.conversionRate >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`}>
                 {stats.overview.conversionRate}%
               </p>
               <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} ganados</p>
@@ -380,12 +380,12 @@ export function SalesStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="p-1.5 rounded bg-success/10">
+              <DollarSign className="h-3.5 w-3.5 text-success" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Depósitos</p>
-              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalDeposits)}</p>
+              <p className="text-base font-semibold text-success">{formatFullCurrency(stats.overview.totalDeposits)}</p>
             </div>
           </div>
         </Card>
@@ -550,7 +550,7 @@ export function SalesStatisticsPageClient() {
                       {seller.leads}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={seller.conversionRate >= 25 ? "text-green-600" : seller.conversionRate >= 15 ? "text-amber-600" : "text-muted-foreground"}>
+                      <span className={seller.conversionRate >= 25 ? "text-success" : seller.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
                         {seller.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>
@@ -599,7 +599,7 @@ export function SalesStatisticsPageClient() {
                       {(source as any).won || 0}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={source.conversionRate >= 25 ? "text-green-600" : source.conversionRate >= 15 ? "text-amber-600" : "text-muted-foreground"}>
+                      <span className={source.conversionRate >= 25 ? "text-success" : source.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
                         {source.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>
