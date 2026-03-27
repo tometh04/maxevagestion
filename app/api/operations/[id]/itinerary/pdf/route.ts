@@ -5,7 +5,7 @@ import jsPDF from "jspdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
-// Colors matching Lozada brand (golden/orange)
+// Colors matching brand (golden/orange)
 const GOLD = [196, 155, 42] as const   // #C49B2A - golden
 const DARK = [51, 51, 51] as const     // #333333
 const GRAY = [120, 120, 120] as const  // #787878
@@ -34,6 +34,20 @@ export async function GET(
     await getCurrentUser()
     const { id: operationId } = await params
     const supabase = await createServerClient()
+
+    // Fetch organization settings for PDF branding
+    const { data: orgSettings } = await (supabase.from("organization_settings") as any)
+      .select("key, value")
+
+    const getOrgSetting = (key: string, fallback: string = '') =>
+      orgSettings?.find((s: any) => s.key === key)?.value || fallback
+
+    const companyName = getOrgSetting('company_name', 'Mi Empresa')
+    const companyAddress = getOrgSetting('address', '')
+    const companyPhone = getOrgSetting('phone', '')
+    const companyWebsite = getOrgSetting('website', '')
+    const companyTaxId = getOrgSetting('tax_id', '')
+    const companyLogo = getOrgSetting('brand_logo', '')
 
     // Fetch operation with customers
     const { data: operation } = await (supabase.from("operations") as any)
@@ -70,14 +84,22 @@ export async function GET(
     let y = 15
 
     // === HEADER: Logo + Title ===
-    // Logo placeholder (golden text as fallback)
-    doc.setFontSize(24)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(...GOLD)
-    doc.text("LOZADA", pageWidth - marginRight, y + 5, { align: "right" })
-    doc.setFontSize(14)
-    doc.setFont("helvetica", "italic")
-    doc.text("Viajes", pageWidth - marginRight, y + 11, { align: "right" })
+    if (companyLogo) {
+      try {
+        doc.addImage(companyLogo, "PNG", pageWidth - marginRight - 40, y - 5, 40, 18)
+      } catch {
+        // Fallback to text if logo fails to load
+        doc.setFontSize(24)
+        doc.setFont("helvetica", "bold")
+        doc.setTextColor(...GOLD)
+        doc.text(companyName.toUpperCase(), pageWidth - marginRight, y + 5, { align: "right" })
+      }
+    } else {
+      doc.setFontSize(24)
+      doc.setFont("helvetica", "bold")
+      doc.setTextColor(...GOLD)
+      doc.text(companyName.toUpperCase(), pageWidth - marginRight, y + 5, { align: "right" })
+    }
 
     y += 25
 
@@ -104,13 +126,21 @@ export async function GET(
         doc.addPage()
         y = 15
         // Repeat logo on each page
-        doc.setFontSize(18)
-        doc.setFont("helvetica", "bold")
-        doc.setTextColor(...GOLD)
-        doc.text("LOZADA", pageWidth - marginRight, y, { align: "right" })
-        doc.setFontSize(11)
-        doc.setFont("helvetica", "italic")
-        doc.text("Viajes", pageWidth - marginRight, y + 5, { align: "right" })
+        if (companyLogo) {
+          try {
+            doc.addImage(companyLogo, "PNG", pageWidth - marginRight - 35, y - 5, 35, 15)
+          } catch {
+            doc.setFontSize(18)
+            doc.setFont("helvetica", "bold")
+            doc.setTextColor(...GOLD)
+            doc.text(companyName.toUpperCase(), pageWidth - marginRight, y, { align: "right" })
+          }
+        } else {
+          doc.setFontSize(18)
+          doc.setFont("helvetica", "bold")
+          doc.setTextColor(...GOLD)
+          doc.text(companyName.toUpperCase(), pageWidth - marginRight, y, { align: "right" })
+        }
         y += 15
       }
 
@@ -326,9 +356,22 @@ export async function GET(
     doc.setFontSize(8)
     doc.setFont("helvetica", "normal")
     doc.setTextColor(255, 255, 255)
-    doc.text("Nro de Legajo: 18181", marginLeft, footerY + 3)
-    doc.text("📍 Corrientes 631 - Piso 1 Oficina F", marginLeft, footerY + 7)
-    doc.text("🌐 lozadaviajes.rosario", marginLeft, footerY + 11)
+    let footerLineY = footerY + 3
+    if (companyTaxId) {
+      doc.text(`CUIT: ${companyTaxId}`, marginLeft, footerLineY)
+      footerLineY += 4
+    }
+    if (companyAddress) {
+      doc.text(companyAddress, marginLeft, footerLineY)
+      footerLineY += 4
+    }
+    if (companyWebsite) {
+      doc.text(companyWebsite, marginLeft, footerLineY)
+      footerLineY += 4
+    }
+    if (companyPhone) {
+      doc.text(companyPhone, marginLeft, footerLineY)
+    }
 
     // Return PDF as downloadable
     const pdfBuffer = doc.output("arraybuffer")

@@ -95,8 +95,14 @@ export async function GET(request: NextRequest) {
     }
 
     const agency = payment.operations?.agencies
-    const agencyCity = agency?.city || "Rosario"
-    const agencyName = agency?.name || "Lozada Viajes"
+
+    // Fetch organization settings for dynamic fallbacks
+    const { data: orgSettingsData } = await (supabase.from("organization_settings") as any).select("key, value")
+    const getOrg = (key: string, fallback: string) =>
+      orgSettingsData?.find((s: any) => s.key === key)?.value || fallback
+
+    const agencyCity = agency?.city || getOrg("city", "Rosario")
+    const agencyName = agency?.name || getOrg("company_name", "Mi Empresa")
 
     // Generar número de recibo
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`

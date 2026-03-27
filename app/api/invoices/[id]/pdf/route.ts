@@ -201,8 +201,14 @@ export async function GET(
     }
 
     // ── FOOTER ────────────────────────────────────────────────────────────
+    // Fetch organization settings for dynamic footer
+    const { data: orgSettingsData } = await (supabase.from("organization_settings") as any).select("key, value")
+    const getOrgSetting = (key: string, fallback: string) =>
+      orgSettingsData?.find((s: any) => s.key === key)?.value || fallback
+    const footerCompanyName = getOrgSetting("company_name", agency?.name || "maxeva")
+
     line(L, 35, R, 35, gray, 0.3)
-    text("Comprobante generado por maxeva - Sistema de Gestion de Agencias de Viajes", L, 22, 7, regular, gray)
+    text(`Comprobante generado por ${footerCompanyName} - Sistema de Gestion`, L, 22, 7, regular, gray)
     text("Verificá en: www.afip.gob.ar/fe/qr", R - 160, 22, 7, regular, gray)
 
     const pdfBytes = await pdfDoc.save()
