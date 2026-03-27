@@ -53,10 +53,10 @@ export async function POST(request: Request) {
         .maybeSingle()
       if (taxSettings) {
         retentionGananciasRate = apply_retention_ganancias
-          ? (retention_ganancias_override ?? Number(taxSettings.retention_ganancias_rate) || 0)
+          ? (retention_ganancias_override ?? (Number(taxSettings.retention_ganancias_rate) || 0))
           : 0
         retentionIvaRate = apply_retention_iva
-          ? (retention_iva_override ?? Number(taxSettings.retention_iva_rate) || 0)
+          ? (retention_iva_override ?? (Number(taxSettings.retention_iva_rate) || 0))
           : 0
       }
     }
