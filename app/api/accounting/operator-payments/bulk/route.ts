@@ -35,9 +35,31 @@ export async function POST(request: Request) {
       payment_date,
       notes,
       deposit_bonus,
+      apply_retention_ganancias,
+      apply_retention_iva,
+      retention_ganancias_override,
+      retention_iva_override,
     } = body
 
     const hasDepositBonus = deposit_bonus?.enabled && deposit_bonus?.percentage > 0 && deposit_bonus?.bonus_account_id
+
+    // Load tax settings for automatic retentions
+    let retentionGananciasRate = 0
+    let retentionIvaRate = 0
+    if (apply_retention_ganancias || apply_retention_iva) {
+      const { data: taxSettings } = await (supabase.from("financial_settings") as any)
+        .select("retention_ganancias_rate, retention_iva_rate")
+        .limit(1)
+        .maybeSingle()
+      if (taxSettings) {
+        retentionGananciasRate = apply_retention_ganancias
+          ? (retention_ganancias_override ?? Number(taxSettings.retention_ganancias_rate) || 0)
+          : 0
+        retentionIvaRate = apply_retention_iva
+          ? (retention_iva_override ?? Number(taxSettings.retention_iva_rate) || 0)
+          : 0
+      }
+    }
 
     if (!payments || !Array.isArray(payments) || payments.length === 0) {
       return NextResponse.json({ error: "Debe especificar al menos un pago" }, { status: 400 })
@@ -341,6 +363,56 @@ export async function POST(request: Request) {
           amount_paid: amount_to_pay,
           new_status: item.isFullyPaid ? "PAID" : "PENDING",
         })
+
+        // Auto-create retenciones if configured
+        const paymentAmount = Number(amount_to_pay)
+        const taxPeriod = (payment_date || new Date().toISOString()).substring(0, 7)
+
+        // Get operator info for counterpart data
+        const operatorName = item.operation?.operators?.name || item.operatorPayment?.operators?.name || null
+        const operatorCuit = null // TODO: add cuit to operators table
+
+        if (retentionGananciasRate > 0 && paymentAmount > 0) {
+          const retAmount = roundMoney(paymentAmount * retentionGananciasRate / 100)
+          await (supabase.from("tax_withholdings") as any).insert({
+            type: "RETENCION_GANANCIAS",
+            direction: "PRACTICED",
+            source_type: "OPERATOR_PAYMENT",
+            source_id: operator_payment_id,
+            operation_id: item.paymentItem.operation_id,
+            operator_id: item.operatorPayment?.operator_id || null,
+            counterpart_name: operatorName,
+            counterpart_cuit: operatorCuit,
+            currency: payment_currency,
+            amount: retAmount,
+            tax_period: taxPeriod,
+            withholding_date: payment_date || new Date().toISOString().split("T")[0],
+            status: "PENDING",
+            notes: `Retención auto - ${retentionGananciasRate}% sobre ${payment_currency} ${paymentAmount}`,
+            created_by: user.id,
+          })
+        }
+
+        if (retentionIvaRate > 0 && paymentAmount > 0) {
+          const retAmount = roundMoney(paymentAmount * retentionIvaRate / 100)
+          await (supabase.from("tax_withholdings") as any).insert({
+            type: "RETENCION_IVA",
+            direction: "PRACTICED",
+            source_type: "OPERATOR_PAYMENT",
+            source_id: operator_payment_id,
+            operation_id: item.paymentItem.operation_id,
+            operator_id: item.operatorPayment?.operator_id || null,
+            counterpart_name: operatorName,
+            counterpart_cuit: operatorCuit,
+            currency: payment_currency,
+            amount: retAmount,
+            tax_period: taxPeriod,
+            withholding_date: payment_date || new Date().toISOString().split("T")[0],
+            status: "PENDING",
+            notes: `Retención auto - ${retentionIvaRate}% sobre ${payment_currency} ${paymentAmount}`,
+            created_by: user.id,
+          })
+        }
       } catch (e: any) {
         errors.push(`Error procesando ${item.paymentItem.operator_payment_id}: ${e?.message ?? String(e)}`)
       }
