@@ -79,9 +79,9 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/operations/settings" },
     ],
   },
-  // Base de Datos Clientes - Colapsable (renamed from "Clientes")
+  // Clientes - Colapsable (renamed from "Clientes")
   {
-    title: "Base de Datos Clientes",
+    title: "Clientes",
     url: "/customers",
     icon: Users,
     module: "customers",
