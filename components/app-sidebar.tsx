@@ -102,40 +102,34 @@ const allNavigation: NavItem[] = [
       { title: "Estadísticas", url: "/sales/statistics" },
     ],
   },
-  // Finanzas - Colapsable (con submenús anidados)
+  // Finanzas - Colapsable (reorganizado)
   {
     title: "Finanzas",
     url: "/cash/summary",
     icon: DollarSign,
     module: "cash",
     items: [
-      // Caja - Submenú con nivel 3
-      {
-        title: "Caja",
-        url: "/cash/summary",
-        items: [
-          { title: "Resumen", url: "/cash/summary" },
-          { title: "Ingresos", url: "/cash/income" },
-          { title: "Egresos", url: "/cash/expenses" },
-          { title: "Movimientos", url: "/cash/movements" },
-          { title: "Pagos", url: "/cash/payments" },
-        ],
-      },
-      // Gastos - Item directo (fijos + variables)
+      { title: "Caja y Bancos", url: "/cash/summary" },
+      { title: "Movimientos", url: "/cash/movements" },
       { title: "Gastos", url: "/expenses" },
-      // Contabilidad - Submenú con nivel 3
       {
         title: "Contabilidad",
-        url: "/accounting/monthly-position",
+        url: "/accounting/ledger",
         items: [
-          { title: "Posición Mensual", url: "/accounting/monthly-position" },
+          { title: "Libro Mayor", url: "/accounting/ledger" },
+          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
           { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
           { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
           { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
-          { title: "Libro Mayor", url: "/accounting/ledger" },
-          { title: "Cuentas Financieras", url: "/accounting/financial-accounts" },
+        ],
+      },
+      {
+        title: "Impuestos",
+        url: "/accounting/iva",
+        items: [
           { title: "Posición IVA", url: "/accounting/iva" },
           { title: "Percepciones y Retenciones", url: "/accounting/withholdings" },
+          { title: "Posición Mensual", url: "/accounting/monthly-position" },
         ],
       },
       { title: "Configuración", url: "/finances/settings" },

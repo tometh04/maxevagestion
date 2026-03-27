@@ -27,6 +27,14 @@ const financialSettingsSchema = z.object({
   default_point_of_sale: z.number().optional(),
   monthly_close_day: z.number().min(1).max(31).optional(),
   auto_close_month: z.boolean().optional(),
+  // Tax settings
+  default_iva_rate: z.number().min(0).max(27).optional(),
+  tax_regime: z.string().optional(),
+  retention_ganancias_rate: z.number().min(0).max(100).optional(),
+  retention_iva_rate: z.number().min(0).max(100).optional(),
+  iibb_jurisdiction: z.string().optional(),
+  iibb_rate: z.number().min(0).max(10).optional(),
+  iibb_convenio_multilateral: z.boolean().optional(),
 })
 
 // GET - Obtener configuración financiera

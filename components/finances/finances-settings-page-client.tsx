@@ -231,6 +231,7 @@ export function FinancesSettingsPageClient() {
           <TabsTrigger value="payments">Métodos de Pago</TabsTrigger>
           <TabsTrigger value="commissions">Comisiones</TabsTrigger>
           <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
+          <TabsTrigger value="taxes">Impuestos</TabsTrigger>
           <TabsTrigger value="invoicing">Facturación</TabsTrigger>
         </TabsList>
 
@@ -520,6 +521,167 @@ export function FinancesSettingsPageClient() {
                     ...settings,
                     auto_close_month: checked,
                   })}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab: Impuestos */}
+        <TabsContent value="taxes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>IVA</CardTitle>
+              <CardDescription>Configuración de IVA para la agencia</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Alícuota IVA por defecto (%)</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Para agencias de viajes generalmente es 21% sobre el margen
+                  </p>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="27"
+                    className="w-32"
+                    value={(settings as any).default_iva_rate || 21}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      default_iva_rate: parseFloat(e.target.value) || 21,
+                    } as any)}
+                  />
+                </div>
+                <div>
+                  <Label>Régimen Fiscal</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Define cómo se calcula el IVA
+                  </p>
+                  <Select
+                    value={(settings as any).tax_regime || "TRAVEL_AGENCY"}
+                    onValueChange={(v) => setSettings({ ...settings, tax_regime: v } as any)}
+                  >
+                    <SelectTrigger className="w-[250px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TRAVEL_AGENCY">Agencia de Viajes (IVA sobre margen)</SelectItem>
+                      <SelectItem value="GENERAL">Régimen General (IVA sobre total)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Retenciones</CardTitle>
+              <CardDescription>Configuración de retenciones al pagar a operadores</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>% Retención Ganancias</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Al pagar a operadores RI (0 = no retener)
+                  </p>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    className="w-32"
+                    value={(settings as any).retention_ganancias_rate || 0}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      retention_ganancias_rate: parseFloat(e.target.value) || 0,
+                    } as any)}
+                  />
+                </div>
+                <div>
+                  <Label>% Retención IVA</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Al pagar a operadores RI (0 = no retener)
+                  </p>
+                  <Input
+                    type="number"
+                    step="0.5"
+                    min="0"
+                    max="100"
+                    className="w-32"
+                    value={(settings as any).retention_iva_rate || 0}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      retention_iva_rate: parseFloat(e.target.value) || 0,
+                    } as any)}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Ingresos Brutos (IIBB)</CardTitle>
+              <CardDescription>Configuración para Convenio Multilateral</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Jurisdicción Principal</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Provincia donde opera la agencia
+                  </p>
+                  <Select
+                    value={(settings as any).iibb_jurisdiction || "SANTA_FE"}
+                    onValueChange={(v) => setSettings({ ...settings, iibb_jurisdiction: v } as any)}
+                  >
+                    <SelectTrigger className="w-[250px]"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BUENOS_AIRES">Buenos Aires</SelectItem>
+                      <SelectItem value="CABA">CABA</SelectItem>
+                      <SelectItem value="CORDOBA">Córdoba</SelectItem>
+                      <SelectItem value="MENDOZA">Mendoza</SelectItem>
+                      <SelectItem value="SANTA_FE">Santa Fe</SelectItem>
+                      <SelectItem value="TUCUMAN">Tucumán</SelectItem>
+                      <SelectItem value="ENTRE_RIOS">Entre Ríos</SelectItem>
+                      <SelectItem value="OTRO">Otra</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Alícuota IIBB (%)</Label>
+                  <p className="text-xs text-muted-foreground mb-1">
+                    Porcentaje de Ingresos Brutos aplicable
+                  </p>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="10"
+                    className="w-32"
+                    value={(settings as any).iibb_rate || 3.5}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      iibb_rate: parseFloat(e.target.value) || 3.5,
+                    } as any)}
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Convenio Multilateral</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Activar si la agencia opera en múltiples provincias
+                  </p>
+                </div>
+                <Switch
+                  checked={(settings as any).iibb_convenio_multilateral || false}
+                  onCheckedChange={(checked) => setSettings({
+                    ...settings,
+                    iibb_convenio_multilateral: checked,
+                  } as any)}
                 />
               </div>
             </CardContent>
