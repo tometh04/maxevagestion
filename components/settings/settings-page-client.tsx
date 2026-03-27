@@ -13,6 +13,7 @@ import { MigrateHistoricalAccounting } from "@/components/settings/migrate-histo
 import { ImportSettings } from "@/components/settings/import-settings"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 import { AfipSettings } from "@/components/settings/afip-settings"
+import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
 import { Button } from "@/components/ui/button"
@@ -91,6 +92,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       router.push(`/settings?${params.toString()}`, { scroll: false })
     }}>
       <TabsList className="flex-wrap">
+        <TabsTrigger value="interface">Interfaz</TabsTrigger>
         <TabsTrigger value="users">Usuarios</TabsTrigger>
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
@@ -104,6 +106,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
       </TabsList>
+      <TabsContent value="interface" className="mt-6">
+        <InterfaceSettings />
+      </TabsContent>
       <TabsContent value="users" className="mt-6">
         <UsersSettings />
       </TabsContent>

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
@@ -187,6 +188,22 @@ interface AppSidebarProps extends React.ComponentProps<typeof Sidebar> {
 
 export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   const pathname = usePathname()
+  const [brandLogo, setBrandLogo] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Load brand settings from localStorage
+    const logo = localStorage.getItem("brand_logo")
+    if (logo) setBrandLogo(logo)
+
+    const name = localStorage.getItem("company_name")
+    if (name) setCompanyName(name)
+
+    const color = localStorage.getItem("brand_color")
+    if (color) {
+      document.documentElement.style.setProperty("--primary", color)
+    }
+  }, [])
 
   // Filtrar navegación según permisos
   const navigation = allNavigation
@@ -262,8 +279,12 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <a href="/dashboard">
-                <GalleryVerticalEnd className="!size-5" />
-                <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">Lozada Rosario</span>
+                {brandLogo ? (
+                  <img src={brandLogo} alt="Logo" className="h-6 w-auto" />
+                ) : (
+                  <GalleryVerticalEnd className="!size-5" />
+                )}
+                <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">{companyName || "Lozada Rosario"}</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>

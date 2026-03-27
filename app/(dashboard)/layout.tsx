@@ -7,6 +7,7 @@ import {
   SidebarInset,
   SidebarProvider,
 } from "@/components/ui/sidebar"
+import { BrandProvider } from "@/components/brand-provider"
 
 export default async function DashboardLayout({
   children,
@@ -22,37 +23,39 @@ export default async function DashboardLayout({
   }))
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": "14rem",
-          "--header-height": "3.5rem",
-        } as React.CSSProperties
-      }
-    >
-      <AppSidebar 
-        variant="sidebar" 
-        collapsible="icon"
-        userRole={user.role as any}
-        user={{
-          name: user.name,
-          email: user.email,
-          avatar: undefined,
-        }}
-      />
-      <SidebarInset className="min-w-0">
-        <SiteHeader />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto p-4 md:p-6">
-            {children}
+    <BrandProvider>
+      <SidebarProvider
+        style={
+          {
+            "--sidebar-width": "14rem",
+            "--header-height": "3.5rem",
+          } as React.CSSProperties
+        }
+      >
+        <AppSidebar
+          variant="sidebar"
+          collapsible="icon"
+          userRole={user.role as any}
+          user={{
+            name: user.name,
+            email: user.email,
+            avatar: undefined,
+          }}
+        />
+        <SidebarInset className="min-w-0">
+          <SiteHeader />
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+              {children}
+            </div>
           </div>
-        </div>
-      </SidebarInset>
-      <TaskShortcutProvider
-        currentUserId={user.id}
-        agencyId={agencies[0]?.id || ""}
-      />
-      <PushNotificationManager userId={user.id} />
-    </SidebarProvider>
+        </SidebarInset>
+        <TaskShortcutProvider
+          currentUserId={user.id}
+          agencyId={agencies[0]?.id || ""}
+        />
+        <PushNotificationManager userId={user.id} />
+      </SidebarProvider>
+    </BrandProvider>
   )
 }
