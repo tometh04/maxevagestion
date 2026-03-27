@@ -49,21 +49,21 @@ interface IntegrationLog {
 }
 
 const integrationTypes = [
-  { value: 'trello', label: 'Trello', icon: FileText, color: 'bg-blue-500' },
+  { value: 'trello', label: 'Trello', icon: FileText, color: 'bg-info' },
   { value: 'manychat', label: 'Manychat', icon: MessageSquare, color: 'bg-purple-500' },
-  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-green-500' },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-success' },
   { value: 'afip', label: 'AFIP', icon: FileText, color: 'bg-sky-500' },
-  { value: 'email', label: 'Email/SMTP', icon: Mail, color: 'bg-orange-500' },
-  { value: 'calendar', label: 'Calendario', icon: Calendar, color: 'bg-red-500' },
+  { value: 'email', label: 'Email/SMTP', icon: Mail, color: 'bg-warning' },
+  { value: 'calendar', label: 'Calendario', icon: Calendar, color: 'bg-destructive' },
   { value: 'webhook', label: 'Webhook', icon: Webhook, color: 'bg-gray-500' },
-  { value: 'zapier', label: 'Zapier', icon: Zap, color: 'bg-amber-500' },
+  { value: 'zapier', label: 'Zapier', icon: Zap, color: 'bg-warning' },
   { value: 'other', label: 'Otro', icon: Plug, color: 'bg-slate-500' },
 ]
 
 const statusConfig = {
   active: { label: 'Activo', color: 'bg-green-500', icon: CheckCircle },
   inactive: { label: 'Inactivo', color: 'bg-gray-500', icon: XCircle },
-  error: { label: 'Error', color: 'bg-red-500', icon: AlertCircle },
+  error: { label: 'Error', color: 'bg-destructive', icon: AlertCircle },
   pending: { label: 'Pendiente', color: 'bg-yellow-500', icon: Clock },
 }
 
@@ -293,7 +293,7 @@ export function IntegrationsPageClient() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="text-2xl font-bold text-red-600">{stats.error}</div>
+            <div className="text-2xl font-bold text-destructive">{stats.error}</div>
             <p className="text-xs text-muted-foreground">Con Error</p>
           </CardContent>
         </Card>
@@ -409,8 +409,8 @@ export function IntegrationsPageClient() {
                           Use Sandbox para pruebas, Producción para facturar reales
                         </p>
                       </div>
-                      <div className="p-3 bg-blue-50 dark:bg-blue-950 rounded-lg">
-                        <p className="text-xs text-blue-700 dark:text-blue-300">
+                      <div className="p-3 bg-info/10 rounded-lg">
+                        <p className="text-xs text-info">
                           <strong>Importante:</strong> Asegúrese de haber autorizado el servicio de Facturación Electrónica en AFIP Clave Fiscal antes de continuar.
                         </p>
                       </div>
@@ -547,7 +547,7 @@ export function IntegrationsPageClient() {
                           <Badge variant="outline" className="gap-1">
                             <StatusIcon className={`h-3 w-3 ${
                               integration.status === 'active' ? 'text-green-500' :
-                              integration.status === 'error' ? 'text-red-500' :
+                              integration.status === 'error' ? 'text-destructive' :
                               integration.status === 'pending' ? 'text-yellow-500' : 'text-gray-500'
                             }`} />
                             {status.label}
@@ -604,8 +604,8 @@ export function IntegrationsPageClient() {
                   </div>
                   
                   {selectedIntegration.error_message && (
-                    <div className="p-3 bg-red-50 dark:bg-red-950 rounded-lg">
-                      <p className="text-sm text-red-600 dark:text-red-400">
+                    <div className="p-3 bg-destructive/10 rounded-lg">
+                      <p className="text-sm text-destructive">
                         {selectedIntegration.error_message}
                       </p>
                     </div>
@@ -654,7 +654,7 @@ export function IntegrationsPageClient() {
                             <div className="flex items-center justify-between">
                               <Badge variant="outline" className={`
                                 ${log.log_type === 'success' ? 'border-green-500 text-green-600' : ''}
-                                ${log.log_type === 'error' ? 'border-red-500 text-red-600' : ''}
+                                ${log.log_type === 'error' ? 'border-destructive text-destructive' : ''}
                                 ${log.log_type === 'warning' ? 'border-yellow-500 text-yellow-600' : ''}
                               `}>
                                 {log.action}

@@ -142,7 +142,7 @@ export function SendEmailButton({
                 />
               </div>
 
-              <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 flex gap-2">
+              <div className="rounded-lg bg-warning/10 border border-warning p-3 text-sm text-warning flex gap-2">
                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div>
                   <p className="font-medium">Nota:</p>
