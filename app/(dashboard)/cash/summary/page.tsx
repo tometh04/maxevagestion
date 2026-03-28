@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { canAccessModule } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CashSummaryTabs } from "@/components/cash/cash-summary-tabs"
 
 const CashSummaryClient = dynamic(
   () =>
@@ -26,10 +27,22 @@ const CashSummaryClient = dynamic(
   }
 )
 
+const FinancialAccountsPageClient = dynamic(
+  () =>
+    import("@/components/accounting/financial-accounts-page-client").then((m) => ({
+      default: m.FinancialAccountsPageClient,
+    })),
+  {
+    loading: () => (
+      <div className="space-y-6">
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    ),
+  }
+)
+
 function getDefaultDateRange() {
   const today = new Date()
-  // Rango por defecto: inicio del mes actual (ej. 01/03/2026 → hoy)
-  // Así Santi ve toda la actividad del mes en curso, no solo los últimos 7 días.
   const from = new Date(today.getFullYear(), today.getMonth(), 1)
 
   return {
@@ -40,12 +53,12 @@ function getDefaultDateRange() {
 
 export default async function CashSummaryPage() {
   const { user } = await getCurrentUser()
-  
+
   if (!canAccessModule(user.role as any, "cash")) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Resumen de Caja</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Caja y Bancos</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a caja</p>
         </div>
       </div>
@@ -72,6 +85,14 @@ export default async function CashSummaryPage() {
 
   const dates = getDefaultDateRange()
 
-  return <CashSummaryClient agencies={agencies} defaultDateFrom={dates.dateFrom} defaultDateTo={dates.dateTo} />
+  return (
+    <CashSummaryTabs
+      summaryContent={
+        <CashSummaryClient agencies={agencies} defaultDateFrom={dates.dateFrom} defaultDateTo={dates.dateTo} />
+      }
+      accountsContent={
+        <FinancialAccountsPageClient agencies={agencies} />
+      }
+    />
+  )
 }
-

@@ -32,14 +32,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, Trash2, AlertTriangle, Building2, HelpCircle, ArrowRightLeft } from "lucide-react"
+import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft } from "lucide-react"
 import { TransferAccountDialog } from "./transfer-account-dialog"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 
@@ -369,22 +363,6 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       {/* Header con botones */}
       <div className="flex items-center justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Cuentas Financieras</h1>
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="font-medium mb-1">¿Cómo funciona?</p>
-                  <p className="text-xs mb-2"><strong>Cuentas Financieras:</strong> Gestión de todas las cuentas bancarias, cajas de efectivo, tarjetas de crédito y activos. Cada cuenta tiene un balance inicial y movimientos contables.</p>
-                  <p className="text-xs mb-2"><strong>Balance Actual:</strong> Se calcula como balance inicial + suma de movimientos (INCOME suma, EXPENSE resta). Los movimientos se crean automáticamente al registrar transacciones.</p>
-                  <p className="text-xs">Las cuentas se organizan por tipo (bancos, efectivo, activos) y moneda (USD/ARS). Puedes crear nuevas cuentas, editar existentes y ver su historial completo de movimientos.</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
           <p className="text-muted-foreground">Gestiona todas las cuentas y cajas de las agencias</p>
         </div>
         <div className="flex gap-2">

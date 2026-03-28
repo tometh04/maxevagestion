@@ -1,12 +1,38 @@
-import { IVAPageClient } from "@/components/accounting/iva-page-client"
+import dynamic from "next/dynamic"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
+import { Skeleton } from "@/components/ui/skeleton"
+import { IvaTabs } from "@/components/accounting/iva-tabs"
+
+const IVAPageClient = dynamic(
+  () =>
+    import("@/components/accounting/iva-page-client").then((m) => ({
+      default: m.IVAPageClient,
+    })),
+  {
+    loading: () => (
+      <div className="space-y-6">
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    ),
+  }
+)
+
+const LibroIvaPage = dynamic(
+  () => import("@/app/(dashboard)/accounting/libro-iva/page"),
+  {
+    loading: () => (
+      <div className="space-y-6">
+        <Skeleton className="h-[300px] w-full" />
+      </div>
+    ),
+  }
+)
 
 export default async function IVAPage() {
   const { user } = await getCurrentUser()
   const supabase = await createServerClient()
 
-  // Get user agencies
   const { data: userAgencies } = await supabase
     .from("user_agencies")
     .select("agency_id")
@@ -24,16 +50,9 @@ export default async function IVAPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">IVA</h1>
-        <p className="text-muted-foreground">
-          Cálculo y seguimiento de IVA en ventas y compras
-        </p>
-      </div>
-
-      <IVAPageClient agencies={agencies} />
-    </div>
+    <IvaTabs
+      posicionContent={<IVAPageClient agencies={agencies} />}
+      libroContent={<LibroIvaPage />}
+    />
   )
 }
-
