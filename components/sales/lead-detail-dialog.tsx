@@ -407,10 +407,23 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-            {formatLeadDisplayName(lead)}
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+        {/* Header con nombre y badges */}
+        <div className="px-6 pt-6 pb-4 border-b">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">
+              {lead.contact_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge
+              variant="outline"
+              className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
+            >
+              {lead.region}
+            </Badge>
+            <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
+            <Badge variant="secondary">{lead.source}</Badge>
             {lead.trello_url && (
               <a
                 href={lead.trello_url}
@@ -419,168 +432,156 @@ export function LeadDetailDialog({
                 className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ExternalLink className="h-5 w-5" />
+                <ExternalLink className="h-4 w-4" />
               </a>
             )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-6 mt-4">
-          {/* Información de contacto */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información de Contacto</h3>
-            <div className="space-y-2">
-              {lead.contact_phone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline">
-                    {lead.contact_phone}
-                  </a>
-                </div>
-              )}
-              {lead.contact_email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <a href={`mailto:${lead.contact_email}`} className="text-sm hover:underline">
-                    {lead.contact_email}
-                  </a>
-                </div>
-              )}
-              {lead.contact_instagram && (
-                <div className="flex items-center gap-3">
-                  <Instagram className="h-4 w-4 text-muted-foreground" />
-                  <a
-                    href={`https://instagram.com/${lead.contact_instagram}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm hover:underline"
-                  >
-                    @{lead.contact_instagram}
-                  </a>
-                </div>
-              )}
-            </div>
           </div>
+        </div>
 
-          <Separator />
+        <div className="px-6 py-4 space-y-4">
+          {/* Contacto + Viaje en grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Información de contacto */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5" />
+                Contacto
+              </h3>
+              <div className="space-y-2">
+                {lead.contact_phone && (
+                  <div className="flex items-center gap-2.5">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline truncate">
+                      {lead.contact_phone}
+                    </a>
+                  </div>
+                )}
+                {lead.contact_email && (
+                  <div className="flex items-center gap-2.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a href={`mailto:${lead.contact_email}`} className="text-sm hover:underline truncate">
+                      {lead.contact_email}
+                    </a>
+                  </div>
+                )}
+                {lead.contact_instagram && (
+                  <div className="flex items-center gap-2.5">
+                    <Instagram className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a
+                      href={`https://instagram.com/${lead.contact_instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm hover:underline truncate"
+                    >
+                      @{lead.contact_instagram}
+                    </a>
+                  </div>
+                )}
+                {!lead.contact_phone && !lead.contact_email && !lead.contact_instagram && (
+                  <p className="text-xs text-muted-foreground">Sin datos de contacto</p>
+                )}
+              </div>
+            </div>
 
-          {/* Información del viaje */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información del Viaje</h3>
-            <div className="space-y-2">
-              {lead.destination && lead.destination !== "Sin destino" && (
-                <div className="flex items-center gap-3">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{lead.destination}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-3 flex-wrap">
-                <Badge
-                  variant="outline"
-                  className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
-                >
-                  {lead.region}
-                </Badge>
-                <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
-                <Badge variant="secondary">{lead.source}</Badge>
+            {/* Información del viaje */}
+            <div className="rounded-lg border p-4 space-y-3">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5" />
+                Viaje
+              </h3>
+              <div className="space-y-2">
+                {lead.destination && lead.destination !== "Sin destino" && (
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm font-medium">{lead.destination}</span>
+                  </div>
+                )}
+                {lead.agencies?.name && (
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm">Agencia: {lead.agencies.name}</span>
+                  </div>
+                )}
+                {lead.created_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Creado: {format(new Date(lead.created_at), "dd/MM/yyyy HH:mm")}
+                  </p>
+                )}
               </div>
             </div>
           </div>
-
-          <Separator />
 
           {/* Responsable */}
           {lead.users && (
-            <>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Responsable</h3>
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
-                      {(lead.users.name || "")
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{lead.users.name || "Sin nombre"}</p>
-                    {lead.users.email && <p className="text-xs text-muted-foreground">{lead.users.email}</p>}
-                  </div>
+            <div className="rounded-lg border p-4">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
+                <User className="h-3.5 w-3.5" />
+                Responsable
+              </h3>
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {(lead.users.name || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2) || "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-medium">{lead.users.name || "Sin nombre"}</p>
+                  {lead.users.email && <p className="text-xs text-muted-foreground">{lead.users.email}</p>}
                 </div>
               </div>
-              <Separator />
-            </>
+            </div>
           )}
 
           {/* Entidades Relacionadas (cuando el lead está convertido) */}
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
-            <>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-success" />
-                  Lead Convertido
-                </h3>
-                <div className="space-y-2">
-                  {/* Link a Operación */}
-                  {lead.operations && lead.operations.length > 0 && (
-                    <Link href={`/operations/${lead.operations[0].id}`}>
-                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-success/10 border border-success/30 hover:bg-success/15 transition-colors cursor-pointer">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Briefcase className="h-4 w-4 text-success" />
-                            <span className="text-sm font-semibold">
-                              Operación Creada
-                            </span>
-                          </div>
-                          <ExternalLink className="h-4 w-4 text-success" />
-                        </div>
-                        <div className="text-sm space-y-1 ml-6">
-                          {lead.operations[0].file_code && (
-                            <p className="font-medium">{lead.operations[0].file_code}</p>
-                          )}
-                          <p className="text-muted-foreground">{lead.operations[0].destination}</p>
-                          {lead.operations[0].created_at && (
-                            <p className="text-xs text-muted-foreground">
-                              Creada: {format(new Date(lead.operations[0].created_at), "dd/MM/yyyy")}
-                            </p>
-                          )}
-                          {lead.operations[0].departure_date && (
-                            <p className="text-xs text-muted-foreground">
-                              Salida: {format(new Date(lead.operations[0].departure_date), "dd/MM/yyyy")}
-                            </p>
-                          )}
+            <div className="rounded-lg border border-success/30 bg-success/5 p-4 space-y-3">
+              <h3 className="text-xs font-semibold text-success uppercase tracking-wide flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                Lead Convertido
+              </h3>
+              <div className="space-y-2">
+                {lead.operations && lead.operations.length > 0 && (
+                  <Link href={`/operations/${lead.operations[0].id}`}>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4 text-success" />
+                        <div>
+                          <p className="text-sm font-medium">
+                            {lead.operations[0].file_code || "Operacion"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{lead.operations[0].destination}</p>
                         </div>
                       </div>
-                    </Link>
-                  )}
-                  
-                  {/* Link a Cliente */}
-                  {lead.customers && lead.customers.length > 0 && (
-                    <Link href={`/customers/${lead.customers[0].id}`}>
-                      <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
-                        <User className="h-4 w-4 text-primary" />
-                        <span className="text-sm flex-1">
-                          Cliente: {lead.customers[0].first_name} {lead.customers[0].last_name}
-                        </span>
-                        <ExternalLink className="h-3 w-3" />
-                      </div>
-                    </Link>
-                  )}
-                </div>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </Link>
+                )}
+                {lead.customers && lead.customers.length > 0 && (
+                  <Link href={`/customers/${lead.customers[0].id}`}>
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                      <User className="h-4 w-4 text-primary" />
+                      <span className="text-sm flex-1">
+                        {lead.customers[0].first_name} {lead.customers[0].last_name}
+                      </span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Link>
+                )}
               </div>
-              <Separator />
-            </>
+            </div>
           ) : null}
 
           {/* Descripción/Notas */}
-          <div className="space-y-3">
+          <div className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Descripción
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5" />
+                Descripcion
               </h3>
               {!editingNotes ? (
                 <Button
@@ -624,26 +625,27 @@ export function LeadDetailDialog({
                 </div>
               )}
             </div>
-            <div className="bg-muted/50 rounded-lg p-4">
+            <div className="rounded-lg bg-muted/40 p-3">
               {editingNotes ? (
                 <Textarea
                   value={notesValue}
                   onChange={(e) => setNotesValue(e.target.value)}
-                  placeholder="Escribe la descripción del lead..."
-                  className="min-h-[120px] bg-background"
+                  placeholder="Escribe la descripcion del lead..."
+                  className="min-h-[100px] bg-background"
                   disabled={savingNotes}
                 />
               ) : (
-                <DescriptionWithLinks text={lead.notes || "Sin descripción"} />
+                <div className="text-sm">
+                  <DescriptionWithLinks text={lead.notes || "Sin descripcion"} />
+                </div>
               )}
             </div>
           </div>
-          <Separator />
 
           {/* Comentarios */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
+          <div className="rounded-lg border p-4 space-y-3">
+            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
               Comentarios
             </h3>
             
@@ -710,42 +712,15 @@ export function LeadDetailDialog({
               </div>
             )}
           </div>
-          <Separator />
 
           {/* Documentos Escaneados */}
-          <LeadDocumentsSection leadId={lead.id} />
-          <Separator />
-
-
-          {/* Información adicional */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información Adicional</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Agencia</p>
-                <p className="font-medium">{lead.agencies?.name || "N/A"}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Creado</p>
-                <p className="font-medium">
-                  {format(new Date(lead.created_at), "PPp")}
-                </p>
-              </div>
-              {lead.updated_at && (
-                <div>
-                  <p className="text-muted-foreground">Actualizado</p>
-                  <p className="font-medium">
-                    {format(new Date(lead.updated_at), "PPp")}
-                  </p>
-                </div>
-              )}
-            </div>
+          <div className="rounded-lg border p-4">
+            <LeadDocumentsSection leadId={lead.id} />
           </div>
         </div>
 
         {/* Acciones */}
-        <Separator />
-        <DialogFooter className="flex-col sm:flex-row gap-2">
+        <DialogFooter className="flex-col sm:flex-row gap-2 px-6 pb-6 pt-2 border-t">
           <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
             {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
