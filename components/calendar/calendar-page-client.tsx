@@ -21,6 +21,8 @@ import {
   isSameMonth,
   isSameDay,
   isToday,
+  isBefore,
+  startOfDay,
   addMonths,
   subMonths,
 } from "date-fns"
@@ -121,16 +123,16 @@ export function CalendarPageClient() {
   // Month-level stats
   const monthStats = useMemo(() => {
     const monthStart = format(startOfMonth(currentMonth), "yyyy-MM")
-    let departures = 0, checkins = 0, payments = 0, followups = 0
+    let departures = 0, reminders = 0, payments = 0, followups = 0
     for (const event of events) {
       const eventMonth = event.date.split("T")[0].substring(0, 7)
       if (eventMonth !== monthStart) continue
       if (event.type === "DEPARTURE") departures++
-      else if (event.type === "CHECKIN") checkins++
+      else if (event.type === "REMINDER") reminders++
       else if (event.type === "PAYMENT_DUE") payments++
       else if (event.type === "FOLLOW_UP") followups++
     }
-    return { departures, checkins, payments, followups }
+    return { departures, reminders, payments, followups }
   }, [events, currentMonth])
 
   const getEventLink = (event: CalendarEvent): string | null => {
@@ -168,10 +170,10 @@ export function CalendarPageClient() {
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <Hotel className="h-3.5 w-3.5 text-blue-500" />
-            Check-ins
+            <Bell className="h-3.5 w-3.5 text-indigo-500" />
+            Recordatorios
           </div>
-          <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.checkins}</div>
+          <div className="text-2xl font-semibold tabular-nums mt-1">{monthStats.reminders}</div>
         </div>
         <div className="rounded-xl border border-border/40 p-4">
           <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
@@ -258,6 +260,7 @@ export function CalendarPageClient() {
             const isSelected = isSameDay(day, selectedDate)
             const isCurrentMonth = isSameMonth(day, currentMonth)
             const today = isToday(day)
+            const isPast = isBefore(day, startOfDay(new Date())) && !today
 
             return (
               <button
@@ -267,6 +270,7 @@ export function CalendarPageClient() {
                   relative min-h-[80px] p-1.5 border-b border-r border-border/20 text-left transition-colors
                   hover:bg-accent/50
                   ${!isCurrentMonth ? "bg-muted/20 opacity-40" : ""}
+                  ${isPast && isCurrentMonth ? "opacity-50" : ""}
                   ${isSelected ? "bg-accent ring-2 ring-primary/40 ring-inset" : ""}
                 `}
               >
@@ -356,10 +360,12 @@ export function CalendarPageClient() {
               const IconComponent = cfg?.icon || CalendarDays
               const link = getEventLink(event)
 
+              const isEventPast = isBefore(new Date(event.date), startOfDay(new Date()))
+
               return (
                 <div
                   key={event.id}
-                  className="flex items-center gap-4 px-5 py-3 hover:bg-muted/30 transition-colors"
+                  className={`flex items-center gap-4 px-5 py-3 hover:bg-muted/30 transition-colors ${isEventPast ? "opacity-50" : ""}`}
                 >
                   <div className={`p-2 rounded-lg shrink-0 ${cfg?.className || "bg-muted"}`}>
                     <IconComponent className="h-4 w-4" />

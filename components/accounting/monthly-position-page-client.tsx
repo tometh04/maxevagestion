@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -375,14 +374,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
       </div>
 
       {loading ? (
-        <Card>
-          <CardContent className="py-12">
+        <div className="rounded-xl border border-border/40 py-12">
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <RefreshCw className="h-5 w-5 animate-spin" />
               Cargando balance...
             </div>
-          </CardContent>
-        </Card>
+        </div>
       ) : data ? (
         <>
           {/* KPIs */}
@@ -453,12 +450,12 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
             <TabsContent value="balance">
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* ACTIVO */}
-                <Card>
-                  <CardHeader className="bg-success/10 rounded-t-lg">
-                    <CardTitle className="text-success">ACTIVO</CardTitle>
-                    <CardDescription>Lo que la empresa tiene</CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6 space-y-6">
+                <div className="rounded-xl border border-border/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
+                    <h3 className="text-sm font-semibold text-success uppercase tracking-wider">ACTIVO</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Lo que la empresa tiene</p>
+                  </div>
+                  <div className="px-5 py-5 space-y-6">
                     <div className="space-y-3">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Activo Corriente
@@ -515,16 +512,16 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       <span className="text-lg font-bold">TOTAL ACTIVO</span>
                       <span className="text-lg font-bold text-success">{formatMoney(data.activo.total)}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* PASIVO + PN */}
-                <Card>
-                  <CardHeader className="bg-destructive/10 rounded-t-lg">
-                    <CardTitle className="text-destructive">PASIVO + PATRIMONIO NETO</CardTitle>
-                    <CardDescription>Lo que la empresa debe y el capital</CardDescription>
-                  </CardHeader>
-                  <CardContent className="pt-6 space-y-6">
+                <div className="rounded-xl border border-border/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
+                    <h3 className="text-sm font-semibold text-destructive uppercase tracking-wider">PASIVO + PATRIMONIO NETO</h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">Lo que la empresa debe y el capital</p>
+                  </div>
+                  <div className="px-5 py-5 space-y-6">
                     <div className="space-y-3">
                       <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
                         Pasivo Corriente
@@ -586,19 +583,19 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       <span className="text-lg font-bold">TOTAL PASIVO + PN</span>
                       <span className="text-lg font-bold">{formatMoney(data.pasivo.total + data.patrimonioNeto.total)}</span>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             </TabsContent>
 
             {/* ESTADO DE RESULTADOS */}
             <TabsContent value="resultados">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Estado de Resultados - {format(selectedDate, "MMMM yyyy", { locale: es })}</CardTitle>
-                  <CardDescription>Ingresos, costos y gastos del período</CardDescription>
-                </CardHeader>
-                <CardContent>
+              <div className="rounded-xl border border-border/40 overflow-hidden">
+                <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
+                  <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Estado de Resultados - {format(selectedDate, "MMMM yyyy", { locale: es })}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">Ingresos, costos y gastos del período</p>
+                </div>
+                <div className="px-5 py-5">
                   <div className="space-y-6 max-w-2xl">
                     <div className="flex justify-between items-center py-3 border-b">
                       <div>
@@ -659,25 +656,25 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                       </span>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </TabsContent>
 
             {/* DETALLE */}
             <TabsContent value="detalle">
               <div className="grid gap-6 lg:grid-cols-2">
                 {/* Cuentas por Cobrar */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5 text-yellow-600" />
+                <div className="rounded-xl border border-border/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                      <Users className="h-4 w-4 text-yellow-600" />
                       Cuentas por Cobrar (Deudores)
-                    </CardTitle>
-                    <CardDescription>
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {data.activo.corriente.cuentasPorCobrar.cantidadDeudores} clientes deben {formatMoney(data.activo.corriente.cuentasPorCobrar.totalUSD)}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                    </p>
+                  </div>
+                  <div className="px-5 py-5">
                     {data.activo.corriente.cuentasPorCobrar.detalle.length > 0 ? (
                       <Table>
                         <TableHeader>
@@ -702,21 +699,21 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                     ) : (
                       <p className="text-center text-muted-foreground py-4">No hay deudores</p>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
 
                 {/* Cuentas por Pagar */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Truck className="h-5 w-5 text-warning" />
+                <div className="rounded-xl border border-border/40 overflow-hidden">
+                  <div className="px-5 py-4 border-b border-border/40 bg-muted/20">
+                    <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-warning" />
                       Cuentas por Pagar (Acreedores)
-                    </CardTitle>
-                    <CardDescription>
+                    </h3>
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {data.pasivo.corriente.cuentasPorPagar.cantidadAcreedores} pagos pendientes: {formatMoney(data.pasivo.corriente.cuentasPorPagar.totalUSD)}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                    </p>
+                  </div>
+                  <div className="px-5 py-5">
                     {data.pasivo.corriente.cuentasPorPagar.detalle.length > 0 ? (
                       <Table>
                         <TableHeader>
@@ -741,18 +738,16 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                     ) : (
                       <p className="text-center text-muted-foreground py-4">No hay deudas con operadores</p>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               </div>
             </TabsContent>
           </Tabs>
         </>
       ) : (
-        <Card>
-          <CardContent className="py-8">
+        <div className="rounded-xl border border-border/40 py-8">
             <div className="text-center text-muted-foreground">No hay datos disponibles</div>
-          </CardContent>
-        </Card>
+        </div>
       )}
 
       {/* Dialog para cambio de moneda */}

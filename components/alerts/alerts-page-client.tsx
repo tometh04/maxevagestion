@@ -13,7 +13,7 @@ import {
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
 import Link from "next/link"
-import { RefreshCw, AlertTriangle, Clock, CalendarDays, CalendarClock } from "lucide-react"
+import { RefreshCw, AlertTriangle, Clock, CalendarDays, CalendarClock, CheckCheck, Trash2 } from "lucide-react"
 import { isToday, isBefore, startOfDay, endOfWeek, startOfWeek, isAfter } from "date-fns"
 
 interface AlertsPageClientProps {
@@ -75,6 +75,23 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
     },
     [fetchAlerts],
   )
+
+  const handleBulkResolve = useCallback(async (alertIds: string[]) => {
+    try {
+      await Promise.all(
+        alertIds.map(id =>
+          fetch("/api/alerts/mark-done", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ alertId: id }),
+          })
+        )
+      )
+      fetchAlerts()
+    } catch (error) {
+      console.error("Error bulk resolving:", error)
+    }
+  }, [fetchAlerts])
 
   const handleIgnore = useCallback(
     async (alertId: string) => {
@@ -143,16 +160,49 @@ export function AlertsPageClient({ agencies, defaultFilters }: AlertsPageClientP
           <h1 className="text-2xl font-semibold tracking-tight">Alertas</h1>
           <p className="text-muted-foreground">Gestiona alertas y recordatorios importantes</p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={fetchAlerts}
-          disabled={loading}
-          className="rounded-full gap-2"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          {kpis.overdue > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full gap-2 h-8 text-xs"
+              onClick={() => {
+                const todayStart = startOfDay(new Date())
+                const overdueIds = alerts
+                  .filter(a => a.status === "PENDING" && isBefore(startOfDay(new Date(a.date_due)), todayStart))
+                  .map(a => a.id)
+                handleBulkResolve(overdueIds)
+              }}
+            >
+              <CheckCheck className="h-3.5 w-3.5" />
+              Resolver vencidas
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full gap-2 h-8 text-xs"
+            onClick={() => {
+              const pendingIds = alerts
+                .filter(a => a.status === "PENDING")
+                .map(a => a.id)
+              handleBulkResolve(pendingIds)
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Limpiar todo
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchAlerts}
+            disabled={loading}
+            className="rounded-full gap-2 h-8 text-xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+        </div>
       </div>
 
       {/* KPI Summary Cards */}

@@ -335,27 +335,21 @@ export function AlertsTable({
                     <div className="flex items-center gap-1.5 shrink-0">
                       {/* Link to operation/lead */}
                       {alert.operation_id && (
-                        <Link href={`/operations/${alert.operation_id}`}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            title="Ver operacion"
-                          >
-                            <ArrowRight className="h-4 w-4" />
-                          </Button>
+                        <Link
+                          href={`/operations/${alert.operation_id}`}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                          {alert.operations?.destination || "Ver operacion"}
                         </Link>
                       )}
                       {alert.lead_id && !alert.operation_id && (
-                        <Link href="/sales/leads">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                            title="Ver lead"
-                          >
-                            <ArrowRight className="h-4 w-4" />
-                          </Button>
+                        <Link
+                          href="/sales/leads"
+                          className="flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+                        >
+                          <ArrowRight className="h-3.5 w-3.5" />
+                          {alert.leads?.destination || "Ver lead"}
                         </Link>
                       )}
 
