@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
-import { Loader2, Plane, Hotel, Bus, Shield, MapPin, Calendar, Users, CheckCircle2, Clock, XCircle, AlertTriangle } from "lucide-react"
+import { Loader2, Plane, Hotel, Bus, Shield, MapPin, Calendar, Users, CheckCircle2, Clock, XCircle, AlertTriangle, Download } from "lucide-react"
+import { downloadQuotationPDF } from "@/lib/pdf/quotation-pdf"
 
 interface QuotationOption {
   id: string
@@ -120,6 +121,7 @@ export function PublicQuotationView() {
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [accepted, setAccepted] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -176,6 +178,18 @@ export function PublicQuotationView() {
       alert("Error de conexion")
     } finally {
       setAccepting(false)
+    }
+  }
+
+  async function handleDownloadPDF() {
+    if (!data) return
+    setDownloading(true)
+    try {
+      await downloadQuotationPDF(data, branding)
+    } catch (err) {
+      console.error("Error generating PDF:", err)
+    } finally {
+      setDownloading(false)
     }
   }
 
@@ -239,10 +253,26 @@ export function PublicQuotationView() {
                 </p>
               </div>
             </div>
-            <Badge className={statusConfig.color}>
-              <StatusIcon className="h-3.5 w-3.5 mr-1" />
-              {statusConfig.label}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadPDF}
+                disabled={downloading}
+                className="h-8"
+              >
+                {downloading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Download className="h-3.5 w-3.5" />
+                )}
+                <span className="ml-1.5 hidden sm:inline">PDF</span>
+              </Button>
+              <Badge className={statusConfig.color}>
+                <StatusIcon className="h-3.5 w-3.5 mr-1" />
+                {statusConfig.label}
+              </Badge>
+            </div>
           </div>
         </div>
         {/* Color accent bar */}

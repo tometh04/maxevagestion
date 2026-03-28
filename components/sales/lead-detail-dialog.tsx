@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
@@ -222,6 +222,36 @@ export function LeadDetailDialog({
   const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [savingComment, setSavingComment] = useState(false)
+  const [quotations, setQuotations] = useState<Array<{
+    id: string
+    quotation_number: string
+    status: string
+    total_amount: number
+    currency: string
+    destination: string
+    created_at: string
+    valid_until: string | null
+    public_token: string | null
+    quotation_options?: Array<{ id: string; title: string; total_amount: number }>
+  }>>([])
+  const [loadingQuotations, setLoadingQuotations] = useState(false)
+
+  // Cargar cotizaciones del lead
+  const loadQuotations = async () => {
+    if (!lead) return
+    setLoadingQuotations(true)
+    try {
+      const response = await fetch(`/api/quotations?lead_id=${lead.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setQuotations(data.data || [])
+      }
+    } catch (error) {
+      console.error("Error loading quotations:", error)
+    } finally {
+      setLoadingQuotations(false)
+    }
+  }
 
   // Cargar comentarios cuando se abre el dialog
   const loadComments = async () => {
@@ -248,10 +278,11 @@ export function LeadDetailDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.notes])
 
-  // Cargar comentarios cuando se abre el dialog
+  // Cargar comentarios y cotizaciones cuando se abre el dialog
   useEffect(() => {
     if (open && lead) {
       loadComments()
+      loadQuotations()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
@@ -576,6 +607,97 @@ export function LeadDetailDialog({
             </div>
           ) : null}
 
+          {/* Cotizaciones del Lead */}
+          {(quotations.length > 0 || loadingQuotations) && (
+            <div className="rounded-lg border p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  Cotizaciones ({quotations.length})
+                </h3>
+                {lead.status !== "WON" && lead.status !== "LOST" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setQuotationDialogOpen(true)}
+                    className="h-7 text-xs"
+                  >
+                    <FileText className="h-3 w-3 mr-1" />
+                    Nueva
+                  </Button>
+                )}
+              </div>
+              {loadingQuotations ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Cargando cotizaciones...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {quotations.map((q) => {
+                    const statusConfig: Record<string, { label: string; color: string }> = {
+                      DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
+                      SENT: { label: "Enviada", color: "bg-info/10 text-info" },
+                      APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
+                      REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
+                      EXPIRED: { label: "Vencida", color: "bg-warning/10 text-warning" },
+                      CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
+                    }
+                    const sc = statusConfig[q.status] || statusConfig.DRAFT
+                    const isExpired = q.valid_until && new Date(q.valid_until) < new Date() && q.status === "SENT"
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{q.quotation_number}</p>
+                            <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${sc.color}`}>
+                              {isExpired ? "Vencida" : sc.label}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="h-3 w-3" />
+                              {q.currency === "USD" ? "US$" : "$"} {q.total_amount?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {format(new Date(q.created_at), "dd/MM/yyyy")}
+                            </span>
+                            {q.quotation_options && q.quotation_options.length > 1 && (
+                              <span className="text-muted-foreground/70">
+                                {q.quotation_options.length} opciones
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          {q.public_token && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(`/cotizacion/${q.public_token}`, "_blank")
+                              }}
+                              title="Ver cotización pública"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Descripción/Notas */}
           <div className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -874,7 +996,7 @@ export function LeadDetailDialog({
             agency_id: lead.agency_id,
           }}
           onSuccess={() => {
-            onOpenChange(false)
+            loadQuotations()
           }}
         />
       )}

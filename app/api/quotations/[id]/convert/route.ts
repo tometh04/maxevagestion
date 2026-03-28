@@ -112,7 +112,7 @@ export async function POST(
 
     // Crear operación directamente en la tabla
     const { generateFileCode } = await import("@/lib/accounting/file-code")
-    const fileCode = await generateFileCode(supabase)
+    const fileCode = generateFileCode()
 
     const saleCurrency = quotation.currency || "USD"
     const saleTotal = Number(selectedOption.total_amount)
@@ -124,6 +124,7 @@ export async function POST(
       .insert({
         ...operationPayload,
         file_code: fileCode,
+        operation_date: new Date().toISOString().split("T")[0],
         sale_currency: saleCurrency,
         operator_cost: 0,
         operator_cost_currency: saleCurrency,
