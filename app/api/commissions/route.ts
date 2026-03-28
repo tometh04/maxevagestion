@@ -36,14 +36,12 @@ export async function GET(request: Request) {
           operations:operation_id(
             id,
             file_code,
-            short_code,
             destination,
             departure_date,
             sale_amount_total,
             operator_cost,
             sale_currency,
-            margin_amount,
-            seller_primary_id
+            margin_amount
           )
         `)
         .order("date_calculated", { ascending: false })
@@ -112,7 +110,7 @@ export async function GET(request: Request) {
         date_paid: cr.date_paid,
         operation: cr.operations ? {
           id: cr.operations.id,
-          short_code: cr.operations.short_code || cr.operations.file_code || "",
+          short_code: cr.operations.file_code || "",
           file_code: cr.operations.file_code || "",
           destination: cr.operations.destination || "",
           departure_date: cr.operations.departure_date || "",
