@@ -439,6 +439,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
         } else {
           const errData = await res.json()
           console.error(`Error paying commission ${commId}:`, errData.error)
+          toast({ title: "Error en comisión", description: errData.error || "Error desconocido", variant: "destructive" })
           errorCount++
         }
       } catch {

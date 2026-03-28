@@ -99,10 +99,9 @@ export async function POST(request: Request) {
         }
         
         if (!exchangeRate) {
-          return NextResponse.json(
-            { error: "Tipo de cambio requerido para comisiones en USD" },
-            { status: 400 }
-          )
+          // Fallback: usar tipo de cambio por defecto si no hay ninguno cargado en el sistema
+          exchangeRate = 1450
+          console.warn("[Commissions Pay] No exchange rate found in DB, using fallback: 1450")
         }
       }
     } else if (currency === "ARS" && exchange_rate) {
