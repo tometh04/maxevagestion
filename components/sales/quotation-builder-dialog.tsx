@@ -7,10 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send } from "lucide-react"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote } from "lucide-react"
 import { toast } from "sonner"
 
 interface QuotationBuilderProps {
@@ -306,7 +305,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileIcon className="h-5 w-5" />
@@ -314,13 +313,15 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Datos generales */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Datos del viaje</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                <Globe className="h-3.5 w-3.5 text-blue-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos del viaje</h4>
+            </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="col-span-2 space-y-1">
                   <Label className="text-xs">Destino *</Label>
@@ -375,14 +376,19 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                   </Select>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Options */}
           {options.map((option, optIndex) => (
-            <Card key={option.id} className="border-warning/30">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
+            <div key={option.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                  <ListChecks className="h-3.5 w-3.5 text-orange-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Opcion {optIndex + 1}</h4>
+              </div>
+              <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
                       Opcion {optIndex + 1}
@@ -405,8 +411,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                     )}
                   </div>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
+              </div>
+              <div className="space-y-3">
                 {/* Items */}
                 {option.items.map((item, itemIndex) => (
                   <div key={item.id} className="border rounded-lg p-3 space-y-3 bg-muted/30">
@@ -594,8 +600,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                     />
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           ))}
 
           {/* Add option button */}
@@ -607,14 +613,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
           )}
 
           {/* Notes */}
-          <div className="space-y-1">
-            <Label className="text-xs">Notas internas (no se muestran al cliente)</Label>
-            <Textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notas internas sobre esta cotizacion..."
-              rows={2}
-            />
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                <StickyNote className="h-3.5 w-3.5 text-violet-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Notas internas</h4>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">No se muestran al cliente</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notas internas sobre esta cotizacion..."
+                rows={2}
+              />
+            </div>
           </div>
         </div>
 

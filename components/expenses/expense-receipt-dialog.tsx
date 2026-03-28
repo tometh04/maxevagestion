@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Loader2, Upload, FileText, ExternalLink } from "lucide-react"
+import { Loader2, Upload, FileText, ExternalLink, Receipt as ReceiptIcon, CloudUpload } from "lucide-react"
 
 interface Receipt {
   id: string
@@ -100,7 +100,7 @@ export function ExpenseReceiptDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Comprobantes</DialogTitle>
           {expenseName && (
@@ -113,48 +113,62 @@ export function ExpenseReceiptDialog({
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-4">
-            {receipts.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No hay comprobantes cargados
-              </p>
-            ) : (
-              <div className="grid gap-3">
-                {receipts.map((receipt) => (
-                  <div
-                    key={receipt.id}
-                    className="border rounded-lg p-3 flex items-center gap-3"
-                  >
-                    {isImage(receipt.file_url) ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={receipt.file_url}
-                        alt="Comprobante"
-                        className="w-16 h-16 object-cover rounded border"
-                      />
-                    ) : (
-                      <div className="w-16 h-16 flex items-center justify-center bg-muted rounded border">
-                        <FileText className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(receipt.uploaded_at).toLocaleDateString("es-AR")}
-                      </p>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => window.open(receipt.file_url, "_blank")}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
+          <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <ReceiptIcon className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Comprobantes Cargados</h4>
               </div>
-            )}
+              {receipts.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No hay comprobantes cargados
+                </p>
+              ) : (
+                <div className="grid gap-3">
+                  {receipts.map((receipt) => (
+                    <div
+                      key={receipt.id}
+                      className="border rounded-lg p-3 flex items-center gap-3"
+                    >
+                      {isImage(receipt.file_url) ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={receipt.file_url}
+                          alt="Comprobante"
+                          className="w-16 h-16 object-cover rounded border"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 flex items-center justify-center bg-muted rounded border">
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(receipt.uploaded_at).toLocaleDateString("es-AR")}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => window.open(receipt.file_url, "_blank")}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-            <div className="border-t pt-4">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                  <CloudUpload className="h-3.5 w-3.5 text-orange-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Subir Comprobante</h4>
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"

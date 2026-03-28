@@ -5,7 +5,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
 import Link from "next/link"
@@ -469,15 +468,17 @@ export function LeadDetailDialog({
           </div>
         </div>
 
-        <div className="px-6 py-4 space-y-4">
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Contacto + Viaje en grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Información de contacto */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5" />
-                Contacto
-              </h3>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Users className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Contacto</h4>
+              </div>
               <div className="space-y-2">
                 {lead.contact_phone && (
                   <div className="flex items-center gap-2.5">
@@ -515,11 +516,13 @@ export function LeadDetailDialog({
             </div>
 
             {/* Información del viaje */}
-            <div className="rounded-lg border p-4 space-y-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" />
-                Viaje
-              </h3>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Viaje</h4>
+              </div>
               <div className="space-y-2">
                 {lead.destination && lead.destination !== "Sin destino" && (
                   <div className="flex items-center gap-2.5">
@@ -544,11 +547,13 @@ export function LeadDetailDialog({
 
           {/* Responsable */}
           {lead.users && (
-            <div className="rounded-lg border p-4">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5 mb-3">
-                <User className="h-3.5 w-3.5" />
-                Responsable
-              </h3>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Responsable</h4>
+              </div>
               <div className="flex items-center gap-3">
                 <Avatar className="h-8 w-8">
                   <AvatarFallback className="text-xs bg-primary/10 text-primary">
@@ -570,11 +575,13 @@ export function LeadDetailDialog({
 
           {/* Entidades Relacionadas (cuando el lead está convertido) */}
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
-            <div className="rounded-lg border border-success/30 bg-success/5 p-4 space-y-3">
-              <h3 className="text-xs font-semibold text-success uppercase tracking-wide flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Lead Convertido
-              </h3>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Lead Convertido</h4>
+              </div>
               <div className="space-y-2">
                 {lead.operations && lead.operations.length > 0 && (
                   <Link href={`/operations/${lead.operations[0].id}`}>
@@ -609,12 +616,14 @@ export function LeadDetailDialog({
 
           {/* Cotizaciones del Lead */}
           {(quotations.length > 0 || loadingQuotations) && (
-            <div className="rounded-lg border p-4 space-y-3">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                  <ClipboardList className="h-3.5 w-3.5" />
-                  Cotizaciones ({quotations.length})
-                </h3>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                    <ClipboardList className="h-3.5 w-3.5 text-orange-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length})</h4>
+                </div>
                 {lead.status !== "WON" && lead.status !== "LOST" && (
                   <Button
                     variant="ghost"
@@ -699,12 +708,14 @@ export function LeadDetailDialog({
           )}
 
           {/* Descripción/Notas */}
-          <div className="rounded-lg border p-4 space-y-3">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Descripcion
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Descripcion</h4>
+              </div>
               {!editingNotes ? (
                 <Button
                   variant="ghost"
@@ -765,11 +776,13 @@ export function LeadDetailDialog({
           </div>
 
           {/* Comentarios */}
-          <div className="rounded-lg border p-4 space-y-3">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5" />
-              Comentarios
-            </h3>
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Comentarios</h4>
+            </div>
             
             {/* Formulario para agregar comentario */}
             <div className="flex gap-2">
@@ -836,7 +849,13 @@ export function LeadDetailDialog({
           </div>
 
           {/* Documentos Escaneados */}
-          <div className="rounded-lg border p-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                <Download className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documentos</h4>
+            </div>
             <LeadDocumentsSection leadId={lead.id} />
           </div>
         </div>
