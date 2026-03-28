@@ -612,12 +612,12 @@ export function OperationsTable({
       <div className="space-y-4">
         {/* Búsqueda server-side */}
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar por destino, cliente, código..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-8 text-xs rounded-full"
           />
         </div>
         {/* Totales de la página actual */}

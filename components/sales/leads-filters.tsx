@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, X } from "lucide-react"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO, isValid } from "date-fns"
 
 const statusOptions = [
   { value: "ALL", label: "Todos los estados" },
@@ -44,13 +46,25 @@ interface LeadsFiltersProps {
   }) => void
 }
 
+function toDate(s: string): Date | undefined {
+  if (!s) return undefined
+  try {
+    const d = parseISO(s)
+    return isValid(d) ? d : undefined
+  } catch { return undefined }
+}
+
+function toStr(d: Date | undefined): string {
+  return d ? format(d, "yyyy-MM-dd") : ""
+}
+
 export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
   const [status, setStatus] = useState("ALL")
   const [region, setRegion] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
   const [search, setSearch] = useState("")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
 
   const handleApplyFilters = () => {
     onFilterChange({
@@ -58,8 +72,8 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
       region,
       sellerId,
       search,
-      dateFrom,
-      dateTo,
+      dateFrom: toStr(dateFrom),
+      dateTo: toStr(dateTo),
     })
   }
 
@@ -68,8 +82,8 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     setRegion("ALL")
     setSellerId("ALL")
     setSearch("")
-    setDateFrom("")
-    setDateTo("")
+    setDateFrom(undefined)
+    setDateTo(undefined)
     onFilterChange({
       status: "ALL",
       region: "ALL",
@@ -85,8 +99,8 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     region !== "ALL" ||
     sellerId !== "ALL" ||
     search !== "" ||
-    dateFrom !== "" ||
-    dateTo !== ""
+    dateFrom !== undefined ||
+    dateTo !== undefined
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
@@ -145,18 +159,27 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
         </SelectContent>
       </Select>
 
-      <Input
-        type="date"
+      <DateInputWithCalendar
         value={dateFrom}
-        onChange={(e) => setDateFrom(e.target.value)}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
+        onChange={(date) => {
+          setDateFrom(date)
+          if (date && dateTo && dateTo < date) {
+            setDateTo(undefined)
+          }
+        }}
+        placeholder="Desde"
+        className="h-8 text-xs rounded-full"
       />
 
-      <Input
-        type="date"
+      <DateInputWithCalendar
         value={dateTo}
-        onChange={(e) => setDateTo(e.target.value)}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
+        onChange={(date) => {
+          if (date && dateFrom && date < dateFrom) return
+          setDateTo(date)
+        }}
+        placeholder="Hasta"
+        minDate={dateFrom}
+        className="h-8 text-xs rounded-full"
       />
 
       <Button variant="outline" size="sm" onClick={handleApplyFilters} className="h-8 rounded-full text-xs">Aplicar Filtros</Button>
@@ -169,4 +192,3 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     </div>
   )
 }
-

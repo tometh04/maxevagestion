@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -11,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { X } from "lucide-react"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { format } from "date-fns"
 
 interface LedgerFiltersProps {
@@ -25,16 +25,20 @@ interface LedgerFiltersProps {
 }
 
 export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps) {
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
   const [type, setType] = useState("ALL")
   const [currency, setCurrency] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
 
+  const formatDateString = (date: Date | undefined): string | undefined => {
+    return date ? format(date, "yyyy-MM-dd") : undefined
+  }
+
   const handleApply = () => {
     onFiltersChange({
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
+      dateFrom: formatDateString(dateFrom),
+      dateTo: formatDateString(dateTo),
       type: type !== "ALL" ? type : undefined,
       currency: currency !== "ALL" ? currency : undefined,
       agencyId: agencyId !== "ALL" ? agencyId : undefined,
@@ -42,8 +46,8 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   }
 
   const handleReset = () => {
-    setDateFrom("")
-    setDateTo("")
+    setDateFrom(undefined)
+    setDateTo(undefined)
     setType("ALL")
     setCurrency("ALL")
     setAgencyId("ALL")
@@ -52,31 +56,31 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <Input
-        type="date"
+      <DateInputWithCalendar
         value={dateFrom}
-        onChange={(e) => {
-          setDateFrom(e.target.value)
-          if (e.target.value && dateTo && dateTo < e.target.value) {
-            setDateTo("")
+        onChange={(date) => {
+          setDateFrom(date)
+          if (date && dateTo && dateTo < date) {
+            setDateTo(undefined)
           }
         }}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
         placeholder="Desde"
+        className="h-8 text-xs rounded-full"
       />
-      <Input
-        type="date"
+
+      <DateInputWithCalendar
         value={dateTo}
-        onChange={(e) => {
-          if (e.target.value && dateFrom && e.target.value < dateFrom) {
+        onChange={(date) => {
+          if (date && dateFrom && date < dateFrom) {
             return
           }
-          setDateTo(e.target.value)
+          setDateTo(date)
         }}
-        min={dateFrom || undefined}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
         placeholder="Hasta"
+        minDate={dateFrom}
+        className="h-8 text-xs rounded-full"
       />
+
       <Select value={agencyId} onValueChange={setAgencyId}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
           <SelectValue placeholder="Agencia" />
@@ -90,6 +94,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
           ))}
         </SelectContent>
       </Select>
+
       <Select value={type} onValueChange={setType}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
           <SelectValue placeholder="Tipo" />
@@ -104,6 +109,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
           <SelectItem value="OPERATOR_PAYMENT">Pago Operador</SelectItem>
         </SelectContent>
       </Select>
+
       <Select value={currency} onValueChange={setCurrency}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
           <SelectValue placeholder="Moneda" />
@@ -114,6 +120,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
           <SelectItem value="USD">USD</SelectItem>
         </SelectContent>
       </Select>
+
       <Button size="sm" className="h-8 rounded-full text-xs" onClick={handleApply}>Aplicar</Button>
       <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
         <X className="mr-1 h-3.5 w-3.5" /> Limpiar

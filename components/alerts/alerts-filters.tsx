@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -12,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { format, parseISO, isValid } from "date-fns"
 
 export interface AlertsFiltersState {
   type: string
@@ -45,6 +46,18 @@ const statusOptions = [
   { value: "IGNORED", label: "Ignorado" },
 ]
 
+function toDate(s: string): Date | undefined {
+  if (!s) return undefined
+  try {
+    const d = parseISO(s)
+    return isValid(d) ? d : undefined
+  } catch { return undefined }
+}
+
+function toStr(d: Date | undefined): string {
+  return d ? format(d, "yyyy-MM-dd") : ""
+}
+
 export function AlertsFilters({ agencies, value, defaultValue, onChange }: AlertsFiltersProps) {
   const [filters, setFilters] = useState(value)
 
@@ -52,7 +65,6 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
     setFilters(value)
   }, [value])
 
-  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
   const debouncedFilters = useDebounce(filters, 500)
 
   useEffect(() => {
@@ -93,33 +105,29 @@ export function AlertsFilters({ agencies, value, defaultValue, onChange }: Alert
           ))}
         </SelectContent>
       </Select>
-      <Input
-        type="date"
-        value={filters.dateFrom}
-        onChange={(e) => {
-          const dateString = e.target.value
+      <DateInputWithCalendar
+        value={toDate(filters.dateFrom)}
+        onChange={(date) => {
+          const str = toStr(date)
           setFilters((prev) => ({
             ...prev,
-            dateFrom: dateString,
-            dateTo: dateString && prev.dateTo && prev.dateTo < dateString ? "" : prev.dateTo
+            dateFrom: str,
+            dateTo: str && prev.dateTo && prev.dateTo < str ? "" : prev.dateTo,
           }))
         }}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
         placeholder="Desde"
+        className="h-8 text-xs rounded-full"
       />
-      <Input
-        type="date"
-        value={filters.dateTo}
-        onChange={(e) => {
-          const dateString = e.target.value
-          if (dateString && filters.dateFrom && dateString < filters.dateFrom) {
-            return
-          }
-          setFilters((prev) => ({ ...prev, dateTo: dateString }))
+      <DateInputWithCalendar
+        value={toDate(filters.dateTo)}
+        onChange={(date) => {
+          const str = toStr(date)
+          if (str && filters.dateFrom && str < filters.dateFrom) return
+          setFilters((prev) => ({ ...prev, dateTo: str }))
         }}
-        min={filters.dateFrom || undefined}
-        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
         placeholder="Hasta"
+        minDate={toDate(filters.dateFrom)}
+        className="h-8 text-xs rounded-full"
       />
       <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
