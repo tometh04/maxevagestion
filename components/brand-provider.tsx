@@ -14,10 +14,24 @@ export function BrandProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/settings/organization")
         if (res.ok) {
-          const data = await res.json()
-          if (data.brand_color) {
-            document.documentElement.style.setProperty("--primary", data.brand_color)
-            localStorage.setItem("brand_color", data.brand_color)
+          const json = await res.json()
+          // API returns { data: [{ key: "brand_color", value: "..." }, ...] }
+          const settings: Record<string, string> = {}
+          if (Array.isArray(json.data)) {
+            json.data.forEach((item: { key: string; value: string }) => {
+              settings[item.key] = item.value
+            })
+          }
+
+          if (settings.brand_color) {
+            document.documentElement.style.setProperty("--primary", settings.brand_color)
+            localStorage.setItem("brand_color", settings.brand_color)
+          }
+          if (settings.brand_logo) {
+            localStorage.setItem("brand_logo", settings.brand_logo)
+          }
+          if (settings.company_name) {
+            localStorage.setItem("company_name", settings.company_name)
           }
         }
       } catch {

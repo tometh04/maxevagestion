@@ -42,13 +42,8 @@ export async function GET(request: Request) {
             sale_amount_total,
             operator_cost,
             sale_currency,
-            margin_amount
-          ),
-          seller:seller_id(
-            id,
-            first_name,
-            last_name,
-            email
+            margin_amount,
+            seller_primary_id
           )
         `)
         .order("date_calculated", { ascending: false })
@@ -86,15 +81,30 @@ export async function GET(request: Request) {
         )
       }
 
+      // Fetch seller names from users table
+      const sellerIds = Array.from(new Set((commissionRecords || []).map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
+      let sellersMap: Record<string, { first_name: string; last_name: string; email: string }> = {}
+      if (sellerIds.length > 0) {
+        const { data: sellers } = await supabase
+          .from("users")
+          .select("id, first_name, last_name, email")
+          .in("id", sellerIds)
+        if (sellers) {
+          sellersMap = Object.fromEntries(sellers.map((s: any) => [s.id, s]))
+        }
+      }
+
       // Transformar commission_records a formato Commission
-      const commissions = (commissionRecords || []).map((cr: any) => ({
+      const commissions = (commissionRecords || []).map((cr: any) => {
+        const seller = sellersMap[cr.seller_id]
+        return {
         id: cr.id,
         operation_id: cr.operation_id,
         seller_id: cr.seller_id,
-        seller_name: cr.seller
-          ? `${cr.seller.first_name || ""} ${cr.seller.last_name || ""}`.trim()
+        seller_name: seller
+          ? `${seller.first_name || ""} ${seller.last_name || ""}`.trim()
           : "Sin vendedor",
-        seller_email: cr.seller?.email || "",
+        seller_email: seller?.email || "",
         agency_id: cr.agency_id,
         amount: parseFloat(cr.amount || 0),
         percentage: cr.percentage ? parseFloat(cr.percentage) : null,
@@ -112,7 +122,7 @@ export async function GET(request: Request) {
           margin_amount: parseFloat(cr.operations.margin_amount || 0),
           currency: cr.operations.sale_currency || "USD",
         } : null,
-      }))
+      }})
 
       // Calcular resumen mensual
       const monthlySummary = new Map<string, { total: number; pending: number; paid: number; count: number }>()
