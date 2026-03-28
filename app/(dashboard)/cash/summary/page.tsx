@@ -111,6 +111,15 @@ export default async function CashSummaryPage() {
     currency: "ALL",
   }
 
+  // Pagos necesita un rango mucho más amplio para mostrar todos los pagos históricos
+  const today = new Date()
+  const paymentDefaultFilters: CashFiltersState = {
+    dateFrom: new Date(today.getFullYear() - 1, 0, 1).toISOString().split("T")[0], // 1 año atrás, 1 de enero
+    dateTo: dates.dateTo,
+    agencyId: "ALL",
+    currency: "ALL",
+  }
+
   return (
     <CashSummaryTabs
       summaryContent={
@@ -120,7 +129,7 @@ export default async function CashSummaryPage() {
         <FinancialAccountsPageClient agencies={agencies} />
       }
       paymentsContent={
-        <PaymentsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+        <PaymentsPageClient agencies={agencies} defaultFilters={paymentDefaultFilters} />
       }
       movementsContent={
         <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />

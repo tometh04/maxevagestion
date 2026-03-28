@@ -488,18 +488,24 @@ export async function GET(request: Request) {
       }
     }
 
-    // Query base con relación a operations
+    // Query base con relación a operations y clientes
     let query = (supabase.from("payments") as any).select(`
       *,
       operations:operation_id(
         id,
         destination,
         agency_id,
-        contact_name,
         seller_id,
         agencies:agency_id(
           id,
           name
+        ),
+        operation_customers(
+          customers(
+            id,
+            first_name,
+            last_name
+          )
         )
       )
     `, { count: "exact" })
@@ -528,12 +534,16 @@ export async function GET(request: Request) {
       query = query.eq("payer_type", payerType)
     }
 
-    // Filtros de fecha
-    if (dateFrom) {
-      query = query.gte("date_due", dateFrom)
-    }
-    if (dateTo) {
-      query = query.lte("date_due", dateTo)
+    // Filtros de fecha — usar created_at como campo principal para listado general
+    // date_due puede ser NULL en muchos pagos, lo que los excluiría silenciosamente
+    // Si se filtra por una operación específica, no filtrar por fecha (mostrar todos los pagos de esa operación)
+    if (!operationId) {
+      if (dateFrom) {
+        query = query.gte("created_at", `${dateFrom}T00:00:00`)
+      }
+      if (dateTo) {
+        query = query.lte("created_at", `${dateTo}T23:59:59`)
+      }
     }
 
     // Filtro de moneda
@@ -561,11 +571,22 @@ export async function GET(request: Request) {
     }
     if (contactName && contactName.trim()) {
       const search = contactName.trim().toLowerCase()
-      filteredPayments = filteredPayments.filter((p: any) =>
-        p.operations?.contact_name?.toLowerCase().includes(search) ||
-        p.operations?.destination?.toLowerCase().includes(search) ||
-        p.contact_name?.toLowerCase().includes(search)
-      )
+      filteredPayments = filteredPayments.filter((p: any) => {
+        // Buscar en destino de la operación
+        if (p.operations?.destination?.toLowerCase().includes(search)) return true
+        // Buscar en nombre de clientes vinculados a la operación
+        const customers = p.operations?.operation_customers || []
+        for (const oc of customers) {
+          const c = oc.customers
+          if (c) {
+            const fullName = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase()
+            if (fullName.includes(search)) return true
+          }
+        }
+        // Buscar en referencia del pago
+        if (p.reference?.toLowerCase().includes(search)) return true
+        return false
+      })
     }
 
     const totalPages = count ? Math.ceil(count / limit) : 0
