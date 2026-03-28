@@ -322,7 +322,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
               </div>
               <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Datos del viaje</h4>
             </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="col-span-2 space-y-1">
                   <Label className="text-xs">Destino *</Label>
                   <Input value={destination} onChange={(e) => setDestination(e.target.value)} placeholder="Ej: Miami, Cancun..." />
@@ -346,9 +346,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+            </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs">Salida *</Label>
                   <Input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} />
@@ -377,7 +377,6 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                 </div>
               </div>
             </div>
-          </div>
 
           {/* Options */}
           {options.map((option, optIndex) => (
@@ -411,7 +410,6 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, onSuccess }: 
                     )}
                   </div>
                 </div>
-              </div>
               <div className="space-y-3">
                 {/* Items */}
                 {option.items.map((item, itemIndex) => (

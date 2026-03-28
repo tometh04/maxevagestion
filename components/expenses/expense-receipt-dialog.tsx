@@ -8,7 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Loader2, Upload, FileText, ExternalLink, Receipt as ReceiptIcon, CloudUpload } from "lucide-react"
+import { Loader2, Upload, FileText, ExternalLink, Receipt as ReceiptIcon } from "lucide-react"
 
 interface Receipt {
   id: string
@@ -165,7 +165,7 @@ export function ExpenseReceiptDialog({
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-2 mb-3">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                  <CloudUpload className="h-3.5 w-3.5 text-orange-500" />
+                  <Upload className="h-3.5 w-3.5 text-orange-500" />
                 </div>
                 <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Subir Comprobante</h4>
               </div>
