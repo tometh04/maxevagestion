@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, FileText, User, DollarSign, ShieldCheck, AlertCircle, Hash, Calendar } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -368,75 +368,156 @@ export function InvoicesPageClient() {
               )}
             </DialogTitle>
             <DialogDescription>
-              Detalle de la factura
+              Detalle de la factura electrónica
             </DialogDescription>
           </DialogHeader>
-          
+
           {selectedInvoice && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-muted-foreground">Cliente</Label>
-                  <p className="font-medium">{selectedInvoice.receptor_nombre}</p>
+            <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Datos del Receptor */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                    <User className="h-3.5 w-3.5 text-blue-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Receptor</h4>
                 </div>
-                <div>
-                  <Label className="text-muted-foreground">CUIT/DNI</Label>
-                  <p className="font-mono">{selectedInvoice.receptor_doc_nro}</p>
+                <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">Cliente</p>
+                    <p className="text-sm font-medium">{selectedInvoice.receptor_nombre}</p>
+                  </div>
+                  <div>
+                    <p className="text-[11px] text-muted-foreground mb-0.5">CUIT/DNI</p>
+                    <p className="text-sm font-mono">{selectedInvoice.receptor_doc_nro !== '0' ? selectedInvoice.receptor_doc_nro : 'Consumidor Final'}</p>
+                  </div>
+                  {selectedInvoice.operations && (
+                    <div className="col-span-2">
+                      <p className="text-[11px] text-muted-foreground mb-0.5">Operación</p>
+                      <p className="text-sm">{selectedInvoice.operations.file_code} — {selectedInvoice.operations.destination}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {selectedInvoice.cae && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label className="text-muted-foreground">CAE</Label>
-                    <p className="font-mono">{selectedInvoice.cae}</p>
+              {/* AFIP / CAE */}
+              {selectedInvoice.cae ? (
+                <div className="rounded-xl border border-green-200 dark:border-green-800/40 bg-green-50/50 dark:bg-green-950/20 p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-green-500/10">
+                      <ShieldCheck className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-green-700 dark:text-green-400">Autorización AFIP</h4>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground">Vencimiento CAE</Label>
-                    <p>{selectedInvoice.cae_fch_vto}</p>
+                  <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+                    <div>
+                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">CAE</p>
+                      <p className="text-sm font-mono font-medium text-green-800 dark:text-green-300">{selectedInvoice.cae}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Vencimiento CAE</p>
+                      <p className="text-sm text-green-800 dark:text-green-300">{selectedInvoice.cae_fch_vto}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Comprobante N°</p>
+                      <p className="text-sm font-mono text-green-800 dark:text-green-300">
+                        {String(selectedInvoice.pto_vta).padStart(4, '0')}-{String(selectedInvoice.cbte_nro).padStart(8, '0')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-green-600/70 dark:text-green-500/70 mb-0.5">Fecha de Emisión</p>
+                      <p className="text-sm text-green-800 dark:text-green-300">
+                        {selectedInvoice.fecha_emision
+                          ? format(new Date(selectedInvoice.fecha_emision), "dd/MM/yyyy", { locale: es })
+                          : format(new Date(selectedInvoice.created_at), "dd/MM/yyyy", { locale: es })
+                        }
+                      </p>
+                    </div>
                   </div>
                 </div>
-              )}
+              ) : selectedInvoice.status === 'rejected' ? (
+                <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-red-500/10">
+                      <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                    </div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">Rechazada por AFIP</h4>
+                  </div>
+                  <p className="text-xs text-red-700 dark:text-red-300">Esta factura no fue autorizada. Creá una nueva con los datos corregidos.</p>
+                </div>
+              ) : null}
 
-              <div>
-                <Label className="text-muted-foreground">Items</Label>
-                <Table className="mt-2">
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead className="text-right">Cant.</TableHead>
-                      <TableHead className="text-right">P. Unit.</TableHead>
-                      <TableHead className="text-right">IVA</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedInvoice.invoice_items?.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.descripcion}</TableCell>
-                        <TableCell className="text-right">{item.cantidad}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.precio_unitario)}</TableCell>
-                        <TableCell className="text-right">{item.iva_porcentaje}%</TableCell>
-                        <TableCell className="text-right">{formatCurrency(item.total)}</TableCell>
+              {/* Items */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                    <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Detalle</h4>
+                </div>
+                <div className="rounded-lg border border-border/30 overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="text-xs">Descripción</TableHead>
+                        <TableHead className="text-xs text-right w-[60px]">Cant.</TableHead>
+                        <TableHead className="text-xs text-right w-[100px]">P. Unit.</TableHead>
+                        <TableHead className="text-xs text-right w-[60px]">IVA</TableHead>
+                        <TableHead className="text-xs text-right w-[100px]">Total</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedInvoice.invoice_items?.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="text-sm">{item.descripcion}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{item.cantidad}</TableCell>
+                          <TableCell className="text-sm text-right tabular-nums">{formatCurrency(item.precio_unitario)}</TableCell>
+                          <TableCell className="text-sm text-right">{item.iva_porcentaje}%</TableCell>
+                          <TableCell className="text-sm text-right font-medium tabular-nums">{formatCurrency(item.total)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
 
-              <div className="flex justify-end">
-                <div className="text-right">
-                  <p className="text-muted-foreground">Total</p>
-                  <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(selectedInvoice.imp_total)}</p>
+                {/* Totals */}
+                <div className="flex justify-end">
+                  <div className="w-[240px] space-y-1.5 pt-2">
+                    {(selectedInvoice.imp_neto != null && selectedInvoice.imp_neto !== selectedInvoice.imp_total) && (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_neto)}</span>
+                      </div>
+                    )}
+                    {(selectedInvoice.imp_iva != null && selectedInvoice.imp_iva > 0) && (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>IVA</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_iva)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-baseline pt-1.5 border-t border-border/40">
+                      <span className="text-sm font-medium">Total</span>
+                      <span className="text-xl font-semibold tabular-nums tracking-tight">{formatCurrency(selectedInvoice.imp_total)}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="px-6 pb-6">
             <Button variant="outline" onClick={() => setSelectedInvoice(null)}>
               Cerrar
             </Button>
+            {selectedInvoice?.status === 'authorized' && (
+              <Button
+                variant="default"
+                onClick={() => window.open(`/api/invoices/${selectedInvoice.id}/pdf`, '_blank')}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Descargar PDF
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
