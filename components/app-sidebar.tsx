@@ -11,7 +11,6 @@ import {
   Plane,
   GalleryVerticalEnd,
   Bot,
-  BookOpen,
   TrendingUp,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
@@ -132,6 +131,7 @@ const allNavigation: NavItem[] = [
         ],
       },
       { title: "Posición Mensual", url: "/accounting/monthly-position" },
+      { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings" },
     ],
   },
@@ -142,25 +142,16 @@ const allNavigation: NavItem[] = [
     icon: TrendingUp,
     collapsible: false,
   },
-  // Recursos - Colapsable
-  {
-    title: "Recursos",
-    url: "/reports",
-    icon: BookOpen,
-    items: [
-      { title: "Reportes", url: "/reports", module: "reports" as const },
-      { title: "Alertas", url: "/alerts", module: "alerts" as const },
-      { title: "Calendario", url: "/calendar" },
-      { title: "Mensajes", url: "/messages" },
-      { title: "Templates", url: "/resources/templates" },
-    ],
-  },
-  // Herramientas - Colapsable
+  // Herramientas - Colapsable (unificado Recursos + Herramientas)
   {
     title: "Herramientas",
     url: "/tools/tasks",
     icon: Bot,
     items: [
+      { title: "Calendario", url: "/calendar" },
+      { title: "Alertas", url: "/alerts", module: "alerts" as const },
+      { title: "Mensajes", url: "/messages" },
+      { title: "Templates", url: "/resources/templates" },
       { title: "Tareas", url: "/tools/tasks" },
       { title: "Cerebro", url: "/tools/cerebro" },
       { title: "WHA Control", url: "/tools/wha-control" },
