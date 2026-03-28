@@ -52,11 +52,6 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Pagos</h1>
-        <p className="text-muted-foreground">Todos los pagos registrados: cobros a clientes, pagos a operadores y más</p>
-      </div>
-
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

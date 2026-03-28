@@ -76,17 +76,6 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Movimientos de Caja</h1>
-          <p className="text-muted-foreground">Revisa todos los movimientos registrados en la caja</p>
-        </div>
-        <Button size="sm" className="h-8" onClick={() => setNewMovementDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Movimiento
-        </Button>
-      </div>
-
       <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -107,6 +96,10 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
             Limpiar filtros
           </Button>
           <Button size="sm" className="h-8 rounded-full" onClick={handleExport}>Exportar CSV</Button>
+          <Button size="sm" className="h-8 rounded-full" onClick={() => setNewMovementDialogOpen(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Nuevo
+          </Button>
       </div>
 
       <MovementsTable

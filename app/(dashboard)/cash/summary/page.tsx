@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { canAccessModule } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
 import { CashSummaryTabs } from "@/components/cash/cash-summary-tabs"
+import { CashFiltersState } from "@/components/cash/cash-filters"
 
 const CashSummaryClient = dynamic(
   () =>
@@ -13,14 +14,6 @@ const CashSummaryClient = dynamic(
   {
     loading: () => (
       <div className="space-y-6">
-        <div className="flex gap-4 flex-wrap">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-[200px] w-full" />
-          <Skeleton className="h-[200px] w-full" />
-        </div>
         <Skeleton className="h-[300px] w-full" />
       </div>
     ),
@@ -33,11 +26,37 @@ const FinancialAccountsPageClient = dynamic(
       default: m.FinancialAccountsPageClient,
     })),
   {
-    loading: () => (
-      <div className="space-y-6">
-        <Skeleton className="h-[300px] w-full" />
-      </div>
-    ),
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
+const PaymentsPageClient = dynamic(
+  () =>
+    import("@/components/cash/payments-page-client").then((m) => ({
+      default: m.PaymentsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
+const MovementsPageClient = dynamic(
+  () =>
+    import("@/components/cash/movements-page-client").then((m) => ({
+      default: m.MovementsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
+const GastosPageClient = dynamic(
+  () =>
+    import("@/components/expenses/gastos-page-client").then((m) => ({
+      default: m.GastosPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
   }
 )
 
@@ -85,6 +104,13 @@ export default async function CashSummaryPage() {
 
   const dates = getDefaultDateRange()
 
+  const defaultFilters: CashFiltersState = {
+    dateFrom: dates.dateFrom,
+    dateTo: dates.dateTo,
+    agencyId: "ALL",
+    currency: "ALL",
+  }
+
   return (
     <CashSummaryTabs
       summaryContent={
@@ -92,6 +118,15 @@ export default async function CashSummaryPage() {
       }
       accountsContent={
         <FinancialAccountsPageClient agencies={agencies} />
+      }
+      paymentsContent={
+        <PaymentsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+      }
+      movementsContent={
+        <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+      }
+      expensesContent={
+        <GastosPageClient agencies={agencies} />
       }
     />
   )

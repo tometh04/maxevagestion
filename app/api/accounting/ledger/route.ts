@@ -41,9 +41,8 @@ export async function GET(request: Request) {
          users:created_by (name)`,
         { count: "exact" }
       )
-      .order("movement_date", { ascending: false })
-      .range(offset, offset + limit - 1)
 
+    // IMPORTANTE: filtros ANTES de order/range para que funcione la paginación
     if (dateFrom) query = query.gte("movement_date", `${dateFrom}T00:00:00`)
     if (dateTo)   query = query.lte("movement_date", `${dateTo}T23:59:59`)
     if (currency && currency !== "ALL") query = query.eq("currency", currency)
@@ -51,6 +50,9 @@ export async function GET(request: Request) {
     if (operationId) query = query.eq("operation_id", operationId)
     if (typeParam === "INCOME") query = query.in("type", ["INCOME", "FX_GAIN"])
     else if (typeParam !== "ALL") query = query.not("type", "in", '("INCOME","FX_GAIN")')
+
+    // Ordenar y paginar DESPUÉS de filtrar
+    query = query.order("movement_date", { ascending: false }).range(offset, offset + limit - 1)
 
     const { data: movements, error, count } = await query
 

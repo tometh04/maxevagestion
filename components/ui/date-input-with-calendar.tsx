@@ -111,7 +111,7 @@ export function DateInputWithCalendar({
           maxLength={10}
           className={cn(
             "flex-1 bg-transparent border-0 outline-none text-xs px-3 h-full",
-            "placeholder:text-muted-foreground min-w-[80px] w-[88px]"
+            "placeholder:text-muted-foreground min-w-[80px] w-[100px]"
           )}
         />
         <PopoverTrigger asChild>
