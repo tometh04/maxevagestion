@@ -276,9 +276,9 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-2 !h-auto"
             >
-              <a href="/dashboard" className="flex items-center justify-start w-full">
+              <a href="/dashboard" className="flex items-center justify-center w-full">
                 {brandLogo ? (
-                  <img src={brandLogo} alt="Logo" className="h-10 w-full max-w-[160px] object-contain object-left" />
+                  <img src={brandLogo} alt="Logo" className="h-14 w-full max-w-[180px] object-contain" />
                 ) : (
                   <>
                     <GalleryVerticalEnd className="!size-5" />
