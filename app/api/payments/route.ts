@@ -456,46 +456,79 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const operationId = searchParams.get("operationId")
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
     const direction = searchParams.get("direction")
+    const status = searchParams.get("status")
+    const payerType = searchParams.get("payerType")
     const contactName = searchParams.get("contactName")
-    
-    // Paginación: usar page en vez de offset para mejor UX
+
+    // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200
+    const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
-    // Query base con relación a operations para obtener agency_id, destination y contact_name
-    let query = supabase.from("payments").select(`
+    // SELLER: solo ve pagos de sus operaciones
+    let allowedOperationIds: string[] | null = null
+    if (user.role === "SELLER") {
+      const { data: sellerOps } = await (supabase.from("operations") as any)
+        .select("id")
+        .eq("seller_id", user.id)
+      allowedOperationIds = (sellerOps || []).map((op: any) => op.id)
+      if (!allowedOperationIds || allowedOperationIds.length === 0) {
+        return NextResponse.json({
+          payments: [],
+          pagination: { total: 0, page: 1, limit, totalPages: 0, hasMore: false }
+        })
+      }
+    }
+
+    // Query base con relación a operations
+    let query = (supabase.from("payments") as any).select(`
       *,
       operations:operation_id(
         id,
         destination,
         agency_id,
         contact_name,
+        seller_id,
         agencies:agency_id(
           id,
           name
         )
       )
     `, { count: "exact" })
-    
+
     if (operationId) {
       query = query.eq("operation_id", operationId)
     }
 
-    // Aplicar filtro de direction (INCOME o EXPENSE)
+    // SELLER: filtrar por operaciones propias
+    if (allowedOperationIds) {
+      query = query.in("operation_id", allowedOperationIds)
+    }
+
+    // Filtro de direction (INCOME o EXPENSE)
     if (direction && direction !== "ALL") {
       query = query.eq("direction", direction)
     }
 
-    // Aplicar filtros de fecha (usar date_due como referencia principal)
+    // Filtro de status (PENDING, PAID, OVERDUE)
+    if (status && status !== "ALL") {
+      query = query.eq("status", status)
+    }
+
+    // Filtro de payer_type (CUSTOMER, OPERATOR)
+    if (payerType && payerType !== "ALL") {
+      query = query.eq("payer_type", payerType)
+    }
+
+    // Filtros de fecha
     if (dateFrom) {
       query = query.gte("date_due", dateFrom)
     }
@@ -503,12 +536,12 @@ export async function GET(request: Request) {
       query = query.lte("date_due", dateTo)
     }
 
-    // Aplicar filtro de moneda
+    // Filtro de moneda
     if (currency && currency !== "ALL") {
       query = query.eq("currency", currency)
     }
 
-    // Aplicar paginación y ordenamiento
+    // Paginación y ordenamiento
     const { data: payments, error, count } = await query
       .order("date_due", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -530,13 +563,14 @@ export async function GET(request: Request) {
       const search = contactName.trim().toLowerCase()
       filteredPayments = filteredPayments.filter((p: any) =>
         p.operations?.contact_name?.toLowerCase().includes(search) ||
+        p.operations?.destination?.toLowerCase().includes(search) ||
         p.contact_name?.toLowerCase().includes(search)
       )
     }
 
     const totalPages = count ? Math.ceil(count / limit) : 0
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       payments: filteredPayments,
       pagination: {
         total: count || 0,
