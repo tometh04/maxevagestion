@@ -12,6 +12,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // Permitir rutas públicas sin autenticación (cotizaciones, API pública)
+  if (req.nextUrl.pathname.startsWith('/cotizacion/') || req.nextUrl.pathname.startsWith('/api/public/')) {
+    return NextResponse.next()
+  }
+
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
     return NextResponse.next()
