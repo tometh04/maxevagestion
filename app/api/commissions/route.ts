@@ -83,11 +83,11 @@ export async function GET(request: Request) {
 
       // Fetch seller names from users table
       const sellerIds = Array.from(new Set((commissionRecords || []).map((cr: any) => cr.seller_id).filter(Boolean))) as string[]
-      let sellersMap: Record<string, { first_name: string; last_name: string; email: string }> = {}
+      let sellersMap: Record<string, { name: string; email: string }> = {}
       if (sellerIds.length > 0) {
         const { data: sellers } = await supabase
           .from("users")
-          .select("id, first_name, last_name, email")
+          .select("id, name, email")
           .in("id", sellerIds)
         if (sellers) {
           sellersMap = Object.fromEntries(sellers.map((s: any) => [s.id, s]))
@@ -101,10 +101,9 @@ export async function GET(request: Request) {
         id: cr.id,
         operation_id: cr.operation_id,
         seller_id: cr.seller_id,
-        seller_name: seller
-          ? `${seller.first_name || ""} ${seller.last_name || ""}`.trim()
-          : "Sin vendedor",
+        seller_name: seller?.name || "Sin vendedor",
         seller_email: seller?.email || "",
+        sellers: seller ? { id: cr.seller_id, name: seller.name } : null,
         agency_id: cr.agency_id,
         amount: parseFloat(cr.amount || 0),
         percentage: cr.percentage ? parseFloat(cr.percentage) : null,
@@ -128,7 +127,7 @@ export async function GET(request: Request) {
       const monthlySummary = new Map<string, { total: number; pending: number; paid: number; count: number }>()
       
       commissions.forEach((comm: any) => {
-        const monthKey = comm.dateCalculated ? comm.dateCalculated.substring(0, 7) : "unknown"
+        const monthKey = comm.date_calculated ? comm.date_calculated.substring(0, 7) : "unknown"
         if (!monthlySummary.has(monthKey)) {
           monthlySummary.set(monthKey, { total: 0, pending: 0, paid: 0, count: 0 })
         }
@@ -213,6 +212,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ commissions, totals })
   } catch (error: any) {
+    // Don't catch Next.js redirect errors
+    if (error?.digest?.startsWith('NEXT_REDIRECT')) throw error
     console.error("Error in GET /api/commissions:", error)
     return NextResponse.json(
       { error: error.message || "Error al obtener comisiones" },
