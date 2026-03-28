@@ -52,8 +52,8 @@ async function getSellerPercentage(sellerId: string): Promise<number> {
     const supabase = await createServerClient()
     const today = new Date().toISOString().split("T")[0]
 
-    const { data: rules } = await supabase
-      .from("commission_rules")
+    const { data: rules } = await (supabase
+      .from("commission_rules") as any)
       .select("*")
       .eq("type", "SELLER")
       .lte("valid_from", today)
@@ -63,7 +63,7 @@ async function getSellerPercentage(sellerId: string): Promise<number> {
       .limit(1)
 
     if (rules && rules.length > 0) {
-      return Number(rules[0].value) || 0
+      return Number((rules as any[])[0].value) || 0
     }
   } catch (err) {
     console.error("[Commissions] Error fetching commission rules:", err)
