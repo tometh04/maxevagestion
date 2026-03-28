@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import type { UserRole } from "@/lib/permissions"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -11,8 +14,32 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
+    // Permission check: verify the user can access the operators module
+    if (!canAccessModule(user.role as UserRole, "operators")) {
+      return NextResponse.json({ error: "No tiene permisos para acceder a operadores" }, { status: 403 })
+    }
+
+    // For non-SUPER_ADMIN users, get their agency IDs to filter operators
+    let agencyOperatorIds: string[] | null = null
+    if (user.role !== "SUPER_ADMIN") {
+      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+      if (agencyIds.length > 0) {
+        // Get operator IDs linked to operations within the user's agencies
+        const { data: agencyOperations } = await supabase
+          .from("operations")
+          .select("operator_id")
+          .in("agency_id", agencyIds)
+          .not("operator_id", "is", null)
+
+        agencyOperatorIds = Array.from(new Set((agencyOperations || []).map((op: any) => op.operator_id).filter(Boolean)))
+      } else {
+        // User has no agencies, return empty result
+        return NextResponse.json({ operators: [] })
+      }
+    }
+
     // Get all operators with their operations and payments
-    const { data, error } = await supabase
+    let query = supabase
       .from("operators")
       .select(
         `
@@ -35,7 +62,16 @@ export async function GET(request: Request) {
         )
       `,
       )
-      .order("name")
+
+    // Filter by agency-linked operators for non-SUPER_ADMIN users
+    if (agencyOperatorIds !== null) {
+      if (agencyOperatorIds.length === 0) {
+        return NextResponse.json({ operators: [] })
+      }
+      query = query.in("id", agencyOperatorIds)
+    }
+
+    const { data, error } = await query.order("name")
 
     if (error) {
       console.error("Error fetching operators:", error)
@@ -94,6 +130,12 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+
+    // Permission check: verify the user can write to the operators module
+    if (!canPerformAction(user, "operators", "write")) {
+      return NextResponse.json({ error: "No tiene permisos para crear operadores" }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const { name, contact_name, contact_email, contact_phone, credit_limit } = body

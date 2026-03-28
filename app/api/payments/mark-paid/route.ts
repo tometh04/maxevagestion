@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -16,6 +17,12 @@ import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Solo ADMIN, SUPER_ADMIN y CONTABLE pueden marcar pagos como cobrados
+    if (!canAccessModule(user.role, "cash")) {
+      return NextResponse.json({ error: "No tiene permisos para marcar pagos como cobrados" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const body = await request.json()
     const { paymentId, datePaid, reference, financial_account_id, exchange_rate } = body

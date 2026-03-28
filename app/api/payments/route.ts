@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -26,6 +27,12 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+
+    // Verificar acceso al módulo de caja
+    if (!canAccessModule(user.role, "cash")) {
+      return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
+    }
+
     const body = await request.json()
 
     const {
@@ -69,6 +76,19 @@ export async function POST(request: Request) {
     // Validaciones de montos
     if (amount < 0) {
       return NextResponse.json({ error: "El monto no puede ser negativo" }, { status: 400 })
+    }
+
+    // SELLER: verificar que la operación le pertenece
+    if (user.role === "SELLER" && operation_id) {
+      const { data: operationOwnership } = await (supabase.from("operations") as any)
+        .select("id")
+        .eq("id", operation_id)
+        .eq("seller_id", user.id)
+        .maybeSingle()
+
+      if (!operationOwnership) {
+        return NextResponse.json({ error: "No tiene permiso para registrar pagos en esta operación" }, { status: 403 })
+      }
     }
 
     // Validaciones de fechas
