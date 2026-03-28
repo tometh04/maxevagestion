@@ -41,7 +41,21 @@ interface NewInvoiceDialogProps {
   onSuccess?: (invoice: any) => void
 }
 
-const COMPROBANTE_OPTIONS = [
+// Comprobantes válidos según condición fiscal del EMISOR
+// RI: Factura A (a RI), Factura B (a CF/Mono/Exento), Factura E (exportación)
+// Monotributista: Factura C (a todos)
+const COMPROBANTE_OPTIONS_RI = [
+  { value: "6", label: "Factura B" },
+  { value: "1", label: "Factura A" },
+  { value: "19", label: "Factura E (Exportación)" },
+]
+
+const COMPROBANTE_OPTIONS_MONO = [
+  { value: "11", label: "Factura C" },
+  { value: "19", label: "Factura E (Exportación)" },
+]
+
+const COMPROBANTE_OPTIONS_ALL = [
   { value: "6", label: "Factura B" },
   { value: "1", label: "Factura A" },
   { value: "11", label: "Factura C" },
@@ -104,12 +118,15 @@ export function NewInvoiceDialog({
   const [notes, setNotes] = useState("")
   const [pto_vta, setPtoVta] = useState(1)
 
+  // Emisor fiscal condition
+  const [emisorCondicion, setEmisorCondicion] = useState<string | null>(null) // "RESPONSABLE_INSCRIPTO" | "MONOTRIBUTISTA" | etc
+
   // Result state
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ cae: string; cbte_nro: number; cae_fch_vto: string } | null>(null)
   const [errorMsg, setErrorMsg] = useState("")
 
-  // Load default pto_vta from AFIP status
+  // Load default pto_vta from AFIP status + condición fiscal del emisor
   useEffect(() => {
     if (!open || !agencyId) return
     fetch(`/api/settings/afip/status?agencyId=${agencyId}`)
@@ -120,7 +137,46 @@ export function NewInvoiceDialog({
         }
       })
       .catch(() => {})
+    // Fetch tax regime from financial settings
+    fetch(`/api/finances/settings`)
+      .then(r => r.json())
+      .then(d => {
+        const regime = d?.settings?.tax_regime || d?.tax_regime
+        if (regime) {
+          setEmisorCondicion(regime)
+          // Auto-set default comprobante
+          if (regime === "MONOTRIBUTISTA") {
+            setCbteTipo("11") // Factura C
+          } else {
+            setCbteTipo("6") // Factura B (default for RI)
+          }
+        }
+      })
+      .catch(() => {})
   }, [open, agencyId])
+
+  // Auto-select comprobante type based on receptor condición IVA (for RI emisor)
+  useEffect(() => {
+    if (emisorCondicion === "MONOTRIBUTISTA") {
+      setCbteTipo("11") // Monotributista siempre emite C
+      return
+    }
+    // Responsable Inscripto:
+    // - A otro RI → Factura A
+    // - A CF/Mono/Exento/No Resp → Factura B
+    if (condicionIva === "1") {
+      setCbteTipo("1") // Factura A a RI
+    } else {
+      setCbteTipo("6") // Factura B a todos los demás
+    }
+  }, [condicionIva, emisorCondicion])
+
+  // Get comprobante options based on emisor condition
+  const comprobanteOptions = emisorCondicion === "MONOTRIBUTISTA"
+    ? COMPROBANTE_OPTIONS_MONO
+    : emisorCondicion === "RESPONSABLE_INSCRIPTO"
+      ? COMPROBANTE_OPTIONS_RI
+      : COMPROBANTE_OPTIONS_ALL
 
   // Computed values
   const selectedIva = IVA_OPTIONS.find(o => o.value === ivaId)
@@ -256,7 +312,7 @@ export function NewInvoiceDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {COMPROBANTE_OPTIONS.map(o => (
+                      {comprobanteOptions.map(o => (
                         <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                       ))}
                     </SelectContent>
