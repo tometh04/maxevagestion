@@ -11,6 +11,7 @@ import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText
 import Link from "next/link"
 import { format } from "date-fns"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
+import { QuotationBuilderDialog } from "@/components/sales/quotation-builder-dialog"
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
 import { LeadDocumentsSection } from "@/components/sales/lead-documents-section"
 import {
@@ -201,6 +202,7 @@ export function LeadDetailDialog({
   onClaim,
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
+  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -782,16 +784,28 @@ export function LeadDetailDialog({
                 </Link>
               </Button>
             ) : (
-              /* Convertir a Operación - solo si NO tiene operación y no está LOST */
-              onConvert && lead.status !== "LOST" && agencies.length > 0 && sellers.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={() => setConvertDialogOpen(true)}
-                  className="flex-1 sm:flex-initial"
-                >
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                  Convertir a Operación
-                </Button>
+              /* Cotizar o Convertir a Operación - solo si NO tiene operación y no está LOST */
+              lead.status !== "LOST" && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setQuotationDialogOpen(true)}
+                    className="flex-1 sm:flex-initial"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Cotizar
+                  </Button>
+                  {onConvert && agencies.length > 0 && sellers.length > 0 && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setConvertDialogOpen(true)}
+                      className="flex-1 sm:flex-initial"
+                    >
+                      <ArrowRight className="mr-2 h-4 w-4" />
+                      Convertir a Operacion
+                    </Button>
+                  )}
+                </>
               )
             )}
             {onArchive && (
@@ -865,6 +879,26 @@ export function LeadDetailDialog({
           onOpenChange={setConvertDialogOpen}
           onSuccess={() => {
             onConvert?.()
+            onOpenChange(false)
+          }}
+        />
+      )}
+
+      {/* Dialog de cotización */}
+      {lead && (
+        <QuotationBuilderDialog
+          open={quotationDialogOpen}
+          onOpenChange={setQuotationDialogOpen}
+          lead={{
+            id: lead.id,
+            contact_name: lead.contact_name,
+            contact_phone: lead.contact_phone,
+            contact_email: lead.contact_email,
+            destination: lead.destination,
+            region: lead.region,
+            agency_id: lead.agency_id,
+          }}
+          onSuccess={() => {
             onOpenChange(false)
           }}
         />
