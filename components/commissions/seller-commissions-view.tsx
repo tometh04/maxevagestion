@@ -124,7 +124,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
   const fetchCommissions = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({ userId })
+      const params = new URLSearchParams({ sellerId: userId })
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
       setCommissions(data.commissions || [])

@@ -37,9 +37,12 @@ export async function GET(request: Request) {
           operations:operation_id(
             id,
             file_code,
+            short_code,
+            file_code,
             destination,
             departure_date,
             sale_amount_total,
+            operator_cost,
             sale_currency,
             margin_amount
           )
@@ -81,12 +84,14 @@ export async function GET(request: Request) {
         status: cr.status as "PENDING" | "PAID",
         date_calculated: cr.date_calculated,
         date_paid: cr.date_paid,
-        operations: cr.operations ? {
+        operation: cr.operations ? {
           id: cr.operations.id,
+          short_code: cr.operations.short_code || cr.operations.file_code || "",
+          file_code: cr.operations.file_code || "",
           destination: cr.operations.destination || "",
           departure_date: cr.operations.departure_date || "",
           sale_amount_total: parseFloat(cr.operations.sale_amount_total || 0),
-          operator_cost: 0, // No viene en la query
+          operator_cost: parseFloat(cr.operations.operator_cost || 0),
           margin_amount: parseFloat(cr.operations.margin_amount || 0),
           currency: cr.operations.sale_currency || "USD",
         } : null,

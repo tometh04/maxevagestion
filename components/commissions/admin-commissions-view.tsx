@@ -61,8 +61,9 @@ interface Commission {
   status: "PENDING" | "PAID"
   date_calculated: string
   date_paid: string | null
-  operations?: {
+  operation?: {
     id: string
+    short_code?: string
     file_code?: string
     destination: string
     departure_date: string
@@ -336,7 +337,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
           body: JSON.stringify({
             commissionId: comm.id,
             amount: comm.amount,
-            currency: comm.operations?.currency || comm.operations?.sale_currency || "USD",
+            currency: comm.operation?.currency || comm.operation?.sale_currency || "USD",
             datePaid: payDate,
             method: "BANK",
             notes: payNotes || null,
@@ -550,17 +551,17 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                               <TableRow key={c.id} className="bg-muted/10">
                                 <TableCell />
                                 <TableCell className="text-sm text-muted-foreground pl-10">
-                                  {c.operations?.file_code || c.operation_id.slice(0, 8)}
+                                  {c.operation?.file_code || c.operation_id.slice(0, 8)}
                                   {" - "}
-                                  {c.operations?.destination || "Sin destino"}
+                                  {c.operation?.destination || "Sin destino"}
                                 </TableCell>
                                 <TableCell className="text-center text-sm text-muted-foreground">
-                                  {c.operations?.departure_date
-                                    ? format(new Date(c.operations.departure_date), "dd/MM/yyyy", { locale: es })
+                                  {c.operation?.departure_date
+                                    ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
                                     : "-"}
                                 </TableCell>
                                 <TableCell className="text-right text-sm tabular-nums">
-                                  {fmtCurrency(c.amount, c.operations?.currency || "ARS")}
+                                  {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
                                 </TableCell>
                                 <TableCell className="text-right text-sm text-muted-foreground">
                                   {c.percentage !== null && c.percentage !== undefined ? `${c.percentage.toFixed(2)}%` : "-"}
@@ -698,13 +699,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           {c.sellers?.name || "Desconocido"}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {c.operations?.file_code || c.operation_id.slice(0, 8)}
+                          {c.operation?.file_code || c.operation_id.slice(0, 8)}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {c.operations?.destination || "Sin destino"}
+                          {c.operation?.destination || "Sin destino"}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold tabular-nums">
-                          {fmtCurrency(c.amount, c.operations?.currency || "ARS")}
+                          {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
                         </TableCell>
                         <TableCell>
                           <Badge className="bg-success/10 text-success border-0">Pagado</Badge>
@@ -758,18 +759,18 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
-                        {c.operations?.file_code || c.operation_id.slice(0, 8)}
+                        {c.operation?.file_code || c.operation_id.slice(0, 8)}
                         {" - "}
-                        {c.operations?.destination || "Sin destino"}
+                        {c.operation?.destination || "Sin destino"}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {c.operations?.departure_date
-                          ? format(new Date(c.operations.departure_date), "dd/MM/yyyy", { locale: es })
+                        {c.operation?.departure_date
+                          ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
                           : "Sin fecha"}
                       </p>
                     </div>
                     <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
-                      {fmtCurrency(c.amount, c.operations?.currency || "ARS")}
+                      {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
                     </p>
                   </label>
                 ))}
