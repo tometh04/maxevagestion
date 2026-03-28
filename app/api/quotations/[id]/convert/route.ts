@@ -107,7 +107,6 @@ export async function POST(
       sale_currency: quotation.currency,
       operator_cost: 0, // Se llena después con los servicios
       status: "RESERVED",
-      notes: quotation.notes || null,
     }
 
     // Crear operación directamente en la tabla
