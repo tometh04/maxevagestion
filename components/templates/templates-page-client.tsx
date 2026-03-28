@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { 
-  Loader2, Plus, FileText, Search, Star, Eye, Edit2, Trash2, 
-  MoreHorizontal, Copy, Download
+import {
+  Loader2, Plus, FileText, Search, Star, Eye, Edit2, Trash2,
+  MoreHorizontal, Copy, Download, Info, Lightbulb
 } from "lucide-react"
 import {
   Breadcrumb,
@@ -92,6 +92,16 @@ const templateTypeIcons: Record<string, string> = {
   receipt: '🧾',
   contract: '📄',
   general: '📝',
+}
+
+const templateTypeDescriptions: Record<string, string> = {
+  invoice: 'Genera facturas de venta para clientes',
+  budget: 'Genera presupuestos con detalle de servicios',
+  voucher: 'Genera vouchers de confirmación de servicios',
+  itinerary: 'Genera itinerarios de viaje para pasajeros',
+  receipt: 'Genera recibos de pago recibidos',
+  contract: 'Genera contratos de servicio',
+  general: 'Template de propósito general',
 }
 
 export function TemplatesPageClient() {
@@ -295,8 +305,8 @@ export function TemplatesPageClient() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Templates PDF</h1>
-          <p className="text-muted-foreground">
-            Gestiona los templates para generar documentos PDF
+          <p className="text-muted-foreground text-sm">
+            Crea y personaliza templates HTML para generar facturas, presupuestos, vouchers y otros documentos PDF desde tus operaciones.
           </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)}>
@@ -333,12 +343,104 @@ export function TemplatesPageClient() {
         </Select>
       </div>
 
+      {/* KPI Summary */}
+      {templates.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="rounded-xl border-border/40">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total templates</p>
+              <p className="text-2xl font-semibold mt-1">{templates.length}</p>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/40 col-span-1 md:col-span-2">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Por tipo</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {Object.entries(
+                  templates.reduce<Record<string, number>>((acc, t) => {
+                    acc[t.template_type] = (acc[t.template_type] || 0) + 1
+                    return acc
+                  }, {})
+                ).map(([type, count]) => (
+                  <Badge key={type} variant="secondary" className="text-xs font-normal">
+                    {templateTypeIcons[type]} {count} {templateTypeLabels[type] || type}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/40">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Defaults</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(() => {
+                  const typesWithDefault = new Set(
+                    templates.filter(t => t.is_default).map(t => t.template_type)
+                  )
+                  const allTypes = Array.from(new Set(templates.map(t => t.template_type)))
+                  const typesWithoutDefault = allTypes.filter(t => !typesWithDefault.has(t))
+                  return (
+                    <>
+                      {typesWithoutDefault.length === 0 ? (
+                        <Badge variant="secondary" className="text-xs font-normal bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                          Todos configurados
+                        </Badge>
+                      ) : (
+                        typesWithoutDefault.map(type => (
+                          <Badge key={type} variant="secondary" className="text-xs font-normal bg-amber-500/10 text-amber-600 border-amber-500/20">
+                            {templateTypeLabels[type] || type}: Sin default
+                          </Badge>
+                        ))
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Empty state info banner */}
+      {templates.length === 0 && !search && typeFilter === "ALL" && (
+        <Card className="rounded-xl border-border/40 border-dashed bg-muted/30">
+          <CardContent className="p-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 flex items-start pt-0.5">
+                <div className="rounded-full bg-primary/10 p-2.5">
+                  <Lightbulb className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-medium text-sm">Para que sirven los templates?</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Los templates te permiten generar documentos PDF personalizados (facturas, presupuestos, vouchers) directamente desde cada operacion.
+                    Cada tipo de documento puede tener su propio diseno con variables dinamicas que se completan automaticamente con los datos de la operacion.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm">Como empezar</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Crea tu primer template o usa uno de los templates base predefinidos. Al crear un template nuevo, podes cargar un template base desde la pestana &quot;Contenido HTML&quot;.
+                  </p>
+                </div>
+                <Button onClick={() => setIsCreateOpen(true)} size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear primer template
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Grid de templates */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates.map((template) => (
           <Card
             key={template.id}
-            className="cursor-pointer hover:shadow-md transition-shadow rounded-xl border-border/40"
+            className="group cursor-pointer hover:shadow-md transition-shadow rounded-xl border-border/40"
             onClick={() => {
               setSelectedTemplate(template)
               setIsViewOpen(true)
@@ -346,7 +448,7 @@ export function TemplatesPageClient() {
           >
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-2xl">{templateTypeIcons[template.template_type]}</span>
                   <Badge variant="outline">
                     {templateTypeLabels[template.template_type]}
@@ -406,6 +508,9 @@ export function TemplatesPageClient() {
                   {template.description}
                 </CardDescription>
               )}
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                {templateTypeDescriptions[template.template_type]}
+              </p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -417,13 +522,10 @@ export function TemplatesPageClient() {
             </CardContent>
           </Card>
         ))}
-        
-        {filteredTemplates.length === 0 && (
+
+        {filteredTemplates.length === 0 && (search || typeFilter !== "ALL") && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            {search || typeFilter !== "ALL"
-              ? "No se encontraron templates con los filtros aplicados"
-              : "No hay templates. Crea tu primer template."
-            }
+            No se encontraron templates con los filtros aplicados
           </div>
         )}
       </div>

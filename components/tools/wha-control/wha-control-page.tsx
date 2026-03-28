@@ -15,7 +15,7 @@ interface WhaControlPageProps {
 export function WhaControlPage({ userId, userName }: WhaControlPageProps) {
   return (
     <PasswordGate>
-      <div className="flex flex-1 flex-col p-4 md:p-6">
+      <div className="flex flex-1 flex-col">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold tracking-tight">WHA Control</h1>
           <p className="text-sm text-muted-foreground">

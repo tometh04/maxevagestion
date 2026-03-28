@@ -23,6 +23,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
@@ -282,26 +283,55 @@ export function TaskWeekView({
         </div>
       ) : (
         <>
-          {/* Desktop: 7 columnas */}
-          <div className="hidden md:grid grid-cols-7 gap-2">
+          {/* Weekly summary */}
+          {(() => {
+            const allDayTasks = tasksByDay.flatMap(({ tasks: dt }) => dt)
+            const totalTasks = allDayTasks.length + undatedTasks.length
+            const completedTasks = allDayTasks.filter((t) => t.status === "DONE").length + undatedTasks.filter((t) => t.status === "DONE").length
+            const pendingTasks = totalTasks - completedTasks
+            return (
+              <div className="hidden md:flex items-center gap-3 rounded-xl border border-border/40 bg-muted/30 px-4 py-2">
+                <span className="text-xs text-muted-foreground font-medium">Resumen semanal:</span>
+                <Badge variant="secondary" className="text-xs">
+                  {totalTasks} {totalTasks === 1 ? "tarea" : "tareas"}
+                </Badge>
+                <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                  {completedTasks} {completedTasks === 1 ? "completada" : "completadas"}
+                </Badge>
+                <Badge variant="secondary" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20">
+                  {pendingTasks} {pendingTasks === 1 ? "pendiente" : "pendientes"}
+                </Badge>
+              </div>
+            )
+          })()}
+
+          {/* Desktop: 7 columnas — today column gets extra width */}
+          <div className="hidden md:grid gap-2" style={{ gridTemplateColumns: tasksByDay.map(({ date }) => isToday(date) ? "1.3fr" : "1fr").join(" ") }}>
             {tasksByDay.map(({ date, tasks: dayTasks }) => (
               <Card
                 key={date.toISOString()}
                 className={cn(
-                  "min-h-[180px] flex flex-col",
-                  isToday(date) && "ring-2 ring-primary/50 border-primary"
+                  "min-h-[100px] flex flex-col rounded-xl border-border/40",
+                  isToday(date) && "ring-2 ring-primary/50 border-primary bg-primary/[0.02]"
                 )}
               >
                 <CardHeader className="py-2 px-3 border-b">
                   <div className="flex items-center justify-between">
-                    <span
-                      className={cn(
-                        "text-xs font-medium capitalize",
-                        isToday(date) && "text-primary"
+                    <div className="flex items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "text-xs font-medium capitalize",
+                          isToday(date) && "text-primary"
+                        )}
+                      >
+                        {format(date, "EEE", { locale: es })}
+                      </span>
+                      {dayTasks.length > 0 && (
+                        <Badge variant="secondary" className="text-[10px] h-4 px-1 min-w-[18px] justify-center">
+                          {dayTasks.length}
+                        </Badge>
                       )}
-                    >
-                      {format(date, "EEE", { locale: es })}
-                    </span>
+                    </div>
                     <span
                       className={cn(
                         "text-xs font-bold",
@@ -314,7 +344,7 @@ export function TaskWeekView({
                     </span>
                   </div>
                 </CardHeader>
-                <CardContent className="flex-1 p-1.5 space-y-1 overflow-y-auto max-h-[300px]">
+                <CardContent className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[400px]">
                   {dayTasks.map((task) => (
                     <TaskCard
                       key={task.id}

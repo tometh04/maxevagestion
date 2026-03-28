@@ -282,14 +282,14 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
       </div>
 
       {/* Filtros */}
-      <div className="flex items-end gap-2 flex-wrap">
+      <div className="flex items-end gap-3 flex-wrap">
             {/* Período */}
-            <div className="space-y-2">
-              <Label>Período</Label>
+            <div className="space-y-1">
+              <Label className="text-xs">Período</Label>
               <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-left font-normal">
-                    <CalendarIcon className="mr-2 h-4 w-4" />
+                  <Button variant="outline" className="h-8 text-xs w-full justify-start text-left font-normal">
+                    <CalendarIcon className="mr-2 h-3.5 w-3.5" />
                     {format(selectedDate, "MMMM yyyy", { locale: es })}
                   </Button>
                 </PopoverTrigger>
@@ -335,7 +335,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
                   value={tcInput}
                   onChange={(e) => setTcInput(e.target.value)}
                   placeholder="1000"
-                  className="flex-1"
+                  className="flex-1 h-8 text-xs"
                 />
                 <Button 
                   size="icon" 

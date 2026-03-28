@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -230,8 +230,7 @@ export function MessagesPageClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
-            <MessageSquare className="h-8 w-8" />
+          <h1 className="text-2xl font-semibold tracking-tight">
             Centro de Mensajes
           </h1>
           <p className="text-muted-foreground">
@@ -253,49 +252,37 @@ export function MessagesPageClient({
       </div>
 
       {/* Stats - KPIs clickeables como filtros */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card
-          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
+      <div className="grid gap-3 grid-cols-3">
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "PENDING" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("PENDING")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Pendientes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{counts.PENDING}</div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5" />
+            Pendientes
+          </p>
+          <div className="text-2xl font-semibold tabular-nums mt-1">{counts.PENDING}</div>
+        </button>
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "SENT" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("SENT")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              Enviados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{counts.SENT}</div>
-          </CardContent>
-        </Card>
-        <Card
-          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md rounded-xl border-border/40 bg-muted/20`}
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <CheckCircle className="h-3.5 w-3.5 text-success" />
+            Enviados
+          </p>
+          <div className="text-2xl font-semibold tabular-nums text-success mt-1">{counts.SENT}</div>
+        </button>
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "SKIPPED" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("SKIPPED")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-muted-foreground" />
-              Omitidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-muted-foreground">{counts.SKIPPED}</div>
-          </CardContent>
-        </Card>
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+            Omitidos
+          </p>
+          <div className="text-2xl font-semibold tabular-nums text-muted-foreground mt-1">{counts.SKIPPED}</div>
+        </button>
       </div>
 
       {/* Filters */}
