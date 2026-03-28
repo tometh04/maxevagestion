@@ -328,7 +328,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   // ── Pay dialog logic ──
   const openPayDialog = (group: SellerGroup) => {
     setPayingSeller(group)
-    setSelectedCommissionIds(new Set(group.commissions.map((c) => c.id)))
+    // Pre-select only commissions of the first currency found (USD priority)
+    const hasUSD = group.commissions.some((c) => getCommCurrency(c) !== "ARS")
+    const defaultCur = hasUSD ? "USD" : "ARS"
+    const defaultSelected = group.commissions
+      .filter((c) => (defaultCur === "ARS" ? getCommCurrency(c) === "ARS" : getCommCurrency(c) !== "ARS"))
+      .map((c) => c.id)
+    setSelectedCommissionIds(new Set(defaultSelected))
     // Initialize pay amounts to remaining balance for each commission
     const amounts: Record<string, number> = {}
     for (const c of group.commissions) {
@@ -348,16 +354,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       if (next.has(id)) {
         next.delete(id)
       } else {
-        // Check if adding this would mix currencies
+        // If selecting a different currency, clear previous selections
         const newCur = getCommCurrency(comm)
         const existingCur = getSelectedCurrency()
         if (existingCur && existingCur !== newCur) {
-          toast({
-            title: "Monedas diferentes",
-            description: "No se pueden pagar comisiones en USD y ARS juntas. Selecciona solo una moneda.",
-            variant: "destructive",
-          })
-          return prev
+          // Switch currency: deselect all previous, select only this one
+          next.clear()
+          setPayAccountId("") // Reset account since currency changed
         }
         next.add(id)
       }
@@ -919,9 +922,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               const sectionTotal = comms
                 .filter((c) => selectedCommissionIds.has(c.id))
                 .reduce((s, c) => s + (payAmounts[c.id] ?? getRemaining(c)), 0)
+              const isSectionActive = !selectedCurrency || selectedCurrency === cur
 
               return (
-                <div key={cur} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div key={cur} className={`rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4 transition-opacity ${!isSectionActive ? "opacity-40" : ""}`}>
                   <div className="flex items-center gap-2 mb-4">
                     <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
                       <Receipt className="h-3.5 w-3.5 text-primary" />
