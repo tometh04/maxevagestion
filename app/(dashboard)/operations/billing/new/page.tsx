@@ -738,11 +738,11 @@ export default function NewInvoicePage() {
                     <SelectContent>
                       <SelectItem value="6">Factura B</SelectItem>
                       <SelectItem value="1">Factura A</SelectItem>
-                      <SelectItem value="11">Factura C</SelectItem>
+                      <SelectItem value="19">Factura E (Exportación)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    B = CF/Exento · A = RI · C = Monotributista
+                    B = CF/Exento/Mono · A = RI · E = Exportación
                   </p>
                 </div>
                 <div>
