@@ -931,7 +931,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                     </h4>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-[35vh] overflow-y-auto pr-1">
                     {comms.map((c) => {
                       const remaining = getRemaining(c)
                       const hasPartial = (c.amount_paid || 0) > 0
