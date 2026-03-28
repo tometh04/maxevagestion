@@ -185,17 +185,32 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   const [companyName, setCompanyName] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load brand settings from localStorage
-    const logo = localStorage.getItem("brand_logo")
-    if (logo) setBrandLogo(logo)
+    // Load brand settings from localStorage first (instant, no flash)
+    const cachedLogo = localStorage.getItem("brand_logo")
+    if (cachedLogo) setBrandLogo(cachedLogo)
+    const cachedName = localStorage.getItem("company_name")
+    if (cachedName) setCompanyName(cachedName)
 
-    const name = localStorage.getItem("company_name")
-    if (name) setCompanyName(name)
-
-    const color = localStorage.getItem("brand_color")
-    if (color) {
-      document.documentElement.style.setProperty("--primary", color)
+    // Then fetch from API for shared org settings
+    async function loadOrgSettings() {
+      try {
+        const res = await fetch("/api/settings/organization")
+        if (res.ok) {
+          const data = await res.json()
+          if (data.brand_logo) {
+            setBrandLogo(data.brand_logo)
+            localStorage.setItem("brand_logo", data.brand_logo)
+          }
+          if (data.company_name) {
+            setCompanyName(data.company_name)
+            localStorage.setItem("company_name", data.company_name)
+          }
+        }
+      } catch {
+        // silent — use cached
+      }
     }
+    loadOrgSettings()
   }, [])
 
   // Filtrar navegación según permisos

@@ -26,11 +26,10 @@ export async function GET(request: Request) {
     // Determinar si puede ver todas las comisiones o solo las propias
     const canViewAll = user.role === 'ADMIN' || user.role === 'SUPER_ADMIN'
 
-    // Si viene sellerId, usar commission_records (sistema automático por operación)
-    if (sellerId) {
-      // Verificar permisos: solo puede ver sus propias comisiones a menos que sea admin
-      const targetSellerId = canViewAll ? (sellerId || user.id) : user.id
-      
+    // Usar commission_records si: viene sellerId, o viene status, o es admin/seller
+    const useCommissionRecords = sellerId || status || canViewAll || user.role === "SELLER"
+
+    if (useCommissionRecords) {
       let query = (supabase.from("commission_records") as any)
         .select(`
           *,
@@ -38,23 +37,37 @@ export async function GET(request: Request) {
             id,
             file_code,
             short_code,
-            file_code,
             destination,
             departure_date,
             sale_amount_total,
             operator_cost,
             sale_currency,
             margin_amount
+          ),
+          seller:seller_id(
+            id,
+            first_name,
+            last_name,
+            email
           )
         `)
-        .eq("seller_id", targetSellerId)
         .order("date_calculated", { ascending: false })
+
+      // Filtrar por seller: admin puede ver todos o filtrar, seller solo ve los suyos
+      if (!canViewAll) {
+        // Seller: solo sus comisiones
+        query = query.eq("seller_id", user.id)
+      } else if (sellerId && sellerId !== "ALL") {
+        // Admin filtrando por un seller específico
+        query = query.eq("seller_id", sellerId)
+      }
+      // Si es admin y no hay sellerId o sellerId=ALL, no filtra → trae todos
 
       // Filtros
       if (status && status !== "ALL") {
         query = query.eq("status", status.toUpperCase())
       }
-      
+
       // Filtro por mes (YYYY-MM)
       if (month) {
         const [year, monthNum] = month.split("-")
@@ -78,6 +91,10 @@ export async function GET(request: Request) {
         id: cr.id,
         operation_id: cr.operation_id,
         seller_id: cr.seller_id,
+        seller_name: cr.seller
+          ? `${cr.seller.first_name || ""} ${cr.seller.last_name || ""}`.trim()
+          : "Sin vendedor",
+        seller_email: cr.seller?.email || "",
         agency_id: cr.agency_id,
         amount: parseFloat(cr.amount || 0),
         percentage: cr.percentage ? parseFloat(cr.percentage) : null,
