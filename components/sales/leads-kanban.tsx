@@ -1,12 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { ExternalLink, DollarSign, UserPlus, Loader2 } from "lucide-react"
+import { ExternalLink, DollarSign, UserPlus, Loader2, MapPin, Phone, Instagram } from "lucide-react"
 import Link from "next/link"
 import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 import { toast } from "sonner"
@@ -19,13 +18,23 @@ const statusColumns = [
   { id: "LOST", label: "Perdido", color: "bg-destructive/10" },
 ]
 
-const regionColors: Record<string, string> = {
+const regionBorderColors: Record<string, string> = {
+  ARGENTINA: "border-l-info",
+  CARIBE: "border-l-cyan-500",
+  BRASIL: "border-l-success",
+  EUROPA: "border-l-purple-500",
+  EEUU: "border-l-destructive",
+  OTROS: "border-l-gray-400",
+  CRUCEROS: "border-l-primary",
+}
+
+const regionDotColors: Record<string, string> = {
   ARGENTINA: "bg-info",
   CARIBE: "bg-cyan-500",
   BRASIL: "bg-success",
   EUROPA: "bg-purple-500",
   EEUU: "bg-destructive",
-  OTROS: "bg-gray-500",
+  OTROS: "bg-gray-400",
   CRUCEROS: "bg-primary",
 }
 
@@ -202,119 +211,145 @@ export function LeadsKanban({ leads, agencies = [], sellers = [], operators = []
   return (
     <div
       ref={containerRef}
-      className="flex gap-4 overflow-x-auto pb-4"
+      className="flex gap-5 overflow-x-auto pb-4"
       onDragEnd={() => {
         isDraggingRef.current = false
         stopAutoScroll()
       }}
     >
       {statusColumns.map((column) => (
-        <div key={column.id} className="flex min-w-[280px] flex-col">
-          <div className={`rounded-t-lg p-3 ${column.color}`}>
-            <h3 className="font-semibold">{column.label}</h3>
-            <span className="text-sm text-muted-foreground">
-              {leadsByStatus[column.id]?.length || 0}
-            </span>
-          </div>
-          <ScrollArea className="h-[calc(100vh-250px)] rounded-b-lg border bg-muted/30">
-            <div
-              className="p-2"
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault()
-                handleDrop(column.id)
-              }}
-            >
-              {leadsByStatus[column.id]?.map((lead) => (
-                <Card
-                  key={lead.id}
-                  className="mb-2 cursor-move"
-                  draggable
-                  onDragStart={() => handleDragStart(lead.id)}
-                >
-                  <CardContent 
-                    className="p-4 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => {
-                      if (!draggedLead) {
-                        setSelectedLead(lead)
-                        setDialogOpen(true)
-                      }
-                    }}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between">
-                        <span className="font-medium hover:underline">
-                          {lead.contact_name}
-                        </span>
+        <div key={column.id} className="flex-shrink-0 w-80">
+          <div className="rounded-xl bg-white/55 dark:bg-gray-900/55 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
+            {/* Header */}
+            <div className="p-4 pb-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm">{column.label}</h3>
+                <span className="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded-full text-xs font-semibold bg-primary/10 text-primary">
+                  {leadsByStatus[column.id]?.length || 0}
+                </span>
+              </div>
+            </div>
+
+            {/* Cards */}
+            <ScrollArea className="h-[calc(100vh-300px)]">
+              <div
+                className="px-3 pb-3 space-y-2.5 min-h-[200px]"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  handleDrop(column.id)
+                }}
+              >
+                {(leadsByStatus[column.id]?.length || 0) === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-muted-foreground/50">
+                    <span className="text-xs">Sin leads</span>
+                  </div>
+                ) : (
+                  leadsByStatus[column.id]?.map((lead) => (
+                    <div
+                      key={lead.id}
+                      draggable
+                      onDragStart={() => handleDragStart(lead.id)}
+                      onClick={() => {
+                        if (!draggedLead) {
+                          setSelectedLead(lead)
+                          setDialogOpen(true)
+                        }
+                      }}
+                      className={`
+                        cursor-grab active:cursor-grabbing rounded-xl border-l-4
+                        ${regionBorderColors[lead.region] || "border-l-gray-300"}
+                        bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm
+                        shadow-sm hover:shadow-lg hover:-translate-y-0.5
+                        transition-all duration-200 p-3.5
+                        ${draggedLead === lead.id ? "opacity-40 scale-95 shadow-none" : ""}
+                      `}
+                    >
+                      {/* Name + Trello link */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm truncate">{lead.contact_name}</p>
+                          {lead.destination && (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <MapPin className="h-3 w-3 text-muted-foreground/60 flex-shrink-0" />
+                              <p className="text-xs text-muted-foreground truncate">{lead.destination}</p>
+                            </div>
+                          )}
+                        </div>
                         {lead.trello_url && (
                           <a
                             href={lead.trello_url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground flex-shrink-0"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-3.5 w-3.5" />
                           </a>
                         )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{lead.destination}</p>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge
-                          variant="outline"
-                          className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
-                        >
-                          {lead.region}
-                        </Badge>
-                        {lead.has_deposit && lead.deposit_amount && (
-                          <Badge variant="outline" className="bg-warning/20 text-warning border-warning/50">
-                            <DollarSign className="h-3 w-3 mr-1" />
-                            {lead.deposit_amount} {lead.deposit_currency || "ARS"}
-                          </Badge>
+                        {canClaimLeads && !lead.assigned_seller_id && (
+                          <Button
+                            size="sm" variant="ghost"
+                            onClick={(e) => handleClaimLead(lead.id, e)}
+                            disabled={claimingLeadId === lead.id}
+                            className="h-7 w-7 p-0 rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex-shrink-0"
+                          >
+                            {claimingLeadId === lead.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <UserPlus className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
                         )}
                       </div>
-                      {/* Mostrar vendedor asignado o botón para agarrar */}
-                      {lead.users ? (
+
+                      {/* Contact */}
+                      <div className="flex items-center gap-3 mt-2.5 text-muted-foreground">
+                        {lead.contact_phone && (
+                          <div className="flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            <span className="text-xs truncate max-w-[100px]">{lead.contact_phone}</span>
+                          </div>
+                        )}
+                        {lead.contact_instagram && (
+                          <div className="flex items-center gap-1">
+                            <Instagram className="h-3 w-3" />
+                            <span className="text-xs truncate max-w-[80px]">@{lead.contact_instagram}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Footer: region + seller + deposit */}
+                      <div className="flex items-center justify-between mt-2.5">
                         <div className="flex items-center gap-2">
-                          <Avatar className="h-6 w-6">
-                            <AvatarFallback className="text-xs">
-                              {(lead.users.name || "")
-                                .split(" ")
-                                .map((n) => n[0])
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2) || "?"}
+                          {lead.region && (
+                            <div className="flex items-center gap-1">
+                              <div className={`w-1.5 h-1.5 rounded-full ${regionDotColors[lead.region] || "bg-gray-400"}`} />
+                              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">{lead.region}</span>
+                            </div>
+                          )}
+                          {lead.has_deposit && lead.deposit_amount && (
+                            <span className="inline-flex items-center gap-1 bg-success/10 text-success rounded-full px-2 py-0.5 text-[10px] font-medium">
+                              <DollarSign className="h-2.5 w-2.5" />
+                              {lead.deposit_amount} {lead.deposit_currency || "ARS"}
+                            </span>
+                          )}
+                        </div>
+
+                        {lead.assigned_seller_id && lead.users && (
+                          <Avatar className="h-5 w-5 ring-2 ring-primary/20">
+                            <AvatarFallback className="text-[9px] font-medium bg-primary/10 text-primary">
+                              {(lead.users.name || "").split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                             </AvatarFallback>
                           </Avatar>
-                          <span className="text-xs text-muted-foreground">{lead.users.name || "Sin nombre"}</span>
-                        </div>
-                      ) : canClaimLeads ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
-                          onClick={(e) => handleClaimLead(lead.id, e)}
-                          disabled={claimingLeadId === lead.id}
-                        >
-                          {claimingLeadId === lead.id ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <>
-                              <UserPlus className="h-3 w-3 mr-1" />
-                              Agarrar
-                            </>
-                          )}
-                        </Button>
-                      ) : (
-                        <Badge variant="outline" className="text-xs text-muted-foreground">
-                          Sin asignar
-                        </Badge>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </ScrollArea>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       ))}
 
