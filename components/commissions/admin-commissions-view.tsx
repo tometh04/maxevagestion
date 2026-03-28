@@ -102,7 +102,7 @@ interface AdminCommissionsViewProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const fmtCurrency = (value: number, currency = "ARS") =>
+const fmtCurrency = (value: number, currency = "USD") =>
   new Intl.NumberFormat("es-AR", {
     style: "currency",
     currency,

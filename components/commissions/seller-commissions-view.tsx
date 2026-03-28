@@ -201,6 +201,14 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
       .reduce((s, c) => s + c.amount, 0)
   }, [commissions])
 
+  // Detect the dominant currency from commissions (most are in same currency)
+  const dominantCurrency = useMemo(() => {
+    for (const c of commissions) {
+      if (c.operation?.currency) return c.operation.currency
+    }
+    return "USD"
+  }, [commissions])
+
   // ---- derived data for Tab 2 (Historial de Pagos) ----
   const paidCommissions = useMemo(() => {
     let result = commissions.filter((c) => c.status === "PAID")
@@ -303,7 +311,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                 </p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight text-warning">
-                {fmtCurrency(pendingTotal)}
+                {fmtCurrency(pendingTotal, dominantCurrency)}
               </p>
             </div>
 
@@ -316,7 +324,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                 </p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight text-success">
-                {fmtCurrency(paidTotal)}
+                {fmtCurrency(paidTotal, dominantCurrency)}
               </p>
             </div>
 
@@ -329,7 +337,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                 </p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
-                {fmtCurrency(currentMonthTotal)}
+                {fmtCurrency(currentMonthTotal, dominantCurrency)}
               </p>
             </div>
           </div>
@@ -510,7 +518,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                 </p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight text-success">
-                {fmtCurrency(paidPeriodTotal)}
+                {fmtCurrency(paidPeriodTotal, dominantCurrency)}
               </p>
             </div>
 
@@ -555,7 +563,7 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
                         {monthLabel(key)}
                       </p>
                       <p className="text-sm font-semibold tabular-nums text-success">
-                        {fmtCurrency(subtotal)}
+                        {fmtCurrency(subtotal, dominantCurrency)}
                       </p>
                     </div>
 
