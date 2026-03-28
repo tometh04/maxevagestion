@@ -47,6 +47,7 @@ import {
   Settings2,
   Loader2,
   Receipt,
+  AlertTriangle,
 } from "lucide-react"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ interface Commission {
   seller_id: string
   agency_id: string | null
   amount: number
+  amount_paid?: number
   percentage: number | null
   status: "PENDING" | "PAID"
   date_calculated: string
@@ -84,6 +86,8 @@ interface SellerGroup {
   sellerName: string
   commissions: Commission[]
   totalPending: number
+  totalPendingUSD: number
+  totalPendingARS: number
   count: number
 }
 
@@ -92,6 +96,7 @@ interface FinancialAccount {
   name: string
   currency: string
   type: string
+  current_balance?: number
   agencies?: { id: string; name: string } | null
 }
 
@@ -109,6 +114,9 @@ const fmtCurrency = (value: number, currency = "USD") =>
     minimumFractionDigits: 2,
   }).format(value)
 
+const getCommCurrency = (c: Commission): string =>
+  c.operation?.currency || c.operation?.sale_currency || "USD"
+
 function generateMonthOptions() {
   const options: { value: string; label: string }[] = []
   const today = new Date()
@@ -119,6 +127,23 @@ function generateMonthOptions() {
     options.push({ value, label })
   }
   return options
+}
+
+/** Calcula totales separados por moneda */
+function calcTotalsByCurrency(commissions: Commission[]): { usd: number; ars: number } {
+  let usd = 0
+  let ars = 0
+  for (const c of commissions) {
+    const cur = getCommCurrency(c)
+    if (cur === "ARS") ars += c.amount
+    else usd += c.amount
+  }
+  return { usd, ars }
+}
+
+/** Calcula remaining por comisión */
+function getRemaining(c: Commission): number {
+  return c.amount - (c.amount_paid || 0)
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -137,7 +162,8 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const [pendingDateFrom, setPendingDateFrom] = useState("")
   const [pendingDateTo, setPendingDateTo] = useState("")
   const [expandedSellers, setExpandedSellers] = useState<Set<string>>(new Set())
-  const [paidThisMonth, setPaidThisMonth] = useState(0)
+  const [paidThisMonthUSD, setPaidThisMonthUSD] = useState(0)
+  const [paidThisMonthARS, setPaidThisMonthARS] = useState(0)
 
   // ── Historial state ──
   const [paidCommissions, setPaidCommissions] = useState<Commission[]>([])
@@ -151,6 +177,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [payingSeller, setPayingSeller] = useState<SellerGroup | null>(null)
   const [selectedCommissionIds, setSelectedCommissionIds] = useState<Set<string>>(new Set())
+  const [payAmounts, setPayAmounts] = useState<Record<string, number>>({})
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [payAccountId, setPayAccountId] = useState("")
   const [payDate, setPayDate] = useState(() => new Date().toISOString().split("T")[0])
@@ -196,7 +223,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     }
   }, [paidMonth, paidDateFrom, paidDateTo, paidSellerFilter])
 
-  // ── Fetch paid-this-month total ──
+  // ── Fetch paid-this-month total (separated by currency) ──
   const fetchPaidThisMonth = useCallback(async () => {
     try {
       const now = new Date()
@@ -204,11 +231,9 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       const params = new URLSearchParams({ status: "PAID", month: currentMonth })
       const res = await fetch(`/api/commissions?${params.toString()}`)
       const data = await res.json()
-      const total = (data.commissions || []).reduce(
-        (sum: number, c: Commission) => sum + c.amount,
-        0
-      )
-      setPaidThisMonth(total)
+      const totals = calcTotalsByCurrency(data.commissions || [])
+      setPaidThisMonthUSD(totals.usd)
+      setPaidThisMonthARS(totals.ars)
     } catch {
       // silent
     }
@@ -237,33 +262,44 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     }
   }, [activeTab, fetchPaidCommissions])
 
-  // ── Group pending by seller ──
+  // ── Group pending by seller (with per-currency totals) ──
   const sellerGroups = useMemo((): SellerGroup[] => {
     const map = new Map<string, SellerGroup>()
     for (const c of pendingCommissions) {
       const sid = c.seller_id
       const sname = c.sellers?.name || "Vendedor desconocido"
       if (!map.has(sid)) {
-        map.set(sid, { sellerId: sid, sellerName: sname, commissions: [], totalPending: 0, count: 0 })
+        map.set(sid, {
+          sellerId: sid,
+          sellerName: sname,
+          commissions: [],
+          totalPending: 0,
+          totalPendingUSD: 0,
+          totalPendingARS: 0,
+          count: 0,
+        })
       }
       const group = map.get(sid)!
       group.commissions.push(c)
       group.totalPending += c.amount
+      const cur = getCommCurrency(c)
+      if (cur === "ARS") group.totalPendingARS += c.amount
+      else group.totalPendingUSD += c.amount
       group.count += 1
     }
     return Array.from(map.values()).sort((a, b) => b.totalPending - a.totalPending)
   }, [pendingCommissions])
 
-  // ── KPI for pending tab ──
-  const totalPending = useMemo(
-    () => pendingCommissions.reduce((s, c) => s + c.amount, 0),
+  // ── KPI for pending tab (separated by currency) ──
+  const pendingTotals = useMemo(
+    () => calcTotalsByCurrency(pendingCommissions),
     [pendingCommissions]
   )
   const sellersWithPending = sellerGroups.length
 
-  // ── KPI for paid tab ──
-  const totalPaidPeriod = useMemo(
-    () => paidCommissions.reduce((s, c) => s + c.amount, 0),
+  // ── KPI for paid tab (separated by currency) ──
+  const paidTotals = useMemo(
+    () => calcTotalsByCurrency(paidCommissions),
     [paidCommissions]
   )
   const paidCount = paidCommissions.length
@@ -293,6 +329,12 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
   const openPayDialog = (group: SellerGroup) => {
     setPayingSeller(group)
     setSelectedCommissionIds(new Set(group.commissions.map((c) => c.id)))
+    // Initialize pay amounts to remaining balance for each commission
+    const amounts: Record<string, number> = {}
+    for (const c of group.commissions) {
+      amounts[c.id] = getRemaining(c)
+    }
+    setPayAmounts(amounts)
     setPayAccountId("")
     setPayDate(new Date().toISOString().split("T")[0])
     setPayNotes("")
@@ -300,21 +342,62 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     fetchFinancialAccounts()
   }
 
-  const toggleCommissionSelection = (id: string) => {
+  const toggleCommissionSelection = (id: string, comm: Commission) => {
     setSelectedCommissionIds((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        // Check if adding this would mix currencies
+        const newCur = getCommCurrency(comm)
+        const existingCur = getSelectedCurrency()
+        if (existingCur && existingCur !== newCur) {
+          toast({
+            title: "Monedas diferentes",
+            description: "No se pueden pagar comisiones en USD y ARS juntas. Selecciona solo una moneda.",
+            variant: "destructive",
+          })
+          return prev
+        }
+        next.add(id)
+      }
       return next
     })
   }
+
+  // Get the currency of currently selected commissions
+  const getSelectedCurrency = useCallback((): string | null => {
+    if (!payingSeller || selectedCommissionIds.size === 0) return null
+    const firstSelected = payingSeller.commissions.find((c) => selectedCommissionIds.has(c.id))
+    return firstSelected ? getCommCurrency(firstSelected) : null
+  }, [payingSeller, selectedCommissionIds])
+
+  const selectedCurrency = useMemo(() => getSelectedCurrency(), [getSelectedCurrency])
+
+  // Filter accounts by selected currency
+  const filteredAccounts = useMemo(() => {
+    if (!selectedCurrency) return financialAccounts
+    return financialAccounts.filter((acc) => acc.currency === selectedCurrency)
+  }, [financialAccounts, selectedCurrency])
+
+  // Group dialog commissions by currency
+  const dialogCommissionsByCurrency = useMemo(() => {
+    if (!payingSeller) return { USD: [], ARS: [] }
+    const grouped: Record<string, Commission[]> = { USD: [], ARS: [] }
+    for (const c of payingSeller.commissions) {
+      const cur = getCommCurrency(c)
+      if (cur === "ARS") grouped.ARS.push(c)
+      else grouped.USD.push(c)
+    }
+    return grouped
+  }, [payingSeller])
 
   const selectedTotal = useMemo(() => {
     if (!payingSeller) return 0
     return payingSeller.commissions
       .filter((c) => selectedCommissionIds.has(c.id))
-      .reduce((s, c) => s + c.amount, 0)
-  }, [payingSeller, selectedCommissionIds])
+      .reduce((s, c) => s + (payAmounts[c.id] ?? getRemaining(c)), 0)
+  }, [payingSeller, selectedCommissionIds, payAmounts])
 
   const handleConfirmPay = async () => {
     if (!payingSeller || selectedCommissionIds.size === 0 || !payAccountId) {
@@ -330,14 +413,17 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       const comm = payingSeller.commissions.find((c) => c.id === commId)
       if (!comm) continue
 
+      const payAmount = payAmounts[commId] ?? getRemaining(comm)
+      if (payAmount <= 0) continue
+
       try {
         const res = await fetch("/api/commissions/pay", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             commissionId: comm.id,
-            amount: comm.amount,
-            currency: comm.operation?.currency || comm.operation?.sale_currency || "USD",
+            amount: payAmount,
+            currency: getCommCurrency(comm),
             datePaid: payDate,
             method: "BANK",
             notes: payNotes || null,
@@ -379,6 +465,21 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
     if (activeTab === "historial") fetchPaidCommissions()
   }
 
+  // ─── Render helpers ──────────────────────────────────────────────────────────
+
+  /** Renders currency totals inline, e.g. "US$ 500.00 | $ 15,000.00" */
+  const renderCurrencyTotals = (usd: number, ars: number, className = "") => {
+    const parts: React.ReactNode[] = []
+    if (usd > 0) parts.push(<span key="usd">{fmtCurrency(usd, "USD")}</span>)
+    if (ars > 0) parts.push(<span key="ars">{fmtCurrency(ars, "ARS")}</span>)
+    if (parts.length === 0) parts.push(<span key="zero">{fmtCurrency(0, "USD")}</span>)
+    return (
+      <div className={`flex flex-col gap-0.5 ${className}`}>
+        {parts}
+      </div>
+    )
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -404,19 +505,34 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
         {/* ─── TAB: Por Pagar ─── */}
         <TabsContent value="por-pagar" className="space-y-6 mt-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
+            {/* Total Pendiente USD */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
                   <DollarSign className="h-3.5 w-3.5 text-warning" />
                 </div>
-                <p className="text-xs font-medium text-muted-foreground">Total Pendiente</p>
+                <p className="text-xs font-medium text-muted-foreground">Pendiente USD</p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
-                {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(totalPending)}
+                {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(pendingTotals.usd, "USD")}
               </p>
             </div>
 
+            {/* Total Pendiente ARS */}
+            <div className="rounded-xl border border-border/40 p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-warning/10">
+                  <DollarSign className="h-3.5 w-3.5 text-warning" />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">Pendiente ARS</p>
+              </div>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight">
+                {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(pendingTotals.ars, "ARS")}
+              </p>
+            </div>
+
+            {/* Vendedores */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
@@ -429,6 +545,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               </p>
             </div>
 
+            {/* Pagado este mes */}
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
@@ -436,9 +553,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                 </div>
                 <p className="text-xs font-medium text-muted-foreground">Pagado este mes</p>
               </div>
-              <p className="text-2xl font-semibold tabular-nums tracking-tight">
-                {pendingLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(paidThisMonth)}
-              </p>
+              <div className="text-2xl font-semibold tabular-nums tracking-tight">
+                {pendingLoading ? (
+                  <Skeleton className="h-8 w-32" />
+                ) : (
+                  renderCurrencyTotals(paidThisMonthUSD, paidThisMonthARS)
+                )}
+              </div>
             </div>
           </div>
 
@@ -479,7 +600,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
             </Button>
           </div>
 
-          {/* Grouped Table */}
+          {/* Grouped Table with scroll + sticky footer */}
           <div className="rounded-xl border border-border/40">
             <div className="max-h-[60vh] overflow-y-auto">
               <Table>
@@ -531,7 +652,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right font-semibold tabular-nums">
-                              {fmtCurrency(group.totalPending)}
+                              {renderCurrencyTotals(group.totalPendingUSD, group.totalPendingARS, "items-end")}
                             </TableCell>
                             <TableCell className="text-right">
                               <Button
@@ -547,27 +668,42 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                             </TableCell>
                           </TableRow>
                           {isExpanded &&
-                            group.commissions.map((c) => (
-                              <TableRow key={c.id} className="bg-muted/10">
-                                <TableCell />
-                                <TableCell className="text-sm text-muted-foreground pl-10">
-                                  {c.operation?.file_code || c.operation_id.slice(0, 8)}
-                                  {" - "}
-                                  {c.operation?.destination || "Sin destino"}
-                                </TableCell>
-                                <TableCell className="text-center text-sm text-muted-foreground">
-                                  {c.operation?.departure_date
-                                    ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
-                                    : "-"}
-                                </TableCell>
-                                <TableCell className="text-right text-sm tabular-nums">
-                                  {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
-                                </TableCell>
-                                <TableCell className="text-right text-sm text-muted-foreground">
-                                  {c.percentage !== null && c.percentage !== undefined ? `${c.percentage.toFixed(2)}%` : "-"}
-                                </TableCell>
-                              </TableRow>
-                            ))}
+                            group.commissions.map((c) => {
+                              const hasPartial = (c.amount_paid || 0) > 0 && (c.amount_paid || 0) < c.amount
+                              return (
+                                <TableRow key={c.id} className="bg-muted/10">
+                                  <TableCell />
+                                  <TableCell className="text-sm text-muted-foreground pl-10">
+                                    {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                    {" - "}
+                                    {c.operation?.destination || "Sin destino"}
+                                    {hasPartial && (
+                                      <Badge className="ml-2 bg-blue-500/10 text-blue-500 border-0 text-[10px]">
+                                        Pago parcial
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-center text-sm text-muted-foreground">
+                                    {c.operation?.departure_date
+                                      ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
+                                      : "-"}
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm tabular-nums">
+                                    <div>
+                                      {fmtCurrency(c.amount, getCommCurrency(c))}
+                                      {hasPartial && (
+                                        <p className="text-[10px] text-muted-foreground">
+                                          Pagado: {fmtCurrency(c.amount_paid || 0, getCommCurrency(c))} | Rest: {fmtCurrency(getRemaining(c), getCommCurrency(c))}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm text-muted-foreground">
+                                    {c.percentage !== null && c.percentage !== undefined ? `${c.percentage.toFixed(2)}%` : "-"}
+                                  </TableCell>
+                                </TableRow>
+                              )
+                            })}
                         </>
                       )
                     })
@@ -575,22 +711,48 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                 </TableBody>
               </Table>
             </div>
+            {/* Subtotal footer outside scroll */}
+            {!pendingLoading && sellerGroups.length > 0 && (
+              <div className="border-t border-border/40 px-4 py-3 bg-muted/30 flex items-center justify-between">
+                <p className="text-sm font-medium text-muted-foreground">Total Pendiente</p>
+                <div className="flex items-center gap-4">
+                  {pendingTotals.usd > 0 && (
+                    <p className="text-sm font-semibold tabular-nums">{fmtCurrency(pendingTotals.usd, "USD")}</p>
+                  )}
+                  {pendingTotals.ars > 0 && (
+                    <p className="text-sm font-semibold tabular-nums">{fmtCurrency(pendingTotals.ars, "ARS")}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
         {/* ─── TAB: Historial de Pagos ─── */}
         <TabsContent value="historial" className="space-y-6 mt-6">
           {/* KPI Cards */}
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="rounded-xl border border-border/40 p-5">
               <div className="flex items-center gap-2 mb-2">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
                   <DollarSign className="h-3.5 w-3.5 text-success" />
                 </div>
-                <p className="text-xs font-medium text-muted-foreground">Total Pagado (periodo)</p>
+                <p className="text-xs font-medium text-muted-foreground">Total Pagado USD</p>
               </div>
               <p className="text-2xl font-semibold tabular-nums tracking-tight">
-                {paidLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(totalPaidPeriod)}
+                {paidLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(paidTotals.usd, "USD")}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-border/40 p-5">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-success/10">
+                  <DollarSign className="h-3.5 w-3.5 text-success" />
+                </div>
+                <p className="text-xs font-medium text-muted-foreground">Total Pagado ARS</p>
+              </div>
+              <p className="text-2xl font-semibold tabular-nums tracking-tight">
+                {paidLoading ? <Skeleton className="h-8 w-32" /> : fmtCurrency(paidTotals.ars, "ARS")}
               </p>
             </div>
 
@@ -705,7 +867,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           {c.operation?.destination || "Sin destino"}
                         </TableCell>
                         <TableCell className="text-right text-sm font-semibold tabular-nums">
-                          {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
+                          {fmtCurrency(c.amount, getCommCurrency(c))}
                         </TableCell>
                         <TableCell>
                           <Badge className="bg-success/10 text-success border-0">Pagado</Badge>
@@ -716,6 +878,20 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                 </TableBody>
               </Table>
             </div>
+            {/* Subtotal footer */}
+            {!paidLoading && paidCommissions.length > 0 && (
+              <div className="border-t border-border/40 px-4 py-3 bg-muted/30 flex items-center justify-between">
+                <p className="text-sm font-medium text-muted-foreground">Total Pagado</p>
+                <div className="flex items-center gap-4">
+                  {paidTotals.usd > 0 && (
+                    <p className="text-sm font-semibold tabular-nums">{fmtCurrency(paidTotals.usd, "USD")}</p>
+                  )}
+                  {paidTotals.ars > 0 && (
+                    <p className="text-sm font-semibold tabular-nums">{fmtCurrency(paidTotals.ars, "ARS")}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </TabsContent>
 
@@ -736,53 +912,111 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
           </DialogHeader>
 
           <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
-            {/* Commissions list */}
-            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
-                  <Receipt className="h-3.5 w-3.5 text-primary" />
-                </div>
-                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
-                  Comisiones Pendientes
-                </h4>
-              </div>
+            {/* Commissions list grouped by currency */}
+            {(["USD", "ARS"] as const).map((cur) => {
+              const comms = dialogCommissionsByCurrency[cur]
+              if (!comms || comms.length === 0) return null
+              const sectionTotal = comms
+                .filter((c) => selectedCommissionIds.has(c.id))
+                .reduce((s, c) => s + (payAmounts[c.id] ?? getRemaining(c)), 0)
 
-              <div className="space-y-2">
-                {payingSeller?.commissions.map((c) => (
-                  <label
-                    key={c.id}
-                    className="flex items-center gap-3 p-3 rounded-lg border border-border/40 hover:bg-muted/30 cursor-pointer transition-colors"
-                  >
-                    <Checkbox
-                      checked={selectedCommissionIds.has(c.id)}
-                      onCheckedChange={() => toggleCommissionSelection(c.id)}
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {c.operation?.file_code || c.operation_id.slice(0, 8)}
-                        {" - "}
-                        {c.operation?.destination || "Sin destino"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {c.operation?.departure_date
-                          ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
-                          : "Sin fecha"}
-                      </p>
+              return (
+                <div key={cur} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                      <Receipt className="h-3.5 w-3.5 text-primary" />
                     </div>
-                    <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
-                      {fmtCurrency(c.amount, c.operation?.currency || "ARS")}
-                    </p>
-                  </label>
-                ))}
-              </div>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+                      Comisiones en {cur}
+                    </h4>
+                  </div>
 
-              <div className="flex items-center justify-between pt-3 border-t border-border/40">
-                <p className="text-sm font-medium">Total seleccionado</p>
-                <p className="text-lg font-semibold tabular-nums tracking-tight">
-                  {fmtCurrency(selectedTotal)}
+                  <div className="space-y-2">
+                    {comms.map((c) => {
+                      const remaining = getRemaining(c)
+                      const hasPartial = (c.amount_paid || 0) > 0
+                      const isSelected = selectedCommissionIds.has(c.id)
+                      return (
+                        <div
+                          key={c.id}
+                          className="flex items-center gap-3 p-3 rounded-lg border border-border/40 hover:bg-muted/30 transition-colors"
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => toggleCommissionSelection(c.id, c)}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                              {" - "}
+                              {c.operation?.destination || "Sin destino"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {c.operation?.departure_date
+                                ? format(new Date(c.operation.departure_date), "dd/MM/yyyy", { locale: es })
+                                : "Sin fecha"}
+                              {hasPartial && (
+                                <span className="ml-2 text-blue-500">
+                                  (Pagado: {fmtCurrency(c.amount_paid || 0, cur)} | Restante: {fmtCurrency(remaining, cur)})
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isSelected ? (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0.01"
+                                max={remaining}
+                                value={payAmounts[c.id] ?? remaining}
+                                onChange={(e) => {
+                                  const val = parseFloat(e.target.value) || 0
+                                  setPayAmounts((prev) => ({ ...prev, [c.id]: Math.min(val, remaining) }))
+                                }}
+                                className="h-8 w-28 text-sm text-right tabular-nums"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            ) : (
+                              <p className="text-sm font-semibold tabular-nums whitespace-nowrap">
+                                {fmtCurrency(remaining, cur)}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-3 border-t border-border/40">
+                    <p className="text-sm font-medium">Subtotal {cur}</p>
+                    <p className="text-lg font-semibold tabular-nums tracking-tight">
+                      {fmtCurrency(sectionTotal, cur)}
+                    </p>
+                  </div>
+                </div>
+              )
+            })}
+
+            {/* Mixed currency warning */}
+            {selectedCurrency === null && selectedCommissionIds.size === 0 && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  Selecciona comisiones de una sola moneda para realizar el pago.
                 </p>
               </div>
-            </div>
+            )}
+
+            {/* Total selected */}
+            {selectedCommissionIds.size > 0 && (
+              <div className="flex items-center justify-between px-1">
+                <p className="text-sm font-semibold">Total a pagar</p>
+                <p className="text-xl font-bold tabular-nums tracking-tight">
+                  {fmtCurrency(selectedTotal, selectedCurrency || "USD")}
+                </p>
+              </div>
+            )}
 
             {/* Payment details */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
@@ -797,15 +1031,20 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label className="text-xs">Cuenta Financiera</Label>
+                  <Label className="text-xs">Cuenta Financiera {selectedCurrency ? `(${selectedCurrency})` : ""}</Label>
                   <Select value={payAccountId} onValueChange={setPayAccountId}>
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Seleccionar cuenta..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {financialAccounts.map((acc) => (
+                      {filteredAccounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           {acc.name} ({acc.currency})
+                          {acc.current_balance !== undefined && (
+                            <span className="text-xs text-muted-foreground ml-2">
+                              - Balance: {fmtCurrency(acc.current_balance, acc.currency)}
+                            </span>
+                          )}
                           {acc.agencies?.name ? ` - ${acc.agencies.name}` : ""}
                         </SelectItem>
                       ))}

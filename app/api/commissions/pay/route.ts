@@ -53,10 +53,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // Verificar que la comisión esté en estado PENDING
-    if (commission.status !== "PENDING") {
+    // Verificar que la comisión no esté completamente pagada
+    if (commission.status === "PAID") {
       return NextResponse.json(
-        { error: "La comisión ya está pagada" },
+        { error: "La comisión ya está completamente pagada" },
         { status: 400 }
       )
     }
@@ -132,16 +132,31 @@ export async function POST(request: Request) {
       )
     }
 
+    // Calcular amount_paid acumulado
+    const payAmount = parseFloat(amount)
+    const previouslyPaid = parseFloat(commission.amount_paid || "0")
+    const totalPaid = previouslyPaid + payAmount
+    const commissionTotal = parseFloat(commission.amount)
+    const isFullyPaid = totalPaid >= commissionTotal
+
+    // Validar que no se pague más de lo que se debe
+    const remaining = commissionTotal - previouslyPaid
+    if (payAmount > remaining + 0.01) { // 0.01 tolerance for rounding
+      return NextResponse.json(
+        { error: `El monto a pagar (${payAmount}) excede el restante (${remaining.toFixed(2)})` },
+        { status: 400 }
+      )
+    }
+
     // Crear ledger_movement COMMISSION
-    // Esto automáticamente marcará la comisión como PAID (ver lib/accounting/ledger.ts)
     const { id: ledgerMovementId } = await createLedgerMovement(
       {
         operation_id: operation?.id || null,
         lead_id: null,
         type: "COMMISSION",
-        concept: `Pago de comisión - ${commission.operations?.id ? `Operación ${commission.operations.id.slice(0, 8)}` : "Comisión"}`,
+        concept: `Pago de comisión${isFullyPaid ? "" : " (parcial)"} - ${commission.operations?.id ? `Operación ${commission.operations.id.slice(0, 8)}` : "Comisión"}`,
         currency: currency as "ARS" | "USD",
-        amount_original: parseFloat(amount),
+        amount_original: payAmount,
         exchange_rate: exchangeRate,
         amount_ars_equivalent: amountARS,
         method: (method || "CASH") as "CASH" | "BANK" | "MP" | "USD" | "OTHER",
@@ -155,10 +170,27 @@ export async function POST(request: Request) {
       supabase
     )
 
+    // Actualizar commission_record con amount_paid y status
+    const updateData: Record<string, any> = {
+      amount_paid: totalPaid,
+      updated_at: new Date().toISOString(),
+    }
+    if (isFullyPaid) {
+      updateData.status = "PAID"
+      updateData.date_paid = datePaid
+    }
+
+    await (supabase.from("commission_records") as any)
+      .update(updateData)
+      .eq("id", commissionId)
+
     return NextResponse.json({
       success: true,
       ledgerMovementId,
-      message: "Comisión pagada exitosamente",
+      isFullyPaid,
+      amountPaid: totalPaid,
+      remaining: Math.max(0, commissionTotal - totalPaid),
+      message: isFullyPaid ? "Comisión pagada completamente" : `Pago parcial registrado. Restante: ${(commissionTotal - totalPaid).toFixed(2)}`,
     })
   } catch (error: any) {
     console.error("Error in POST /api/commissions/pay:", error)

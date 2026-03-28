@@ -69,6 +69,14 @@ export async function GET(request: Request) {
         query = query.gte("date_calculated", startDate).lte("date_calculated", endDate)
       }
 
+      // Filtro por rango de fechas
+      if (periodStart) {
+        query = query.gte("date_calculated", periodStart)
+      }
+      if (periodEnd) {
+        query = query.lte("date_calculated", periodEnd)
+      }
+
       const { data: commissionRecords, error } = await query
 
       if (error) {
