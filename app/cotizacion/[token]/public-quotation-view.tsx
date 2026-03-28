@@ -116,6 +116,7 @@ export function PublicQuotationView() {
 
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<QuotationData | null>(null)
+  const [branding, setBranding] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
   const [accepted, setAccepted] = useState(false)
@@ -123,15 +124,25 @@ export function PublicQuotationView() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/public/quotations/${token}`)
-        if (!res.ok) {
+        // Cargar cotización y branding en paralelo
+        const [quotRes, brandRes] = await Promise.all([
+          fetch(`/api/public/quotations/${token}`),
+          fetch("/api/public/branding"),
+        ])
+
+        if (!quotRes.ok) {
           setError("Cotizacion no encontrada")
           return
         }
-        const json = await res.json()
+        const json = await quotRes.json()
         setData(json.data)
         if (json.data.status === "APPROVED" || json.data.status === "CONVERTED") {
           setAccepted(true)
+        }
+
+        if (brandRes.ok) {
+          const brandJson = await brandRes.json()
+          setBranding(brandJson.data || {})
         }
       } catch {
         setError("Error al cargar la cotizacion")
@@ -196,15 +207,37 @@ export function PublicQuotationView() {
   const canAccept = ["SENT", "PENDING_APPROVAL"].includes(data.status) && !remaining.expired
   const totalPassengers = data.adults + data.children + data.infants
 
+  const brandColor = branding.brand_color || "#f97316" // orange default
+  const companyName = branding.company_name || data.agency_name
+  const logoUrl = branding.brand_logo || null
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      {/* Header */}
-      <div className="bg-white border-b">
-        <div className="max-w-3xl mx-auto px-4 py-6">
+      {/* Header con branding */}
+      <div className="bg-white border-b" style={{ borderBottomColor: brandColor }}>
+        <div className="max-w-3xl mx-auto px-4 py-5">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-muted-foreground">{data.agency_name}</p>
-              <h1 className="text-xl font-semibold mt-1">Cotizacion {data.quotation_number}</h1>
+            <div className="flex items-center gap-3">
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt={companyName}
+                  className="h-10 w-auto object-contain"
+                />
+              ) : (
+                <div
+                  className="h-10 w-10 rounded-lg flex items-center justify-center text-white font-bold text-lg"
+                  style={{ backgroundColor: brandColor }}
+                >
+                  {companyName.charAt(0)}
+                </div>
+              )}
+              <div>
+                <h2 className="font-semibold text-sm" style={{ color: brandColor }}>{companyName}</h2>
+                <p className="text-xs text-muted-foreground">
+                  Cotizacion {data.quotation_number}
+                </p>
+              </div>
             </div>
             <Badge className={statusConfig.color}>
               <StatusIcon className="h-3.5 w-3.5 mr-1" />
@@ -212,6 +245,8 @@ export function PublicQuotationView() {
             </Badge>
           </div>
         </div>
+        {/* Color accent bar */}
+        <div className="h-1" style={{ backgroundColor: brandColor }} />
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
@@ -303,12 +338,12 @@ export function PublicQuotationView() {
 
                     return (
                       <div key={idx} className="flex gap-3 py-2">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center">
-                          <ItemIcon className="h-4 w-4 text-orange-600" />
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: `${brandColor}15` }}>
+                          <ItemIcon className="h-4 w-4" style={{ color: brandColor }} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-orange-600 uppercase">{typeConfig.label}</span>
+                            <span className="text-xs font-medium uppercase" style={{ color: brandColor }}>{typeConfig.label}</span>
                             {item.provider && <span className="text-xs text-muted-foreground">· {item.provider}</span>}
                           </div>
                           <p className="text-sm font-medium mt-0.5">{item.description}</p>
@@ -345,7 +380,8 @@ export function PublicQuotationView() {
                     <>
                       <Separator />
                       <Button
-                        className="w-full bg-green-600 hover:bg-green-700"
+                        className="w-full text-white"
+                        style={{ backgroundColor: brandColor }}
                         size="lg"
                         onClick={() => handleAccept(option.id)}
                         disabled={accepting}
@@ -389,13 +425,36 @@ export function PublicQuotationView() {
           </Card>
         )}
 
-        {/* Footer */}
-        <div className="text-center text-xs text-muted-foreground py-4 space-y-1">
-          <p>Cotizacion generada el {formatDate(data.created_at.split("T")[0])}</p>
-          <p>Asesor: {data.seller_name} · {data.agency_name}</p>
-          {data.terms_and_conditions && (
-            <p className="mt-2 max-w-md mx-auto">{data.terms_and_conditions}</p>
-          )}
+        {/* Footer con branding */}
+        <div className="border-t mt-8 pt-6 pb-8">
+          <div className="flex flex-col items-center gap-3">
+            {logoUrl && (
+              <img src={logoUrl} alt={companyName} className="h-8 w-auto opacity-60" />
+            )}
+            <div className="text-center text-xs text-muted-foreground space-y-1">
+              <p className="font-medium">{companyName}</p>
+              {branding.company_address && <p>{branding.company_address}</p>}
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                {branding.company_phone && <span>{branding.company_phone}</span>}
+                {branding.company_email && <span>{branding.company_email}</span>}
+                {branding.company_instagram && (
+                  <a
+                    href={`https://instagram.com/${branding.company_instagram.replace("@", "")}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    {branding.company_instagram.startsWith("@") ? branding.company_instagram : `@${branding.company_instagram}`}
+                  </a>
+                )}
+              </div>
+              <p className="pt-2">Asesor: {data.seller_name}</p>
+              <p>Cotizacion generada el {formatDate(data.created_at.split("T")[0])}</p>
+              {data.terms_and_conditions && (
+                <p className="mt-3 max-w-md mx-auto text-[10px] leading-relaxed">{data.terms_and_conditions}</p>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
