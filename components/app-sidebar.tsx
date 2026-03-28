@@ -12,7 +12,6 @@ import {
   GalleryVerticalEnd,
   Bot,
   BookOpen,
-  Wallet,
   TrendingUp,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
@@ -138,16 +137,10 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/finances/settings" },
     ],
   },
-  // Mi Balance / Comisiones - Visible para vendedores (sin módulo restrictivo)
+  // Comisiones - Visible para vendedores, ADMIN y SUPER_ADMIN
   {
-    title: "Mi Balance",
-    url: "/my/balance",
-    icon: Wallet,
-    collapsible: false,
-  },
-  {
-    title: "Mis Comisiones",
-    url: "/my/commissions",
+    title: "Comisiones",
+    url: "/commissions",
     icon: TrendingUp,
     collapsible: false,
   },
@@ -262,8 +255,8 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
     })
     .filter((item): item is NavItem => {
       if (!item) return false
-      // "Mi Balance" y "Mis Comisiones" visibles para vendedores, ADMIN y SUPER_ADMIN
-      if (item.url === "/my/balance" || item.url === "/my/commissions") {
+      // "Comisiones" visible para vendedores, ADMIN y SUPER_ADMIN
+      if (item.url === "/commissions") {
         return userRole === "SELLER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN"
       }
       return true
