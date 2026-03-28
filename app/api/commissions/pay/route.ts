@@ -15,6 +15,21 @@ import {
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
 
+async function fetchBcraRate(): Promise<number | null> {
+  try {
+    const res = await fetch('https://dolarapi.com/v1/dolares/oficial', {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    const rate = data.venta || data.compra
+    return rate && rate > 1 ? Number(rate) : null
+  } catch {
+    return null
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -99,9 +114,14 @@ export async function POST(request: Request) {
         }
         
         if (!exchangeRate) {
-          // Fallback: usar tipo de cambio por defecto si no hay ninguno cargado en el sistema
+          // Fallback: obtener tipo de cambio oficial del BCRA
+          exchangeRate = await fetchBcraRate()
+        }
+
+        if (!exchangeRate) {
+          // Último fallback si BCRA API tampoco responde
           exchangeRate = 1450
-          console.warn("[Commissions Pay] No exchange rate found in DB, using fallback: 1450")
+          console.warn("[Commissions Pay] No exchange rate found (DB + BCRA), using fallback: 1450")
         }
       }
     } else if (currency === "ARS" && exchange_rate) {

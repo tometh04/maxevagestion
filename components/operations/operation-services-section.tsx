@@ -41,7 +41,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon } from "lucide-react"
+import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
@@ -237,6 +237,7 @@ export function OperationServicesSection({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyServiceForm())
   const [formError, setFormError] = useState<string | null>(null)
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
 
   // ── Estado pagos de servicios ─────────────────────────────────────────────
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
@@ -341,12 +342,45 @@ export function OperationServicesSection({
 
   const openDialog = () => {
     setForm(emptyServiceForm())
+    setEditingServiceId(null)
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  const openEditDialog = (s: OperationService) => {
+    setForm({
+      service_type: s.service_type,
+      operator_id: s.operator_id || "",
+      sale_amount: String(s.sale_amount),
+      sale_currency: s.sale_currency,
+      cost_amount: String(s.cost_amount),
+      cost_currency: s.cost_currency,
+      description: s.description || "",
+      hotel_name: (s as any).hotel_name || "",
+      hotel_stars: (s as any).hotel_stars ? String((s as any).hotel_stars) : "",
+      hotel_address: (s as any).hotel_address || "",
+      hotel_phone: (s as any).hotel_phone || "",
+      room_type: (s as any).room_type || "",
+      meal_plan: (s as any).meal_plan || "",
+      checkin_date: (s as any).checkin_date || "",
+      checkout_date: (s as any).checkout_date || "",
+      nights: (s as any).nights ? String((s as any).nights) : "",
+      rooms: (s as any).rooms ? String((s as any).rooms) : "1",
+      airline: (s as any).airline || "",
+      flight_route: (s as any).flight_route || "",
+      flight_date: (s as any).flight_date || "",
+      flight_return_date: (s as any).flight_return_date || "",
+      flight_stops: (s as any).flight_stops != null ? String((s as any).flight_stops) : "0",
+      flight_class: (s as any).flight_class || "",
+    })
+    setEditingServiceId(s.id)
     setFormError(null)
     setDialogOpen(true)
   }
 
   const closeDialog = () => {
     setDialogOpen(false)
+    setEditingServiceId(null)
     setFormError(null)
   }
 
@@ -408,8 +442,14 @@ export function OperationServicesSection({
         payload.flight_class = form.flight_class || null
       }
 
-      const res = await fetch(`/api/operations/${operationId}/services`, {
-        method: "POST",
+      const isEditing = !!editingServiceId
+      const url = isEditing
+        ? `/api/operations/${operationId}/services/${editingServiceId}`
+        : `/api/operations/${operationId}/services`
+      const method = isEditing ? "PATCH" : "POST"
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
@@ -418,11 +458,15 @@ export function OperationServicesSection({
 
       if (!res.ok) {
         const msg = [data.error, data.details, data.hint].filter(Boolean).join(" — ")
-        setFormError(msg || "Error al agregar el servicio")
+        setFormError(msg || `Error al ${isEditing ? "editar" : "agregar"} el servicio`)
         return
       }
 
-      toast.success("Servicio agregado correctamente")
+      if (data.warnings?.length) {
+        data.warnings.forEach((w: string) => toast.warning(w))
+      }
+
+      toast.success(isEditing ? "Servicio actualizado correctamente" : "Servicio agregado correctamente")
       closeDialog()
       await loadServices()
       router.refresh()
@@ -613,7 +657,7 @@ export function OperationServicesSection({
                       </>
                     )}
                     <TableHead>Comisiona</TableHead>
-                    <TableHead className="w-10" />
+                    <TableHead className="w-20" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -658,19 +702,30 @@ export function OperationServicesSection({
                       </TableCell>
                       <TableCell>
                         {!isCancelled && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteService(s.id)}
-                            disabled={deletingId === s.id}
-                          >
-                            {deletingId === s.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => openEditDialog(s)}
+                              title="Editar servicio"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteService(s.id)}
+                              disabled={deletingId === s.id}
+                            >
+                              {deletingId === s.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
@@ -850,9 +905,11 @@ export function OperationServicesSection({
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Agregar servicio</DialogTitle>
+            <DialogTitle>{editingServiceId ? "Editar servicio" : "Agregar servicio"}</DialogTitle>
             <DialogDescription>
-              El servicio generará deuda al proveedor. El pago del cliente se registra desde &quot;Pagos de Servicios&quot;.
+              {editingServiceId
+                ? "Modificá los datos del servicio. Los montos contables se actualizarán automáticamente."
+                : "El servicio generará deuda al proveedor. El pago del cliente se registra desde \"Pagos de Servicios\"."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1140,7 +1197,7 @@ export function OperationServicesSection({
                   Guardando...
                 </>
               ) : (
-                "Agregar servicio"
+                editingServiceId ? "Guardar cambios" : "Agregar servicio"
               )}
             </Button>
           </DialogFooter>
