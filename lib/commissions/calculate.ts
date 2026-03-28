@@ -1,14 +1,23 @@
 import { createServerClient } from "@/lib/supabase/server"
 
-interface CommissionRule {
-  id: string
-  type: "SELLER" | "AGENCY"
-  basis: "FIXED_PERCENTAGE" | "FIXED_AMOUNT"
-  value: number
-  destination_region: string | null
-  agency_id: string | null
-  valid_from: string
-  valid_to: string | null
+/**
+ * Porcentajes de comisión por vendedor (seller_id → percentage)
+ * Estos son los porcentajes definidos por la empresa para cada vendedor.
+ */
+const SELLER_COMMISSION_PERCENTAGES: Record<string, number> = {
+  "e86b35c1-f10c-4524-8f28-4a61ef6a3f20": 50,  // Maximiliano Di Franco
+  "84c54c89-e6c3-4bac-80ac-9e2186eb3aaf": 35,  // Santiago Nader
+  "eca8bd76-50af-46f2-9d20-148e620a8f23": 45,  // Ramiro Airaldi
+  "a7fb94f9-1ef6-4749-b6eb-ac17b7f08a05": 35,  // Micaela Nader
+  "888c7097-512d-47f3-96e8-25074de4179d": 20,  // Josefina Giordano
+  "c9d53499-e9bc-4f11-97b6-1eaf3f049723": 15,  // Candela Bertolotto
+  "0f843ee8-2890-48ee-a51b-6d3511b980cc": 15,  // Emilia Roca
+  "d7b3e47e-1de9-456f-8d7d-6f26555a5a59": 13,  // Emilia Di Vito
+  "92455378-c875-4a37-8ed1-617e91cf90e0": 13,  // Malena Rodriguez
+  "b9496cdb-7d18-473c-b9d8-2dafcc7e7912": 20,  // Yamil Isnaldo
+  "3591726c-2891-49f4-94f4-27f15d584b16": 10,  // Martina Schiriatti
+  "8ff855bb-d531-4ed5-a0bf-2888cc97f79f": 50,  // Julieta Suarez
+  "c6cc61f6-0954-4a26-b72b-40c1f0f5566f": 20,  // Naza
 }
 
 interface Operation {
@@ -29,8 +38,44 @@ interface Operation {
 }
 
 /**
- * Calcula la comisión para una operación basándose en las reglas activas
- * Retorna: { totalCommission: number, percentage: number, primaryCommission: number, secondaryCommission: number | null }
+ * Obtiene el porcentaje de comisión para un vendedor.
+ * Primero busca en el mapa hardcodeado, luego en commission_rules como fallback.
+ */
+async function getSellerPercentage(sellerId: string): Promise<number> {
+  // 1. Buscar en el mapa de porcentajes por vendedor
+  if (SELLER_COMMISSION_PERCENTAGES[sellerId] !== undefined) {
+    return SELLER_COMMISSION_PERCENTAGES[sellerId]
+  }
+
+  // 2. Fallback: buscar en commission_rules (regla genérica)
+  try {
+    const supabase = await createServerClient()
+    const today = new Date().toISOString().split("T")[0]
+
+    const { data: rules } = await supabase
+      .from("commission_rules")
+      .select("*")
+      .eq("type", "SELLER")
+      .lte("valid_from", today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .is("destination_region", null)
+      .order("valid_from", { ascending: false })
+      .limit(1)
+
+    if (rules && rules.length > 0) {
+      return Number(rules[0].value) || 0
+    }
+  } catch (err) {
+    console.error("[Commissions] Error fetching commission rules:", err)
+  }
+
+  // 3. Sin regla → 0%
+  return 0
+}
+
+/**
+ * Calcula la comisión para una operación basándose en el porcentaje del vendedor.
+ * Se calcula siempre que la operación tenga margen positivo y vendedor asignado.
  */
 export async function calculateCommission(operation: Operation): Promise<{
   totalCommission: number
@@ -38,10 +83,8 @@ export async function calculateCommission(operation: Operation): Promise<{
   primaryCommission: number
   secondaryCommission: number | null
 }> {
-  const supabase = await createServerClient()
-
-  // Solo calcular comisiones para operaciones CONFIRMED
-  if (operation.status !== "CONFIRMED") {
+  // Si no hay vendedor o margen es 0/negativo, no hay comisión
+  if (!operation.seller_id || operation.margin_amount <= 0) {
     return {
       totalCommission: 0,
       percentage: 0,
@@ -50,17 +93,10 @@ export async function calculateCommission(operation: Operation): Promise<{
     }
   }
 
-  // Verificar que la operación esté pagada (todos los pagos de cliente deben estar PAID)
-  const { data: customerPayments } = await supabase
-    .from("payments")
-    .select("status")
-    .eq("operation_id", operation.id)
-    .eq("direction", "INCOME")
-    .eq("payer_type", "CUSTOMER")
+  // Obtener porcentaje del vendedor principal
+  const percentage = await getSellerPercentage(operation.seller_id)
 
-  const allPaid = customerPayments?.every((p: any) => p.status === "PAID") && (customerPayments?.length || 0) > 0
-
-  if (!allPaid) {
+  if (percentage <= 0) {
     return {
       totalCommission: 0,
       percentage: 0,
@@ -69,69 +105,20 @@ export async function calculateCommission(operation: Operation): Promise<{
     }
   }
 
-  // Obtener reglas de comisión activas
-  const today = new Date().toISOString().split("T")[0]
+  // Calcular comisión: margen × porcentaje / 100
+  let totalCommission = (operation.margin_amount * percentage) / 100
+  totalCommission = Math.round(totalCommission * 100) / 100
 
-  let rulesQuery = supabase
-    .from("commission_rules")
-    .select("*")
-    .eq("type", "SELLER")
-    .lte("valid_from", today)
-    .or(`valid_to.is.null,valid_to.gte.${today}`)
-
-  // Filtrar por región si aplica
-  const { data: regionRules } = await rulesQuery
-    .eq("destination_region", operation.destination)
-    .order("valid_from", { ascending: false })
-
-  // Si no hay regla específica para la región, buscar regla general
-  let applicableRule: CommissionRule | null = null
-
-  if (regionRules && regionRules.length > 0) {
-    applicableRule = regionRules[0] as CommissionRule
-  } else {
-    const { data: generalRules } = await rulesQuery
-      .is("destination_region", null)
-      .order("valid_from", { ascending: false })
-      .limit(1)
-
-    if (generalRules && generalRules.length > 0) {
-      applicableRule = generalRules[0] as CommissionRule
-    }
-  }
-
-  if (!applicableRule) {
-    // Si no hay regla, usar margen como base (0% de comisión)
-    return {
-      totalCommission: 0,
-      percentage: 0,
-      primaryCommission: 0,
-      secondaryCommission: null,
-    }
-  }
-
-  // Calcular comisión según el tipo de regla
-  let totalCommission = 0
-  let percentage = 0
-
-  if (applicableRule.basis === "FIXED_PERCENTAGE") {
-    // Porcentaje del margen
-    percentage = applicableRule.value
-    totalCommission = (operation.margin_amount * applicableRule.value) / 100
-  } else if (applicableRule.basis === "FIXED_AMOUNT") {
-    // Monto fijo - calcular porcentaje equivalente
-    totalCommission = applicableRule.value
-    percentage = operation.margin_amount > 0 ? (totalCommission / operation.margin_amount) * 100 : 0
-  }
-
-  totalCommission = Math.round(totalCommission * 100) / 100 // Redondear a 2 decimales
-
-  // Si hay seller_secondary, dividir la comisión según commission_split (50/50 por defecto)
+  // Si hay seller_secondary, dividir según commission_split (50/50 por defecto)
   const hasSecondary = !!operation.seller_secondary_id
   const splitPrimary = (operation.commission_split ?? 50) / 100
   const splitSecondary = 1 - splitPrimary
-  const primaryCommission = hasSecondary ? Math.round((totalCommission * splitPrimary) * 100) / 100 : totalCommission
-  const secondaryCommission = hasSecondary ? Math.round((totalCommission * splitSecondary) * 100) / 100 : null
+  const primaryCommission = hasSecondary
+    ? Math.round(totalCommission * splitPrimary * 100) / 100
+    : totalCommission
+  const secondaryCommission = hasSecondary
+    ? Math.round(totalCommission * splitSecondary * 100) / 100
+    : null
 
   return {
     totalCommission,
@@ -210,6 +197,9 @@ export async function createOrUpdateCommissionRecords(
 
   // Si hay seller_secondary, crear/actualizar registro para él
   if (operation.seller_secondary_id && commissionData.secondaryCommission) {
+    // Para secondary seller, calcular su propio porcentaje
+    const secondaryPercentage = await getSellerPercentage(operation.seller_secondary_id)
+
     const { data: existingSecondary } = await (supabase.from("commission_records") as any)
       .select("id")
       .eq("operation_id", operation.id)
@@ -221,7 +211,7 @@ export async function createOrUpdateCommissionRecords(
       seller_id: operation.seller_secondary_id,
       agency_id: operation.agency_id,
       amount: commissionData.secondaryCommission,
-      percentage: commissionData.percentage,
+      percentage: secondaryPercentage,
       status: "PENDING" as const,
       date_calculated: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -257,15 +247,13 @@ export async function createOrUpdateCommissionRecords(
 }
 
 /**
- * Procesa todas las operaciones CONFIRMED y pagadas para calcular comisiones
+ * Procesa operaciones para calcular y crear comisiones.
+ * Se ejecuta para cualquier operación con vendedor y margen positivo.
  */
 export async function processCommissionsForOperations(operationIds?: string[]): Promise<void> {
   const supabase = await createServerClient()
 
-  let operationsQuery = supabase
-    .from("operations")
-    .select("*")
-    .eq("status", "CONFIRMED")
+  let operationsQuery = (supabase.from("operations") as any).select("*")
 
   if (operationIds && operationIds.length > 0) {
     operationsQuery = operationsQuery.in("id", operationIds)
@@ -284,25 +272,22 @@ export async function processCommissionsForOperations(operationIds?: string[]): 
       ...rawOp,
       seller_id: rawOp.seller_primary_id || rawOp.seller_id,
       seller_secondary_id: rawOp.seller_secondary_id || null,
-      // Ensure numeric fields are actual numbers (Supabase returns strings for NUMERIC columns)
       sale_amount_total: Number(rawOp.sale_amount_total) || 0,
       operator_cost: Number(rawOp.operator_cost) || 0,
       margin_amount: Number(rawOp.margin_amount) || 0,
       margin_percentage: Number(rawOp.margin_percentage) || 0,
     }
-    const numericOp = operation
 
     // Recalculate margin from actual values in case it's stale
-    const recalculatedMargin = numericOp.sale_amount_total - numericOp.operator_cost
-    if (Math.abs(recalculatedMargin - numericOp.margin_amount) > 1) {
-      console.log(`[Commissions] Margin mismatch for ${operation.id}: stored=${numericOp.margin_amount}, recalculated=${recalculatedMargin}. Using recalculated.`)
-      numericOp.margin_amount = recalculatedMargin
+    const recalculatedMargin = operation.sale_amount_total - operation.operator_cost
+    if (Math.abs(recalculatedMargin - operation.margin_amount) > 1) {
+      console.log(`[Commissions] Margin mismatch for ${operation.id}: stored=${operation.margin_amount}, recalculated=${recalculatedMargin}. Using recalculated.`)
+      operation.margin_amount = recalculatedMargin
     }
 
-    const commissionData = await calculateCommission(numericOp)
+    const commissionData = await calculateCommission(operation)
     if (commissionData.totalCommission > 0) {
-      await createOrUpdateCommissionRecords(numericOp, commissionData)
+      await createOrUpdateCommissionRecords(operation, commissionData)
     }
   }
 }
-

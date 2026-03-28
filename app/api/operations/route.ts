@@ -243,6 +243,27 @@ export async function POST(request: Request) {
     // Update operation object with file_code
     op.file_code = fileCode
 
+    // Calcular comisiones automáticamente al crear la operación
+    try {
+      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
+      const commissionOp = {
+        ...op,
+        seller_id: op.seller_primary_id || op.seller_id || seller_id,
+        seller_secondary_id: op.seller_secondary_id || seller_secondary_id || null,
+        sale_amount_total: Number(op.sale_amount_total) || 0,
+        operator_cost: Number(op.operator_cost) || totalOperatorCost || 0,
+        margin_amount: Number(op.margin_amount) || marginAmount || 0,
+        margin_percentage: Number(op.margin_percentage) || marginPercentage || 0,
+      }
+      const commissionData = await calculateCommission(commissionOp)
+      if (commissionData.totalCommission > 0) {
+        await createOrUpdateCommissionRecords(commissionOp, commissionData)
+        console.log(`✅ Comisión creada para nueva operación ${op.id}: $${commissionData.totalCommission} (${commissionData.percentage}%)`)
+      }
+    } catch (error) {
+      console.error("Error calculating commission for new operation:", error)
+    }
+
     // Auto-generate IVA records
     try {
       if (sale_amount_total > 0) {
