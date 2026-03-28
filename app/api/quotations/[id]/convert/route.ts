@@ -141,15 +141,23 @@ export async function POST(
     }
 
     // 8. Crear servicios a partir de los items de la cotización
+    // Si los items no tienen precio individual, distribuir el total de la opción
+    const allItemsZero = selectedItems.every((i: any) => !i.subtotal && !i.unit_price)
+    const optionTotal = Number(selectedOption.total_amount) || 0
+    const distributedAmount = allItemsZero && selectedItems.length > 0
+      ? optionTotal / selectedItems.length
+      : 0
+
     for (const item of selectedItems) {
       const serviceType = ITEM_TO_SERVICE_TYPE[item.item_type] || "SEAT"
+      const itemSaleAmount = item.subtotal || item.unit_price || distributedAmount
 
       const servicePayload: Record<string, any> = {
         operation_id: operation.id,
         agency_id: quotation.agency_id,
         service_type: serviceType,
         description: item.description,
-        sale_amount: item.subtotal || item.unit_price || 0,
+        sale_amount: itemSaleAmount,
         sale_currency: item.currency || quotation.currency,
         cost_amount: 0, // El vendedor completará el costo después
         cost_currency: item.currency || quotation.currency,
