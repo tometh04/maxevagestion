@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -346,87 +345,75 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
-          <div className="space-y-1">
-            <Label htmlFor="agency-filter-caja" className="text-xs">Agencia</Label>
-            <Select
-              value={selectedAgencyId}
-              onValueChange={(v) => {
-                setSelectedAgencyId(v)
-                setSelectedAccountId("ALL") // Resetear cuenta cuando cambia agencia
-                setAccountMovements({})
-              }}
-            >
-              <SelectTrigger id="agency-filter-caja" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Selecciona una agencia" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas las agencias</SelectItem>
-                {agencies.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+          <Select
+            value={selectedAgencyId}
+            onValueChange={(v) => {
+              setSelectedAgencyId(v)
+              setSelectedAccountId("ALL")
+              setAccountMovements({})
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+              <SelectValue placeholder="Selecciona una agencia" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas las agencias</SelectItem>
+              {agencies.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedAccountId}
+            onValueChange={(v) => {
+              setSelectedAccountId(v)
+              setAccountMovements({})
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+              <SelectValue placeholder="Todas las cuentas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas las cuentas</SelectItem>
+              {accounts
+                .filter((acc) => selectedAgencyId === "ALL" || (acc.agency_id ?? null) === selectedAgencyId)
+                .map((acc) => (
+                  <SelectItem key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.currency})
+                  </SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="account-filter-caja" className="text-xs">Cuenta</Label>
-            <Select
-              value={selectedAccountId}
-              onValueChange={(v) => {
-                setSelectedAccountId(v)
-                setAccountMovements({})
-              }}
-            >
-              <SelectTrigger id="account-filter-caja" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                <SelectValue placeholder="Todas las cuentas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas las cuentas</SelectItem>
-                {accounts
-                  .filter((acc) => selectedAgencyId === "ALL" || (acc.agency_id ?? null) === selectedAgencyId)
-                  .map((acc) => (
-                    <SelectItem key={acc.id} value={acc.id}>
-                      {acc.name} ({acc.currency})
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1 flex-1 min-w-[200px]">
-            <Label className="text-xs">Rango de fechas</Label>
-            <div className="flex items-center gap-2">
-              <div className="space-y-1.5 flex-1">
-                <Label className="text-xs">Desde</Label>
-                <DateInputWithCalendar
-                  value={dateFrom}
-                  onChange={(date) => {
-                    setDateFrom(date)
-                    if (date && dateTo && dateTo < date) {
-                      setDateTo(undefined)
-                    }
-                    setAccountMovements({})
-                    setAccountStats({})
-                  }}
-                  placeholder="dd/MM/yyyy"
-                />
-              </div>
-              <div className="space-y-1.5 flex-1">
-                <Label className="text-xs">Hasta</Label>
-                <DateInputWithCalendar
-                  value={dateTo}
-                  onChange={(date) => {
-                    if (date && dateFrom && date < dateFrom) {
-                      return
-                    }
-                    setDateTo(date)
-                    setAccountMovements({})
-                    setAccountStats({})
-                  }}
-                  placeholder="dd/MM/yyyy"
-                  minDate={dateFrom}
-                />
-              </div>
-            </div>
-          </div>
+            </SelectContent>
+          </Select>
+
+          <DateInputWithCalendar
+            value={dateFrom}
+            onChange={(date) => {
+              setDateFrom(date)
+              if (date && dateTo && dateTo < date) {
+                setDateTo(undefined)
+              }
+              setAccountMovements({})
+              setAccountStats({})
+            }}
+            placeholder="Desde"
+            className="h-8 text-xs rounded-full"
+          />
+
+          <DateInputWithCalendar
+            value={dateTo}
+            onChange={(date) => {
+              if (date && dateFrom && date < dateFrom) {
+                return
+              }
+              setDateTo(date)
+              setAccountMovements({})
+              setAccountStats({})
+            }}
+            placeholder="Hasta"
+            minDate={dateFrom}
+            className="h-8 text-xs rounded-full"
+          />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">

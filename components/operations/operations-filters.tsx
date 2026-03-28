@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -114,151 +113,123 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Estado</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger id="status" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Seleccionar estado" />
-          </SelectTrigger>
-          <SelectContent>
-            {statusOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={status} onValueChange={setStatus}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar estado" />
+        </SelectTrigger>
+        <SelectContent>
+          {statusOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Vendedor</Label>
-        <Select value={sellerId} onValueChange={setSellerId}>
-          <SelectTrigger id="seller" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Seleccionar vendedor" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Todos los vendedores</SelectItem>
-            {sellers.map((seller) => (
-              <SelectItem key={seller.id} value={seller.id}>
-                {seller.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={sellerId} onValueChange={setSellerId}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar vendedor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos los vendedores</SelectItem>
+          {sellers.map((seller) => (
+            <SelectItem key={seller.id} value={seller.id}>
+              {seller.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Agencia</Label>
-        <Select value={agencyId} onValueChange={setAgencyId}>
-          <SelectTrigger id="agency" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Seleccionar agencia" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">Todas las agencias</SelectItem>
-            {agencies.map((agency) => (
-              <SelectItem key={agency.id} value={agency.id}>
-                {agency.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={agencyId} onValueChange={setAgencyId}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar agencia" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas las agencias</SelectItem>
+          {agencies.map((agency) => (
+            <SelectItem key={agency.id} value={agency.id}>
+              {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Viaje Desde</Label>
-        <DateInputWithCalendar
-          value={dateFrom}
-          onChange={(date) => {
-            setDateFrom(date)
-            if (date && dateTo && dateTo < date) {
-              setDateTo(undefined)
-            }
-          }}
-          placeholder="dd/MM/yyyy"
-          className="h-8 text-xs"
-        />
-      </div>
+      <DateInputWithCalendar
+        value={dateFrom}
+        onChange={(date) => {
+          setDateFrom(date)
+          if (date && dateTo && dateTo < date) {
+            setDateTo(undefined)
+          }
+        }}
+        placeholder="Viaje Desde"
+        className="h-8 text-xs rounded-full"
+      />
 
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Viaje Hasta</Label>
-        <DateInputWithCalendar
-          value={dateTo}
-          onChange={(date) => {
-            if (date && dateFrom && date < dateFrom) {
-              return
-            }
-            setDateTo(date)
-          }}
-          placeholder="dd/MM/yyyy"
-          minDate={dateFrom}
-          className="h-8 text-xs"
-        />
-      </div>
+      <DateInputWithCalendar
+        value={dateTo}
+        onChange={(date) => {
+          if (date && dateFrom && date < dateFrom) {
+            return
+          }
+          setDateTo(date)
+        }}
+        placeholder="Viaje Hasta"
+        minDate={dateFrom}
+        className="h-8 text-xs rounded-full"
+      />
 
-      <div className="flex items-center gap-1.5">
-        <Label className="text-xs text-muted-foreground whitespace-nowrap">Fecha de</Label>
-        <Select value={paymentDateType} onValueChange={setPaymentDateType}>
-          <SelectTrigger id="paymentDateType" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-            <SelectValue placeholder="Ninguno" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="NONE">Ninguno</SelectItem>
-            <SelectItem value="OPERACION">Operación</SelectItem>
-            <SelectItem value="COBRO">Cobro</SelectItem>
-            <SelectItem value="PAGO">Pago</SelectItem>
-            <SelectItem value="VENCIMIENTO">Vencimiento</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Select value={paymentDateType} onValueChange={setPaymentDateType}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Fecha de..." />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="NONE">Ninguno</SelectItem>
+          <SelectItem value="OPERACION">Operación</SelectItem>
+          <SelectItem value="COBRO">Cobro</SelectItem>
+          <SelectItem value="PAGO">Pago</SelectItem>
+          <SelectItem value="VENCIMIENTO">Vencimiento</SelectItem>
+        </SelectContent>
+      </Select>
 
       {paymentDateType && paymentDateType !== "NONE" && (
         <>
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">
-              {paymentDateType === "OPERACION" ? "Op. Desde"
-                : paymentDateType === "COBRO" ? "Cobro Desde"
-                : paymentDateType === "PAGO" ? "Pago Desde"
-                : "Venc. Desde"}
-            </Label>
-            <DateInputWithCalendar
-              value={paymentDateFrom}
-              onChange={(date) => {
-                setPaymentDateFrom(date)
-                if (date && paymentDateTo && paymentDateTo < date) {
-                  setPaymentDateTo(undefined)
-                }
-              }}
-              placeholder="dd/MM/yyyy"
-              className="h-8 text-xs"
-            />
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">
-              {paymentDateType === "OPERACION" ? "Op. Hasta"
-                : paymentDateType === "COBRO" ? "Cobro Hasta"
-                : paymentDateType === "PAGO" ? "Pago Hasta"
-                : "Venc. Hasta"}
-            </Label>
-            <DateInputWithCalendar
-              value={paymentDateTo}
-              onChange={(date) => {
-                if (date && paymentDateFrom && date < paymentDateFrom) {
-                  return
-                }
-                setPaymentDateTo(date)
-              }}
-              placeholder="dd/MM/yyyy"
-              minDate={paymentDateFrom}
-              className="h-8 text-xs"
-            />
-          </div>
+          <DateInputWithCalendar
+            value={paymentDateFrom}
+            onChange={(date) => {
+              setPaymentDateFrom(date)
+              if (date && paymentDateTo && paymentDateTo < date) {
+                setPaymentDateTo(undefined)
+              }
+            }}
+            placeholder={paymentDateType === "OPERACION" ? "Op. Desde"
+              : paymentDateType === "COBRO" ? "Cobro Desde"
+              : paymentDateType === "PAGO" ? "Pago Desde"
+              : "Venc. Desde"}
+            className="h-8 text-xs rounded-full"
+          />
+          <DateInputWithCalendar
+            value={paymentDateTo}
+            onChange={(date) => {
+              if (date && paymentDateFrom && date < paymentDateFrom) {
+                return
+              }
+              setPaymentDateTo(date)
+            }}
+            placeholder={paymentDateType === "OPERACION" ? "Op. Hasta"
+              : paymentDateType === "COBRO" ? "Cobro Hasta"
+              : paymentDateType === "PAGO" ? "Pago Hasta"
+              : "Venc. Hasta"}
+            minDate={paymentDateFrom}
+            className="h-8 text-xs rounded-full"
+          />
         </>
       )}
 
       <Button variant="outline" size="sm" onClick={handleApplyFilters} className="rounded-full h-8 text-xs">Aplicar Filtros</Button>
       {hasActiveFilters && (
-        <Button variant="ghost" size="sm" onClick={handleClearFilters} className="text-xs text-muted-foreground">
-          <X className="mr-1 h-3 w-3" />
+        <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-8 rounded-full text-xs text-muted-foreground">
+          <X className="mr-1 h-3.5 w-3.5" />
           Limpiar
         </Button>
       )}

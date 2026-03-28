@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
 import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
@@ -345,108 +344,97 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
       </div>
 
       {/* Filters */}
-      <div className="flex items-end gap-2 flex-wrap">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Agencia</Label>
-              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Operador</Label>
-              <Select value={operatorFilter} onValueChange={setOperatorFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                  {operators.map((operator) => (
-                    <SelectItem key={operator.id} value={operator.id}>
-                      {operator.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Estado</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UNPAID">Pendientes y Vencidos</SelectItem>
-                  <SelectItem value="PENDING">Solo Pendientes</SelectItem>
-                  <SelectItem value="OVERDUE">Solo Vencidos</SelectItem>
-                  <SelectItem value="PAID">Pagados</SelectItem>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Venc. Desde</Label>
-              <DateInputWithCalendar
-                value={dueDateFrom}
-                onChange={(date) => {
-                  setDueDateFrom(date)
-                  if (date && dueDateTo && dueDateTo < date) {
-                    setDueDateTo(undefined)
-                  }
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Venc. Hasta</Label>
-              <DateInputWithCalendar
-                value={dueDateTo}
-                onChange={(date) => {
-                  if (date && dueDateFrom && date < dueDateFrom) {
-                    return
-                  }
-                  setDueDateTo(date)
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={dueDateFrom}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Deuda mín.</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={amountMinInput}
-                onChange={(e) => setAmountMinInput(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Deuda máx.</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={amountMaxInput}
-                onChange={(e) => setAmountMaxInput(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
-              <Label className="text-xs">Buscar operación</Label>
-              <Input
-                type="text"
-                placeholder="Código o destino"
-                value={operationSearchInput}
-                onChange={(e) => setOperationSearchInput(e.target.value)}
-              />
-            </div>
+      <div className="flex items-center gap-2 flex-wrap">
+          <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Agencia" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              {agencies.map((agency) => (
+                <SelectItem key={agency.id} value={agency.id}>
+                  {agency.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={operatorFilter} onValueChange={setOperatorFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Operador" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {operators.map((operator) => (
+                <SelectItem key={operator.id} value={operator.id}>
+                  {operator.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="UNPAID">Pendientes y Vencidos</SelectItem>
+              <SelectItem value="PENDING">Solo Pendientes</SelectItem>
+              <SelectItem value="OVERDUE">Solo Vencidos</SelectItem>
+              <SelectItem value="PAID">Pagados</SelectItem>
+              <SelectItem value="ALL">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <DateInputWithCalendar
+            value={dueDateFrom}
+            onChange={(date) => {
+              setDueDateFrom(date)
+              if (date && dueDateTo && dueDateTo < date) {
+                setDueDateTo(undefined)
+              }
+            }}
+            placeholder="Venc. Desde"
+            className="h-8 text-xs rounded-full"
+          />
+
+          <DateInputWithCalendar
+            value={dueDateTo}
+            onChange={(date) => {
+              if (date && dueDateFrom && date < dueDateFrom) {
+                return
+              }
+              setDueDateTo(date)
+            }}
+            placeholder="Venc. Hasta"
+            minDate={dueDateFrom}
+            className="h-8 text-xs rounded-full"
+          />
+
+          <Input
+            type="number"
+            placeholder="Deuda mín."
+            value={amountMinInput}
+            onChange={(e) => setAmountMinInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
+          />
+
+          <Input
+            type="number"
+            placeholder="Deuda máx."
+            value={amountMaxInput}
+            onChange={(e) => setAmountMaxInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
+          />
+
+          <Input
+            type="text"
+            placeholder="Código o destino"
+            value={operationSearchInput}
+            onChange={(e) => setOperationSearchInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[150px]"
+          />
+
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
             statusFilter !== "UNPAID" ||
@@ -455,29 +443,27 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             amountMin ||
             amountMax ||
             operationSearch) && (
-            <div className="mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-full"
-                onClick={() => {
-                  setAgencyFilter("ALL")
-                  setOperatorFilter("ALL")
-                  setStatusFilter("UNPAID")
-                  setDueDateFrom(undefined)
-                  setDueDateTo(undefined)
-                  setAmountMinInput("")
-                  setAmountMaxInput("")
-                  setOperationSearchInput("")
-                  setAmountMin("")
-                  setAmountMax("")
-                  setOperationSearch("")
-                }}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Limpiar filtros
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full text-xs"
+              onClick={() => {
+                setAgencyFilter("ALL")
+                setOperatorFilter("ALL")
+                setStatusFilter("UNPAID")
+                setDueDateFrom(undefined)
+                setDueDateTo(undefined)
+                setAmountMinInput("")
+                setAmountMaxInput("")
+                setOperationSearchInput("")
+                setAmountMin("")
+                setAmountMax("")
+                setOperationSearch("")
+              }}
+            >
+              <X className="mr-1 h-3.5 w-3.5" />
+              Limpiar
+            </Button>
           )}
       </div>
 

@@ -36,7 +36,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Download, Filter, X, Plus, HelpCircle } from "lucide-react"
 import {
@@ -512,99 +511,80 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
       </div>
 
       {/* Filtros */}
-      <div className="flex items-end gap-2 flex-wrap">
-            {/* Filtro por Moneda */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Moneda</Label>
-              <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="ARS">ARS</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="flex items-center gap-2 flex-wrap">
+          <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Moneda" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ARS">ARS</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {/* Filtro por Vendedor */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Vendedor</Label>
-              <Select value={sellerFilter} onValueChange={setSellerFilter}>
-                <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                  {initialSellers.map((seller) => (
-                    <SelectItem key={seller.id} value={seller.id}>
-                      {seller.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <Select value={sellerFilter} onValueChange={setSellerFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Vendedor" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {initialSellers.map((seller) => (
+                <SelectItem key={seller.id} value={seller.id}>
+                  {seller.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-            {/* Filtro por Cliente (búsqueda por nombre) */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Cliente</Label>
-              <Input
-                placeholder="Buscar por nombre..."
-                value={customerFilter}
-                onChange={(e) => setCustomerFilter(e.target.value)}
-              />
-            </div>
+          <Input
+            placeholder="Buscar por nombre..."
+            value={customerFilter}
+            onChange={(e) => setCustomerFilter(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[180px] max-w-xs"
+          />
 
-            {/* Filtro por Fecha Desde */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={dateFromFilter}
-                onChange={(date) => {
-                  setDateFromFilter(date)
-                  if (date && dateToFilter && dateToFilter < date) {
-                    setDateToFilter(undefined)
-                  }
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
+          <DateInputWithCalendar
+            value={dateFromFilter}
+            onChange={(date) => {
+              setDateFromFilter(date)
+              if (date && dateToFilter && dateToFilter < date) {
+                setDateToFilter(undefined)
+              }
+            }}
+            placeholder="Desde"
+            className="h-8 text-xs rounded-full"
+          />
 
-            {/* Filtro por Fecha Hasta */}
-            <div className="space-y-1.5">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={dateToFilter}
-                onChange={(date) => {
-                  if (date && dateFromFilter && date < dateFromFilter) {
-                    return
-                  }
-                  setDateToFilter(date)
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={dateFromFilter}
-              />
-            </div>
+          <DateInputWithCalendar
+            value={dateToFilter}
+            onChange={(date) => {
+              if (date && dateFromFilter && date < dateFromFilter) {
+                return
+              }
+              setDateToFilter(date)
+            }}
+            placeholder="Hasta"
+            minDate={dateFromFilter}
+            className="h-8 text-xs rounded-full"
+          />
 
           {(dateFromFilter !== undefined || dateToFilter !== undefined || currencyFilter !== "ALL" || customerFilter || sellerFilter !== "ALL") && (
-            <div className="mt-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-full"
-                onClick={() => {
-                  setCurrencyFilter("ALL")
-                  setSellerFilter("ALL")
-                  setCustomerFilter("")
-                  setDateFromFilter(undefined)
-                  setDateToFilter(undefined)
-                }}
-                title="Limpiar filtros"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full text-xs"
+              onClick={() => {
+                setCurrencyFilter("ALL")
+                setSellerFilter("ALL")
+                setCustomerFilter("")
+                setDateFromFilter(undefined)
+                setDateToFilter(undefined)
+              }}
+            >
+              <X className="mr-1 h-3.5 w-3.5" />
+              Limpiar
+            </Button>
           )}
       </div>
 

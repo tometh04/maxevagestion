@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useDebounce } from "@/hooks/use-debounce"
-import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -11,8 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { format, parseISO } from "date-fns"
+import { X } from "lucide-react"
 
 export interface CashFiltersState {
   dateFrom: string
@@ -51,21 +50,6 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   const handleChange = (field: keyof CashFiltersState, newValue: string) => {
     setFilters((prev) => ({ ...prev, [field]: newValue }))
   }
-  
-  // Helper para convertir string a Date
-  const parseDate = (dateString: string): Date | undefined => {
-    if (!dateString) return undefined
-    try {
-      return parseISO(dateString)
-    } catch {
-      return undefined
-    }
-  }
-  
-  // Helper para convertir Date a string
-  const formatDate = (date: Date | undefined): string => {
-    return date ? format(date, "yyyy-MM-dd") : ""
-  }
 
   const handleReset = () => {
     setFilters(defaultValue)
@@ -73,71 +57,62 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-        <div className="space-y-1">
-          <Label className="text-xs">Desde</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateFrom)}
-            onChange={(date) => {
-              const dateString = formatDate(date)
-              setFilters((prev) => ({ 
-                ...prev, 
-                dateFrom: dateString,
-                dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
-              }))
-            }}
-            placeholder="dd/MM/yyyy"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Hasta</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateTo)}
-            onChange={(date) => {
-              if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
-                return
-              }
-              setFilters((prev) => ({ ...prev, dateTo: formatDate(date) }))
-            }}
-            placeholder="dd/MM/yyyy"
-            minDate={parseDate(filters.dateFrom)}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Agencia</Label>
-          <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
-            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              {agencies.map((agency) => (
-                <SelectItem key={agency.id} value={agency.id}>
-                  {agency.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs">Moneda</Label>
-          <Select value={filters.currency} onValueChange={(newValue) => handleChange("currency", newValue)}>
-            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
-              <SelectValue placeholder="Seleccionar" />
-            </SelectTrigger>
-            <SelectContent>
-              {currencyOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-end">
-          <Button variant="outline" size="sm" className="rounded-full" onClick={handleReset}>
-            Reiniciar filtros
-          </Button>
-        </div>
+      <Input
+        type="date"
+        value={filters.dateFrom}
+        onChange={(e) => {
+          const dateString = e.target.value
+          setFilters((prev) => ({
+            ...prev,
+            dateFrom: dateString,
+            dateTo: dateString && prev.dateTo && prev.dateTo < dateString ? "" : prev.dateTo
+          }))
+        }}
+        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
+        placeholder="Desde"
+      />
+      <Input
+        type="date"
+        value={filters.dateTo}
+        onChange={(e) => {
+          const dateString = e.target.value
+          if (dateString && filters.dateFrom && dateString < filters.dateFrom) {
+            return
+          }
+          setFilters((prev) => ({ ...prev, dateTo: dateString }))
+        }}
+        min={filters.dateFrom || undefined}
+        className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]"
+        placeholder="Hasta"
+      />
+      <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Agencia" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas</SelectItem>
+          {agencies.map((agency) => (
+            <SelectItem key={agency.id} value={agency.id}>
+              {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={filters.currency} onValueChange={(newValue) => handleChange("currency", newValue)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+          <SelectValue placeholder="Moneda" />
+        </SelectTrigger>
+        <SelectContent>
+          {currencyOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
+        <X className="mr-1 h-3.5 w-3.5" /> Limpiar
+      </Button>
     </div>
   )
 }
