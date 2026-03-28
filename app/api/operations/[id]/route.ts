@@ -329,6 +329,37 @@ export async function PATCH(
     }
 
     // ============================================
+    // REASIGNAR OPERATOR_PAYMENTS SI CAMBIÓ EL OPERADOR
+    // ============================================
+    const oldOperatorId = currentOp.operator_id
+    const newOperatorId = body.operator_id
+    if (newOperatorId && newOperatorId !== oldOperatorId) {
+      try {
+        // Reasignar todos los operator_payments pendientes al nuevo operador
+        const { data: reassigned, error: reassignError } = await (supabase.from("operator_payments") as any)
+          .update({
+            operator_id: newOperatorId,
+            updated_at: new Date().toISOString()
+          })
+          .eq("operation_id", operationId)
+          .eq("operator_id", oldOperatorId)
+          .in("status", ["PENDING", "OVERDUE"])
+          .select("id")
+
+        if (reassignError) {
+          console.error("Error reasignando operator_payments:", reassignError)
+        } else {
+          const count = reassigned?.length || 0
+          if (count > 0) {
+            console.log(`✅ ${count} operator_payment(s) reasignados de operador ${oldOperatorId} → ${newOperatorId} para operación ${operationId}`)
+          }
+        }
+      } catch (error) {
+        console.error("Error reassigning operator payments:", error)
+      }
+    }
+
+    // ============================================
     // CENTRALIZAR COSTOS DE MÚLTIPLES OPERADORES AL CONFIRMAR
     // ============================================
     // Cuando una operación se confirma, si tiene múltiples operadores,

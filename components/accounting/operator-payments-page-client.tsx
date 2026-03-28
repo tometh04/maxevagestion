@@ -532,8 +532,10 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 <TableRow>
                   <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
                   <TableHead className="sticky top-0 bg-background z-10">Operador</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Deuda</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Fecha Vencimiento</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10 text-right">Monto Total</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10 text-right">Pagado</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10 text-right">Pendiente</TableHead>
+                  <TableHead className="sticky top-0 bg-background z-10">Vencimiento</TableHead>
                   <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
                     <TableHead className="sticky top-0 bg-background z-10">Fecha Pago</TableHead>
@@ -574,12 +576,28 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         )}
                       </TableCell>
                       <TableCell>{payment.operators?.name || "-"}</TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(parseFloat(payment.amount || "0"), payment.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {paidAmount > 0 ? (
+                          <span className="text-green-600 dark:text-green-400 font-medium">
+                            {formatCurrency(paidAmount, payment.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
                         {(() => {
                           const totalAmount = parseFloat(payment.amount || "0") || 0
                           const debt = totalAmount - paidAmount
-                          return (
-                            <div>{formatCurrency(debt, payment.currency)}</div>
+                          return isPaid ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            <span className={debt > 0 ? "text-red-600 dark:text-red-400" : ""}>
+                              {formatCurrency(debt, payment.currency)}
+                            </span>
                           )
                         })()}
                       </TableCell>
