@@ -1,25 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server"
 
-/**
- * Porcentajes de comisión por vendedor (seller_id → percentage)
- * Estos son los porcentajes definidos por la empresa para cada vendedor.
- */
-const SELLER_COMMISSION_PERCENTAGES: Record<string, number> = {
-  "e86b35c1-f10c-4524-8f28-4a61ef6a3f20": 50,  // Maximiliano Di Franco
-  "84c54c89-e6c3-4bac-80ac-9e2186eb3aaf": 35,  // Santiago Nader
-  "eca8bd76-50af-46f2-9d20-148e620a8f23": 45,  // Ramiro Airaldi
-  "a7fb94f9-1ef6-4749-b6eb-ac17b7f08a05": 35,  // Micaela Nader
-  "888c7097-512d-47f3-96e8-25074de4179d": 20,  // Josefina Giordano
-  "c9d53499-e9bc-4f11-97b6-1eaf3f049723": 15,  // Candela Bertolotto
-  "0f843ee8-2890-48ee-a51b-6d3511b980cc": 15,  // Emilia Roca
-  "d7b3e47e-1de9-456f-8d7d-6f26555a5a59": 13,  // Emilia Di Vito
-  "92455378-c875-4a37-8ed1-617e91cf90e0": 13,  // Malena Rodriguez
-  "b9496cdb-7d18-473c-b9d8-2dafcc7e7912": 20,  // Yamil Isnaldo
-  "3591726c-2891-49f4-94f4-27f15d584b16": 10,  // Martina Schiriatti
-  "8ff855bb-d531-4ed5-a0bf-2888cc97f79f": 50,  // Julieta Suarez
-  "c6cc61f6-0954-4a26-b72b-40c1f0f5566f": 20,  // Naza
-}
-
 interface Operation {
   id: string
   agency_id: string
@@ -38,38 +18,52 @@ interface Operation {
 }
 
 /**
- * Obtiene el porcentaje de comisión para un vendedor.
- * Primero busca en el mapa hardcodeado, luego en commission_rules como fallback.
+ * Obtiene el porcentaje de comisión para un vendedor consultando la tabla commission_rules.
+ * Prioridad: regla específica del vendedor (seller_id) → regla genérica (seller_id IS NULL) → 0%.
  */
 async function getSellerPercentage(sellerId: string): Promise<number> {
-  // 1. Buscar en el mapa de porcentajes por vendedor
-  if (SELLER_COMMISSION_PERCENTAGES[sellerId] !== undefined) {
-    return SELLER_COMMISSION_PERCENTAGES[sellerId]
-  }
-
-  // 2. Fallback: buscar en commission_rules (regla genérica)
   try {
     const supabase = await createServerClient()
     const today = new Date().toISOString().split("T")[0]
 
-    const { data: rules } = await (supabase
+    // 1. Buscar regla específica para este vendedor
+    const { data: sellerRules } = await (supabase
       .from("commission_rules") as any)
       .select("*")
       .eq("type", "SELLER")
+      .eq("seller_id", sellerId)
+      .lte("valid_from", today)
+      .or(`valid_to.is.null,valid_to.gte.${today}`)
+      .order("valid_from", { ascending: false })
+      .limit(1)
+
+    if (sellerRules && sellerRules.length > 0) {
+      return Number((sellerRules as any[])[0].value) || 0
+    }
+
+    // 2. Fallback: buscar regla genérica de tipo SELLER (sin seller_id específico)
+    const { data: genericRules } = await (supabase
+      .from("commission_rules") as any)
+      .select("*")
+      .eq("type", "SELLER")
+      .is("seller_id", null)
       .lte("valid_from", today)
       .or(`valid_to.is.null,valid_to.gte.${today}`)
       .is("destination_region", null)
       .order("valid_from", { ascending: false })
       .limit(1)
 
-    if (rules && rules.length > 0) {
-      return Number((rules as any[])[0].value) || 0
+    if (genericRules && genericRules.length > 0) {
+      return Number((genericRules as any[])[0].value) || 0
     }
   } catch (err) {
     console.error("[Commissions] Error fetching commission rules:", err)
   }
 
-  // 3. Sin regla → 0%
+  // 3. Sin regla → 0% con advertencia
+  console.warn(
+    `[Commissions] No commission rule found for seller ${sellerId}. Configure one in Settings → Comisiones.`
+  )
   return 0
 }
 

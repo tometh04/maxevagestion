@@ -87,7 +87,35 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al guardar tipo de cambio" }, { status: 500 })
     }
 
-    return NextResponse.json({ data })
+    // --- Validation: check for large changes vs previous month ---
+    let warning: string | undefined
+    try {
+      const prevMonth = month === 1 ? 12 : month - 1
+      const prevYear = month === 1 ? year - 1 : year
+
+      const { data: prevRate } = await (supabase.from("monthly_exchange_rates") as any)
+        .select("usd_to_ars_rate")
+        .eq("year", prevYear)
+        .eq("month", prevMonth)
+        .maybeSingle()
+
+      if (prevRate?.usd_to_ars_rate) {
+        const previous = Number(prevRate.usd_to_ars_rate)
+        const current = parseFloat(usd_to_ars_rate)
+        const pctChange = Math.abs(((current - previous) / previous) * 100)
+
+        if (pctChange > 20) {
+          warning = `ALERTA: El tipo de cambio cambió un ${pctChange.toFixed(1)}% respecto al mes anterior (${previous} → ${current}). Variación muy significativa, por favor verificar.`
+        } else if (pctChange > 5) {
+          warning = `Aviso: El tipo de cambio cambió un ${pctChange.toFixed(1)}% respecto al mes anterior (${previous} → ${current}). Verificar que sea correcto.`
+        }
+      }
+    } catch (validationError) {
+      // Non-blocking – if the validation query fails we still return the saved data
+      console.error("Error checking previous month exchange rate:", validationError)
+    }
+
+    return NextResponse.json({ data, ...(warning ? { warning } : {}) })
   } catch (error: any) {
     console.error("Error in POST /api/accounting/monthly-exchange-rates:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })

@@ -2,6 +2,20 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
+// Subcategorías de cuentas contables consideradas como gastos deducibles
+const SUBCATEGORIAS_DEDUCIBLES = [
+  "GASTOS",
+  "GASTOS_OPERATIVOS",
+  "GASTOS_ADMINISTRATIVOS",
+  "GASTOS_COMERCIALES",
+  "GASTOS_FINANCIEROS",
+  "SUELDOS",
+  "ALQUILERES",
+  "SERVICIOS",
+  "IMPUESTOS",
+  "AMORTIZACIONES",
+]
+
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
@@ -20,6 +34,16 @@ export async function GET(request: Request) {
     const startDate = `${year}-${String(quarterStartMonth).padStart(2, "0")}-01`
     const endDate = `${year}-${String(quarterEndMonth).padStart(2, "0")}-31`
 
+    // Read ganancias_rate from financial_settings (default 35 if not set)
+    const { data: settings } = await (supabase.from("financial_settings") as any)
+      .select("ganancias_rate, tax_regime")
+      .limit(1)
+      .maybeSingle()
+
+    const gananciasRatePercent = settings?.ganancias_rate ?? 35
+    const gananciasRate = gananciasRatePercent / 100
+    const taxRegime = settings?.tax_regime || "RESPONSABLE_INSCRIPTO"
+
     // Get all operations in the quarter with their margins
     const { data: operations } = await (supabase.from("operations") as any)
       .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, sale_currency, status, created_at")
@@ -27,12 +51,28 @@ export async function GET(request: Request) {
       .lte("created_at", `${endDate}T23:59:59`)
       .in("status", ["CONFIRMED", "CLOSED"])
 
-    // Get expenses (gastos) in the quarter
+    // Get expenses (gastos) in the quarter, including chart_account_id for deducibility check
     const { data: expenses } = await (supabase.from("ledger_movements") as any)
-      .select("id, amount_original, currency, type, concept, movement_date")
+      .select("id, amount_original, currency, type, concept, movement_date, chart_account_id")
       .eq("type", "EXPENSE")
       .gte("movement_date", `${startDate}T00:00:00`)
       .lte("movement_date", `${endDate}T23:59:59`)
+
+    // Get chart of accounts to determine deducibility by subcategory
+    const chartAccountIds = (expenses || [])
+      .map((e: any) => e.chart_account_id)
+      .filter((id: string | null) => id != null)
+
+    let chartAccountsMap: Record<string, any> = {}
+    if (chartAccountIds.length > 0) {
+      const { data: chartAccounts } = await (supabase.from("chart_of_accounts") as any)
+        .select("id, subcategory")
+        .in("id", chartAccountIds)
+
+      for (const account of (chartAccounts || [])) {
+        chartAccountsMap[account.id] = account
+      }
+    }
 
     // Get commissions paid in the quarter
     const { data: commissions } = await (supabase.from("commission_records") as any)
@@ -49,29 +89,56 @@ export async function GET(request: Request) {
       else totalMarginARS += margin
     }
 
-    // Calculate expenses (non-operator expenses)
-    let totalExpensesARS = 0
-    let totalExpensesUSD = 0
+    // Categorize expenses as deducibles vs no deducibles
+    let gastosDeduciblesARS = 0
+    let gastosDeduciblesUSD = 0
+    let gastosNoDeduciblesARS = 0
+    let gastosNoDeduciblesUSD = 0
+
     for (const exp of (expenses || [])) {
       const amount = Number(exp.amount_original) || 0
-      if (exp.currency === "USD") totalExpensesUSD += amount
-      else totalExpensesARS += amount
+      const isUSD = exp.currency === "USD"
+
+      // Determine deducibility:
+      // If the expense has a chart_account_id, check subcategory against known deducible subcategories
+      // If no chart_account_id or subcategory not found, default to deducible
+      // (since we don't have full categorization yet, we treat unlinked expenses as deducible)
+      let isDeducible = true
+
+      if (exp.chart_account_id && chartAccountsMap[exp.chart_account_id]) {
+        const subcategory = chartAccountsMap[exp.chart_account_id].subcategory
+        if (subcategory) {
+          isDeducible = SUBCATEGORIAS_DEDUCIBLES.includes(subcategory.toUpperCase())
+        }
+        // If no subcategory set, default to deducible
+      }
+
+      if (isDeducible) {
+        if (isUSD) gastosDeduciblesUSD += amount
+        else gastosDeduciblesARS += amount
+      } else {
+        if (isUSD) gastosNoDeduciblesUSD += amount
+        else gastosNoDeduciblesARS += amount
+      }
     }
+
+    const totalExpensesARS = gastosDeduciblesARS + gastosNoDeduciblesARS
+    const totalExpensesUSD = gastosDeduciblesUSD + gastosNoDeduciblesUSD
 
     // Calculate commissions
     const totalCommissions = (commissions || []).reduce((s: number, c: any) => s + (Number(c.amount) || 0), 0)
 
-    // Estimated tax rate for Argentine companies (simplified)
-    const GANANCIAS_RATE = 0.35 // 35% corporate tax rate
+    // Resultado impositivo: ingresos - gastos deducibles (NOT all gastos)
+    const resultadoImpositivoARS = totalMarginARS - gastosDeduciblesARS
+    const resultadoImpositivoUSD = totalMarginUSD - gastosDeduciblesUSD - totalCommissions
 
-    // Profit before tax (simplified, in ARS)
-    // Note: In practice, need to convert USD to ARS at official rate
+    // Profit before tax (contable, includes all expenses)
     const profitBeforeTaxARS = totalMarginARS - totalExpensesARS
     const profitBeforeTaxUSD = totalMarginUSD - totalExpensesUSD - totalCommissions
 
-    // Quarterly provision (estimated)
-    const provisionARS = Math.max(0, Math.round(profitBeforeTaxARS * GANANCIAS_RATE * 100) / 100)
-    const provisionUSD = Math.max(0, Math.round(profitBeforeTaxUSD * GANANCIAS_RATE * 100) / 100)
+    // Quarterly provision based on resultado impositivo (estimated)
+    const provisionARS = Math.max(0, Math.round(resultadoImpositivoARS * gananciasRate * 100) / 100)
+    const provisionUSD = Math.max(0, Math.round(resultadoImpositivoUSD * gananciasRate * 100) / 100)
 
     // Get retenciones de ganancias sufridas in the quarter
     const quarterMonths = Array.from({ length: 3 }, (_, i) =>
@@ -87,6 +154,10 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       periodo: { year, quarter, startDate, endDate },
+      configuracion: {
+        ganancias_rate: gananciasRatePercent,
+        tax_regime: taxRegime,
+      },
       ingresos: {
         margin_usd: Math.round(totalMarginUSD * 100) / 100,
         margin_ars: Math.round(totalMarginARS * 100) / 100,
@@ -96,13 +167,25 @@ export async function GET(request: Request) {
         total_ars: Math.round(totalExpensesARS * 100) / 100,
         total_usd: Math.round(totalExpensesUSD * 100) / 100,
         comisiones: Math.round(totalCommissions * 100) / 100,
+        gastos_deducibles: {
+          ars: Math.round(gastosDeduciblesARS * 100) / 100,
+          usd: Math.round(gastosDeduciblesUSD * 100) / 100,
+        },
+        gastos_no_deducibles: {
+          ars: Math.round(gastosNoDeduciblesARS * 100) / 100,
+          usd: Math.round(gastosNoDeduciblesUSD * 100) / 100,
+        },
+      },
+      resultado_impositivo: {
+        ars: Math.round(resultadoImpositivoARS * 100) / 100,
+        usd: Math.round(resultadoImpositivoUSD * 100) / 100,
       },
       resultado: {
         profit_before_tax_ars: Math.round(profitBeforeTaxARS * 100) / 100,
         profit_before_tax_usd: Math.round(profitBeforeTaxUSD * 100) / 100,
       },
       provision: {
-        rate: GANANCIAS_RATE * 100,
+        rate: gananciasRatePercent,
         estimated_ars: provisionARS,
         estimated_usd: provisionUSD,
         retenciones_sufridas: Math.round(totalRetencionesGanancias * 100) / 100,

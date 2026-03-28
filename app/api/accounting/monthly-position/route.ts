@@ -510,7 +510,45 @@ export async function GET(request: Request) {
     }
     const gastosTotalUSD = gastosUSD + (gastosARS / tcParaCalculos)
 
-    const resultadoMes = ingresosTotalUSD - costosTotalUSD - gastosTotalUSD
+    // Comisiones pagadas en el mes
+    const { data: comisionesMes } = await supabase
+      .from("ledger_movements")
+      .select("amount_original, currency")
+      .eq("type", "COMMISSION")
+      .gte("created_at", `${fechaInicioMes}T00:00:00`)
+      .lte("created_at", `${fechaCorte}T23:59:59`)
+
+    let comisionesUSD = 0, comisionesARS = 0
+    if (comisionesMes) {
+      for (const c of comisionesMes as any[]) {
+        const amount = parseFloat(c.amount_original || "0")
+        if (c.currency === "USD") comisionesUSD += amount
+        else comisionesARS += amount
+      }
+    }
+    const comisionesTotalUSD = comisionesUSD + (comisionesARS / tcParaCalculos)
+
+    // Posición IVA del mes (pasivo corriente)
+    let posicionIVA = { debito: 0, credito: 0, saldo: 0 }
+    try {
+      const { data: ivaSales } = await (supabase.from("iva_sales") as any)
+        .select("iva_amount")
+        .gte("sale_date", fechaInicioMes)
+        .lte("sale_date", fechaCorte)
+
+      const { data: ivaPurchases } = await (supabase.from("iva_purchases") as any)
+        .select("iva_amount")
+        .gte("purchase_date", fechaInicioMes)
+        .lte("purchase_date", fechaCorte)
+
+      posicionIVA.debito = (ivaSales || []).reduce((s: number, r: any) => s + Number(r.iva_amount || 0), 0)
+      posicionIVA.credito = (ivaPurchases || []).reduce((s: number, r: any) => s + Number(r.iva_amount || 0), 0)
+      posicionIVA.saldo = posicionIVA.debito - posicionIVA.credito
+    } catch {
+      // IVA calculation optional
+    }
+
+    const resultadoMes = ingresosTotalUSD - costosTotalUSD - gastosTotalUSD - comisionesTotalUSD
 
     // ===========================================
     // CÁLCULOS FINALES
@@ -520,7 +558,8 @@ export async function GET(request: Request) {
     const activoNoCorriente = 0
     const totalActivo = activoCorriente + activoNoCorriente
 
-    const pasivoCorriente = cuentasPorPagar.totalUSD + gastosAPagarTotalUSD
+    const ivaAPagar = Math.max(0, posicionIVA.saldo) / tcParaCalculos
+    const pasivoCorriente = cuentasPorPagar.totalUSD + gastosAPagarTotalUSD + ivaAPagar
     const pasivoNoCorriente = 0
     const totalPasivo = pasivoCorriente + pasivoNoCorriente
 
@@ -579,6 +618,12 @@ export async function GET(request: Request) {
             saldoUSD: round(gastosAPagarTotalUSD),
             detalle: gastosAPagar.detalle
           },
+          ivaAPagar: {
+            debitoFiscal: round(posicionIVA.debito),
+            creditoFiscal: round(posicionIVA.credito),
+            saldoARS: round(posicionIVA.saldo),
+            saldoUSD: round(ivaAPagar),
+          },
           total: round(pasivoCorriente)
         },
         noCorriente: { total: round(pasivoNoCorriente) },
@@ -594,9 +639,13 @@ export async function GET(request: Request) {
         ingresos: { usd: round(ingresosUSD), ars: round(ingresosARS), total: round(ingresosTotalUSD) },
         costos: { usd: round(costosUSD), ars: round(costosARS), total: round(costosTotalUSD) },
         gastos: { usd: round(gastosUSD), ars: round(gastosARS), total: round(gastosTotalUSD) },
+        comisiones: { usd: round(comisionesUSD), ars: round(comisionesARS), total: round(comisionesTotalUSD) },
         resultado: round(resultadoMes),
-        margenBruto: ingresosTotalUSD > 0 
+        margenBruto: ingresosTotalUSD > 0
           ? round((ingresosTotalUSD - costosTotalUSD) / ingresosTotalUSD * 100)
+          : 0,
+        margenNeto: ingresosTotalUSD > 0
+          ? round(resultadoMes / ingresosTotalUSD * 100)
           : 0
       }
     })

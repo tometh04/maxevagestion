@@ -7,6 +7,18 @@ import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
 
+// Condición fiscal (tax_regime) - determina el tipo de facturación y tratamiento impositivo:
+// RESPONSABLE_INSCRIPTO: Emite FA-A, discrimina IVA, retiene
+// MONOTRIBUTISTA: Emite FA-C, no discrimina IVA
+// EXENTO: Emite FA-C, no cobra IVA
+// NO_RESPONSABLE: No responsable IVA
+const taxRegimeEnum = z.enum([
+  'RESPONSABLE_INSCRIPTO',
+  'MONOTRIBUTISTA',
+  'EXENTO',
+  'NO_RESPONSABLE',
+])
+
 // Schema de validación para configuración financiera
 const financialSettingsSchema = z.object({
   primary_currency: z.enum(['ARS', 'USD']).optional(),
@@ -29,12 +41,18 @@ const financialSettingsSchema = z.object({
   auto_close_month: z.boolean().optional(),
   // Tax settings
   default_iva_rate: z.number().min(0).max(27).optional(),
-  tax_regime: z.string().optional(),
+  tax_regime: taxRegimeEnum.optional(),
+  ganancias_rate: z.number().min(0).max(100).optional(),
   retention_ganancias_rate: z.number().min(0).max(100).optional(),
   retention_iva_rate: z.number().min(0).max(100).optional(),
   iibb_jurisdiction: z.string().optional(),
   iibb_rate: z.number().min(0).max(10).optional(),
   iibb_convenio_multilateral: z.boolean().optional(),
+  iibb_jurisdictions: z.array(z.object({
+    jurisdiction: z.string(),
+    rate: z.number().min(0).max(100),
+    coeficiente: z.number().min(0).max(1),
+  })).optional(),
 })
 
 // GET - Obtener configuración financiera
