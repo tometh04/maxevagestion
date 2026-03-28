@@ -125,11 +125,18 @@ export async function POST(
       MonId: invoice.moneda || 'PES',
       MonCotiz: invoice.cotizacion || 1,
       Iva: ivaArray.length > 0 ? ivaArray : undefined,
-      FchServDesde: invoice.fch_serv_desde,
-      FchServHasta: invoice.fch_serv_hasta,
-      FchVtoPago: invoice.fecha_vto_pago
-        ? formatDate(new Date(invoice.fecha_vto_pago))
-        : undefined,
+      // Para concepto 2 (servicios) o 3 (productos y servicios), AFIP requiere fechas obligatoriamente
+      ...(invoice.concepto === 2 || invoice.concepto === 3 ? {
+        FchServDesde: invoice.fch_serv_desde
+          ? formatDate(new Date(invoice.fch_serv_desde))
+          : formatDate(new Date()), // Default: hoy
+        FchServHasta: invoice.fch_serv_hasta
+          ? formatDate(new Date(invoice.fch_serv_hasta))
+          : formatDate(new Date()), // Default: hoy
+        FchVtoPago: invoice.fecha_vto_pago
+          ? formatDate(new Date(invoice.fecha_vto_pago))
+          : formatDate(new Date(new Date().setDate(new Date().getDate() + 30))), // Default: 30 días
+      } : {}),
       // Condición IVA del receptor: 5=Consumidor Final (default), 1=RI, 6=Monotributo
       CondicionIVAReceptorId: invoice.receptor_condicion_iva || 5,
     }
