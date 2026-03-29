@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
 import { extractCustomerName, normalizePhone } from "@/lib/customers/utils"
+import { toast } from "sonner"
 
 interface Customer {
   id: string
@@ -63,10 +64,12 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error("[CustomersTable] Error:", response.status, errorData)
+        toast.error("Error al cargar clientes")
         setCustomers([])
       }
     } catch (error) {
       console.error("[CustomersTable] Exception:", error)
+      toast.error("Error al cargar clientes")
       setCustomers([])
     } finally {
       setLoading(false)

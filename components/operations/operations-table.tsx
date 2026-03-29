@@ -145,8 +145,13 @@ export function OperationsTable({
       setAllOperators((operatorsData.operators || []).map((o: any) => ({ id: o.id, name: o.name })))
     } catch (error) {
       console.error("Error loading dialog data:", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar datos del formulario",
+        variant: "destructive",
+      })
     }
-  }, [])
+  }, [toast])
   
   const handleEditClick = useCallback(async (operation: Operation) => {
     if (agencies.length === 0) {
@@ -189,10 +194,15 @@ export function OperationsTable({
       }
     } catch (error) {
       console.error("Error fetching operations:", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar las operaciones",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
-  }, [filters, page, limit, debouncedSearch])
+  }, [filters, page, limit, debouncedSearch, toast])
 
   const handleDeleteClick = useCallback((operation: Operation) => {
     setDeletingOperation(operation)

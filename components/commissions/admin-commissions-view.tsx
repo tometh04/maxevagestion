@@ -204,10 +204,15 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       setPendingCommissions(data.commissions || [])
     } catch (err) {
       console.error("Error fetching pending commissions:", err)
+      toast({
+        title: "Error",
+        description: "Error al cargar comisiones pendientes",
+        variant: "destructive",
+      })
     } finally {
       setPendingLoading(false)
     }
-  }, [pendingMonth, pendingDateFrom, pendingDateTo])
+  }, [pendingMonth, pendingDateFrom, pendingDateTo, toast])
 
   // ── Fetch paid commissions ──
   const fetchPaidCommissions = useCallback(async () => {
@@ -224,10 +229,15 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       setPaidCommissions(data.commissions || [])
     } catch (err) {
       console.error("Error fetching paid commissions:", err)
+      toast({
+        title: "Error",
+        description: "Error al cargar comisiones pagadas",
+        variant: "destructive",
+      })
     } finally {
       setPaidLoading(false)
     }
-  }, [paidMonth, paidDateFrom, paidDateTo, paidSellerFilter])
+  }, [paidMonth, paidDateFrom, paidDateTo, paidSellerFilter, toast])
 
   // ── Fetch paid-this-month total (separated by currency) ──
   const fetchPaidThisMonth = useCallback(async () => {
@@ -253,8 +263,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
       setFinancialAccounts(data.accounts || [])
     } catch (err) {
       console.error("Error fetching financial accounts:", err)
+      toast({
+        title: "Error",
+        description: "Error al cargar cuentas financieras",
+        variant: "destructive",
+      })
     }
-  }, [])
+  }, [toast])
 
   // ── Effects ──
   useEffect(() => {

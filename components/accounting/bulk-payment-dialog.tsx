@@ -155,6 +155,7 @@ export function BulkPaymentDialog({
         setFinancialAccounts(accounts)
       } catch (error) {
         console.error("Error fetching financial accounts:", error)
+        toast.error("Error al cargar cuentas financieras")
       }
     }
 

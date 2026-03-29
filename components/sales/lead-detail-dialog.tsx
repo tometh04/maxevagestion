@@ -247,6 +247,7 @@ export function LeadDetailDialog({
       }
     } catch (error) {
       console.error("Error loading quotations:", error)
+      toast.error("Error al cargar cotizaciones")
     } finally {
       setLoadingQuotations(false)
     }
@@ -264,6 +265,7 @@ export function LeadDetailDialog({
       }
     } catch (error) {
       console.error("Error loading comments:", error)
+      toast.error("Error al cargar comentarios")
     } finally {
       setLoadingComments(false)
     }

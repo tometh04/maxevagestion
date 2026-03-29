@@ -236,6 +236,11 @@ export function NewOperationDialog({
       }
     } catch (error) {
       console.error('Error loading customers:', error)
+      toast({
+        title: "Error",
+        description: "Error al cargar clientes",
+        variant: "destructive",
+      })
     } finally {
       setLoadingCustomers(false)
     }
@@ -250,6 +255,11 @@ export function NewOperationDialog({
       }
     } catch (error) {
       console.error('Error loading operation settings:', error)
+      toast({
+        title: "Error",
+        description: "Error al cargar configuración de operaciones",
+        variant: "destructive",
+      })
     }
   }
 

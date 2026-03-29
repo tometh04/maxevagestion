@@ -628,6 +628,26 @@ export async function POST(request: Request) {
       }
     }
 
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'PAYMENT_MARKED_PAID',
+        p_entity_type: 'payment',
+        p_entity_id: paymentId,
+        p_details: {
+          amount: paymentData.amount,
+          currency: paymentData.currency,
+          financial_account_id: financial_account_id,
+          ledger_movement_id: ledgerMovementId,
+          direction: paymentData.direction,
+          operation_id: paymentData.operation_id
+        }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
     return NextResponse.json({ success: true, ledger_movement_id: ledgerMovementId })
   } catch (error: any) {
     console.error("Error en mark-paid:", error)

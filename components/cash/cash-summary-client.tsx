@@ -32,6 +32,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign } from "lucide-react"
+import { toast } from "sonner"
 import {
   Tooltip,
   TooltipContent,
@@ -130,6 +131,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       }
     } catch (error) {
       console.error("Error fetching accounts:", error)
+      toast.error("Error al cargar cuentas financieras")
     } finally {
       setLoading(false)
     }
@@ -153,6 +155,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       }
     } catch (error) {
       console.error("Error fetching daily balance:", error)
+      toast.error("Error al cargar balance diario")
     } finally {
       setLoadingChart(false)
     }
@@ -172,6 +175,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       }
     } catch (error) {
       console.error("Error fetching account movements:", error)
+      toast.error("Error al cargar movimientos de la cuenta")
     } finally {
       setLoadingMovements(prev => ({ ...prev, [accountId]: false }))
     }
@@ -199,6 +203,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       }
     } catch (error) {
       console.error("Error fetching batch stats:", error)
+      toast.error("Error al cargar estadísticas de cuentas")
     } finally {
       setLoadingStats(prev => {
         const next = { ...prev }

@@ -735,8 +735,28 @@ export async function DELETE(
     // Invalidar caché del dashboard (los KPIs cambian al eliminar una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
 
-    return NextResponse.json({ 
-      success: true, 
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'OPERATION_DELETED',
+        p_entity_type: 'operation',
+        p_entity_id: operationId,
+        p_details: {
+          operation_number: op.operation_number,
+          status: op.status,
+          operator_id: op.operator_id,
+          lead_id: op.lead_id,
+          sale_amount_total: op.sale_amount_total,
+          currency: op.currency
+        }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
+    return NextResponse.json({
+      success: true,
       message: "Operación eliminada correctamente",
       leadReverted: op.lead_id ? true : false
     })

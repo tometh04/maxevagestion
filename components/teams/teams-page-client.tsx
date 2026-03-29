@@ -140,6 +140,11 @@ export function TeamsPageClient() {
       }
     } catch (error) {
       console.error('Error loading users:', error)
+      toast({
+        title: "Error",
+        description: "Error al cargar usuarios",
+        variant: "destructive",
+      })
     }
   }
 

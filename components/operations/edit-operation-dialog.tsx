@@ -156,6 +156,7 @@ export function EditOperationDialog({
         }
       } catch (error) {
         console.error("Error loading custom statuses:", error)
+        toast.error("Error al cargar estados personalizados")
       }
     }
     loadCustomStatuses()
@@ -195,6 +196,7 @@ export function EditOperationDialog({
         }
       } catch (err) {
         console.error("Error loading operation operators:", err)
+        toast.error("Error al cargar operadores")
       }
       setOperatorsLoaded(true)
     }

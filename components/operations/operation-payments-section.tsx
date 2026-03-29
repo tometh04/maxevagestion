@@ -47,6 +47,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 interface FinancialAccount {
   id: string
@@ -144,6 +145,7 @@ export function OperationPaymentsSection({
           }
         } catch (error) {
           console.error("Error fetching financial accounts:", error)
+          toast.error("Error al cargar cuentas financieras")
         }
       }
       fetchFinancialAccounts()
@@ -172,7 +174,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error:", error)
-      alert("Error al eliminar pagos pendientes")
+      toast.error("Error al eliminar pagos pendientes")
     } finally {
       setIsDeleting(false)
     }
@@ -197,7 +199,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error:", error)
-      alert(error instanceof Error ? error.message : "Error al eliminar pago")
+      toast.error(error instanceof Error ? error.message : "Error al eliminar pago")
     } finally {
       setDeletingPaymentId(null)
     }
@@ -228,7 +230,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error sending receipt via WhatsApp:", error)
-      alert(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
+      toast.error(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
     } finally {
       setSendingReceiptId(null)
     }
@@ -555,7 +557,7 @@ export function OperationPaymentsSection({
       doc.save(`recibo-${data.receiptNumber}.pdf`)
     } catch (error) {
       console.error("Error:", error)
-      alert("Error al descargar el recibo")
+      toast.error("Error al descargar el recibo")
     } finally {
       setDownloadingReceiptId(null)
     }
@@ -669,7 +671,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error editing payment:", error)
-      alert(error instanceof Error ? error.message : "Error al editar pago")
+      toast.error(error instanceof Error ? error.message : "Error al editar pago")
     } finally {
       setIsLoading(false)
     }
@@ -755,7 +757,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error registering income:", error)
-      alert(error instanceof Error ? error.message : "Error al registrar cobro")
+      toast.error(error instanceof Error ? error.message : "Error al registrar cobro")
     } finally {
       setIsLoading(false)
     }
@@ -803,7 +805,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error registering expense:", error)
-      alert(error instanceof Error ? error.message : "Error al registrar pago")
+      toast.error(error instanceof Error ? error.message : "Error al registrar pago")
     } finally {
       setIsLoading(false)
     }

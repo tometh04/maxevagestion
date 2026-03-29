@@ -92,6 +92,7 @@ export function TransferAccountDialog({
           }
         } catch (error) {
           console.error("Error fetching financial accounts:", error)
+          toast.error("Error al cargar cuentas financieras")
         }
       }
       fetchFinancialAccounts()
