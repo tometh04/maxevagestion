@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -439,7 +439,7 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto p-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
         {/* Header con nombre y badges */}
         <div className="px-6 pt-6 pb-4 border-b">
           <DialogHeader>
@@ -470,7 +470,7 @@ export function LeadDetailDialog({
           </div>
         </div>
 
-        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+        <div className="px-6 py-5 space-y-5 flex-1 min-h-0 overflow-y-auto">
           {/* Contacto + Viaje en grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Información de contacto */}
@@ -862,43 +862,44 @@ export function LeadDetailDialog({
           </div>
         </div>
 
-        {/* Acciones */}
-        <DialogFooter className="flex-col sm:flex-row gap-2 px-6 pb-6 pt-2 border-t">
-          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+        {/* Acciones - Footer fijo */}
+        <div className="flex-shrink-0 border-t bg-muted/30 px-6 py-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
             {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
             {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
               <Button
-                variant="default"
+                size="sm"
                 onClick={handleClaimLead}
                 disabled={claiming}
-                className="flex-1 sm:flex-initial bg-primary hover:bg-primary/90 text-white"
+                className="shrink-0"
               >
                 {claiming ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <UserPlus className="mr-2 h-4 w-4" />
+                  <UserPlus className="h-3.5 w-3.5" />
                 )}
-                {claiming ? "Asignando..." : "Agarrar Lead"}
+                <span className="ml-1.5">{claiming ? "Asignando..." : "Agarrar"}</span>
               </Button>
             )}
             <Button
               variant="outline"
+              size="sm"
               onClick={handleEdit}
-              className="flex-1 sm:flex-initial"
+              className="shrink-0"
             >
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
+              <Edit className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Editar</span>
             </Button>
             {/* Ver Operación - si ya tiene operación creada */}
             {lead.operations && lead.operations.length > 0 ? (
               <Button
-                variant="default"
+                size="sm"
                 asChild
-                className="flex-1 sm:flex-initial bg-success hover:bg-success/90"
+                className="shrink-0 bg-success hover:bg-success/90"
               >
                 <Link href={`/operations/${lead.operations[0].id}`}>
-                  <Briefcase className="mr-2 h-4 w-4" />
-                  Ver Operación
+                  <Briefcase className="h-3.5 w-3.5" />
+                  <span className="ml-1.5">Ver Operación</span>
                 </Link>
               </Button>
             ) : (
@@ -907,60 +908,68 @@ export function LeadDetailDialog({
                 <>
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={() => setQuotationDialogOpen(true)}
-                    className="flex-1 sm:flex-initial"
+                    className="shrink-0"
                   >
-                    <FileText className="mr-2 h-4 w-4" />
-                    Cotizar
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">Cotizar</span>
                   </Button>
                   {onConvert && agencies.length > 0 && sellers.length > 0 && (
                     <Button
                       variant="outline"
+                      size="sm"
                       onClick={() => setConvertDialogOpen(true)}
-                      className="flex-1 sm:flex-initial"
+                      className="shrink-0"
                     >
-                      <ArrowRight className="mr-2 h-4 w-4" />
-                      Convertir a Operacion
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">Convertir</span>
                     </Button>
                   )}
                 </>
               )
             )}
+
+            {/* Separador visual */}
+            <div className="flex-1" />
+
             {onArchive && (
               <Button
                 variant="ghost"
-                className="text-warning flex-1 sm:flex-initial hover:text-warning hover:bg-warning/10"
+                size="sm"
+                className="shrink-0 text-warning hover:text-warning hover:bg-warning/10"
                 onClick={handleArchive}
                 disabled={archiving}
               >
                 {archiving ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : lead?.archived_at ? (
-                  <ArchiveRestore className="mr-2 h-4 w-4" />
+                  <ArchiveRestore className="h-3.5 w-3.5" />
                 ) : (
-                  <Archive className="mr-2 h-4 w-4" />
+                  <Archive className="h-3.5 w-3.5" />
                 )}
-                {archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}
+                <span className="ml-1.5">{archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}</span>
               </Button>
             )}
             {onDelete && !isFromTrello && (
               <Button
                 variant="ghost"
-                className="text-destructive flex-1 sm:flex-initial hover:text-destructive hover:bg-destructive/10"
+                size="sm"
+                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => setDeleteDialogOpen(true)}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Eliminar
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="ml-1.5">Eliminar</span>
               </Button>
             )}
-            {isFromTrello && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground w-full sm:w-auto">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Este lead está sincronizado con Trello. Para eliminarlo, elimínalo desde Trello.</span>
-              </div>
-            )}
           </div>
-        </DialogFooter>
+          {isFromTrello && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>Sincronizado con Trello — elimínalo desde allí.</span>
+            </div>
+          )}
+        </div>
       </DialogContent>
 
       {/* Dialog de editar */}
