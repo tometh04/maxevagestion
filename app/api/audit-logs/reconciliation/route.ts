@@ -28,48 +28,65 @@ export async function GET() {
     }> = []
 
     // ============================================
-    // CHECK 1: CpC ARS — balance contable vs suma de pagos pendientes
+    // CHECK 1: CpC — balance contable vs suma de pagos pendientes (por moneda)
+    // Busca cuentas financieras vinculadas al código 1.1.03 del plan de cuentas
     // ============================================
     try {
-      const { data: cpcAccounts } = await (supabase.from("financial_accounts") as any)
-        .select("id, name, currency, initial_balance")
-        .ilike("name", "%Cuentas por Cobrar%")
-        .eq("is_active", true)
+      // Obtener el chart_account_id para CpC (código 1.1.03)
+      const { data: cpcChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("code", "1.1.03")
+        .maybeSingle()
 
-      if (cpcAccounts && cpcAccounts.length > 0) {
-        const accountIds = (cpcAccounts as any[]).map((a: any) => a.id)
-        const balances = await getAccountBalancesBatch(accountIds, supabase)
+      if (cpcChart) {
+        const { data: cpcAccounts } = await (supabase.from("financial_accounts") as any)
+          .select("id, name, currency, initial_balance")
+          .eq("chart_account_id", cpcChart.id)
+          .eq("is_active", true)
 
-        for (const acc of cpcAccounts as any[]) {
-          const balance = balances[acc.id] || 0
+        if (cpcAccounts && cpcAccounts.length > 0) {
+          const accountIds = (cpcAccounts as any[]).map((a: any) => a.id)
+          const balances = await getAccountBalancesBatch(accountIds, supabase)
 
-          // Sumar pagos PENDING de clientes en esta moneda
-          const { data: pendingPayments } = await (supabase.from("payments") as any)
-            .select("amount")
-            .eq("direction", "INCOME")
-            .eq("status", "PENDING")
-            .eq("currency", acc.currency)
+          for (const acc of cpcAccounts as any[]) {
+            const balance = balances[acc.id] || 0
 
-          const pendingTotal = pendingPayments
-            ? (pendingPayments as any[]).reduce((sum: number, p: any) => sum + Number(p.amount), 0)
-            : 0
+            // Sumar pagos PENDING de clientes en la MISMA moneda de esta cuenta
+            const { data: pendingPayments } = await (supabase.from("payments") as any)
+              .select("amount")
+              .eq("direction", "INCOME")
+              .eq("status", "PENDING")
+              .eq("currency", acc.currency)
 
-          const diff = Math.abs(balance - pendingTotal)
-          const threshold = acc.currency === "USD" ? 100 : 50000
+            const pendingTotal = pendingPayments
+              ? (pendingPayments as any[]).reduce((sum: number, p: any) => sum + Number(p.amount), 0)
+              : 0
 
-          checks.push({
-            id: `cpc-${acc.currency}`,
-            name: `CpC ${acc.currency}`,
-            description: `Cuenta por Cobrar ${acc.currency}: balance contable vs pagos pendientes de clientes`,
-            status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
-            expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            details: diff < threshold
-              ? "Los valores coinciden dentro del margen aceptable"
-              : "Hay una diferencia significativa. Puede deberse a pagos parciales, ajustes manuales o movimientos contables sin pago asociado.",
-          })
+            const diff = Math.abs(balance - pendingTotal)
+            const threshold = acc.currency === "USD" ? 100 : 50000
+
+            checks.push({
+              id: `cpc-${acc.currency}`,
+              name: `CpC ${acc.currency}`,
+              description: `Cuenta por Cobrar ${acc.currency}: balance contable vs pagos pendientes de clientes en ${acc.currency}`,
+              status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
+              expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              details: diff < threshold
+                ? "Los valores coinciden dentro del margen aceptable"
+                : "Hay una diferencia significativa. Puede deberse a pagos parciales, ajustes manuales o movimientos contables sin pago asociado.",
+            })
+          }
         }
+      } else {
+        checks.push({
+          id: "cpc-check",
+          name: "CpC",
+          description: "Verificación de Cuentas por Cobrar",
+          status: "warning",
+          details: "No se encontró el código 1.1.03 en el plan de cuentas",
+        })
       }
     } catch (err) {
       checks.push({
@@ -82,50 +99,67 @@ export async function GET() {
     }
 
     // ============================================
-    // CHECK 2: CpP — balance contable vs operator_payments pendientes
+    // CHECK 2: CpP — balance contable vs operator_payments pendientes (por moneda)
+    // Busca cuentas financieras vinculadas al código 2.1.01 del plan de cuentas
     // ============================================
     try {
-      const { data: cppAccounts } = await (supabase.from("financial_accounts") as any)
-        .select("id, name, currency, initial_balance")
-        .ilike("name", "%Cuentas por Pagar%")
-        .eq("is_active", true)
+      // Obtener el chart_account_id para CpP (código 2.1.01)
+      const { data: cppChart } = await (supabase.from("chart_of_accounts") as any)
+        .select("id")
+        .eq("code", "2.1.01")
+        .maybeSingle()
 
-      if (cppAccounts && cppAccounts.length > 0) {
-        const accountIds = (cppAccounts as any[]).map((a: any) => a.id)
-        const balances = await getAccountBalancesBatch(accountIds, supabase)
+      if (cppChart) {
+        const { data: cppAccounts } = await (supabase.from("financial_accounts") as any)
+          .select("id, name, currency, initial_balance")
+          .eq("chart_account_id", cppChart.id)
+          .eq("is_active", true)
 
-        for (const acc of cppAccounts as any[]) {
-          const balance = balances[acc.id] || 0
+        if (cppAccounts && cppAccounts.length > 0) {
+          const accountIds = (cppAccounts as any[]).map((a: any) => a.id)
+          const balances = await getAccountBalancesBatch(accountIds, supabase)
 
-          // Sumar operator_payments pendientes
-          const { data: pendingOpPayments } = await (supabase.from("operator_payments") as any)
-            .select("amount, paid_amount")
-            .in("status", ["PENDING", "OVERDUE"])
-            .eq("currency", acc.currency)
+          for (const acc of cppAccounts as any[]) {
+            const balance = balances[acc.id] || 0
 
-          const pendingTotal = pendingOpPayments
-            ? (pendingOpPayments as any[]).reduce(
-                (sum: number, p: any) => sum + (Number(p.amount) - Number(p.paid_amount || 0)),
-                0
-              )
-            : 0
+            // Sumar operator_payments pendientes en la MISMA moneda
+            const { data: pendingOpPayments } = await (supabase.from("operator_payments") as any)
+              .select("amount, paid_amount")
+              .in("status", ["PENDING", "OVERDUE"])
+              .eq("currency", acc.currency)
 
-          const diff = Math.abs(balance - pendingTotal)
-          const threshold = acc.currency === "USD" ? 100 : 50000
+            const pendingTotal = pendingOpPayments
+              ? (pendingOpPayments as any[]).reduce(
+                  (sum: number, p: any) => sum + (Number(p.amount) - Number(p.paid_amount || 0)),
+                  0
+                )
+              : 0
 
-          checks.push({
-            id: `cpp-${acc.currency}`,
-            name: `CpP ${acc.currency}`,
-            description: `Cuenta por Pagar ${acc.currency}: balance contable vs deuda pendiente a operadores`,
-            status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
-            expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-            details: diff < threshold
-              ? "Los valores coinciden dentro del margen aceptable"
-              : "Hay diferencia. Puede deberse a pagos parciales de operadores o ajustes contables.",
-          })
+            const diff = Math.abs(balance - pendingTotal)
+            const threshold = acc.currency === "USD" ? 100 : 50000
+
+            checks.push({
+              id: `cpp-${acc.currency}`,
+              name: `CpP ${acc.currency}`,
+              description: `Cuenta por Pagar ${acc.currency}: balance contable vs deuda pendiente a operadores en ${acc.currency}`,
+              status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
+              expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
+              details: diff < threshold
+                ? "Los valores coinciden dentro del margen aceptable"
+                : "Hay diferencia. Puede deberse a pagos parciales de operadores o ajustes contables.",
+            })
+          }
         }
+      } else {
+        checks.push({
+          id: "cpp-check",
+          name: "CpP",
+          description: "Verificación de Cuentas por Pagar",
+          status: "warning",
+          details: "No se encontró el código 2.1.01 en el plan de cuentas",
+        })
       }
     } catch (err) {
       checks.push({
