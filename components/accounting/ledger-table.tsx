@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 function formatCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
@@ -72,6 +73,11 @@ export function LedgerTable({ filters }: LedgerTableProps) {
   const [movements, setMovements] = useState<LedgerMovement[]>([])
   const [loading, setLoading] = useState(true)
 
+  const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
+    key: "created_at",
+    direction: "desc",
+  })
+
   useEffect(() => {
     async function fetchMovements() {
       setLoading(true)
@@ -120,18 +126,34 @@ export function LedgerTable({ filters }: LedgerTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="sticky top-0 bg-background z-10">Fecha</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10">Concepto</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10 text-right">Monto Original</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10 text-right">ARS Equivalente</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10">Cuenta</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
-            <TableHead className="sticky top-0 bg-background z-10">Vendedor</TableHead>
+            <SortableTableHead sortKey="created_at" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Fecha
+            </SortableTableHead>
+            <SortableTableHead sortKey="type" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Tipo
+            </SortableTableHead>
+            <SortableTableHead sortKey="concept" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Concepto
+            </SortableTableHead>
+            <SortableTableHead sortKey="amount_original" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">
+              Monto Original
+            </SortableTableHead>
+            <SortableTableHead sortKey="amount_ars_equivalent" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">
+              ARS Equivalente
+            </SortableTableHead>
+            <SortableTableHead sortKey="financial_accounts.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Cuenta
+            </SortableTableHead>
+            <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Operación
+            </SortableTableHead>
+            <SortableTableHead sortKey="sellers.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Vendedor
+            </SortableTableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {movements.map((movement) => (
+          {sortedData.map((movement) => (
             <TableRow key={movement.id}>
               <TableCell>
                 {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
@@ -177,4 +199,3 @@ export function LedgerTable({ filters }: LedgerTableProps) {
     </div>
   )
 }
-

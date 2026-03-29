@@ -23,6 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import {
   Select,
   SelectContent,
@@ -185,6 +186,12 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   useEffect(() => {
     fetchPayments()
   }, [fetchPayments])
+
+  // Sorting
+  const { sortedData: sortedPayments, sortConfig, requestSort } = useSortableData(payments, {
+    key: "due_date",
+    direction: "asc",
+  })
 
   const overdueCount = payments.filter((p) => {
     const isOverdue = p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.due_date) < new Date())
@@ -516,20 +523,20 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Operador</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10 text-right">Monto Total</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10 text-right">Pagado</TableHead>
+                  <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operación</SortableTableHead>
+                  <SortableTableHead sortKey="operators.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operador</SortableTableHead>
+                  <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Monto Total</SortableTableHead>
+                  <SortableTableHead sortKey="paid_amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Pagado</SortableTableHead>
                   <TableHead className="sticky top-0 bg-background z-10 text-right">Pendiente</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Vencimiento</TableHead>
-                  <TableHead className="sticky top-0 bg-background z-10">Estado</TableHead>
+                  <SortableTableHead sortKey="due_date" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Vencimiento</SortableTableHead>
+                  <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Estado</SortableTableHead>
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
                     <TableHead className="sticky top-0 bg-background z-10">Fecha Pago</TableHead>
                   )}
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => {
+                {sortedPayments.map((payment) => {
                   const isOverdue =
                     payment.status === "PENDING" &&
                     new Date(payment.due_date) < new Date()

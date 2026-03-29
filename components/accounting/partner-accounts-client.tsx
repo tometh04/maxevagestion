@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Plus, Wallet, ArrowDownCircle, Trash2, Loader2, Calendar } from "lucide-react"
 import { toast } from "sonner"
@@ -293,6 +294,12 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setWithdrawalExchangeRate("")
     setMovementType("WITHDRAWAL")
   }
+
+  // Sorting for withdrawals table
+  const { sortedData: sortedWithdrawals, sortConfig, requestSort } = useSortableData(withdrawals, {
+    key: "withdrawal_date",
+    direction: "desc",
+  })
 
   // Calcular totales
   const totalWithdrawnARS = partners.reduce((sum, p) => sum + p.total_withdrawn_ars, 0)
@@ -670,17 +677,17 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="sticky top-0 bg-background z-10">Fecha</TableHead>
+                      <SortableTableHead sortKey="withdrawal_date" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Fecha</SortableTableHead>
                       <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
-                      <TableHead className="sticky top-0 bg-background z-10">Socio</TableHead>
-                      <TableHead className="sticky top-0 bg-background z-10">Monto</TableHead>
+                      <SortableTableHead sortKey="partner.partner_name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Socio</SortableTableHead>
+                      <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Monto</SortableTableHead>
                       <TableHead className="sticky top-0 bg-background z-10">Descripción</TableHead>
-                      <TableHead className="sticky top-0 bg-background z-10">Registrado por</TableHead>
+                      <SortableTableHead sortKey="created_by_user.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Registrado por</SortableTableHead>
                       {userRole === "SUPER_ADMIN" && <TableHead className="sticky top-0 bg-background z-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {withdrawals.map((w) => {
+                    {sortedWithdrawals.map((w) => {
                       const isDeposit = (w as any).movement_type === "DEPOSIT"
                       return (
                       <TableRow key={w.id}>

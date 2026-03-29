@@ -17,6 +17,7 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { ConvertLeadDialog } from "./convert-lead-dialog"
 import { ServerPagination } from "@/components/ui/server-pagination"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-info",
@@ -53,20 +54,20 @@ interface Lead {
 }
 
 interface LeadsTableProps {
-  leads?: Lead[] // Opcional: si no se pasa, carga sus propios datos con paginación
+  leads?: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   onRefresh?: () => void
-  agencyId?: string // Para filtrar por agencia
-  sellerId?: string // Para filtrar por vendedor
+  agencyId?: string
+  sellerId?: string
 }
 
-export function LeadsTable({ 
-  leads: initialLeads, 
-  agencies, 
-  sellers, 
-  operators, 
+export function LeadsTable({
+  leads: initialLeads,
+  agencies,
+  sellers,
+  operators,
   onRefresh,
   agencyId,
   sellerId,
@@ -75,21 +76,24 @@ export function LeadsTable({
   const [loading, setLoading] = useState(!initialLeads)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
-  
+
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(50)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [hasMore, setHasMore] = useState(false)
-  
-  // Si se pasan leads como prop, usarlos (modo legacy)
-  // Si no, cargar con paginación server-side
+
   const useServerPagination = !initialLeads
-  
+
+  const { sortedData, sortConfig, requestSort } = useSortableData(leads, {
+    key: "created_at",
+    direction: "desc",
+  })
+
   const fetchLeads = useCallback(async () => {
-    if (!useServerPagination) return // Si se pasan leads como prop, no cargar
-    
+    if (!useServerPagination) return
+
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -102,7 +106,6 @@ export function LeadsTable({
       if (response.ok) {
         const data = await response.json()
         setLeads(data.leads || [])
-        // El API retorna paginación dentro de un objeto 'pagination'
         const pagination = data.pagination || {}
         setTotal(pagination.total || 0)
         setTotalPages(pagination.totalPages || 0)
@@ -114,12 +117,11 @@ export function LeadsTable({
       setLoading(false)
     }
   }, [useServerPagination, agencyId, sellerId, page, limit])
-  
+
   useEffect(() => {
     fetchLeads()
   }, [fetchLeads])
-  
-  // Si se pasan leads como prop, actualizar cuando cambien
+
   useEffect(() => {
     if (initialLeads) {
       setLeads(initialLeads)
@@ -134,7 +136,7 @@ export function LeadsTable({
   const handleConvertSuccess = () => {
     onRefresh?.()
     if (useServerPagination) {
-      fetchLeads() // Recargar si usa paginación server-side
+      fetchLeads()
     }
   }
 
@@ -159,24 +161,36 @@ export function LeadsTable({
         <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Contacto</TableHead>
-            <TableHead>Destino</TableHead>
-            <TableHead>Región</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Vendedor</TableHead>
-            <TableHead>Fecha</TableHead>
+            <SortableTableHead sortKey="contact_name" sortConfig={sortConfig} onSort={requestSort}>
+              Contacto
+            </SortableTableHead>
+            <SortableTableHead sortKey="destination" sortConfig={sortConfig} onSort={requestSort}>
+              Destino
+            </SortableTableHead>
+            <SortableTableHead sortKey="region" sortConfig={sortConfig} onSort={requestSort}>
+              Región
+            </SortableTableHead>
+            <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort}>
+              Estado
+            </SortableTableHead>
+            <SortableTableHead sortKey="users.name" sortConfig={sortConfig} onSort={requestSort}>
+              Vendedor
+            </SortableTableHead>
+            <SortableTableHead sortKey="created_at" sortConfig={sortConfig} onSort={requestSort}>
+              Fecha
+            </SortableTableHead>
             <TableHead>Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {leads.length === 0 ? (
+          {sortedData.length === 0 ? (
             <TableRow>
               <TableCell colSpan={7} className="text-center text-muted-foreground">
                 No hay leads
               </TableCell>
             </TableRow>
           ) : (
-            leads.map((lead) => (
+            sortedData.map((lead) => (
               <TableRow key={lead.id}>
                 <TableCell>
                   <div>
@@ -237,8 +251,7 @@ export function LeadsTable({
         </TableBody>
         </Table>
         </div>
-        
-        {/* Paginación server-side (solo si no se pasan leads como prop) */}
+
         {useServerPagination && total > 0 && (
           <ServerPagination
             page={page}
@@ -249,7 +262,7 @@ export function LeadsTable({
             onPageChange={setPage}
             onLimitChange={(newLimit) => {
               setLimit(newLimit)
-              setPage(1) // Resetear a página 1
+              setPage(1)
             }}
             limitOptions={[25, 50, 100, 200]}
           />
@@ -270,4 +283,3 @@ export function LeadsTable({
     </>
   )
 }
-

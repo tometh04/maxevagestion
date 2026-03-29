@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Loader2, Plus, ShieldCheck, TrendingDown, TrendingUp, Receipt } from "lucide-react"
 import { format } from "date-fns"
 
@@ -110,6 +111,11 @@ export default function WithholdingsPage() {
   }, [period, filterType, filterDirection])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  const { sortedData: sortedWithholdings, sortConfig, requestSort } = useSortableData(withholdings, {
+    key: "withholding_date",
+    direction: "desc",
+  })
 
   const handleSave = async () => {
     if (!form.amount || Number(form.amount) <= 0) {
@@ -258,18 +264,18 @@ export default function WithholdingsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Tipo</TableHead>
-                  <TableHead>Dirección</TableHead>
-                  <TableHead>Origen</TableHead>
-                  <TableHead>Contraparte</TableHead>
-                  <TableHead>Operación</TableHead>
-                  <TableHead className="text-right">Monto</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <SortableTableHead sortKey="withholding_date" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
+                  <SortableTableHead sortKey="type" sortConfig={sortConfig} onSort={requestSort}>Tipo</SortableTableHead>
+                  <SortableTableHead sortKey="direction" sortConfig={sortConfig} onSort={requestSort}>Dirección</SortableTableHead>
+                  <SortableTableHead sortKey="source_type" sortConfig={sortConfig} onSort={requestSort}>Origen</SortableTableHead>
+                  <SortableTableHead sortKey="counterpart_name" sortConfig={sortConfig} onSort={requestSort}>Contraparte</SortableTableHead>
+                  <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort}>Operación</SortableTableHead>
+                  <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
+                  <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {withholdings.map(w => (
+                {sortedWithholdings.map(w => (
                   <TableRow key={w.id}>
                     <TableCell className="text-sm">
                       {w.withholding_date ? format(new Date(w.withholding_date + "T12:00:00"), "dd/MM/yyyy") : "-"}
