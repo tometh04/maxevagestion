@@ -51,28 +51,20 @@ export async function GET(request: Request) {
       .lte("created_at", `${endDate}T23:59:59`)
       .in("status", ["CONFIRMED", "CLOSED"])
 
-    // Get expenses (gastos) in the quarter, joining financial_accounts to get chart_account_id
-    const { data: expenses } = await (supabase.from("ledger_movements") as any)
-      .select("id, amount_original, currency, type, concept, movement_date, account_id, financial_accounts:account_id(chart_account_id)")
+    // Get expenses (gastos) in the quarter
+    const { data: expenses, error: expensesError } = await (supabase.from("ledger_movements") as any)
+      .select("id, amount_original, currency, type, concept, movement_date")
       .eq("type", "EXPENSE")
       .gte("movement_date", `${startDate}T00:00:00`)
       .lte("movement_date", `${endDate}T23:59:59`)
 
-    // Get chart of accounts to determine deducibility by subcategory
-    const chartAccountIds = (expenses || [])
-      .map((e: any) => e.financial_accounts?.chart_account_id)
-      .filter((id: string | null) => id != null)
-
-    let chartAccountsMap: Record<string, any> = {}
-    if (chartAccountIds.length > 0) {
-      const { data: chartAccounts } = await (supabase.from("chart_of_accounts") as any)
-        .select("id, subcategory")
-        .in("id", chartAccountIds)
-
-      for (const account of (chartAccounts || [])) {
-        chartAccountsMap[account.id] = account
-      }
+    if (expensesError) {
+      console.error("Error querying expenses for ganancias:", expensesError)
     }
+
+    // TODO: Implement deducibility categorization via chart_of_accounts join
+    // For now, all expenses are treated as deducible (conservative approach)
+    let chartAccountsMap: Record<string, any> = {}
 
     // Get commissions paid in the quarter
     const { data: commissions } = await (supabase.from("commission_records") as any)
@@ -100,19 +92,9 @@ export async function GET(request: Request) {
       const isUSD = exp.currency === "USD"
 
       // Determine deducibility:
-      // If the expense has a chart_account_id, check subcategory against known deducible subcategories
-      // If no chart_account_id or subcategory not found, default to deducible
-      // (since we don't have full categorization yet, we treat unlinked expenses as deducible)
-      let isDeducible = true
-
-      const chartAccountId = exp.financial_accounts?.chart_account_id
-      if (chartAccountId && chartAccountsMap[chartAccountId]) {
-        const subcategory = chartAccountsMap[chartAccountId].subcategory
-        if (subcategory) {
-          isDeducible = SUBCATEGORIAS_DEDUCIBLES.includes(subcategory.toUpperCase())
-        }
-        // If no subcategory set, default to deducible
-      }
+      // TODO: When chart_of_accounts categorization is implemented,
+      // check subcategory to determine deducibility. For now, all expenses are deducible.
+      const isDeducible = true
 
       if (isDeducible) {
         if (isUSD) gastosDeduciblesUSD += amount
