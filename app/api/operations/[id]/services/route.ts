@@ -119,7 +119,7 @@ export async function POST(
       return NextResponse.json({ error: "El tipo de servicio es requerido" }, { status: 400 })
     }
 
-    const validTypes = ["SEAT", "LUGGAGE", "VISA", "TRANSFER", "ASSISTANCE"]
+    const validTypes = ["SEAT", "LUGGAGE", "VISA", "TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"]
     if (!validTypes.includes(service_type)) {
       return NextResponse.json({ error: "Tipo de servicio inválido" }, { status: 400 })
     }

@@ -97,7 +97,7 @@ export default async function OperationDetailPage({
   // Get operation services (servicios adicionales: asiento, transfer, visa, etc.)
   const { data: operationServices } = await (supabase
     .from("operation_services") as any)
-    .select("id, service_type, name, price, cost, currency, generates_commission")
+    .select("id, service_type, description, sale_amount, cost_amount, sale_currency, cost_currency, generates_commission")
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 

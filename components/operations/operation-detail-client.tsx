@@ -73,10 +73,11 @@ const alertTypeLabels: Record<string, string> = {
 interface OperationService {
   id: string
   service_type: string
-  name?: string | null
-  price: number
-  cost: number
-  currency: "ARS" | "USD"
+  description?: string | null
+  sale_amount: number
+  cost_amount: number
+  sale_currency: "ARS" | "USD"
+  cost_currency: "ARS" | "USD"
   generates_commission: boolean
 }
 
@@ -313,7 +314,21 @@ export function OperationDetailClient({
               </CardContent>
             </Card>
 
-            {userRole !== "SELLER" && (
+            {userRole !== "SELLER" && (() => {
+              // Calcular totales incluyendo servicios
+              const serviceSaleTotal = operationServices
+                .filter(s => s.sale_currency === operation.currency)
+                .reduce((sum, s) => sum + (s.sale_amount || 0), 0)
+              const serviceCostTotal = operationServices
+                .filter(s => s.cost_currency === operation.currency)
+                .reduce((sum, s) => sum + (s.cost_amount || 0), 0)
+              const totalSale = operation.sale_amount_total + serviceSaleTotal
+              const totalCost = operation.operator_cost + serviceCostTotal
+              const totalMargin = totalSale - totalCost
+              const totalMarginPct = totalSale > 0 ? (totalMargin / totalSale) * 100 : 0
+              const hasServices = operationServices.length > 0
+
+              return (
             <Card className="rounded-xl border border-border/40">
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -324,7 +339,7 @@ export function OperationDetailClient({
                         <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                       </TooltipTrigger>
                       <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Montos de venta, costo de operadores y margen bruto calculado automáticamente. El margen es la ganancia antes de gastos operativos (venta - costo operador).</p>
+                        <p className="text-xs">Montos de venta, costo de operadores y margen bruto calculado automáticamente. {hasServices ? "Incluye servicios adicionales." : "El margen es la ganancia antes de gastos operativos."}</p>
                       </TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
@@ -336,32 +351,43 @@ export function OperationDetailClient({
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Monto Venta</p>
                     <p className="text-lg font-semibold">
-                      {operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operation.currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
+                    {hasServices && (
+                      <p className="text-xs text-muted-foreground">
+                        Base: {operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })} + Servicios: {operation.currency} {serviceSaleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Costo Operador</p>
                     <p className="text-lg font-semibold">
-                      {operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operation.currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
+                    {hasServices && (
+                      <p className="text-xs text-muted-foreground">
+                        Base: {operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })} + Servicios: {operation.currency} {serviceCostTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </p>
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Margen</p>
                     <p className="text-lg font-semibold text-green-600">
-                      {operation.currency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operation.currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">Margen %</p>
                     <p className="text-lg font-semibold text-green-600">
-                      {operation.margin_percentage.toFixed(1)}%
+                      {totalMarginPct.toFixed(1)}%
                     </p>
                   </div>
                 </div>
                 </div>
               </CardContent>
             </Card>
-            )}
+              )
+            })()}
 
             <Card className="rounded-xl border border-border/40">
               <CardHeader>
@@ -511,20 +537,20 @@ export function OperationDetailClient({
                            svc.service_type === "LUGGAGE" ? "Equipaje" :
                            svc.service_type === "VISA" ? "Visa" : svc.service_type}
                         </Badge>
-                        <span className="text-sm">{svc.name || svc.service_type}</span>
+                        <span className="text-sm">{svc.description || svc.service_type}</span>
                       </div>
                       <div className="flex items-center gap-4 text-sm">
                         <span className="text-muted-foreground">
-                          Venta: {svc.currency} {svc.price.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                          Venta: {svc.sale_currency} {svc.sale_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                         </span>
                         {userRole !== "SELLER" && (
                           <span className="text-muted-foreground">
-                            Costo: {svc.currency} {svc.cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                            Costo: {svc.cost_currency} {svc.cost_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                           </span>
                         )}
-                        {userRole !== "SELLER" && svc.price - svc.cost !== 0 && (
-                          <span className={svc.price - svc.cost > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-                            Margen: {svc.currency} {(svc.price - svc.cost).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                        {userRole !== "SELLER" && svc.sale_currency === svc.cost_currency && svc.sale_amount - svc.cost_amount !== 0 && (
+                          <span className={svc.sale_amount - svc.cost_amount > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                            Margen: {svc.sale_currency} {(svc.sale_amount - svc.cost_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                           </span>
                         )}
                       </div>
@@ -538,14 +564,14 @@ export function OperationDetailClient({
                         <span>
                           Venta: {(() => {
                             const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + s.price })
+                            operationServices.forEach(s => { byC[s.sale_currency] = (byC[s.sale_currency] || 0) + s.sale_amount })
                             return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
                           })()}
                         </span>
                         <span className="text-green-600">
                           Margen: {(() => {
                             const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.currency] = (byC[s.currency] || 0) + (s.price - s.cost) })
+                            operationServices.forEach(s => { byC[s.sale_currency] = (byC[s.sale_currency] || 0) + (s.sale_amount - s.cost_amount) })
                             return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
                           })()}
                         </span>

@@ -29,10 +29,11 @@ function formatPercent(value: number): string {
 interface OperationService {
   id: string
   service_type: string
-  name?: string | null
-  price: number
-  cost: number
-  currency: "ARS" | "USD"
+  description?: string | null
+  sale_amount: number
+  cost_amount: number
+  sale_currency: "ARS" | "USD"
+  cost_currency: "ARS" | "USD"
   generates_commission: boolean
 }
 
@@ -91,25 +92,25 @@ export function OperationAccountingSection({
   }, [operationId])
 
   // ── Cálculo de Servicios (separados por moneda) ──────────────────────────
-  const servicesInOpCurrency = operationServices.filter(s => s.currency === currency)
-  const servicesInOtherCurrency = operationServices.filter(s => s.currency !== currency)
+  const servicesInOpCurrency = operationServices.filter(s => s.sale_currency === currency)
+  const servicesInOtherCurrency = operationServices.filter(s => s.sale_currency !== currency)
 
   // Totales de servicios en la misma moneda que la operación base
-  const servicesSaleInOp = servicesInOpCurrency.reduce((sum, s) => sum + Number(s.price), 0)
-  const servicesCostInOp = servicesInOpCurrency.reduce((sum, s) => sum + Number(s.cost), 0)
+  const servicesSaleInOp = servicesInOpCurrency.reduce((sum, s) => sum + Number(s.sale_amount), 0)
+  const servicesCostInOp = servicesInOpCurrency.reduce((sum, s) => sum + Number(s.cost_amount), 0)
   const servicesMarginInOp = servicesSaleInOp - servicesCostInOp
 
   // Comisión de servicios que la generan
   const commissionableServicesInOp = servicesInOpCurrency.filter(s => s.generates_commission)
   const servicesComissionInOp = commissionableServicesInOp.reduce(
-    (sum, s) => sum + (Number(s.price) - Number(s.cost)) * (commissionPercent / 100),
+    (sum, s) => sum + (Number(s.sale_amount) - Number(s.cost_amount)) * (commissionPercent / 100),
     0
   )
 
   // Totales de servicios en moneda alternativa
   const otherCurrency = currency === "USD" ? "ARS" : "USD"
-  const servicesSaleOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.price), 0)
-  const servicesCostOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.cost), 0)
+  const servicesSaleOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.sale_amount), 0)
+  const servicesCostOther = servicesInOtherCurrency.reduce((sum, s) => sum + Number(s.cost_amount), 0)
 
   // ── Cálculos de rentabilidad TOTAL (base + servicios misma moneda) ────────
   const totalSale = saleAmount + servicesSaleInOp
@@ -452,10 +453,10 @@ export function OperationAccountingSection({
               {servicesInOpCurrency.map(service => (
                 <div key={service.id} className="flex items-center justify-between px-2 py-1.5 rounded border text-sm">
                   <div>
-                    <span className="font-medium">{service.name || serviceTypeLabels[service.service_type] || service.service_type}</span>
+                    <span className="font-medium">{service.description || serviceTypeLabels[service.service_type] || service.service_type}</span>
                     <div className="flex gap-1.5 mt-0.5">
                       <Badge variant="outline" className="text-[10px] h-4 px-1">
-                        {service.currency}
+                        {service.sale_currency}
                       </Badge>
                       {service.generates_commission ? (
                         <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-warning/10 text-warning">
@@ -471,16 +472,16 @@ export function OperationAccountingSection({
                   <div className="flex gap-6 text-xs text-right">
                     <div>
                       <div className="text-muted-foreground">Venta</div>
-                      <div className="font-medium">{formatCurrency(service.price, service.currency)}</div>
+                      <div className="font-medium">{formatCurrency(service.sale_amount, service.sale_currency)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Costo</div>
-                      <div className="font-medium">{formatCurrency(service.cost, service.currency)}</div>
+                      <div className="font-medium">{formatCurrency(service.cost_amount, service.cost_currency)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Margen</div>
-                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-success" : "text-destructive"}`}>
-                        {formatCurrency(service.price - service.cost, service.currency)}
+                      <div className={`font-medium ${(service.sale_amount - service.cost_amount) >= 0 ? "text-success" : "text-destructive"}`}>
+                        {formatCurrency(service.sale_amount - service.cost_amount, service.sale_currency)}
                       </div>
                     </div>
                   </div>
@@ -491,10 +492,10 @@ export function OperationAccountingSection({
               {servicesInOtherCurrency.map(service => (
                 <div key={service.id} className="flex items-center justify-between px-2 py-1.5 rounded border border-dashed text-sm">
                   <div>
-                    <span className="font-medium">{service.name || serviceTypeLabels[service.service_type] || service.service_type}</span>
+                    <span className="font-medium">{service.description || serviceTypeLabels[service.service_type] || service.service_type}</span>
                     <div className="flex gap-1.5 mt-0.5">
                       <Badge variant="outline" className="text-[10px] h-4 px-1 bg-info/10 text-info border-info/20">
-                        {service.currency} — otra moneda
+                        {service.sale_currency} — otra moneda
                       </Badge>
                       {service.generates_commission ? (
                         <Badge variant="secondary" className="text-[10px] h-4 px-1 bg-warning/10 text-warning">
@@ -506,16 +507,16 @@ export function OperationAccountingSection({
                   <div className="flex gap-6 text-xs text-right">
                     <div>
                       <div className="text-muted-foreground">Venta</div>
-                      <div className="font-medium">{formatCurrency(service.price, service.currency)}</div>
+                      <div className="font-medium">{formatCurrency(service.sale_amount, service.sale_currency)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Costo</div>
-                      <div className="font-medium">{formatCurrency(service.cost, service.currency)}</div>
+                      <div className="font-medium">{formatCurrency(service.cost_amount, service.cost_currency)}</div>
                     </div>
                     <div>
                       <div className="text-muted-foreground">Margen</div>
-                      <div className={`font-medium ${(service.price - service.cost) >= 0 ? "text-success" : "text-destructive"}`}>
-                        {formatCurrency(service.price - service.cost, service.currency)}
+                      <div className={`font-medium ${(service.sale_amount - service.cost_amount) >= 0 ? "text-success" : "text-destructive"}`}>
+                        {formatCurrency(service.sale_amount - service.cost_amount, service.sale_currency)}
                       </div>
                     </div>
                   </div>

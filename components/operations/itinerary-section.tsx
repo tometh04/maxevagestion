@@ -107,6 +107,7 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [formData, setFormData] = useState<Record<string, any>>({})
+  const [servicesTotalSale, setServicesTotalSale] = useState(0)
 
   const fetchItems = useCallback(async () => {
     try {
@@ -122,14 +123,34 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
     }
   }, [operationId])
 
+  // Fetch services to calculate total including services
+  const fetchServicesTotal = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/operations/${operationId}/services`)
+      if (res.ok) {
+        const data = await res.json()
+        const services = data.services || []
+        const opCurrency = operation?.sale_currency || operation?.currency || "USD"
+        const total = services
+          .filter((s: any) => s.sale_currency === opCurrency)
+          .reduce((sum: number, s: any) => sum + (parseFloat(s.sale_amount) || 0), 0)
+        setServicesTotalSale(total)
+      }
+    } catch (err) {
+      console.error("Error fetching services total:", err)
+    }
+  }, [operationId, operation?.sale_currency, operation?.currency])
+
   useEffect(() => { fetchItems() }, [fetchItems])
+  useEffect(() => { fetchServicesTotal() }, [fetchServicesTotal])
 
   const passengers = (operation?.operation_customers || [])
     .map(oc => oc.customers?.full_name || `${oc.customers?.first_name || ""} ${oc.customers?.last_name || ""}`.trim())
     .filter(Boolean)
 
   const currency = operation?.sale_currency || operation?.currency || "USD"
-  const totalAmount = operation?.sale_amount_total || 0
+  const baseAmount = operation?.sale_amount_total || 0
+  const totalAmount = baseAmount + servicesTotalSale
   const passengerCount = (operation?.adults || 0) + (operation?.children || 0) || passengers.length || 1
   const pricePerPerson = Math.round(totalAmount / passengerCount)
 
