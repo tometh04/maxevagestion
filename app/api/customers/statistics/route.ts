@@ -87,9 +87,10 @@ export async function GET(request: Request) {
       const hasOperationsInRange = customer.operation_customers?.some((oc: any) => {
         const op = oc.operations
         if (!op) return false
-        const opDate = op.departure_date || op.created_at
-        if (!opDate) return false
-        return opDate >= format(filterFrom, "yyyy-MM-dd") && opDate <= format(filterTo, "yyyy-MM-dd")
+        const rawDate = op.departure_date || op.created_at
+        if (!rawDate) return false
+        const opDateStr = String(rawDate).split("T")[0]
+        return opDateStr >= format(filterFrom, "yyyy-MM-dd") && opDateStr <= format(filterTo, "yyyy-MM-dd")
       })
 
       return isNewInRange || hasOperationsInRange
@@ -184,9 +185,10 @@ export async function GET(request: Request) {
         .filter((op: any) => {
           if (!op || !["CONFIRMED", "TRAVELLED", "RESERVED"].includes(op.status)) return false
           // Filtrar por rango de fechas
-          const opDate = op.departure_date || op.created_at
-          if (!opDate) return true // Si no tiene fecha, incluir por defecto
-          return opDate >= filterFromStr && opDate <= filterToStr
+          const rawDate = op.departure_date || op.created_at
+          if (!rawDate) return true // Si no tiene fecha, incluir por defecto
+          const opDateStr = String(rawDate).split("T")[0]
+          return opDateStr >= filterFromStr && opDateStr <= filterToStr
         })
 
       let totalSpentUsd = 0

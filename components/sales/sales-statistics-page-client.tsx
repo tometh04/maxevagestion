@@ -46,6 +46,9 @@ import {
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format, subDays } from "date-fns"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { QuotationsDashboard } from "@/components/sales/quotations-dashboard"
+import { supabase as supabaseClient } from "@/lib/supabase/client"
 
 interface SalesStatistics {
   overview: {
@@ -152,6 +155,55 @@ const getSourceIcon = (source: string) => {
     default:
       return null
   }
+}
+
+function QuotationsTab() {
+  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
+  const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [userInfo, setUserInfo] = useState<{ role: string; id: string }>({ role: "SELLER", id: "" })
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data: { user } } = await supabaseClient.auth.getUser()
+        const [sellersRes, agenciesRes] = await Promise.all([
+          supabaseClient.from("users").select("id, name").eq("role", "SELLER").order("name"),
+          supabaseClient.from("agencies").select("id, name").order("name"),
+        ])
+        setSellers((sellersRes.data as any) || [])
+        setAgencies((agenciesRes.data as any) || [])
+        if (user) {
+          const { data: userData } = await supabaseClient.from("users").select("id, role").eq("auth_id", user.id).single()
+          if (userData) {
+            setUserInfo({ role: (userData as any).role, id: (userData as any).id })
+          }
+        }
+      } catch (err) {
+        console.error("Error loading quotation filters:", err)
+      } finally {
+        setReady(true)
+      }
+    }
+    load()
+  }, [])
+
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <QuotationsDashboard
+      sellers={sellers}
+      agencies={agencies}
+      currentUserRole={userInfo.role}
+      currentUserId={userInfo.id}
+    />
+  )
 }
 
 export function SalesStatisticsPageClient() {
@@ -289,53 +341,43 @@ export function SalesStatisticsPageClient() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Header con filtros */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">Estadísticas</h1>
-            <TooltipProvider>
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="font-medium mb-1">¿Cómo funciona?</p>
-                  <p className="text-xs mb-2"><strong>Estadísticas de Ventas:</strong> Métricas sobre tus leads: total, activos, ganados, perdidos, tasa de conversión y depósitos.</p>
-                  <p className="text-xs mb-2"><strong>Gráficos:</strong> Visualización de tendencias por período, distribución por origen (Instagram, WhatsApp, etc.) y top vendedores por conversión.</p>
-                  <p className="text-xs">Los leads pueden convertirse en operaciones desde su detalle. Todos los análisis se muestran en USD para consistencia.</p>
-                </TooltipContent>
-              </UITooltip>
-            </TooltipProvider>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Métricas de ventas en USD
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={dateFrom}
-                onChange={handleDateFromChange}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={dateTo}
-                onChange={handleDateToChange}
-                placeholder="dd/MM/yyyy"
-                minDate={dateFrom}
-              />
-            </div>
-          </div>
-        </div>
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold">Estadísticas</h1>
       </div>
 
-      {/* KPIs compactos */}
+      <Tabs defaultValue="leads" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="leads">Leads</TabsTrigger>
+          <TabsTrigger value="cotizaciones">Cotizaciones</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="leads" className="space-y-4">
+          {/* Filtros de fecha */}
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <p className="text-xs text-muted-foreground">Métricas de ventas en USD</p>
+            <div className="flex items-center gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Desde</Label>
+                <DateInputWithCalendar
+                  value={dateFrom}
+                  onChange={handleDateFromChange}
+                  placeholder="dd/MM/yyyy"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Hasta</Label>
+                <DateInputWithCalendar
+                  value={dateTo}
+                  onChange={handleDateToChange}
+                  placeholder="dd/MM/yyyy"
+                  minDate={dateFrom}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* KPIs compactos */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
@@ -618,11 +660,17 @@ export function SalesStatisticsPageClient() {
         </Card>
       </div>
 
-      {/* Info adicional */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
-        <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} ganados • {stats.overview.lostLeads} perdidos</span>
-        <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
-      </div>
+          {/* Info adicional */}
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
+            <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} ganados • {stats.overview.lostLeads} perdidos</span>
+            <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="cotizaciones">
+          <QuotationsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }
