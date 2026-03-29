@@ -51,16 +51,16 @@ export async function GET(request: Request) {
       .lte("created_at", `${endDate}T23:59:59`)
       .in("status", ["CONFIRMED", "CLOSED"])
 
-    // Get expenses (gastos) in the quarter, including chart_account_id for deducibility check
+    // Get expenses (gastos) in the quarter, joining financial_accounts to get chart_account_id
     const { data: expenses } = await (supabase.from("ledger_movements") as any)
-      .select("id, amount_original, currency, type, concept, movement_date, chart_account_id")
+      .select("id, amount_original, currency, type, concept, movement_date, account_id, financial_accounts:account_id(chart_account_id)")
       .eq("type", "EXPENSE")
       .gte("movement_date", `${startDate}T00:00:00`)
       .lte("movement_date", `${endDate}T23:59:59`)
 
     // Get chart of accounts to determine deducibility by subcategory
     const chartAccountIds = (expenses || [])
-      .map((e: any) => e.chart_account_id)
+      .map((e: any) => e.financial_accounts?.chart_account_id)
       .filter((id: string | null) => id != null)
 
     let chartAccountsMap: Record<string, any> = {}
@@ -105,8 +105,9 @@ export async function GET(request: Request) {
       // (since we don't have full categorization yet, we treat unlinked expenses as deducible)
       let isDeducible = true
 
-      if (exp.chart_account_id && chartAccountsMap[exp.chart_account_id]) {
-        const subcategory = chartAccountsMap[exp.chart_account_id].subcategory
+      const chartAccountId = exp.financial_accounts?.chart_account_id
+      if (chartAccountId && chartAccountsMap[chartAccountId]) {
+        const subcategory = chartAccountsMap[chartAccountId].subcategory
         if (subcategory) {
           isDeducible = SUBCATEGORIAS_DEDUCIBLES.includes(subcategory.toUpperCase())
         }
