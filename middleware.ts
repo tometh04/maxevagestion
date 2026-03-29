@@ -1,6 +1,37 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
+// ============================================
+// RATE LIMITING (en memoria, por IP)
+// ============================================
+const RATE_LIMIT_WINDOW_MS = 60_000 // 1 minuto
+const RATE_LIMIT_MAX_REQUESTS = 200 // máx requests por ventana
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>()
+
+// Limpiar entradas expiradas cada 5 minutos
+setInterval(() => {
+  const now = Date.now()
+  rateLimitMap.forEach((value, key) => {
+    if (now > value.resetAt) rateLimitMap.delete(key)
+  })
+}, 300_000)
+
+function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip)
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS })
+    return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - 1 }
+  }
+
+  entry.count++
+  if (entry.count > RATE_LIMIT_MAX_REQUESTS) {
+    return { allowed: false, remaining: 0 }
+  }
+  return { allowed: true, remaining: RATE_LIMIT_MAX_REQUESTS - entry.count }
+}
+
 export async function middleware(req: NextRequest) {
   // Permitir webhooks de Trello sin autenticación
   if (req.nextUrl.pathname === '/api/trello/webhook') {
@@ -15,6 +46,26 @@ export async function middleware(req: NextRequest) {
   // Permitir rutas públicas sin autenticación (cotizaciones, API pública)
   if (req.nextUrl.pathname.startsWith('/cotizacion/') || req.nextUrl.pathname.startsWith('/api/public/')) {
     return NextResponse.next()
+  }
+
+  // Rate limiting para rutas API
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+    const { allowed, remaining } = checkRateLimit(ip)
+
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'Demasiadas solicitudes. Intente nuevamente en un momento.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': '60',
+            'X-RateLimit-Limit': String(RATE_LIMIT_MAX_REQUESTS),
+            'X-RateLimit-Remaining': '0',
+          },
+        }
+      )
+    }
   }
 
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción

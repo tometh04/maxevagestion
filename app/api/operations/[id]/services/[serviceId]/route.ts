@@ -2,6 +2,59 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
+
+/**
+ * Recalcula los totales de la operación (sale_amount_total, operator_cost, margin)
+ * sumando los valores de todos sus servicios, y luego recalcula las comisiones.
+ */
+async function recalculateOperationTotals(supabase: any, operationId: string) {
+  // Sumar todos los servicios activos de la operación
+  const { data: services } = await (supabase.from("operation_services") as any)
+    .select("sale_amount, cost_amount")
+    .eq("operation_id", operationId)
+
+  if (!services) return
+
+  const totalSale = (services as any[]).reduce((sum: number, s: any) => sum + (Number(s.sale_amount) || 0), 0)
+  const totalCost = (services as any[]).reduce((sum: number, s: any) => sum + (Number(s.cost_amount) || 0), 0)
+  const margin = totalSale - totalCost
+  const marginPct = totalSale > 0 ? (margin / totalSale) * 100 : 0
+
+  // Actualizar la operación con los nuevos totales
+  await (supabase.from("operations") as any)
+    .update({
+      sale_amount_total: totalSale,
+      operator_cost: totalCost,
+      margin_amount: margin,
+      margin_percentage: Math.round(marginPct * 100) / 100,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", operationId)
+
+  // Obtener la operación actualizada para recalcular comisiones
+  const { data: updatedOp } = await (supabase.from("operations") as any)
+    .select("id, agency_id, seller_id, seller_secondary_id, commission_split, destination, status, sale_amount_total, operator_cost, margin_amount, margin_percentage, currency, sale_currency, departure_date")
+    .eq("id", operationId)
+    .single()
+
+  if (updatedOp && updatedOp.seller_id) {
+    try {
+      const commissionData = await calculateCommission({
+        ...updatedOp,
+        sale_amount_total: Number(updatedOp.sale_amount_total) || 0,
+        operator_cost: Number(updatedOp.operator_cost) || 0,
+        margin_amount: Number(updatedOp.margin_amount) || 0,
+        margin_percentage: Number(updatedOp.margin_percentage) || 0,
+      })
+      if (commissionData.totalCommission > 0) {
+        await createOrUpdateCommissionRecords(updatedOp, commissionData)
+      }
+    } catch (err) {
+      console.warn("[Services] Error recalculando comisiones:", err)
+    }
+  }
+}
 
 // Campos editables del servicio (whitelist)
 const EDITABLE_FIELDS = [
@@ -150,6 +203,17 @@ export async function PATCH(
       }
     }
 
+    // ── Recalcular totales de la operación y comisiones si cambiaron montos ──
+    if (saleChanged || costChanged) {
+      try {
+        await recalculateOperationTotals(supabase, operationId)
+        console.log(`✅ Totales y comisiones recalculados para operación ${operationId} tras editar servicio ${serviceId}`)
+      } catch (err) {
+        console.warn("[Services PATCH] Error recalculando totales:", err)
+        warnings.push("No se pudieron recalcular los totales de la operación automáticamente")
+      }
+    }
+
     return NextResponse.json({
       service: updatedService,
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -280,6 +344,15 @@ export async function DELETE(
     if (deleteError) {
       console.error("[Services DELETE] Error eliminando servicio:", deleteError)
       return NextResponse.json({ error: "Error al eliminar el servicio" }, { status: 500 })
+    }
+
+    // ── Recalcular totales de la operación y comisiones tras eliminar servicio ──
+    try {
+      await recalculateOperationTotals(supabase, operationId)
+      console.log(`✅ Totales y comisiones recalculados para operación ${operationId} tras eliminar servicio ${serviceId}`)
+    } catch (err) {
+      console.warn("[Services DELETE] Error recalculando totales:", err)
+      warnings.push("No se pudieron recalcular los totales de la operación automáticamente")
     }
 
     return NextResponse.json({
