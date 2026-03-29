@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       .select("id, imp_neto, imp_total, imp_iva, moneda, cotizacion, created_at, receptor_nombre")
       .gte("created_at", `${startDate}T00:00:00`)
       .lte("created_at", `${endDate}T23:59:59`)
-      .eq("status", "AUTHORIZED")
+      .eq("status", "authorized")
 
     // Get IIBB percepciones sufridas in the period (credit)
     const taxPeriod = `${year}-${String(month).padStart(2, "0")}`

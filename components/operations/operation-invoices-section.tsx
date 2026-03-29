@@ -69,10 +69,10 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
   }
 
   const statusBadge = (status: string) => {
-    switch (status) {
-      case "AUTHORIZED": return <Badge className="bg-success/10 text-success text-xs">Autorizada</Badge>
-      case "PENDING": return <Badge variant="secondary" className="text-xs">Pendiente</Badge>
-      case "REJECTED": return <Badge variant="destructive" className="text-xs">Rechazada</Badge>
+    switch (status?.toLowerCase()) {
+      case "authorized": return <Badge className="bg-success/10 text-success text-xs">Autorizada</Badge>
+      case "pending": return <Badge variant="secondary" className="text-xs">Pendiente</Badge>
+      case "rejected": return <Badge variant="destructive" className="text-xs">Rechazada</Badge>
       default: return <Badge variant="outline" className="text-xs">{status}</Badge>
     }
   }
