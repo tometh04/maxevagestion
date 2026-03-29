@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       `)
       .gte("created_at", `${startDate}T00:00:00`)
       .lte("created_at", `${endDate}T23:59:59`)
-      .eq("status", "AUTHORIZED")
+      .eq("status", "authorized")
       .order("created_at", { ascending: true })
 
     // Also from iva_sales (for operations without formal invoice)
