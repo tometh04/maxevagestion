@@ -26,7 +26,7 @@ export async function GET(request: Request) {
         receptor_doc_tipo, receptor_doc_nro, receptor_nombre,
         imp_neto, imp_iva, imp_total, imp_tot_conc, imp_op_ex, imp_trib,
         moneda, cotizacion, concepto, created_at,
-        invoice_items (descripcion, cantidad, precio_unitario, iva_porcentaje, subtotal, iva_monto)
+        invoice_items (descripcion, cantidad, precio_unitario, iva_porcentaje, subtotal, iva_importe)
       `)
       .gte("created_at", `${startDate}T00:00:00`)
       .lte("created_at", `${endDate}T23:59:59`)
@@ -226,7 +226,7 @@ function getIVAByRate(items: any[]): Record<string, number> {
   if (!items || !Array.isArray(items)) return rates
   for (const item of items) {
     const pct = Number(item.iva_porcentaje || 0)
-    const monto = Number(item.iva_monto || 0)
+    const monto = Number(item.iva_importe || 0)
     if (pct === 27) rates["27"] += monto
     else if (pct === 21) rates["21"] += monto
     else if (pct === 10.5) rates["10.5"] += monto
