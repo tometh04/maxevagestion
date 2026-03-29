@@ -35,7 +35,7 @@ export async function GET() {
       // Obtener el chart_account_id para CpC (código 1.1.03)
       const { data: cpcChart } = await (supabase.from("chart_of_accounts") as any)
         .select("id")
-        .eq("code", "1.1.03")
+        .eq("account_code", "1.1.03")
         .maybeSingle()
 
       if (cpcChart) {
@@ -106,7 +106,7 @@ export async function GET() {
       // Obtener el chart_account_id para CpP (código 2.1.01)
       const { data: cppChart } = await (supabase.from("chart_of_accounts") as any)
         .select("id")
-        .eq("code", "2.1.01")
+        .eq("account_code", "2.1.01")
         .maybeSingle()
 
       if (cppChart) {
@@ -172,26 +172,39 @@ export async function GET() {
     }
 
     // ============================================
-    // CHECK 3: Partida doble — verificar que cada pago PAID tiene sus movimientos contables
+    // CHECK 3: Partida doble — pagos PAID sin asiento contable
+    // Excluye pagos importados (sin ledger por diseño de la importación inicial)
     // ============================================
     try {
-      const { data: paidWithoutLedger } = await (supabase.from("payments") as any)
-        .select("id, amount, currency, direction")
+      // Contar pagos PAID sin ledger_movement_id creados DESPUÉS de la importación inicial
+      // Los pagos importados no tienen ledger por diseño — solo alertamos los nuevos
+      const { count: totalWithout } = await (supabase.from("payments") as any)
+        .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
         .is("ledger_movement_id", null)
 
-      const orphanCount = paidWithoutLedger?.length || 0
+      const { count: recentWithout } = await (supabase.from("payments") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("status", "PAID")
+        .is("ledger_movement_id", null)
+        .gte("created_at", "2025-06-01T00:00:00Z") // Después de la importación
+
+      const totalOrphan = totalWithout || 0
+      const recentOrphan = recentWithout || 0
+      const importedOrphan = totalOrphan - recentOrphan
 
       checks.push({
         id: "orphan-payments",
         name: "Pagos sin asiento contable",
         description: "Pagos marcados como PAID que no tienen movimiento contable asociado",
-        status: orphanCount === 0 ? "ok" : orphanCount < 5 ? "warning" : "error",
-        expected: "0 pagos huérfanos",
-        actual: `${orphanCount} pagos sin ledger_movement_id`,
-        details: orphanCount === 0
-          ? "Todos los pagos pagados tienen su asiento contable asociado"
-          : `Hay ${orphanCount} pago(s) marcados como PAID sin movimiento contable. Esto puede causar descuadres en balances.`,
+        status: recentOrphan === 0 ? "ok" : recentOrphan < 5 ? "warning" : "error",
+        expected: "0 pagos sin asiento (post-importación)",
+        actual: recentOrphan > 0
+          ? `${recentOrphan} pagos recientes sin asiento`
+          : "Todos los pagos recientes tienen asiento",
+        details: recentOrphan === 0
+          ? `Todos los pagos recientes tienen su asiento contable.${importedOrphan > 0 ? ` (${importedOrphan} pagos de la importación inicial sin asiento — esto es esperado)` : ""}`
+          : `${recentOrphan} pago(s) recientes sin movimiento contable.${importedOrphan > 0 ? ` Además, ${importedOrphan} pagos de la importación inicial sin asiento (esperado).` : ""}`,
       })
     } catch (err) {
       checks.push({
@@ -205,24 +218,34 @@ export async function GET() {
 
     // ============================================
     // CHECK 4: Movimientos de caja sin cuenta financiera
+    // Los movimientos de la importación inicial no tenían cuenta asignada por diseño
     // ============================================
     try {
-      const { count: orphanCashMovements } = await (supabase.from("cash_movements") as any)
+      const { count: totalWithout } = await (supabase.from("cash_movements") as any)
         .select("id", { count: "exact", head: true })
         .is("financial_account_id", null)
 
-      const orphanCount = orphanCashMovements || 0
+      const { count: recentWithout } = await (supabase.from("cash_movements") as any)
+        .select("id", { count: "exact", head: true })
+        .is("financial_account_id", null)
+        .gte("created_at", "2025-06-01T00:00:00Z") // Después de la importación
+
+      const totalOrphan = totalWithout || 0
+      const recentOrphan = recentWithout || 0
+      const importedOrphan = totalOrphan - recentOrphan
 
       checks.push({
         id: "orphan-cash",
         name: "Movimientos de caja sin cuenta",
         description: "Movimientos de caja que no están vinculados a ninguna cuenta financiera",
-        status: orphanCount === 0 ? "ok" : orphanCount < 10 ? "warning" : "error",
-        expected: "0 movimientos huérfanos",
-        actual: `${orphanCount} movimientos sin cuenta financiera`,
-        details: orphanCount === 0
-          ? "Todos los movimientos de caja están vinculados a una cuenta financiera"
-          : `Hay ${orphanCount} movimiento(s) sin cuenta. Estos no aparecen en los balances de cuentas.`,
+        status: recentOrphan === 0 ? "ok" : recentOrphan < 10 ? "warning" : "error",
+        expected: "0 movimientos sin cuenta (post-importación)",
+        actual: recentOrphan > 0
+          ? `${recentOrphan} movimientos recientes sin cuenta`
+          : "Todos los movimientos recientes tienen cuenta",
+        details: recentOrphan === 0
+          ? `Todos los movimientos recientes están vinculados a una cuenta.${importedOrphan > 0 ? ` (${importedOrphan} movimientos de la importación inicial sin cuenta — esto es esperado)` : ""}`
+          : `${recentOrphan} movimiento(s) recientes sin cuenta financiera.${importedOrphan > 0 ? ` Además, ${importedOrphan} de la importación inicial (esperado).` : ""}`,
       })
     } catch (err) {
       checks.push({

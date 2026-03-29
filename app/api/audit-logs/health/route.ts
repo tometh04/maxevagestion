@@ -113,22 +113,28 @@ export async function GET() {
     // 3. Operaciones sin pagos registrados
     // ============================================
     try {
-      // Operaciones CONFIRMED sin ningún pago creado
-      const { data: opsWithoutPayments } = await (supabase.from("operations") as any)
+      // Obtener operaciones activas con venta > 0
+      const { data: activeOps } = await (supabase.from("operations") as any)
         .select("id")
         .in("status", ["CONFIRMED", "IN_PROGRESS"])
         .gt("sale_amount_total", 0)
 
       let opsWithoutPaymentCount = 0
-      if (opsWithoutPayments) {
-        for (const op of opsWithoutPayments as any[]) {
-          const { count } = await (supabase.from("payments") as any)
-            .select("id", { count: "exact", head: true })
-            .eq("operation_id", op.id)
-            .eq("direction", "INCOME")
 
-          if (!count || count === 0) opsWithoutPaymentCount++
-        }
+      if (activeOps && activeOps.length > 0) {
+        const opIds = (activeOps as any[]).map((o: any) => o.id)
+
+        // Un solo query: obtener todas las operation_ids que SÍ tienen pagos INCOME
+        const { data: opsWithPayments } = await (supabase.from("payments") as any)
+          .select("operation_id")
+          .in("operation_id", opIds)
+          .eq("direction", "INCOME")
+
+        const opsWithPaymentSet = new Set(
+          opsWithPayments ? (opsWithPayments as any[]).map((p: any) => p.operation_id) : []
+        )
+
+        opsWithoutPaymentCount = opIds.filter((id: string) => !opsWithPaymentSet.has(id)).length
       }
 
       indicators.push({
@@ -218,7 +224,7 @@ export async function GET() {
     try {
       const { count: activeAlerts } = await (supabase.from("alerts") as any)
         .select("id", { count: "exact", head: true })
-        .eq("is_resolved", false)
+        .eq("status", "PENDING")
 
       indicators.push({
         id: "active-alerts",
