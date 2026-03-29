@@ -23,7 +23,14 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
-    const supabase = await createServerClient()
+    // Use admin client to bypass RLS on ledger_movements
+    const { createAdminClient } = await import("@/lib/supabase/server")
+    let supabase: any
+    try {
+      supabase = await createAdminClient()
+    } catch {
+      supabase = await createServerClient()
+    }
     const { searchParams } = new URL(request.url)
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString())
     const quarter = parseInt(searchParams.get("quarter") || String(Math.ceil((new Date().getMonth() + 1) / 3)))
