@@ -12,7 +12,8 @@ import {
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
-import { Search, X } from "lucide-react"
+import { Search, X, Plus } from "lucide-react"
+import { NewPaymentDialog } from "@/components/payments/new-payment-dialog"
 
 interface PaymentsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -27,6 +28,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
+  const [newPaymentOpen, setNewPaymentOpen] = useState(false)
 
   const filters = useMemo(
     () => ({
@@ -102,6 +104,14 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
 
         <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
 
+        <Button
+          size="sm"
+          onClick={() => setNewPaymentOpen(true)}
+          className="h-8 rounded-full text-xs"
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" /> Nuevo Pago
+        </Button>
+
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={() => {
             setBaseFilters(defaultFilters)
@@ -115,6 +125,12 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
           </Button>
         )}
       </div>
+
+      <NewPaymentDialog
+        open={newPaymentOpen}
+        onOpenChange={setNewPaymentOpen}
+        onSuccess={handleRefresh}
+      />
 
       <PaymentsTable
         key={refreshKey}
