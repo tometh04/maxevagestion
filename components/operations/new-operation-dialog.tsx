@@ -365,7 +365,8 @@ export function NewOperationDialog({
   }, [operatorList, useMultipleOperators, totalOperatorCost, form])
 
   const addOperator = () => {
-    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "USD", product_type: undefined }])
+    const currentCurrency = (form.getValues("sale_currency") || form.getValues("currency") || "USD") as "ARS" | "USD"
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: currentCurrency, product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -1284,7 +1285,16 @@ export function NewOperationDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Moneda Venta</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
+                          <Select onValueChange={(value: string) => {
+                            field.onChange(value)
+                            // Sincronizar moneda de costo de operador con moneda de venta
+                            form.setValue("operator_cost_currency", value as "ARS" | "USD")
+                            form.setValue("currency", value as "ARS" | "USD")
+                            // Sincronizar moneda de todos los operadores en la lista
+                            if (operatorList.length > 0) {
+                              setOperatorList(operatorList.map(op => ({ ...op, cost_currency: value as "ARS" | "USD" })))
+                            }
+                          }} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue />

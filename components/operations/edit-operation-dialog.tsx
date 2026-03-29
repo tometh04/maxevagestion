@@ -278,7 +278,8 @@ export function EditOperationDialog({
 
   // Funciones de múltiples operadores
   const addOperator = () => {
-    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "USD", product_type: undefined }])
+    const currentCurrency = (form.getValues("currency") || "USD") as "ARS" | "USD"
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: currentCurrency, product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -997,7 +998,13 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Moneda</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={(value) => {
+                      field.onChange(value)
+                      // Sincronizar moneda de todos los operadores
+                      if (operatorList.length > 0) {
+                        setOperatorList(operatorList.map(op => ({ ...op, cost_currency: value as "ARS" | "USD" })))
+                      }
+                    }} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />

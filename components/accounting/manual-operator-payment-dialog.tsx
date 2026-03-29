@@ -60,7 +60,7 @@ export function ManualOperatorPaymentDialog({
   onOpenChange,
   onSuccess,
   operators,
-  defaultCurrency = "USD",
+  defaultCurrency = "ARS",
 }: ManualOperatorPaymentDialogProps) {
   const [loading, setLoading] = useState(false)
 

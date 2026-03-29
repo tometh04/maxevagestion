@@ -212,3 +212,47 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message || "Error al crear pago a operador" }, { status: 500 })
   }
 }
+
+// PATCH - Actualizar pago a operador (moneda, monto, fecha de vencimiento)
+export async function PATCH(request: Request) {
+  try {
+    const { user } = await getCurrentUser()
+    if (!["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(user.role)) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
+    const supabase = await createServerClient()
+    const body = await request.json()
+    const { id, currency, amount, due_date, notes } = body
+
+    if (!id) {
+      return NextResponse.json({ error: "Se requiere el ID del pago" }, { status: 400 })
+    }
+
+    const updateData: Record<string, any> = {}
+    if (currency) updateData.currency = currency
+    if (amount !== undefined) updateData.amount = parseFloat(amount)
+    if (due_date) updateData.due_date = due_date
+    if (notes !== undefined) updateData.notes = notes
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })
+    }
+
+    const { data: updated, error } = await (supabase.from("operator_payments") as any)
+      .update(updateData)
+      .eq("id", id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error("Error updating operator payment:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ payment: updated })
+  } catch (error: any) {
+    console.error("Error in PATCH /api/accounting/operator-payments:", error)
+    return NextResponse.json({ error: error.message || "Error al actualizar pago" }, { status: 500 })
+  }
+}
