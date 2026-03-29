@@ -189,6 +189,19 @@ export async function POST(request: Request) {
       .update(updateData)
       .eq("id", commissionId)
 
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'COMMISSION_PAID',
+        p_entity_type: 'commission',
+        p_entity_id: commissionId,
+        p_details: { amount: payAmount, seller_id: commission.seller_id }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
     return NextResponse.json({
       success: true,
       ledgerMovementId,

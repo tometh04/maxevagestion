@@ -435,6 +435,19 @@ export async function POST(request: Request) {
       }
     }
 
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'PAYMENT_CREATED',
+        p_entity_type: 'payment',
+        p_entity_id: payment.id,
+        p_details: { amount, currency, direction, operation_id }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
     return NextResponse.json({ payment })
   } catch (error) {
     console.error("Error in POST /api/payments:", error)

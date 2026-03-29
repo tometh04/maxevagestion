@@ -776,6 +776,19 @@ export async function POST(request: Request) {
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
 
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'OPERATION_CREATED',
+        p_entity_type: 'operation',
+        p_entity_id: operation.id,
+        p_details: { destination, sale_amount_total, currency: currency || 'USD' }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
     return NextResponse.json({ operation })
   } catch (error) {
     console.error("Error in POST /api/operations:", error)

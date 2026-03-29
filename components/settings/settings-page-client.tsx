@@ -14,6 +14,7 @@ import { ImportSettings } from "@/components/settings/import-settings"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
+import { AuditLogsSettings } from "@/components/settings/audit-logs-settings"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
 import { Button } from "@/components/ui/button"
@@ -105,6 +106,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         */}
         <TabsTrigger value="requirements">Requisitos Destino</TabsTrigger>
         <TabsTrigger value="afip">Facturación AFIP</TabsTrigger>
+        <TabsTrigger value="logs">Logs</TabsTrigger>
       </TabsList>
       <TabsContent value="interface" className="mt-6">
         <InterfaceSettings />
@@ -137,6 +139,9 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="afip" className="mt-6">
         <AfipSettings agencies={agencies} defaultAgencyId={firstAgencyId} />
+      </TabsContent>
+      <TabsContent value="logs" className="mt-6">
+        <AuditLogsSettings />
       </TabsContent>
       {userRole === "SUPER_ADMIN" && (
         <TabsContent value="seed" className="mt-6 space-y-6">
