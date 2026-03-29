@@ -312,21 +312,6 @@ export function OperationsSettingsPageClient() {
                   })}
                 />
               </div>
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Requerir Documentos antes de Confirmar</Label>
-                  <p className="text-sm text-muted-foreground">
-                    No se podrá confirmar una operación sin documentos requeridos
-                  </p>
-                </div>
-                <Switch
-                  checked={settings.require_documents_before_confirmation}
-                  onCheckedChange={(checked) => setSettings({
-                    ...settings,
-                    require_documents_before_confirmation: checked,
-                  })}
-                />
-              </div>
             </CardContent>
           </Card>
         </TabsContent>

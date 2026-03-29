@@ -45,7 +45,7 @@ import {
 } from "recharts"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns"
+import { format, subDays } from "date-fns"
 
 interface SalesStatistics {
   overview: {
@@ -161,8 +161,8 @@ export function SalesStatisticsPageClient() {
   
   // Filtros de fecha
   const now = new Date()
-  const defaultFrom = startOfMonth(subMonths(now, 11))
-  const defaultTo = endOfMonth(now)
+  const defaultFrom = subDays(now, 30)
+  const defaultTo = now
   
   const [dateFrom, setDateFrom] = useState<Date | undefined>(defaultFrom)
   const [dateTo, setDateTo] = useState<Date | undefined>(defaultTo)

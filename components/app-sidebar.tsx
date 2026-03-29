@@ -72,6 +72,7 @@ const allNavigation: NavItem[] = [
     module: "operations",
     items: [
       { title: "Operaciones", url: "/operations" },
+      { title: "Estadísticas", url: "/operations/statistics" },
       { title: "Facturación", url: "/operations/billing" },
       { title: "Configuración", url: "/operations/settings" },
     ],
