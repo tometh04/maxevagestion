@@ -69,15 +69,6 @@ export async function GET(request: Request) {
       console.error("Error querying expenses for ganancias:", expensesError)
     }
 
-    // Temporary debug - remove after verification
-    const _debugExpenses = {
-      expensesError: expensesError?.message || null,
-      expensesNull: expenses === null,
-      expensesCount: expenses?.length ?? 0,
-      dateRange: { startDate: `${startDate}T00:00:00`, endDate: `${endDate}T23:59:59` },
-      sample: (expenses || []).slice(0, 2).map((e: any) => ({ amount: e.amount_original, currency: e.currency })),
-    }
-
     // TODO: Implement deducibility categorization via chart_of_accounts join
     // For now, all expenses are treated as deducible (conservative approach)
     let chartAccountsMap: Record<string, any> = {}
@@ -153,7 +144,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       periodo: { year, quarter, startDate, endDate },
-      _debug: _debugExpenses,
       configuracion: {
         ganancias_rate: gananciasRatePercent,
         tax_regime: taxRegime,
