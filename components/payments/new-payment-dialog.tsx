@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Select,
   SelectContent,
@@ -23,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { DollarSign, CalendarIcon, FileText, Loader2 } from "lucide-react"
+import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
 
 interface Operation {
@@ -32,6 +33,15 @@ interface Operation {
   destination: string
   sale_currency?: string
   operator_cost_currency?: string
+}
+
+interface FinancialAccount {
+  id: string
+  name: string
+  type: string
+  currency: "ARS" | "USD"
+  current_balance?: number
+  is_active?: boolean
 }
 
 const paymentSchema = z.object({
@@ -43,6 +53,11 @@ const paymentSchema = z.object({
   method: z.string().min(1, "Debe seleccionar un método"),
   date_due: z.string().min(1, "La fecha de vencimiento es requerida"),
   notes: z.string().optional(),
+  // Campos para marcar como pagado
+  mark_as_paid: z.boolean().default(false),
+  financial_account_id: z.string().optional(),
+  date_paid: z.string().optional(),
+  reference: z.string().optional(),
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
@@ -66,11 +81,14 @@ interface NewPaymentDialogProps {
 export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [operations, setOperations] = useState<Operation[]>([])
+  const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [loadingOps, setLoadingOps] = useState(false)
   const [searchOp, setSearchOp] = useState("")
 
+  const today = new Date().toISOString().split("T")[0]
+
   const form = useForm<PaymentFormValues>({
-    resolver: zodResolver(paymentSchema),
+    resolver: zodResolver(paymentSchema) as any,
     defaultValues: {
       operation_id: "",
       payer_type: "OPERATOR",
@@ -78,13 +96,19 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       amount: 0,
       currency: "USD",
       method: "Transferencia",
-      date_due: new Date().toISOString().split("T")[0],
+      date_due: today,
       notes: "",
+      mark_as_paid: false,
+      financial_account_id: "",
+      date_paid: today,
+      reference: "",
     },
   })
 
   const watchDirection = form.watch("direction")
   const watchOperationId = form.watch("operation_id")
+  const watchCurrency = form.watch("currency")
+  const watchMarkAsPaid = form.watch("mark_as_paid")
 
   // Actualizar payer_type automáticamente según dirección
   useEffect(() => {
@@ -100,6 +124,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     if (!open) {
       form.reset()
       setOperations([])
+      setFinancialAccounts([])
       setSearchOp("")
       return
     }
@@ -119,6 +144,32 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
     fetchOperations()
   }, [open, form])
+
+  // Cargar cuentas financieras (filtradas por moneda)
+  useEffect(() => {
+    if (!open) return
+    async function fetchAccounts() {
+      try {
+        const response = await fetch("/api/accounting/financial-accounts?excludeAccountingOnly=true")
+        if (response.ok) {
+          const data = await response.json()
+          setFinancialAccounts(
+            (data.accounts || []).filter(
+              (acc: FinancialAccount) => acc.is_active !== false
+            )
+          )
+        }
+      } catch (error) {
+        console.error("Error fetching financial accounts:", error)
+      }
+    }
+    fetchAccounts()
+  }, [open])
+
+  // Filtrar cuentas por moneda seleccionada
+  const filteredAccounts = useMemo(() => {
+    return financialAccounts.filter((acc) => acc.currency === watchCurrency)
+  }, [financialAccounts, watchCurrency])
 
   // Filtrar operaciones por búsqueda
   const filteredOperations = useMemo(() => {
@@ -144,10 +195,22 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [watchOperationId, operations, form])
 
+  // Limpiar cuenta financiera si cambia la moneda
+  useEffect(() => {
+    form.setValue("financial_account_id", "")
+  }, [watchCurrency, form])
+
   const onSubmit = async (values: PaymentFormValues) => {
+    // Validar cuenta financiera si se marca como pagado
+    if (values.mark_as_paid && !values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera para marcar como pagado")
+      return
+    }
+
     setIsLoading(true)
     try {
-      const response = await fetch("/api/payments", {
+      // 1. Crear el pago
+      const createResponse = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -163,12 +226,36 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         }),
       })
 
-      if (!response.ok) {
-        const error = await response.json()
+      if (!createResponse.ok) {
+        const error = await createResponse.json()
         throw new Error(error.error || "Error al crear pago")
       }
 
-      toast.success("Pago creado correctamente")
+      const createData = await createResponse.json()
+
+      // 2. Si se marcó como pagado, llamar a mark-paid
+      if (values.mark_as_paid && createData.payment?.id) {
+        const markPaidResponse = await fetch("/api/payments/mark-paid", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: createData.payment.id,
+            datePaid: values.date_paid || today,
+            reference: values.reference || null,
+            financial_account_id: values.financial_account_id,
+          }),
+        })
+
+        if (!markPaidResponse.ok) {
+          const error = await markPaidResponse.json()
+          toast.warning("Pago creado pero no se pudo marcar como pagado: " + (error.error || ""))
+        } else {
+          toast.success("Pago creado y marcado como pagado")
+        }
+      } else {
+        toast.success("Pago pendiente creado correctamente")
+      }
+
       onSuccess()
       onOpenChange(false)
       form.reset()
@@ -187,12 +274,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Nuevo Pago</DialogTitle>
-          <DialogDescription>Crear un pago pendiente para una operación</DialogDescription>
+          <DialogDescription>Crear un pago para una operación</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-            {/* Tipo */}
+            {/* Detalle */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
                 <FileText className="h-3.5 w-3.5 text-primary" />
@@ -345,7 +432,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
               </div>
             </div>
 
-            {/* Fecha */}
+            {/* Fecha de vencimiento */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
                 <CalendarIcon className="h-3.5 w-3.5 text-blue-500" />
@@ -386,13 +473,110 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
               />
             </div>
 
+            {/* Marcar como pagado */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <FormField
+                control={form.control}
+                name="mark_as_paid"
+                render={({ field }) => (
+                  <FormItem className="flex items-center gap-3">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
+                      <FormLabel className="!mt-0 cursor-pointer">Marcar como pagado ahora</FormLabel>
+                    </div>
+                  </FormItem>
+                )}
+              />
+
+              {watchMarkAsPaid && (
+                <div className="space-y-4 pt-2 border-t border-border/30">
+                  <div className="flex items-center gap-1.5">
+                    <Wallet className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Cuenta y pago</span>
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="financial_account_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Financiera *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cuenta" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {filteredAccounts.length === 0 && (
+                              <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                No hay cuentas en {watchCurrency}
+                              </div>
+                            )}
+                            {filteredAccounts.map((account) => (
+                              <SelectItem key={account.id} value={account.id}>
+                                {account.name}
+                                {account.current_balance !== undefined && (
+                                  <span className="text-xs text-muted-foreground ml-2">
+                                    · {account.currency} {account.current_balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="date_paid"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fecha de pago</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="reference"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Referencia / Comprobante (opcional)</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Ej: Transferencia #12345"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
+            </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button type="submit" disabled={isLoading}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Crear Pago
+                {watchMarkAsPaid ? "Crear y Pagar" : "Crear Pago Pendiente"}
               </Button>
             </DialogFooter>
           </form>
