@@ -10,6 +10,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
 import { Loader2, Download, FileText, TrendingUp, TrendingDown, Calculator } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 export default function LibroIvaPage() {
   const [loading, setLoading] = useState(true)
@@ -34,6 +35,9 @@ export default function LibroIvaPage() {
   }, [year, month])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  const { sortedData: sortedVentas, sortConfig: ventasSortConfig, requestSort: requestVentasSort } = useSortableData(data?.libro_ventas || [], { key: "created_at", direction: "desc" })
+  const { sortedData: sortedCompras, sortConfig: comprasSortConfig, requestSort: requestComprasSort } = useSortableData(data?.libro_compras || [], { key: "invoice_date", direction: "desc" })
 
   const handleExportCSV = () => {
     window.open(`/api/accounting/libro-iva?year=${year}&month=${month}&format=csv`, "_blank")
@@ -153,18 +157,18 @@ export default function LibroIvaPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Número</TableHead>
-                        <TableHead>CUIT/DNI</TableHead>
-                        <TableHead>Razón Social</TableHead>
-                        <TableHead className="text-right">Neto</TableHead>
-                        <TableHead className="text-right">IVA</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+                        <SortableTableHead sortKey="created_at" sortConfig={ventasSortConfig} onSort={requestVentasSort}>Fecha</SortableTableHead>
+                        <SortableTableHead sortKey="cbte_tipo" sortConfig={ventasSortConfig} onSort={requestVentasSort}>Tipo</SortableTableHead>
+                        <SortableTableHead sortKey="cbte_nro" sortConfig={ventasSortConfig} onSort={requestVentasSort}>Número</SortableTableHead>
+                        <SortableTableHead sortKey="receptor_doc_nro" sortConfig={ventasSortConfig} onSort={requestVentasSort}>CUIT/DNI</SortableTableHead>
+                        <SortableTableHead sortKey="receptor_nombre" sortConfig={ventasSortConfig} onSort={requestVentasSort}>Razón Social</SortableTableHead>
+                        <SortableTableHead sortKey="imp_neto" sortConfig={ventasSortConfig} onSort={requestVentasSort} className="text-right">Neto</SortableTableHead>
+                        <SortableTableHead sortKey="imp_iva" sortConfig={ventasSortConfig} onSort={requestVentasSort} className="text-right">IVA</SortableTableHead>
+                        <SortableTableHead sortKey="imp_total" sortConfig={ventasSortConfig} onSort={requestVentasSort} className="text-right">Total</SortableTableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.libro_ventas.map((inv: any) => (
+                      {sortedVentas.map((inv: any) => (
                         <TableRow key={inv.id}>
                           <TableCell className="text-sm">{new Date(inv.created_at).toLocaleDateString("es-AR")}</TableCell>
                           <TableCell><Badge variant="outline" className="text-xs">{cbteTipoLabel(inv.cbte_tipo)}</Badge></TableCell>
@@ -206,19 +210,19 @@ export default function LibroIvaPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Número</TableHead>
-                        <TableHead>CUIT</TableHead>
-                        <TableHead>Proveedor</TableHead>
-                        <TableHead className="text-right">Neto</TableHead>
-                        <TableHead className="text-right">IVA</TableHead>
+                        <SortableTableHead sortKey="invoice_date" sortConfig={comprasSortConfig} onSort={requestComprasSort}>Fecha</SortableTableHead>
+                        <SortableTableHead sortKey="invoice_type" sortConfig={comprasSortConfig} onSort={requestComprasSort}>Tipo</SortableTableHead>
+                        <SortableTableHead sortKey="invoice_number" sortConfig={comprasSortConfig} onSort={requestComprasSort}>Número</SortableTableHead>
+                        <SortableTableHead sortKey="emitter_cuit" sortConfig={comprasSortConfig} onSort={requestComprasSort}>CUIT</SortableTableHead>
+                        <SortableTableHead sortKey="emitter_name" sortConfig={comprasSortConfig} onSort={requestComprasSort}>Proveedor</SortableTableHead>
+                        <SortableTableHead sortKey="net_amount" sortConfig={comprasSortConfig} onSort={requestComprasSort} className="text-right">Neto</SortableTableHead>
+                        <SortableTableHead sortKey="iva_amount" sortConfig={comprasSortConfig} onSort={requestComprasSort} className="text-right">IVA</SortableTableHead>
                         <TableHead className="text-right">Perc.</TableHead>
-                        <TableHead className="text-right">Total</TableHead>
+                        <SortableTableHead sortKey="total_amount" sortConfig={comprasSortConfig} onSort={requestComprasSort} className="text-right">Total</SortableTableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {data.libro_compras.map((inv: any) => (
+                      {sortedCompras.map((inv: any) => (
                         <TableRow key={inv.id}>
                           <TableCell className="text-sm">{inv.invoice_date ? new Date(inv.invoice_date + "T12:00:00").toLocaleDateString("es-AR") : "-"}</TableCell>
                           <TableCell><Badge variant="outline" className="text-xs">{inv.invoice_type?.replace("FACTURA_", "FA-") || "-"}</Badge></TableCell>

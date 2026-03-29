@@ -28,6 +28,7 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 interface DebtorOperation {
   id: string
@@ -154,6 +155,8 @@ export function DebtsSalesPageClient() {
     )
   }
 
+  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(debtors, { key: "totalDebt", direction: "desc" })
+
   const totalDebt = debtors.reduce((sum, d) => sum + d.totalDebt, 0)
   const totalDebtors = debtors.length
 
@@ -248,7 +251,7 @@ export function DebtsSalesPageClient() {
             </div>
           ) : (
             <div className="space-y-4">
-              {debtors.map((debtor) => {
+              {sortedDebtors.map((debtor) => {
                 const customerName = extractCustomerName(
                   `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
                     debtor.customer.first_name ||

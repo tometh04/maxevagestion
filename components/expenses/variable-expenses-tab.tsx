@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { NewVariableExpenseDialog } from "./new-variable-expense-dialog"
 import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
 
@@ -198,6 +199,8 @@ export function VariableExpensesTab() {
     fetchExpenses()
   }, [fetchExpenses])
 
+  const { sortedData: sortedExpenses, sortConfig, requestSort } = useSortableData(expenses, { key: "movement_date", direction: "desc" })
+
   const formatCurrency = (amount: number, currency: string) => {
     return new Intl.NumberFormat("es-AR", {
       style: "currency",
@@ -291,7 +294,7 @@ export function VariableExpensesTab() {
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      ) : expenses.length === 0 ? (
+      ) : sortedExpenses.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           No hay gastos variables en el período seleccionado
         </div>
@@ -301,17 +304,17 @@ export function VariableExpensesTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Cuenta</TableHead>
+                <SortableTableHead sortKey="movement_date" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
+                <SortableTableHead sortKey="category" sortConfig={sortConfig} onSort={requestSort}>Descripción</SortableTableHead>
+                <SortableTableHead sortKey="category_info.name" sortConfig={sortConfig} onSort={requestSort}>Categoría</SortableTableHead>
+                <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
+                <SortableTableHead sortKey="financial_account.name" sortConfig={sortConfig} onSort={requestSort}>Cuenta</SortableTableHead>
                 <TableHead className="text-center">Comprobante</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {expenses.map((expense) => (
+              {sortedExpenses.map((expense) => (
                 <TableRow key={expense.id}>
                   <TableCell className="text-sm">
                     {new Date(expense.movement_date).toLocaleDateString("es-AR")}

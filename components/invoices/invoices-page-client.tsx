@@ -42,6 +42,7 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 interface Invoice {
   id: string
@@ -168,7 +169,9 @@ export function InvoicesPageClient() {
     }
   }
 
-  const filteredInvoices = invoices.filter(inv => {
+  const { sortedData: sortedInvoices, sortConfig, requestSort } = useSortableData(invoices, { key: "created_at", direction: "desc" })
+
+  const filteredInvoices = sortedInvoices.filter(inv => {
     if (!search) return true
     const searchLower = search.toLowerCase()
     return (
@@ -249,13 +252,13 @@ export function InvoicesPageClient() {
           <Table>
             <TableHeader className="sticky top-0 bg-background z-10">
               <TableRow>
-                <TableHead>Comprobante</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>CUIT/DNI</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>CAE</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Fecha</TableHead>
+                <SortableTableHead sortKey="cbte_tipo" sortConfig={sortConfig} onSort={requestSort}>Comprobante</SortableTableHead>
+                <SortableTableHead sortKey="receptor_nombre" sortConfig={sortConfig} onSort={requestSort}>Cliente</SortableTableHead>
+                <SortableTableHead sortKey="receptor_doc_nro" sortConfig={sortConfig} onSort={requestSort}>CUIT/DNI</SortableTableHead>
+                <SortableTableHead sortKey="imp_total" sortConfig={sortConfig} onSort={requestSort} className="text-right">Total</SortableTableHead>
+                <SortableTableHead sortKey="cae" sortConfig={sortConfig} onSort={requestSort}>CAE</SortableTableHead>
+                <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
+                <SortableTableHead sortKey="created_at" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>

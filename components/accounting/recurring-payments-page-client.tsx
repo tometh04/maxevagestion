@@ -23,6 +23,7 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info, Trash2 } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
@@ -340,6 +341,8 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     return filtered
   }, [payments, providerFilter])
 
+  const { sortedData: sortedPayments, sortConfig, requestSort } = useSortableData(filteredPayments, { key: "next_due_date", direction: "desc" })
+
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
   const totalMonthly = payments
@@ -617,17 +620,17 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Proveedor</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Frecuencia</TableHead>
-                  <TableHead>Próximo Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <SortableTableHead sortKey="provider_name" sortConfig={sortConfig} onSort={requestSort}>Proveedor</SortableTableHead>
+                  <SortableTableHead sortKey="description" sortConfig={sortConfig} onSort={requestSort}>Descripción</SortableTableHead>
+                  <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort}>Monto</SortableTableHead>
+                  <SortableTableHead sortKey="frequency" sortConfig={sortConfig} onSort={requestSort}>Frecuencia</SortableTableHead>
+                  <SortableTableHead sortKey="next_due_date" sortConfig={sortConfig} onSort={requestSort}>Próximo Vencimiento</SortableTableHead>
+                  <SortableTableHead sortKey="is_active" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPayments.map((payment) => {
+                {sortedPayments.map((payment) => {
                   const daysUntilDue = Math.ceil(
                     (new Date(payment.next_due_date).getTime() - new Date().getTime()) /
                       (1000 * 60 * 60 * 24)

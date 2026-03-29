@@ -18,6 +18,7 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { ChevronLeft, ChevronRight } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
@@ -103,6 +104,9 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
   if (!data) {
     return <div className="text-center py-8 text-muted-foreground">No se encontraron datos</div>
   }
+
+  const { sortedData: sortedSales, sortConfig: salesSortConfig, requestSort: requestSalesSort } = useSortableData(data?.sales || [], { key: "sale_date", direction: "desc" })
+  const { sortedData: sortedPurchases, sortConfig: purchasesSortConfig, requestSort: requestPurchasesSort } = useSortableData(data?.purchases || [], { key: "purchase_date", direction: "desc" })
 
   const monthNames = [
     "Enero",
@@ -190,15 +194,15 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 bg-background z-10">Fecha</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Monto Total</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Neto</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">IVA</TableHead>
+                    <SortableTableHead sortKey="sale_date" sortConfig={salesSortConfig} onSort={requestSalesSort} className="sticky top-0 bg-background z-10">Fecha</SortableTableHead>
+                    <SortableTableHead sortKey="operations.destination" sortConfig={salesSortConfig} onSort={requestSalesSort} className="sticky top-0 bg-background z-10">Operación</SortableTableHead>
+                    <SortableTableHead sortKey="sale_amount_total" sortConfig={salesSortConfig} onSort={requestSalesSort} className="sticky top-0 bg-background z-10">Monto Total</SortableTableHead>
+                    <SortableTableHead sortKey="net_amount" sortConfig={salesSortConfig} onSort={requestSalesSort} className="sticky top-0 bg-background z-10">Neto</SortableTableHead>
+                    <SortableTableHead sortKey="iva_amount" sortConfig={salesSortConfig} onSort={requestSalesSort} className="sticky top-0 bg-background z-10">IVA</SortableTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.sales.map((sale) => (
+                  {sortedSales.map((sale) => (
                     <TableRow key={sale.id}>
                       <TableCell>
                         {format(new Date(sale.sale_date), "dd/MM/yyyy", { locale: es })}
@@ -236,16 +240,16 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky top-0 bg-background z-10">Fecha</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Operación</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Operador</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Monto Total</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">Neto</TableHead>
-                    <TableHead className="sticky top-0 bg-background z-10">IVA</TableHead>
+                    <SortableTableHead sortKey="purchase_date" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">Fecha</SortableTableHead>
+                    <SortableTableHead sortKey="operations.destination" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">Operación</SortableTableHead>
+                    <SortableTableHead sortKey="operators.name" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">Operador</SortableTableHead>
+                    <SortableTableHead sortKey="operator_cost_total" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">Monto Total</SortableTableHead>
+                    <SortableTableHead sortKey="net_amount" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">Neto</SortableTableHead>
+                    <SortableTableHead sortKey="iva_amount" sortConfig={purchasesSortConfig} onSort={requestPurchasesSort} className="sticky top-0 bg-background z-10">IVA</SortableTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.purchases.map((purchase) => (
+                  {sortedPurchases.map((purchase) => (
                     <TableRow key={purchase.id}>
                       <TableCell>
                         {format(new Date(purchase.purchase_date), "dd/MM/yyyy", { locale: es })}

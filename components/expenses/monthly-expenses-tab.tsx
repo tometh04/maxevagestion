@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Loader2, DollarSign, Repeat, Receipt, TrendingDown } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 interface Expense {
   id: string
@@ -96,10 +97,12 @@ export function MonthlyExpensesTab() {
     }).format(amount)
   }
 
+  const { sortedData: sortedExpenses, sortConfig, requestSort } = useSortableData(expenses, { key: "movement_date", direction: "desc" })
+
   // Client-side type filter
   const filteredExpenses = typeFilter === "ALL"
-    ? expenses
-    : expenses.filter((e) => e.expense_type === typeFilter)
+    ? sortedExpenses
+    : sortedExpenses.filter((e) => e.expense_type === typeFilter)
 
   return (
     <div className="space-y-4">
@@ -188,12 +191,12 @@ export function MonthlyExpensesTab() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Descripción</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Cuenta</TableHead>
-                <TableHead>Usuario</TableHead>
+                <SortableTableHead sortKey="movement_date" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
+                <SortableTableHead sortKey="description" sortConfig={sortConfig} onSort={requestSort}>Descripción</SortableTableHead>
+                <SortableTableHead sortKey="expense_type" sortConfig={sortConfig} onSort={requestSort}>Tipo</SortableTableHead>
+                <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
+                <SortableTableHead sortKey="financial_accounts.name" sortConfig={sortConfig} onSort={requestSort}>Cuenta</SortableTableHead>
+                <SortableTableHead sortKey="users.name" sortConfig={sortConfig} onSort={requestSort}>Usuario</SortableTableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
