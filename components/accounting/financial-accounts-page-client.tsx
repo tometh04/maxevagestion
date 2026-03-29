@@ -331,6 +331,11 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     }
   }
 
+  const { sortedData: sortedAccounts, sortConfig: accountsSortConfig, requestSort: requestAccountsSort } = useSortableData(accounts, {
+    key: "name",
+    direction: "asc",
+  })
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -338,11 +343,6 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       </div>
     )
   }
-
-  const { sortedData: sortedAccounts, sortConfig: accountsSortConfig, requestSort: requestAccountsSort } = useSortableData(accounts, {
-    key: "name",
-    direction: "asc",
-  })
 
   // Agrupar por agencia
   const accountsByAgency = sortedAccounts.reduce((acc, account) => {

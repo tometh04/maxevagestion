@@ -92,6 +92,9 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
     }
   }
 
+  const { sortedData: sortedSales, sortConfig: salesSortConfig, requestSort: requestSalesSort } = useSortableData(data?.sales || [], { key: "sale_date", direction: "desc" })
+  const { sortedData: sortedPurchases, sortConfig: purchasesSortConfig, requestSort: requestPurchasesSort } = useSortableData(data?.purchases || [], { key: "purchase_date", direction: "desc" })
+
   if (loading) {
     return (
       <div className="space-y-4">
@@ -104,9 +107,6 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
   if (!data) {
     return <div className="text-center py-8 text-muted-foreground">No se encontraron datos</div>
   }
-
-  const { sortedData: sortedSales, sortConfig: salesSortConfig, requestSort: requestSalesSort } = useSortableData(data?.sales || [], { key: "sale_date", direction: "desc" })
-  const { sortedData: sortedPurchases, sortConfig: purchasesSortConfig, requestSort: requestPurchasesSort } = useSortableData(data?.purchases || [], { key: "purchase_date", direction: "desc" })
 
   const monthNames = [
     "Enero",

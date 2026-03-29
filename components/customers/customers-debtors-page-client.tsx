@@ -90,6 +90,8 @@ export function DebtsSalesPageClient() {
     setExpandedCustomerId(expandedCustomerId === customerId ? null : customerId)
   }
 
+  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(debtors, { key: "totalDebt", direction: "desc" })
+
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${Math.round(amount).toLocaleString("es-AR")}`
   }
@@ -154,8 +156,6 @@ export function DebtsSalesPageClient() {
       </div>
     )
   }
-
-  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(debtors, { key: "totalDebt", direction: "desc" })
 
   const totalDebt = debtors.reduce((sum, d) => sum + d.totalDebt, 0)
   const totalDebtors = debtors.length
