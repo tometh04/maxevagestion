@@ -903,7 +903,7 @@ export function OperationServicesSection({
 
       {/* ─── Dialog: Agregar servicio ─────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-[560px] max-h-[85vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingServiceId ? "Editar servicio" : "Agregar servicio"}</DialogTitle>
             <DialogDescription>
@@ -913,7 +913,7 @@ export function OperationServicesSection({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 px-6 py-4">
+          <div className="grid gap-4 px-6 py-4 flex-1 min-h-0 overflow-y-auto">
             {/* Tipo */}
             <div className="grid gap-1.5">
               <Label>Tipo de servicio *</Label>
