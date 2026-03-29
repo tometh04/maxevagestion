@@ -11,7 +11,6 @@ import {
   Plane,
   GalleryVerticalEnd,
   Bot,
-  TrendingUp,
 } from "lucide-react"
 import { shouldShowInSidebar, type UserRole } from "@/lib/permissions"
 import { NavMain } from "@/components/nav-main"
@@ -111,16 +110,10 @@ const allNavigation: NavItem[] = [
       { title: "Caja y Bancos", url: "/cash/summary" },
       { title: "Contabilidad", url: "/accounting/ledger" },
       { title: "Impuestos", url: "/accounting/iva" },
+      { title: "Comisiones", url: "/commissions", module: "commissions" as const },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings" },
     ],
-  },
-  // Comisiones - Visible para vendedores, ADMIN y SUPER_ADMIN
-  {
-    title: "Comisiones",
-    url: "/commissions",
-    icon: TrendingUp,
-    collapsible: false,
   },
   // Herramientas - Colapsable (unificado Recursos + Herramientas)
   {
@@ -185,8 +178,9 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
   // Filtrar navegación según permisos
   const navigation = allNavigation
     .map((item) => {
-      // Filtrar items principales
-      if (item.module) {
+      // Filtrar items principales por módulo
+      // Si tiene subitems con módulos propios, no filtrar aquí — se filtra abajo por subitem
+      if (item.module && !item.items?.some((sub) => sub.module)) {
         if (!shouldShowInSidebar(userRole, item.module)) {
           return null
         }
@@ -200,9 +194,11 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
       if (item.items) {
         const filteredItems = item.items
           .map((subItem) => {
-            // Si el subitem tiene un módulo, verificar permisos
-            if (subItem.module) {
-              if (!shouldShowInSidebar(userRole, subItem.module)) {
+            // Si el subitem tiene módulo propio, verificar ese módulo
+            // Si no, heredar el módulo del padre
+            const moduleToCheck = subItem.module || item.module
+            if (moduleToCheck) {
+              if (!shouldShowInSidebar(userRole, moduleToCheck)) {
                 return null
               }
             }
@@ -237,14 +233,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
       // Items sin módulo (como Dashboard) siempre visibles
       return item
     })
-    .filter((item): item is NavItem => {
-      if (!item) return false
-      // "Comisiones" visible para vendedores, ADMIN y SUPER_ADMIN
-      if (item.url === "/commissions") {
-        return userRole === "SELLER" || userRole === "ADMIN" || userRole === "SUPER_ADMIN"
-      }
-      return true
-    })
+    .filter((item): item is NavItem => item !== null)
 
   return (
     <Sidebar collapsible="icon" {...props}>
