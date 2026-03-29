@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     // ── LIBRO IVA VENTAS ──
     // From invoices table (facturas emitidas con CAE)
-    const { data: invoices } = await (supabase.from("invoices") as any)
+    const { data: invoices, error: invoicesError } = await (supabase.from("invoices") as any)
       .select(`
         id, cbte_tipo, pto_vta, cbte_nro, cae, cae_fch_vto,
         receptor_doc_tipo, receptor_doc_nro, receptor_nombre,
@@ -32,6 +32,10 @@ export async function GET(request: Request) {
       .lte("created_at", `${endDate}T23:59:59`)
       .eq("status", "authorized")
       .order("created_at", { ascending: true })
+
+    if (invoicesError) {
+      console.error("Error querying invoices for libro IVA:", invoicesError)
+    }
 
     // Also from iva_sales (for operations without formal invoice)
     const { data: ivaSales } = await (supabase.from("iva_sales") as any)
@@ -153,6 +157,7 @@ export async function GET(request: Request) {
       iva_compras_estimado: purchasesIva,
       percepciones: percs,
       totals,
+      _debug: invoicesError ? { invoicesError: invoicesError.message || invoicesError } : undefined,
     })
   } catch (error: any) {
     console.error("Error generating libro IVA:", error)
