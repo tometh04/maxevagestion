@@ -29,6 +29,8 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { Input } from "@/components/ui/input"
 
 interface DebtorOperation {
   id: string
@@ -61,12 +63,23 @@ export function DebtsSalesPageClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [searchText, setSearchText] = useState("")
 
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/accounting/debts-sales")
+      const params = new URLSearchParams()
+      if (dateFrom) {
+        params.append("dateFrom", format(dateFrom, "yyyy-MM-dd"))
+      }
+      if (dateTo) {
+        params.append("dateTo", format(dateTo, "yyyy-MM-dd"))
+      }
+      const queryString = params.toString()
+      const response = await fetch(`/api/accounting/debts-sales${queryString ? `?${queryString}` : ""}`)
       if (response.ok) {
         const data = await response.json()
         setDebtors(data.debtors || [])
@@ -80,7 +93,7 @@ export function DebtsSalesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dateFrom, dateTo])
 
   useEffect(() => {
     fetchDebtors()
@@ -90,7 +103,20 @@ export function DebtsSalesPageClient() {
     setExpandedCustomerId(expandedCustomerId === customerId ? null : customerId)
   }
 
-  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(debtors, { key: "totalDebt", direction: "desc" })
+  const filteredDebtors = useMemo(() => {
+    if (!searchText.trim()) return debtors
+    const term = searchText.toLowerCase()
+    return debtors.filter((d) => {
+      const name = `${d.customer.first_name || ""} ${d.customer.last_name || ""}`.toLowerCase()
+      const doc = d.customer.document_number?.toLowerCase() || ""
+      const ops = d.operationsWithDebt.some(
+        (op) => op.file_code?.toLowerCase().includes(term) || op.destination?.toLowerCase().includes(term)
+      )
+      return name.includes(term) || doc.includes(term) || ops
+    })
+  }, [debtors, searchText])
+
+  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(filteredDebtors, { key: "totalDebt", direction: "desc" })
 
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${Math.round(amount).toLocaleString("es-AR")}`
@@ -157,8 +183,8 @@ export function DebtsSalesPageClient() {
     )
   }
 
-  const totalDebt = debtors.reduce((sum, d) => sum + d.totalDebt, 0)
-  const totalDebtors = debtors.length
+  const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
+  const totalDebtors = filteredDebtors.length
 
   return (
     <div className="space-y-6">
@@ -195,6 +221,56 @@ export function DebtsSalesPageClient() {
         </Button>
       </div>
 
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Buscar cliente, destino o código..."
+          className="h-8 text-xs rounded-full w-[240px]"
+        />
+
+        <DateInputWithCalendar
+          value={dateFrom}
+          onChange={(date) => {
+            setDateFrom(date)
+            if (date && dateTo && dateTo < date) {
+              setDateTo(undefined)
+            }
+          }}
+          placeholder="Salida Desde"
+          className="h-8 text-xs rounded-full"
+        />
+
+        <DateInputWithCalendar
+          value={dateTo}
+          onChange={(date) => {
+            if (date && dateFrom && date < dateFrom) {
+              return
+            }
+            setDateTo(date)
+          }}
+          placeholder="Salida Hasta"
+          minDate={dateFrom}
+          className="h-8 text-xs rounded-full"
+        />
+
+        {(dateFrom || dateTo || searchText) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs rounded-full"
+            onClick={() => {
+              setDateFrom(undefined)
+              setDateTo(undefined)
+              setSearchText("")
+            }}
+          >
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
+
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -205,7 +281,9 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalDebtors}</div>
-            <p className="text-xs text-muted-foreground">Clientes con deuda</p>
+            <p className="text-xs text-muted-foreground">
+              {(dateFrom || dateTo || searchText) ? "Clientes con deuda (filtrado)" : "Clientes con deuda"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -216,7 +294,7 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">
-              {debtors.length > 0 ? formatCurrency(totalDebt, debtors[0]?.currency || "ARS") : "$ 0"}
+              {filteredDebtors.length > 0 ? formatCurrency(totalDebt, filteredDebtors[0]?.currency || "ARS") : "$ 0"}
             </div>
             <p className="text-xs text-muted-foreground">Monto total pendiente</p>
           </CardContent>
@@ -229,7 +307,7 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {debtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
+              {filteredDebtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
             </div>
             <p className="text-xs text-muted-foreground">Total de operaciones</p>
           </CardContent>

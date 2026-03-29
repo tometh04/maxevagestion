@@ -302,26 +302,33 @@ export async function PATCH(
     }
 
     // ============================================
-    // ACTUALIZAR OPERATOR_PAYMENT SI CAMBIÓ EL COSTO
+    // ACTUALIZAR OPERATOR_PAYMENT SI CAMBIÓ EL COSTO O LA MONEDA
     // ============================================
-    if (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost) {
+    const costChanged = body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost
+    if (costChanged || currencyChanged) {
       try {
-        // Buscar operator_payment pendiente
-        const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
+        // Buscar operator_payments pendientes
+        const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
           .select("id, status")
           .eq("operation_id", operationId)
-          .eq("status", "PENDING")
-          .maybeSingle()
+          .in("status", ["PENDING", "OVERDUE"])
 
-        if (operatorPayment) {
-          await (supabase.from("operator_payments") as any)
-            .update({ 
-              amount: newOperatorCost,
-              currency: currency,
+        if (operatorPayments && operatorPayments.length > 0) {
+          const operatorCostCurrency = op.operator_cost_currency || currency
+          for (const payment of operatorPayments) {
+            const updateFields: any = {
+              currency: operatorCostCurrency,
               updated_at: new Date().toISOString()
-            })
-            .eq("id", operatorPayment.id)
-          console.log(`✅ Operator payment actualizado para operación ${operationId}: ${newOperatorCost}`)
+            }
+            // Solo actualizar monto si cambió el costo (y es un solo pago)
+            if (costChanged && operatorPayments.length === 1) {
+              updateFields.amount = newOperatorCost
+            }
+            await (supabase.from("operator_payments") as any)
+              .update(updateFields)
+              .eq("id", payment.id)
+          }
+          console.log(`✅ Operator payment(s) actualizado(s) para operación ${operationId}: ${newOperatorCost} ${operatorCostCurrency}`)
         }
       } catch (error) {
         console.error("Error updating operator payment:", error)

@@ -353,10 +353,11 @@ export function NewOperationDialog({
   React.useEffect(() => {
     if (useMultipleOperators && operatorList.length > 0) {
       form.setValue("operator_cost", totalOperatorCost)
-      // Asegurar que cost_currency tenga un valor por defecto
+      // Asegurar que cost_currency tenga un valor por defecto (usar moneda de la operación)
+      const formCurrency = form.getValues("sale_currency") || form.getValues("currency") || "USD"
       const operatorsWithDefaults = operatorList.map(op => ({
         ...op,
-        cost_currency: (op.cost_currency || "USD") as "ARS" | "USD"
+        cost_currency: (op.cost_currency || formCurrency) as "ARS" | "USD"
       }))
       form.setValue("operators", operatorsWithDefaults)
     } else if (!useMultipleOperators) {
@@ -1263,7 +1264,15 @@ export function NewOperationDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Moneda (Compatibilidad)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                        <Select onValueChange={(value: string) => {
+                          field.onChange(value)
+                          // Sincronizar todas las monedas
+                          form.setValue("sale_currency", value as "ARS" | "USD")
+                          form.setValue("operator_cost_currency", value as "ARS" | "USD")
+                          if (operatorList.length > 0) {
+                            setOperatorList(operatorList.map(op => ({ ...op, cost_currency: value as "ARS" | "USD" })))
+                          }
+                        }} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue />

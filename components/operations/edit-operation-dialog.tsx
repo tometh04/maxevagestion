@@ -98,6 +98,8 @@ interface Operation {
   sale_amount_total: number
   operator_cost: number
   currency: string
+  sale_currency?: string | null
+  operator_cost_currency?: string | null
   margin_amount?: number
   margin_percentage?: number
   reservation_code_air?: string | null
@@ -183,7 +185,7 @@ export function EditOperationDialog({
               id: oo.id,
               operator_id: oo.operator_id || "",
               cost: Number(oo.cost || 0),
-              cost_currency: (oo.cost_currency || "USD") as "ARS" | "USD",
+              cost_currency: (oo.cost_currency || operation.operator_cost_currency || operation.currency || "USD") as "ARS" | "USD",
               product_type: oo.product_type || undefined,
               notes: oo.notes || undefined,
             }))
@@ -359,15 +361,16 @@ export function EditOperationDialog({
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
-        // Mantener sale_currency sincronizado con currency para evitar inconsistencias
+        // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
+        operator_cost_currency: values.currency,
       }
 
       if (useMultipleOperators && operatorList.length > 0) {
         payload.operators = operatorList.map(op => ({
           operator_id: op.operator_id,
           cost: op.cost,
-          cost_currency: op.cost_currency || "USD",
+          cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
         }))
@@ -1000,7 +1003,7 @@ export function EditOperationDialog({
                     <FormLabel>Moneda</FormLabel>
                     <Select onValueChange={(value) => {
                       field.onChange(value)
-                      // Sincronizar moneda de todos los operadores
+                      // Sincronizar moneda de todos los operadores en la lista
                       if (operatorList.length > 0) {
                         setOperatorList(operatorList.map(op => ({ ...op, cost_currency: value as "ARS" | "USD" })))
                       }
