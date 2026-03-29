@@ -110,6 +110,13 @@ export async function POST(request: Request) {
       )
     }
 
+    if (parseFloat(amount) <= 0) {
+      return NextResponse.json(
+        { error: "El monto debe ser mayor a cero" },
+        { status: 400 }
+      )
+    }
+
     // Calcular next_due_date basado en start_date
     const nextDueDate = start_date
     const userAny = user as any

@@ -111,6 +111,7 @@ export function MarkPaidDialog({
           }
         } catch (error) {
           console.error("Error fetching operation:", error)
+          toast.error("Error al cargar los datos de la operación")
         } finally {
           setLoadingOperation(false)
         }
@@ -145,6 +146,7 @@ export function MarkPaidDialog({
           }
         } catch (error) {
           console.error("Error fetching financial accounts:", error)
+          toast.error("Error al cargar cuentas financieras")
         }
       }
       fetchFinancialAccounts()
@@ -184,8 +186,16 @@ export function MarkPaidDialog({
       })
 
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || "Error al marcar como pagado")
+        const errorData = await response.json()
+        // Si el pago ya fue procesado (409 Conflict), mostrar warning y cerrar
+        if (response.status === 409 || errorData.already_paid) {
+          toast.warning("Este pago ya fue marcado como pagado anteriormente")
+          form.reset()
+          onOpenChange(false)
+          onSuccess() // Refrescar para mostrar estado actualizado
+          return
+        }
+        throw new Error(errorData.error || "Error al marcar como pagado")
       }
 
       toast.success("Pago marcado como pagado")

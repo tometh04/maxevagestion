@@ -8,7 +8,7 @@ import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operat
 import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 
 export async function POST(request: Request) {
@@ -423,11 +423,8 @@ export async function POST(request: Request) {
         // Calcular ARS equivalent para la venta
         let saleExchangeRate: number | null = null
         if (finalSaleCurrency === "USD") {
-          saleExchangeRate = await getExchangeRate(supabase, new Date(departure_date))
-          if (!saleExchangeRate) {
-            saleExchangeRate = await getLatestExchangeRate(supabase)
-          }
-          if (!saleExchangeRate) saleExchangeRate = 1450
+          const rateResult = await getExchangeRateWithFallback(supabase, new Date(departure_date), "operations-create")
+          saleExchangeRate = rateResult.rate
         }
         const saleAmountARS = calculateARSEquivalent(sale_amount_total, finalSaleCurrency as "ARS" | "USD", saleExchangeRate)
 

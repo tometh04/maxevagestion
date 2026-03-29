@@ -138,6 +138,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         }
       } catch (error) {
         console.error("Error fetching operations:", error)
+        toast.error("Error al cargar operaciones")
       } finally {
         setLoadingOps(false)
       }
@@ -161,6 +162,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         }
       } catch (error) {
         console.error("Error fetching financial accounts:", error)
+        toast.error("Error al cargar cuentas financieras")
       }
     }
     fetchAccounts()

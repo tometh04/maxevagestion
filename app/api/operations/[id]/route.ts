@@ -568,6 +568,24 @@ export async function DELETE(
 
     console.log(`🗑️ Iniciando eliminación de operación ${operationId}...`)
 
+    // GUARD: Verificar si hay pagos PAID — no se puede eliminar una operación con pagos ya realizados
+    const { data: paidPayments } = await (supabase
+      .from("payments")
+      .select("id, amount, currency, direction")
+      .eq("operation_id", operationId)
+      .eq("status", "PAID") as any)
+
+    if (paidPayments && paidPayments.length > 0) {
+      const paidSummary = (paidPayments as any[])
+        .map((p: any) => `${p.currency} ${p.amount} (${p.direction})`)
+        .join(", ")
+      console.warn(`⛔ No se puede eliminar operación ${operationId}: tiene ${paidPayments.length} pagos PAID: ${paidSummary}`)
+      return NextResponse.json({
+        error: `No se puede eliminar esta operación porque tiene ${paidPayments.length} pago(s) ya realizados. Primero debe revertir los pagos.`,
+        paid_payments: paidPayments.length
+      }, { status: 400 })
+    }
+
     // 1. Eliminar registros de IVA
     try {
       await deleteSaleIVA(supabase, operationId)

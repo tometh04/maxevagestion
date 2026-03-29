@@ -8,7 +8,7 @@ import {
   validateSufficientBalance,
   getAccountBalance,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 /**
  * POST /api/accounting/financial-accounts/transfer
@@ -191,13 +191,8 @@ export async function POST(request: Request) {
       let exchangeRate: number | null = null
       if (currency === "USD") {
         const rateDate = transfer_date ? new Date(transfer_date) : new Date()
-        exchangeRate = await getExchangeRate(supabase, rateDate)
-        if (!exchangeRate) {
-          exchangeRate = await getLatestExchangeRate(supabase)
-        }
-        if (!exchangeRate) {
-          exchangeRate = 1450
-        }
+        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "financial-account-transfer")
+        exchangeRate = rateResult.rate
       }
 
       const amountARS = currency === "ARS"

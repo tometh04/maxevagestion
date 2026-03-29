@@ -7,7 +7,7 @@ import {
   validateSufficientBalance,
   isAccountingOnlyAccount,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
 
 interface ToProcessItem {
@@ -102,9 +102,8 @@ export async function POST(request: Request) {
     let exchangeRateValue: number | null = null
     if (payment_currency === "USD") {
       const rateDate = payment_date ? new Date(payment_date) : new Date()
-      exchangeRateValue = await getExchangeRate(supabase, rateDate)
-      if (!exchangeRateValue) exchangeRateValue = await getLatestExchangeRate(supabase)
-      if (!exchangeRateValue) exchangeRateValue = 1450
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "bulk-operator-payments")
+      exchangeRateValue = rateResult.rate
     } else if (exchange_rate != null) {
       exchangeRateValue = parseFloat(String(exchange_rate))
     }
@@ -151,7 +150,7 @@ export async function POST(request: Request) {
 
       amountInPaymentCurrency = roundMoney(amountInPaymentCurrency)
       if (payment_currency === "USD") {
-        amountARS = roundMoney(amountInPaymentCurrency * (exchangeRateValue ?? 1450))
+        amountARS = roundMoney(amountInPaymentCurrency * exchangeRateValue!)
       } else {
         amountARS = amountInPaymentCurrency
       }
@@ -272,7 +271,7 @@ export async function POST(request: Request) {
           const pct = deposit_bonus.percentage
           expenseAmount = roundMoney(item.amountInPaymentCurrency / (1 + pct / 100))
           if (payment_currency === "USD") {
-            expenseARS = roundMoney(expenseAmount * (exchangeRateValue ?? 1450))
+            expenseARS = roundMoney(expenseAmount * exchangeRateValue!)
           } else {
             expenseARS = expenseAmount
           }
@@ -317,7 +316,7 @@ export async function POST(request: Request) {
 
         const costAmount = parseFloat(String(amount_to_pay))
         const costARS = paymentCurrency === "USD"
-          ? roundMoney(costAmount * (exchangeRateValue ?? 1450))
+          ? roundMoney(costAmount * exchangeRateValue!)
           : costAmount
 
         await createLedgerMovement(
@@ -328,7 +327,7 @@ export async function POST(request: Request) {
             concept: `Costo operador - Operación ${operation_id.slice(0, 8)}`,
             currency: paymentCurrency,
             amount_original: roundMoney(costAmount),
-            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue ?? 1450) : null,
+            exchange_rate: paymentCurrency === "USD" ? exchangeRateValue! : null,
             amount_ars_equivalent: roundMoney(costARS),
             method: ledgerMethod,
             account_id: costAccountId,
@@ -430,7 +429,7 @@ export async function POST(request: Request) {
     if (hasDepositBonus && bonusTotal > 0 && processedPayments.length > 0) {
       try {
         const bonusARS = payment_currency === "USD"
-          ? roundMoney(bonusTotal * (exchangeRateValue ?? 1450))
+          ? roundMoney(bonusTotal * exchangeRateValue!)
           : bonusTotal
 
         await createLedgerMovement(

@@ -6,7 +6,7 @@ import {
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
@@ -342,18 +342,8 @@ export async function POST(request: Request) {
         let exchangeRate: number | null = null
         if (deposit_currency === "USD") {
           const rateDate = deposit_date ? new Date(deposit_date) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          
-          // Si no hay tasa para esa fecha, usar la más reciente disponible
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
-          }
-          
-          // Fallback: si aún no hay tasa, usar 1450 como último recurso
-          if (!exchangeRate) {
-            console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-            exchangeRate = 1450
-          }
+          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "leads-create")
+          exchangeRate = rateResult.rate
         }
         
         const amountArsEquivalent = calculateARSEquivalent(

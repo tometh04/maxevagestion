@@ -13,6 +13,7 @@ import {
 import {
   getExchangeRate,
   getLatestExchangeRate,
+  getExchangeRateWithFallback,
 } from "@/lib/accounting/exchange-rates"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 
@@ -74,8 +75,8 @@ export async function POST(request: Request) {
     }
 
     // Validaciones de montos
-    if (amount < 0) {
-      return NextResponse.json({ error: "El monto no puede ser negativo" }, { status: 400 })
+    if (!amount || amount <= 0) {
+      return NextResponse.json({ error: "El monto debe ser mayor a cero" }, { status: 400 })
     }
 
     // SELLER: verificar que la operación le pertenece
@@ -185,13 +186,8 @@ export async function POST(request: Request) {
         if (currency === "USD") {
           // Para USD, buscar tasa de cambio
           const rateDate = date_paid ? new Date(date_paid) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
-          }
-          if (!exchangeRate) {
-            exchangeRate = 1450 // Fallback
-          }
+          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create")
+          exchangeRate = rateResult.rate
         } else if (currency === "ARS" && providedExchangeRate) {
           // Para ARS, usar la tasa proporcionada
           exchangeRate = parseFloat(providedExchangeRate)
@@ -962,11 +958,8 @@ export async function PATCH(request: Request) {
         let exchangeRate: number | null = null
         if (finalCurrency === "USD") {
           const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
-          }
-          if (!exchangeRate) exchangeRate = 1450
+          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create-CpC")
+          exchangeRate = rateResult.rate
         } else if (finalCurrency === "ARS" && finalExchangeRate) {
           exchangeRate = finalExchangeRate
         }

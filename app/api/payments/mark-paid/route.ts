@@ -11,7 +11,7 @@ import {
 } from "@/lib/accounting/ledger"
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
 import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
-import { getExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 
 export async function POST(request: Request) {
@@ -29,6 +29,14 @@ export async function POST(request: Request) {
 
     if (!paymentId || !datePaid || !financial_account_id) {
       return NextResponse.json({ error: "Faltan parámetros (paymentId, datePaid, financial_account_id son requeridos)" }, { status: 400 })
+    }
+
+    // Validar que datePaid no sea una fecha futura
+    const paidDate = new Date(datePaid)
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+    if (paidDate > today) {
+      return NextResponse.json({ error: "La fecha de pago no puede ser futura" }, { status: 400 })
     }
 
     // Validar que la cuenta financiera existe
@@ -73,11 +81,37 @@ export async function POST(request: Request) {
 
     const paymentData = payment as any
     const operation = paymentData.operations || null
+    const paymentsTable = supabase.from("payments") as any
 
-    // Verificar si el pago ya está marcado como PAID y tiene ledger_movement_id
-    // Si ya tiene ledger_movement_id, significa que los movimientos contables ya fueron creados
-    // Solo actualizamos la fecha y referencia, pero no creamos movimientos duplicados
-    const alreadyHasLedgerMovement = paymentData.status === "PAID" && paymentData.ledger_movement_id
+    // ============================================
+    // GUARD DE IDEMPOTENCIA: Verificar ANTES de cualquier modificación
+    // ============================================
+    // Si el pago ya está PAID, rechazar la operación completamente
+    if (paymentData.status === "PAID") {
+      console.log(`⚠️ Intento de marcar pago ${paymentId} como pagado, pero ya está en estado PAID`)
+      return NextResponse.json({
+        error: "Este pago ya fue marcado como pagado anteriormente",
+        already_paid: true
+      }, { status: 409 }) // 409 Conflict
+    }
+
+    // Guard adicional: usar update atómico con condición de estado
+    // Esto previene race conditions entre requests simultáneos
+    const { data: atomicUpdate, error: atomicError } = await paymentsTable
+      .update({ status: "PROCESSING" }) // Estado transitorio para bloquear otros requests
+      .eq("id", paymentId)
+      .eq("status", "PENDING") // Solo actualizar si sigue PENDING (Compare-And-Set)
+      .select("id")
+      .maybeSingle()
+
+    if (!atomicUpdate) {
+      // Otro request ya tomó este pago, o cambió de estado
+      console.log(`⚠️ Race condition detectada: pago ${paymentId} ya no está PENDING`)
+      return NextResponse.json({
+        error: "Este pago ya está siendo procesado por otra operación",
+        already_paid: true
+      }, { status: 409 })
+    }
 
     // Calcular amount_usd si hay exchange_rate proporcionado
     let amountUsd: number | null = null
@@ -87,8 +121,7 @@ export async function POST(request: Request) {
       amountUsd = parseFloat(paymentData.amount)
     }
 
-    // Update payment
-    const paymentsTable = supabase.from("payments") as any
+    // Update payment — ya pasó el guard atómico (status = PROCESSING)
     const updateData: any = {
       date_paid: datePaid,
       status: "PAID",
@@ -107,16 +140,6 @@ export async function POST(request: Request) {
     await paymentsTable
       .update(updateData)
       .eq("id", paymentId)
-
-    // Si el pago ya tiene ledger_movement_id, no crear movimientos duplicados
-    if (alreadyHasLedgerMovement) {
-      console.log(`⚠️ Pago ${paymentId} ya tiene ledger_movement_id ${paymentData.ledger_movement_id}, omitiendo creación de movimientos contables`)
-      return NextResponse.json({ 
-        success: true, 
-        payment: { ...paymentData, date_paid: datePaid, status: "PAID", reference },
-        message: "Pago actualizado (movimientos contables ya existían)"
-      })
-    }
 
     // Get agency_id from operation or user agencies
     let agencyId = operation?.agency_id
@@ -204,15 +227,8 @@ export async function POST(request: Request) {
             // Calcular exchange rate si es USD
             let exchangeRate: number | null = null
             if (paymentData.currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-              if (!exchangeRate) {
-                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1450 // Fallback temporal
-              }
+              const rateResult = await getExchangeRateWithFallback(supabase, new Date(datePaid), `mark-paid-CpC-${paymentId}`)
+              exchangeRate = rateResult.rate
             }
 
             const amountARS = calculateARSEquivalent(
@@ -281,15 +297,8 @@ export async function POST(request: Request) {
             // Calcular exchange rate si es USD
             let exchangeRate: number | null = null
             if (paymentData.currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-              if (!exchangeRate) {
-                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1450 // Fallback temporal
-              }
+              const rateResult = await getExchangeRateWithFallback(supabase, new Date(datePaid), `mark-paid-CpP-${paymentId}`)
+              exchangeRate = rateResult.rate
             }
 
             const amountARS = calculateARSEquivalent(
@@ -297,7 +306,7 @@ export async function POST(request: Request) {
               paymentData.currency as "ARS" | "USD",
               exchangeRate
             )
-            
+
             // Obtener nombre del pasajero para el concepto
             const passengerNameForCpP = paymentData.operation_id 
               ? await getMainPassengerName(paymentData.operation_id, supabase) 
@@ -407,24 +416,13 @@ export async function POST(request: Request) {
     // Si currency = ARS y se proporcionó exchange_rate, usarlo para convertir a USD
     // Si currency = USD y no se proporcionó exchange_rate, obtenerlo de la tabla
     let exchangeRate: number | null = exchange_rate || null
-    
+
     if (!exchangeRate) {
       // Solo calcular automáticamente si no se proporcionó desde el frontend
       if (paymentData.currency === "USD") {
         const rateDate = datePaid ? new Date(datePaid) : new Date()
-        exchangeRate = await getExchangeRate(supabase, rateDate)
-        
-        // Si no hay tasa para esa fecha, usar la más reciente disponible
-        if (!exchangeRate) {
-          const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-          exchangeRate = await getLatestExchangeRate(supabase)
-        }
-        
-        // Fallback: si aún no hay tasa, usar 1450 como último recurso
-        if (!exchangeRate) {
-          console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-          exchangeRate = 1450
-        }
+        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, `mark-paid-main-${paymentId}`)
+        exchangeRate = rateResult.rate
       } else if (paymentData.currency === "ARS" && exchange_rate) {
         // Si el pago es en ARS y se proporcionó TC, usarlo
         exchangeRate = exchange_rate
@@ -633,6 +631,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, ledger_movement_id: ledgerMovementId })
   } catch (error: any) {
     console.error("Error en mark-paid:", error)
+
+    // Si el pago quedó en PROCESSING por un error, revertirlo a PENDING
+    try {
+      const body = await request.clone().json().catch(() => null)
+      if (body?.paymentId) {
+        const supabase = await createServerClient()
+        await (supabase.from("payments") as any)
+          .update({ status: "PENDING", updated_at: new Date().toISOString() })
+          .eq("id", body.paymentId)
+          .eq("status", "PROCESSING") // Solo revertir si sigue en PROCESSING
+      }
+    } catch (revertError) {
+      console.error("Error revirtiendo estado PROCESSING:", revertError)
+    }
+
     return NextResponse.json(
       { error: error.message || "Error al actualizar" },
       { status: 500 }

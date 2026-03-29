@@ -94,6 +94,41 @@ export async function getLatestExchangeRate(
 }
 
 /**
+ * Obtener exchange rate con fallback seguro.
+ * Intenta: 1) tasa por fecha, 2) tasa más reciente, 3) FALLBACK_RATE con warning visible.
+ * Usar esta función en vez de hardcodear 1450 en cada API route.
+ */
+const FALLBACK_RATE = 1450
+let _lastFallbackWarning = 0
+
+export async function getExchangeRateWithFallback(
+  supabase: SupabaseClient<Database>,
+  date: Date | string,
+  context: string = "unknown"
+): Promise<{ rate: number; source: "exact" | "latest" | "fallback" }> {
+  // 1) Tasa exacta por fecha
+  const exactRate = await getExchangeRate(supabase, date)
+  if (exactRate) {
+    return { rate: exactRate, source: "exact" }
+  }
+
+  // 2) Tasa más reciente
+  const latestRate = await getLatestExchangeRate(supabase)
+  if (latestRate) {
+    console.warn(`⚠️ [${context}] No hay tasa de cambio para ${typeof date === "string" ? date : date.toISOString().split("T")[0]}, usando última disponible: ${latestRate}`)
+    return { rate: latestRate, source: "latest" }
+  }
+
+  // 3) Fallback hardcodeado — loguear con alta visibilidad (máximo 1 vez por minuto para no spamear)
+  const now = Date.now()
+  if (now - _lastFallbackWarning > 60000) {
+    console.error(`🚨 [${context}] NO HAY TASAS DE CAMBIO EN LA BASE DE DATOS. Usando fallback de emergencia: ${FALLBACK_RATE}. ¡Cargar tasas de cambio urgente!`)
+    _lastFallbackWarning = now
+  }
+  return { rate: FALLBACK_RATE, source: "fallback" }
+}
+
+/**
  * Crear o actualizar una tasa de cambio
  */
 export async function upsertExchangeRate(

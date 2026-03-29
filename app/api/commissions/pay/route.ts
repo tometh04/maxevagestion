@@ -13,7 +13,7 @@ import {
   calculateARSEquivalent,
   validateSufficientBalance,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 async function fetchBcraRate(): Promise<number | null> {
   try {
@@ -107,22 +107,8 @@ export async function POST(request: Request) {
       // Para USD, siempre necesitamos tipo de cambio
       if (!exchangeRate) {
         const rateDate = datePaid ? new Date(datePaid) : new Date()
-        exchangeRate = await getExchangeRate(supabase, rateDate)
-        
-        if (!exchangeRate) {
-          exchangeRate = await getLatestExchangeRate(supabase)
-        }
-        
-        if (!exchangeRate) {
-          // Fallback: obtener tipo de cambio oficial del BCRA
-          exchangeRate = await fetchBcraRate()
-        }
-
-        if (!exchangeRate) {
-          // Último fallback si BCRA API tampoco responde
-          exchangeRate = 1450
-          console.warn("[Commissions Pay] No exchange rate found (DB + BCRA), using fallback: 1450")
-        }
+        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "commissions-pay")
+        exchangeRate = rateResult.rate
       }
     } else if (currency === "ARS" && exchange_rate) {
       // Si es ARS y se proporcionó TC, usarlo (para casos especiales)

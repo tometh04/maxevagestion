@@ -8,7 +8,7 @@ import {
   getOrCreateDefaultAccount,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
@@ -193,16 +193,8 @@ export async function PATCH(
             let exchangeRate: number | null = null
             if (depositCurrency === "USD") {
               const rateDate = depositDate ? new Date(depositDate) : new Date()
-              exchangeRate = await getExchangeRate(supabase, rateDate)
-
-              if (!exchangeRate) {
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-                exchangeRate = 1450
-              }
+              const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "leads-update")
+              exchangeRate = rateResult.rate
             }
 
             const amountArsEquivalent = calculateARSEquivalent(

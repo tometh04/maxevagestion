@@ -7,7 +7,7 @@ import {
   validateSufficientBalance,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
 
 export async function POST(request: Request) {
@@ -122,18 +122,8 @@ export async function POST(request: Request) {
     let exchangeRate: number | null = null
     if (currency === "USD") {
       const rateDate = movement_date ? new Date(movement_date) : new Date()
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-
-      // Si no hay tasa para esa fecha, usar la más reciente disponible
-      if (!exchangeRate) {
-        exchangeRate = await getLatestExchangeRate(supabase)
-      }
-
-      // Fallback: si aún no hay tasa, usar 1450 como último recurso
-      if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-        exchangeRate = 1450
-      }
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "cash-movements")
+      exchangeRate = rateResult.rate
     }
 
     const amountARS = calculateARSEquivalent(

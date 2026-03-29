@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 // Tipos de servicios que generan comisión al vendedor
 const COMMISSION_SERVICE_TYPES = new Set(["TRANSFER", "ASSISTANCE", "HOTEL", "FLIGHT", "EXCURSION"])
@@ -262,9 +262,8 @@ export async function POST(
           if (arAccount) {
             let exchangeRate: number | null = null
             if (sale_currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, departureDate ? new Date(departureDate) : new Date())
-              if (!exchangeRate) exchangeRate = await getLatestExchangeRate(supabase)
-              if (!exchangeRate) exchangeRate = 1450
+              const rateResult = await getExchangeRateWithFallback(supabase, new Date(), "services-create")
+              exchangeRate = rateResult.rate
             }
 
             const amountARS = calculateARSEquivalent(saleAmount, sale_currency as "ARS" | "USD", exchangeRate)
@@ -336,9 +335,8 @@ export async function POST(
           if (apAccount) {
             let exchangeRate: number | null = null
             if (cost_currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, departureDate ? new Date(departureDate) : new Date())
-              if (!exchangeRate) exchangeRate = await getLatestExchangeRate(supabase)
-              if (!exchangeRate) exchangeRate = 1450
+              const rateResult = await getExchangeRateWithFallback(supabase, new Date(), "services-create")
+              exchangeRate = rateResult.rate
             }
 
             const amountARS = calculateARSEquivalent(costAmount, cost_currency as "ARS" | "USD", exchangeRate)

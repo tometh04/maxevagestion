@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getAccountBalance, createLedgerMovement, calculateARSEquivalent, invalidateBalanceCache } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { canPerformAction } from "@/lib/permissions-api"
 
 export async function DELETE(
@@ -102,9 +102,8 @@ export async function DELETE(
       let exchangeRate: number | null = null
 
       if (account.currency === "USD") {
-        exchangeRate = await getExchangeRate(supabase, new Date())
-        if (!exchangeRate) exchangeRate = await getLatestExchangeRate(supabase)
-        if (!exchangeRate) exchangeRate = 1450
+        const rateResult = await getExchangeRateWithFallback(supabase, new Date(), "financial-account-close")
+        exchangeRate = rateResult.rate
       }
 
       const amountARS = account.currency === "ARS"

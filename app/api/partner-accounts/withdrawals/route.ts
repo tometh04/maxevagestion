@@ -9,6 +9,7 @@ import {
 import {
   getExchangeRate,
   getLatestExchangeRate,
+  getExchangeRateWithFallback,
 } from "@/lib/accounting/exchange-rates"
 
 // GET - Obtener retiros (opcionalmente filtrados por socio)
@@ -178,18 +179,8 @@ export async function POST(request: Request) {
     } else if (currency === "USD" && !needsConversion) {
       // Si el retiro es en USD y la cuenta también es USD, obtener TC para cálculo ARS equivalente
       const rateDate = new Date(withdrawal_date)
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-      
-      // Si no hay tasa para esa fecha, usar la más reciente disponible
-      if (!exchangeRate) {
-        exchangeRate = await getLatestExchangeRate(supabase)
-      }
-      
-      // Fallback: si aún no hay tasa, usar 1450 como último recurso
-      if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-        exchangeRate = 1450
-      }
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "partner-withdrawals")
+      exchangeRate = rateResult.rate
     }
 
     // Calcular amount_ars_equivalent
