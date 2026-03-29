@@ -13,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import {
   Dialog,
   DialogContent,
@@ -338,8 +339,13 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     )
   }
 
+  const { sortedData: sortedAccounts, sortConfig: accountsSortConfig, requestSort: requestAccountsSort } = useSortableData(accounts, {
+    key: "name",
+    direction: "asc",
+  })
+
   // Agrupar por agencia
-  const accountsByAgency = accounts.reduce((acc, account) => {
+  const accountsByAgency = sortedAccounts.reduce((acc, account) => {
     // Asegurar que agency_id esté disponible (puede venir directamente o desde agencies)
     const agencyId = account.agency_id || (account.agencies as any)?.id || "sin-agencia"
     
@@ -835,11 +841,11 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="sticky top-0 bg-background z-10">Nombre</TableHead>
-                        <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
-                        <TableHead className="sticky top-0 bg-background z-10">Moneda</TableHead>
-                        <TableHead className="sticky top-0 bg-background z-10 text-right">Saldo Inicial</TableHead>
-                        <TableHead className="sticky top-0 bg-background z-10 text-right">Balance Actual</TableHead>
+                        <SortableTableHead sortKey="name" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Nombre</SortableTableHead>
+                        <SortableTableHead sortKey="type" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Tipo</SortableTableHead>
+                        <SortableTableHead sortKey="currency" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10">Moneda</SortableTableHead>
+                        <SortableTableHead sortKey="initial_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Saldo Inicial</SortableTableHead>
+                        <SortableTableHead sortKey="current_balance" sortConfig={accountsSortConfig} onSort={requestAccountsSort} className="sticky top-0 bg-background z-10 text-right">Balance Actual</SortableTableHead>
                         <TableHead className="sticky top-0 bg-background z-10 w-[80px]">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>

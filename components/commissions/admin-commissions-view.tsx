@@ -10,6 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import {
   Select,
   SelectContent,
@@ -167,6 +168,10 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
   // ── Historial state ──
   const [paidCommissions, setPaidCommissions] = useState<Commission[]>([])
+  const { sortedData: sortedPaidCommissions, sortConfig: paidSortConfig, requestSort: requestPaidSort } = useSortableData(paidCommissions, {
+    key: "date_paid",
+    direction: "desc",
+  })
   const [paidLoading, setPaidLoading] = useState(false)
   const [paidMonth, setPaidMonth] = useState("ALL")
   const [paidDateFrom, setPaidDateFrom] = useState("")
@@ -830,11 +835,11 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
               <Table>
                 <TableHeader className="sticky top-0 bg-muted/50 z-10">
                   <TableRow>
-                    <TableHead>Fecha Pago</TableHead>
-                    <TableHead>Vendedor</TableHead>
-                    <TableHead>Operacion</TableHead>
-                    <TableHead>Destino</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
+                    <SortableTableHead sortKey="date_paid" sortConfig={paidSortConfig} onSort={requestPaidSort}>Fecha Pago</SortableTableHead>
+                    <SortableTableHead sortKey="sellers.name" sortConfig={paidSortConfig} onSort={requestPaidSort}>Vendedor</SortableTableHead>
+                    <SortableTableHead sortKey="operation.file_code" sortConfig={paidSortConfig} onSort={requestPaidSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.destination" sortConfig={paidSortConfig} onSort={requestPaidSort}>Destino</SortableTableHead>
+                    <SortableTableHead sortKey="amount" sortConfig={paidSortConfig} onSort={requestPaidSort} className="text-right">Monto</SortableTableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -854,7 +859,7 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                       </TableCell>
                     </TableRow>
                   ) : (
-                    paidCommissions.map((c) => (
+                    sortedPaidCommissions.map((c) => (
                       <TableRow key={c.id}>
                         <TableCell className="text-sm">
                           {c.date_paid

@@ -17,6 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
@@ -167,15 +168,13 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
       result = result.filter((c) => new Date(c.date_calculated) <= to)
     }
 
-    // sort by date desc
-    result.sort(
-      (a, b) =>
-        new Date(b.date_calculated).getTime() -
-        new Date(a.date_calculated).getTime()
-    )
-
     return result
   }, [commissions, statusFilter, monthFilterBalance, dateFrom, dateTo])
+
+  const { sortedData: sortedFilteredCommissions, sortConfig: balanceSortConfig, requestSort: requestBalanceSort } = useSortableData(filteredCommissions, {
+    key: "date_calculated",
+    direction: "desc",
+  })
 
   const pendingTotal = useMemo(
     () =>
@@ -406,17 +405,17 @@ export function SellerCommissionsView({ userId }: SellerCommissionsViewProps) {
               <Table>
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <TableHead>Operacion</TableHead>
-                    <TableHead>Destino</TableHead>
-                    <TableHead>Fecha Salida</TableHead>
-                    <TableHead className="text-right">Margen</TableHead>
-                    <TableHead className="text-right">% Comision</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
-                    <TableHead>Estado</TableHead>
+                    <SortableTableHead sortKey="operation.file_code" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Operacion</SortableTableHead>
+                    <SortableTableHead sortKey="operation.destination" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Destino</SortableTableHead>
+                    <SortableTableHead sortKey="operation.departure_date" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Fecha Salida</SortableTableHead>
+                    <SortableTableHead sortKey="operation.margin_amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Margen</SortableTableHead>
+                    <SortableTableHead sortKey="percentage" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">% Comision</SortableTableHead>
+                    <SortableTableHead sortKey="amount" sortConfig={balanceSortConfig} onSort={requestBalanceSort} className="text-right">Monto</SortableTableHead>
+                    <SortableTableHead sortKey="status" sortConfig={balanceSortConfig} onSort={requestBalanceSort}>Estado</SortableTableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredCommissions.map((c) => (
+                  {sortedFilteredCommissions.map((c) => (
                     <TableRow key={c.id}>
                       <TableCell className="font-medium">
                         <Link
