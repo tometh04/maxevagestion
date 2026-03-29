@@ -70,19 +70,19 @@ interface SalesStatistics {
     bySource: Array<{
       source: string
       count: number
-      won: number
+      converted: number
       conversionRate: number
     }>
     byRegion: Array<{
       region: string
       count: number
-      won: number
+      converted: number
     }>
     bySeller: Array<{
       id: string
       name: string
       leads: number
-      won: number
+      converted: number
       conversionRate: number
     }>
   }
@@ -100,7 +100,7 @@ interface SalesStatistics {
       id: string
       name: string
       leads: number
-      won: number
+      converted: number
       conversionRate: number
     }>
     topSources: Array<{
@@ -322,7 +322,7 @@ export function SalesStatisticsPageClient() {
     .map(s => ({
       name: s.source,
       value: s.count,
-      won: s.won,
+      converted: s.converted,
       color: SOURCE_COLORS[s.source] || '#6b7280',
     }))
 
@@ -400,7 +400,7 @@ export function SalesStatisticsPageClient() {
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Activos</p>
               <p className="text-base font-semibold text-primary">{stats.overview.activeLeads}</p>
-              <p className="text-[10px] text-muted-foreground">en proceso</p>
+              <p className="text-[10px] text-muted-foreground">sin convertir</p>
             </div>
           </div>
         </Card>
@@ -415,7 +415,7 @@ export function SalesStatisticsPageClient() {
               <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`}>
                 {stats.overview.conversionRate}%
               </p>
-              <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} ganados</p>
+              <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} convertidos</p>
             </div>
           </div>
         </Card>
@@ -501,7 +501,7 @@ export function SalesStatisticsPageClient() {
                   <Line 
                     type="monotone" 
                     dataKey="wonLeads" 
-                    name="Ganados"
+                    name="Convertidos"
                     stroke="#22c55e" 
                     strokeWidth={2}
                     dot={{ r: 3 }}
@@ -621,7 +621,7 @@ export function SalesStatisticsPageClient() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-[10px] h-7 px-2">Origen</TableHead>
                   <TableHead className="text-[10px] h-7 px-2 text-right">Leads</TableHead>
-                  <TableHead className="text-[10px] h-7 px-2 text-right">Ganados</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Convertidos</TableHead>
                   <TableHead className="text-[10px] h-7 px-2 text-right">Conversión</TableHead>
                 </TableRow>
               </TableHeader>
@@ -638,7 +638,7 @@ export function SalesStatisticsPageClient() {
                       {source.count}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {(source as any).won || 0}
+                      {(source as any).converted || 0}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
                       <span className={source.conversionRate >= 25 ? "text-success" : source.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
@@ -662,7 +662,7 @@ export function SalesStatisticsPageClient() {
 
           {/* Info adicional */}
           <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
-            <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} ganados • {stats.overview.lostLeads} perdidos</span>
+            <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} convertidos • {stats.overview.lostLeads} perdidos</span>
             <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
           </div>
         </TabsContent>

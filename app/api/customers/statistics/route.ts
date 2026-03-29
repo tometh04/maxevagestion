@@ -191,7 +191,7 @@ export async function GET(request: Request) {
           return opDateStr >= filterFromStr && opDateStr <= filterToStr
         })
 
-      let totalSpentUsd = 0
+      let totalSpent = 0
       for (const op of operations) {
         const saleCurrency = op.sale_currency || op.currency || "USD"
         const saleAmount = parseFloat(op.sale_amount_total) || 0
@@ -202,14 +202,14 @@ export async function GET(request: Request) {
           if (!exchangeRate) {
             exchangeRate = latestExchangeRate
           }
-          totalSpentUsd += saleAmount / exchangeRate
+          totalSpent += saleAmount / exchangeRate
         } else {
-          totalSpentUsd += saleAmount
+          totalSpent += saleAmount
         }
       }
 
       const totalOperations = operations.length
-      const avgTicketUsd = totalOperations > 0 ? totalSpentUsd / totalOperations : 0
+      const avgTicketUsd = totalOperations > 0 ? totalSpent / totalOperations : 0
 
       const lastOperationDate = operations.length > 0
         ? operations
@@ -227,7 +227,7 @@ export async function GET(request: Request) {
         email: customer.email,
         phone: customer.phone,
         totalOperations,
-        totalSpentUsd,
+        totalSpent,
         avgTicketUsd,
         lastOperationDate: lastOperationDate?.toISOString() || null,
         isActive,
@@ -236,8 +236,8 @@ export async function GET(request: Request) {
 
     // Top 10 clientes por gasto
     const topBySpending = [...customerStats]
-      .filter(c => c.totalSpentUsd > 0)
-      .sort((a, b) => b.totalSpentUsd - a.totalSpentUsd)
+      .filter(c => c.totalSpent > 0)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
       .slice(0, 10)
 
     // Top 10 clientes por frecuencia
@@ -256,12 +256,12 @@ export async function GET(request: Request) {
     ]
 
     customerStats.forEach(c => {
-      const range = spendingRanges.find(r => c.totalSpentUsd >= r.min && c.totalSpentUsd < r.max)
+      const range = spendingRanges.find(r => c.totalSpent >= r.min && c.totalSpent < r.max)
       if (range) range.count++
     })
 
     // Calcular totales
-    const totalSpentAllUsd = customerStats.reduce((sum, c) => sum + c.totalSpentUsd, 0)
+    const totalSpentAllUsd = customerStats.reduce((sum, c) => sum + c.totalSpent, 0)
     const totalOperationsAll = customerStats.reduce((sum, c) => sum + c.totalOperations, 0)
     const avgSpentPerCustomer = totalCustomers > 0 ? totalSpentAllUsd / totalCustomers : 0
     const avgOperationsPerCustomer = totalCustomers > 0 ? totalOperationsAll / totalCustomers : 0
