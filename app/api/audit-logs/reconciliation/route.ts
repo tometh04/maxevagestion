@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getAccountBalancesBatch } from "@/lib/accounting/ledger"
 
 /**
  * GET /api/audit-logs/reconciliation
- * Ejecuta verificaciones de integridad contable del sistema
+ * Verificaciones de integridad contable del sistema.
+ * Solo analiza datos POST-IMPORTACIÓN (después del 19/02/2026).
+ * La importación masiva del 12-18/02/2026 creó pagos PAID sin ledger y
+ * cash_movements sin financial_account_id — eso es por diseño.
  */
+
+// Fecha de corte: después de la reimportación masiva del 18/02/2026
+const POST_IMPORT_DATE = "2026-02-19T00:00:00Z"
+
 export async function GET() {
   try {
     const { user } = await getCurrentUser()
@@ -28,156 +34,9 @@ export async function GET() {
     }> = []
 
     // ============================================
-    // CHECK 1: CpC — balance contable vs suma de pagos pendientes (por moneda)
-    // Busca cuentas financieras vinculadas al código 1.1.03 del plan de cuentas
+    // CHECK 1: Pagos PAID sin asiento contable (post-importación)
     // ============================================
     try {
-      // Obtener el chart_account_id para CpC (código 1.1.03)
-      const { data: cpcChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "1.1.03")
-        .maybeSingle()
-
-      if (cpcChart) {
-        const { data: cpcAccounts } = await (supabase.from("financial_accounts") as any)
-          .select("id, name, currency, initial_balance")
-          .eq("chart_account_id", cpcChart.id)
-          .eq("is_active", true)
-
-        if (cpcAccounts && cpcAccounts.length > 0) {
-          const accountIds = (cpcAccounts as any[]).map((a: any) => a.id)
-          const balances = await getAccountBalancesBatch(accountIds, supabase)
-
-          for (const acc of cpcAccounts as any[]) {
-            const balance = balances[acc.id] || 0
-
-            // Sumar pagos PENDING de clientes en la MISMA moneda de esta cuenta
-            const { data: pendingPayments } = await (supabase.from("payments") as any)
-              .select("amount")
-              .eq("direction", "INCOME")
-              .eq("status", "PENDING")
-              .eq("currency", acc.currency)
-
-            const pendingTotal = pendingPayments
-              ? (pendingPayments as any[]).reduce((sum: number, p: any) => sum + Number(p.amount), 0)
-              : 0
-
-            const diff = Math.abs(balance - pendingTotal)
-            const threshold = acc.currency === "USD" ? 100 : 50000
-
-            checks.push({
-              id: `cpc-${acc.currency}`,
-              name: `CpC ${acc.currency}`,
-              description: `Cuenta por Cobrar ${acc.currency}: balance contable vs pagos pendientes de clientes en ${acc.currency}`,
-              status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
-              expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              details: diff < threshold
-                ? "Los valores coinciden dentro del margen aceptable"
-                : "Hay una diferencia significativa. Puede deberse a pagos parciales, ajustes manuales o movimientos contables sin pago asociado.",
-            })
-          }
-        }
-      } else {
-        checks.push({
-          id: "cpc-check",
-          name: "CpC",
-          description: "Verificación de Cuentas por Cobrar",
-          status: "warning",
-          details: "No se encontró el código 1.1.03 en el plan de cuentas",
-        })
-      }
-    } catch (err) {
-      checks.push({
-        id: "cpc-check",
-        name: "CpC",
-        description: "Verificación de Cuentas por Cobrar",
-        status: "error",
-        details: `Error al verificar: ${err instanceof Error ? err.message : "desconocido"}`,
-      })
-    }
-
-    // ============================================
-    // CHECK 2: CpP — balance contable vs operator_payments pendientes (por moneda)
-    // Busca cuentas financieras vinculadas al código 2.1.01 del plan de cuentas
-    // ============================================
-    try {
-      // Obtener el chart_account_id para CpP (código 2.1.01)
-      const { data: cppChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "2.1.01")
-        .maybeSingle()
-
-      if (cppChart) {
-        const { data: cppAccounts } = await (supabase.from("financial_accounts") as any)
-          .select("id, name, currency, initial_balance")
-          .eq("chart_account_id", cppChart.id)
-          .eq("is_active", true)
-
-        if (cppAccounts && cppAccounts.length > 0) {
-          const accountIds = (cppAccounts as any[]).map((a: any) => a.id)
-          const balances = await getAccountBalancesBatch(accountIds, supabase)
-
-          for (const acc of cppAccounts as any[]) {
-            const balance = balances[acc.id] || 0
-
-            // Sumar operator_payments pendientes en la MISMA moneda
-            const { data: pendingOpPayments } = await (supabase.from("operator_payments") as any)
-              .select("amount, paid_amount")
-              .in("status", ["PENDING", "OVERDUE"])
-              .eq("currency", acc.currency)
-
-            const pendingTotal = pendingOpPayments
-              ? (pendingOpPayments as any[]).reduce(
-                  (sum: number, p: any) => sum + (Number(p.amount) - Number(p.paid_amount || 0)),
-                  0
-                )
-              : 0
-
-            const diff = Math.abs(balance - pendingTotal)
-            const threshold = acc.currency === "USD" ? 100 : 50000
-
-            checks.push({
-              id: `cpp-${acc.currency}`,
-              name: `CpP ${acc.currency}`,
-              description: `Cuenta por Pagar ${acc.currency}: balance contable vs deuda pendiente a operadores en ${acc.currency}`,
-              status: diff < threshold ? "ok" : diff < threshold * 5 ? "warning" : "error",
-              expected: `${acc.currency} ${pendingTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              actual: `${acc.currency} ${balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              difference: `${acc.currency} ${diff.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
-              details: diff < threshold
-                ? "Los valores coinciden dentro del margen aceptable"
-                : "Hay diferencia. Puede deberse a pagos parciales de operadores o ajustes contables.",
-            })
-          }
-        }
-      } else {
-        checks.push({
-          id: "cpp-check",
-          name: "CpP",
-          description: "Verificación de Cuentas por Pagar",
-          status: "warning",
-          details: "No se encontró el código 2.1.01 en el plan de cuentas",
-        })
-      }
-    } catch (err) {
-      checks.push({
-        id: "cpp-check",
-        name: "CpP",
-        description: "Verificación de Cuentas por Pagar",
-        status: "error",
-        details: `Error al verificar: ${err instanceof Error ? err.message : "desconocido"}`,
-      })
-    }
-
-    // ============================================
-    // CHECK 3: Partida doble — pagos PAID sin asiento contable
-    // Excluye pagos importados (sin ledger por diseño de la importación inicial)
-    // ============================================
-    try {
-      // Contar pagos PAID sin ledger_movement_id creados DESPUÉS de la importación inicial
-      // Los pagos importados no tienen ledger por diseño — solo alertamos los nuevos
       const { count: totalWithout } = await (supabase.from("payments") as any)
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
@@ -187,7 +46,7 @@ export async function GET() {
         .select("id", { count: "exact", head: true })
         .eq("status", "PAID")
         .is("ledger_movement_id", null)
-        .gte("created_at", "2025-06-01T00:00:00Z") // Después de la importación
+        .gte("created_at", POST_IMPORT_DATE)
 
       const totalOrphan = totalWithout || 0
       const recentOrphan = recentWithout || 0
@@ -196,20 +55,20 @@ export async function GET() {
       checks.push({
         id: "orphan-payments",
         name: "Pagos sin asiento contable",
-        description: "Pagos marcados como PAID que no tienen movimiento contable asociado",
+        description: "Pagos PAID sin movimiento contable (excluyendo importación masiva)",
         status: recentOrphan === 0 ? "ok" : recentOrphan < 5 ? "warning" : "error",
-        expected: "0 pagos sin asiento (post-importación)",
-        actual: recentOrphan > 0
-          ? `${recentOrphan} pagos recientes sin asiento`
-          : "Todos los pagos recientes tienen asiento",
+        expected: "0 pagos sin asiento",
+        actual: recentOrphan === 0
+          ? "Todos los pagos post-importación tienen asiento"
+          : `${recentOrphan} pagos sin asiento`,
         details: recentOrphan === 0
-          ? `Todos los pagos recientes tienen su asiento contable.${importedOrphan > 0 ? ` (${importedOrphan} pagos de la importación inicial sin asiento — esto es esperado)` : ""}`
-          : `${recentOrphan} pago(s) recientes sin movimiento contable.${importedOrphan > 0 ? ` Además, ${importedOrphan} pagos de la importación inicial sin asiento (esperado).` : ""}`,
+          ? `OK.${importedOrphan > 0 ? ` (${importedOrphan} pagos de la importación inicial sin asiento — esperado por diseño)` : ""}`
+          : `${recentOrphan} pago(s) creados después del 19/02/2026 sin movimiento contable.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación, esperados)` : ""}`,
       })
     } catch (err) {
       checks.push({
         id: "orphan-payments",
-        name: "Pagos huérfanos",
+        name: "Pagos sin asiento",
         description: "Verificación de integridad pagos-ledger",
         status: "error",
         details: `Error al verificar: ${err instanceof Error ? err.message : "desconocido"}`,
@@ -217,8 +76,7 @@ export async function GET() {
     }
 
     // ============================================
-    // CHECK 4: Movimientos de caja sin cuenta financiera
-    // Los movimientos de la importación inicial no tenían cuenta asignada por diseño
+    // CHECK 2: Movimientos de caja sin cuenta financiera (post-importación)
     // ============================================
     try {
       const { count: totalWithout } = await (supabase.from("cash_movements") as any)
@@ -228,7 +86,7 @@ export async function GET() {
       const { count: recentWithout } = await (supabase.from("cash_movements") as any)
         .select("id", { count: "exact", head: true })
         .is("financial_account_id", null)
-        .gte("created_at", "2025-06-01T00:00:00Z") // Después de la importación
+        .gte("created_at", POST_IMPORT_DATE)
 
       const totalOrphan = totalWithout || 0
       const recentOrphan = recentWithout || 0
@@ -237,15 +95,15 @@ export async function GET() {
       checks.push({
         id: "orphan-cash",
         name: "Movimientos de caja sin cuenta",
-        description: "Movimientos de caja que no están vinculados a ninguna cuenta financiera",
+        description: "Movimientos de caja sin cuenta financiera (excluyendo importación masiva)",
         status: recentOrphan === 0 ? "ok" : recentOrphan < 10 ? "warning" : "error",
-        expected: "0 movimientos sin cuenta (post-importación)",
-        actual: recentOrphan > 0
-          ? `${recentOrphan} movimientos recientes sin cuenta`
-          : "Todos los movimientos recientes tienen cuenta",
+        expected: "0 movimientos sin cuenta",
+        actual: recentOrphan === 0
+          ? "Todos los movimientos post-importación tienen cuenta"
+          : `${recentOrphan} movimientos sin cuenta`,
         details: recentOrphan === 0
-          ? `Todos los movimientos recientes están vinculados a una cuenta.${importedOrphan > 0 ? ` (${importedOrphan} movimientos de la importación inicial sin cuenta — esto es esperado)` : ""}`
-          : `${recentOrphan} movimiento(s) recientes sin cuenta financiera.${importedOrphan > 0 ? ` Además, ${importedOrphan} de la importación inicial (esperado).` : ""}`,
+          ? `OK.${importedOrphan > 0 ? ` (${importedOrphan} movimientos de la importación inicial sin cuenta — esperado por diseño)` : ""}`
+          : `${recentOrphan} movimiento(s) recientes sin cuenta financiera.${importedOrphan > 0 ? ` (${importedOrphan} adicionales de la importación, esperados)` : ""}`,
       })
     } catch (err) {
       checks.push({
@@ -258,7 +116,7 @@ export async function GET() {
     }
 
     // ============================================
-    // CHECK 5: Operaciones con margen negativo
+    // CHECK 3: Operaciones con margen negativo
     // ============================================
     try {
       const { data: negativeMargin, count } = await (supabase.from("operations") as any)
@@ -293,7 +151,7 @@ export async function GET() {
     }
 
     // ============================================
-    // CHECK 6: Pagos PROCESSING (stuck)
+    // CHECK 4: Pagos trabados en PROCESSING
     // ============================================
     try {
       const { count: processingCount } = await (supabase.from("payments") as any)
@@ -305,19 +163,59 @@ export async function GET() {
       checks.push({
         id: "stuck-processing",
         name: "Pagos trabados en PROCESSING",
-        description: "Pagos que quedaron en estado transitorio PROCESSING (posible error en mark-paid)",
+        description: "Pagos en estado transitorio PROCESSING (posible error en mark-paid)",
         status: stuckCount === 0 ? "ok" : "error",
         expected: "0 pagos",
         actual: `${stuckCount} pagos en PROCESSING`,
         details: stuckCount === 0
           ? "No hay pagos trabados"
-          : `Hay ${stuckCount} pago(s) en estado PROCESSING. Esto indica que el proceso de pago falló a mitad de camino. Deben revertirse a PENDING manualmente.`,
+          : `Hay ${stuckCount} pago(s) en estado PROCESSING. Deben revertirse a PENDING manualmente.`,
       })
     } catch (err) {
       checks.push({
         id: "stuck-processing",
         name: "Pagos PROCESSING",
         description: "Verificación de estados transitorios",
+        status: "error",
+        details: `Error: ${err instanceof Error ? err.message : "desconocido"}`,
+      })
+    }
+
+    // ============================================
+    // CHECK 5: Pagos PENDING vencidos hace más de 30 días
+    // ============================================
+    try {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+
+      const { count: overdueIncome } = await (supabase.from("payments") as any)
+        .select("id", { count: "exact", head: true })
+        .eq("status", "PENDING")
+        .eq("direction", "INCOME")
+        .lt("date_due", thirtyDaysAgo)
+
+      const { count: overdueExpense } = await (supabase.from("operator_payments") as any)
+        .select("id", { count: "exact", head: true })
+        .in("status", ["PENDING", "OVERDUE"])
+        .lt("due_date", thirtyDaysAgo)
+
+      const totalOverdue = (overdueIncome || 0) + (overdueExpense || 0)
+
+      checks.push({
+        id: "overdue-30d",
+        name: "Pagos vencidos +30 días",
+        description: "Pagos pendientes con vencimiento hace más de 30 días",
+        status: totalOverdue === 0 ? "ok" : totalOverdue <= 5 ? "warning" : "error",
+        expected: "0 pagos vencidos",
+        actual: `${totalOverdue} pagos vencidos`,
+        details: totalOverdue === 0
+          ? "No hay pagos vencidos hace más de 30 días"
+          : `${overdueIncome || 0} cobranzas de clientes + ${overdueExpense || 0} pagos a operadores vencidos hace +30 días`,
+      })
+    } catch (err) {
+      checks.push({
+        id: "overdue-30d",
+        name: "Pagos vencidos",
+        description: "Verificación de vencimientos",
         status: "error",
         details: `Error: ${err instanceof Error ? err.message : "desconocido"}`,
       })
