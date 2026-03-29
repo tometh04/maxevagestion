@@ -228,6 +228,7 @@ export async function POST(request: Request) {
       const { data: costosFA } = await (supabase.from("financial_accounts") as any)
         .select("id")
         .eq("chart_account_id", costosChart.id)
+        .eq("currency", paymentAccount.currency || "ARS")
         .eq("is_active", true)
         .maybeSingle()
       if (costosFA?.id) {

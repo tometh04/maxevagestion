@@ -398,6 +398,7 @@ export async function POST(request: Request) {
         const { data: existingReceivableFA } = await (supabase.from("financial_accounts") as any)
           .select("id")
           .eq("chart_account_id", accountsReceivableChart.id)
+          .eq("currency", finalSaleCurrency)
           .eq("is_active", true)
           .maybeSingle()
         let accountsReceivableFinancialAccount = existingReceivableFA
@@ -467,6 +468,7 @@ export async function POST(request: Request) {
           const { data: existingPayableFA } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", accountsPayableChart.id)
+            .eq("currency", finalOperatorCostCurrency)
             .eq("is_active", true)
             .maybeSingle()
           let accountsPayableFinancialAccount = existingPayableFA

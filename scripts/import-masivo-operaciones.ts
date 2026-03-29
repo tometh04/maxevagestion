@@ -561,10 +561,11 @@ async function getOrCreateFinancialAccount(
     throw new Error(`Cuenta contable ${chartAccountCode} (${accountName}) no encontrada en chart_of_accounts`)
   }
 
-  // Buscar financial_account asociada
+  // Buscar financial_account asociada (filtrar por moneda)
   const { data: existing } = await (supabase.from('financial_accounts') as any)
     .select('id')
     .eq('chart_account_id', chartAccount.id)
+    .eq('currency', currency)
     .eq('is_active', true)
     .maybeSingle()
 
@@ -762,23 +763,33 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
 
   const userId = (sellers as any)?.[0]?.id || 'system'
 
-  let accountsReceivableId: string = ''
-  let accountsPayableId: string = ''
+  let accountsReceivableARS: string = ''
+  let accountsReceivableUSD: string = ''
+  let accountsPayableARS: string = ''
+  let accountsPayableUSD: string = ''
   let bankAccountARSId: string = ''
   let bankAccountUSDId: string = ''
 
   if (!dryRun) {
     console.log('\n💰 Configurando cuentas financieras...')
 
-    accountsReceivableId = await getOrCreateFinancialAccount(
-      supabase, '1.1.03', 'Cuentas por Cobrar', 'ARS', userId
+    accountsReceivableARS = await getOrCreateFinancialAccount(
+      supabase, '1.1.03', 'Cuentas por Cobrar ARS', 'ARS', userId
     )
-    console.log(`   ✅ Cuentas por Cobrar (1.1.03): ${accountsReceivableId.slice(0, 8)}`)
+    accountsReceivableUSD = await getOrCreateFinancialAccount(
+      supabase, '1.1.03', 'Cuentas por Cobrar USD', 'USD', userId
+    )
+    console.log(`   ✅ Cuentas por Cobrar ARS: ${accountsReceivableARS.slice(0, 8)}`)
+    console.log(`   ✅ Cuentas por Cobrar USD: ${accountsReceivableUSD.slice(0, 8)}`)
 
-    accountsPayableId = await getOrCreateFinancialAccount(
-      supabase, '2.1.01', 'Cuentas por Pagar', 'ARS', userId
+    accountsPayableARS = await getOrCreateFinancialAccount(
+      supabase, '2.1.01', 'Cuentas por Pagar ARS', 'ARS', userId
     )
-    console.log(`   ✅ Cuentas por Pagar (2.1.01): ${accountsPayableId.slice(0, 8)}`)
+    accountsPayableUSD = await getOrCreateFinancialAccount(
+      supabase, '2.1.01', 'Cuentas por Pagar USD', 'USD', userId
+    )
+    console.log(`   ✅ Cuentas por Pagar ARS: ${accountsPayableARS.slice(0, 8)}`)
+    console.log(`   ✅ Cuentas por Pagar USD: ${accountsPayableUSD.slice(0, 8)}`)
 
     bankAccountARSId = await getOrCreateBankAccount(supabase, 'ARS', userId)
     console.log(`   ✅ Banco Principal ARS: ${bankAccountARSId.slice(0, 8)}`)
@@ -1016,7 +1027,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
             exchange_rate: exchangeRate,
             amount_ars_equivalent: saleAmountARS,
             method: 'OTHER',
-            account_id: accountsReceivableId,
+            account_id: currency === 'USD' ? accountsReceivableUSD : accountsReceivableARS,
             seller_id: finalSellerId,
             notes: `Importación masiva - ${row.destino}`,
           })
@@ -1035,7 +1046,7 @@ async function importOperations(csvFilePath: string, dryRun: boolean, clearExist
             exchange_rate: exchangeRate,
             amount_ars_equivalent: operatorCostARS,
             method: 'OTHER',
-            account_id: accountsPayableId,
+            account_id: currency === 'USD' ? accountsPayableUSD : accountsPayableARS,
             seller_id: finalSellerId,
             operator_id: operatorsList[0]?.operator_id || null,
             notes: `Importación masiva - ${operatorsList.map(o => o.name).join(', ')}`,

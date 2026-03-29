@@ -239,13 +239,14 @@ export async function POST(
           let { data: arAccount } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", arChart.id)
+            .eq("currency", sale_currency)
             .eq("is_active", true)
             .maybeSingle()
 
           if (!arAccount) {
             const { data: newAR } = await (supabase.from("financial_accounts") as any)
               .insert({
-                name: "Cuentas por Cobrar",
+                name: `Cuentas por Cobrar ${sale_currency}`,
                 type: "ASSETS",
                 currency: sale_currency,
                 chart_account_id: arChart.id,
@@ -312,13 +313,14 @@ export async function POST(
           let { data: apAccount } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", apChart.id)
+            .eq("currency", cost_currency)
             .eq("is_active", true)
             .maybeSingle()
 
           if (!apAccount) {
             const { data: newAP } = await (supabase.from("financial_accounts") as any)
               .insert({
-                name: "Cuentas por Pagar",
+                name: `Cuentas por Pagar ${cost_currency}`,
                 type: "ASSETS",
                 currency: cost_currency,
                 chart_account_id: apChart.id,

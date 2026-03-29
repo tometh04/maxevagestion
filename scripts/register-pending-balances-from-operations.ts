@@ -85,52 +85,41 @@ async function registerPendingBalances() {
       return
     }
 
-    // Obtener o crear financial accounts
-    let { data: accountsReceivableFA } = await (supabase.from("financial_accounts") as any)
-      .select("id")
-      .eq("chart_account_id", accountsReceivableChart.id)
-      .eq("is_active", true)
-      .maybeSingle()
+    // Obtener o crear financial accounts por moneda (ARS y USD separadas)
+    async function getOrCreateFA(chartAccountId: string, name: string, currency: string) {
+      const { data: existing } = await (supabase.from("financial_accounts") as any)
+        .select("id")
+        .eq("chart_account_id", chartAccountId)
+        .eq("currency", currency)
+        .eq("is_active", true)
+        .maybeSingle()
 
-    if (!accountsReceivableFA) {
+      if (existing) return existing
+
       const { data: newFA } = await (supabase.from("financial_accounts") as any)
         .insert({
-          name: "Cuentas por Cobrar",
+          name: `${name} ${currency}`,
           type: "ASSETS",
-          currency: "ARS",
-          chart_account_id: accountsReceivableChart.id,
+          currency,
+          chart_account_id: chartAccountId,
           initial_balance: 0,
           is_active: true,
           created_by: userId,
         })
         .select("id")
         .single()
-      accountsReceivableFA = newFA
+      return newFA
     }
 
-    let { data: accountsPayableFA } = await (supabase.from("financial_accounts") as any)
-      .select("id")
-      .eq("chart_account_id", accountsPayableChart.id)
-      .eq("is_active", true)
-      .maybeSingle()
+    const receivableARS = await getOrCreateFA(accountsReceivableChart.id, "Cuentas por Cobrar", "ARS")
+    const receivableUSD = await getOrCreateFA(accountsReceivableChart.id, "Cuentas por Cobrar", "USD")
+    const payableARS = await getOrCreateFA(accountsPayableChart.id, "Cuentas por Pagar", "ARS")
+    const payableUSD = await getOrCreateFA(accountsPayableChart.id, "Cuentas por Pagar", "USD")
 
-    if (!accountsPayableFA) {
-      const { data: newFA } = await (supabase.from("financial_accounts") as any)
-        .insert({
-          name: "Cuentas por Pagar",
-          type: "ASSETS",
-          currency: "ARS",
-          chart_account_id: accountsPayableChart.id,
-          initial_balance: 0,
-          is_active: true,
-          created_by: userId,
-        })
-        .select("id")
-        .single()
-      accountsPayableFA = newFA
-    }
+    const receivableByCurrency: Record<string, any> = { ARS: receivableARS, USD: receivableUSD }
+    const payableByurrency: Record<string, any> = { ARS: payableARS, USD: payableUSD }
 
-    console.log(`✓ Cuentas financieras listas\n`)
+    console.log(`✓ Cuentas financieras listas (ARS + USD)\n`)
 
     let processed = 0
     let skipped = 0
@@ -180,7 +169,7 @@ async function registerPendingBalances() {
               exchange_rate: saleExchangeRate,
               amount_ars_equivalent: saleAmountARS,
               method: 'OTHER',
-              account_id: accountsReceivableFA.id,
+              account_id: receivableByCurrency[saleCurrency]?.id || receivableARS.id,
               seller_id: op.seller_id || null,
               operator_id: null,
               receipt_number: null,
@@ -224,7 +213,7 @@ async function registerPendingBalances() {
               exchange_rate: costExchangeRate,
               amount_ars_equivalent: costAmountARS,
               method: 'OTHER',
-              account_id: accountsPayableFA.id,
+              account_id: payableByurrency[costCurrency]?.id || payableARS.id,
               seller_id: op.seller_id || null,
               operator_id: op.operator_id || null,
               receipt_number: null,
