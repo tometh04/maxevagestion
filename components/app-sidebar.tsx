@@ -109,27 +109,8 @@ const allNavigation: NavItem[] = [
     module: "cash",
     items: [
       { title: "Caja y Bancos", url: "/cash/summary" },
-      {
-        title: "Contabilidad",
-        url: "/accounting/ledger",
-        items: [
-          { title: "Libro Mayor", url: "/accounting/ledger" },
-          { title: "Deudores por Ventas", url: "/accounting/debts-sales" },
-          { title: "Pagos a Operadores", url: "/accounting/operator-payments" },
-          { title: "Cuentas de Socios", url: "/accounting/partner-accounts" },
-        ],
-      },
-      {
-        title: "Impuestos",
-        url: "/accounting/iva",
-        items: [
-          { title: "IVA", url: "/accounting/iva" },
-          { title: "Percepciones y Retenciones", url: "/accounting/withholdings" },
-          { title: "IIBB", url: "/accounting/iibb" },
-          { title: "Ganancias", url: "/accounting/ganancias" },
-        ],
-      },
-      { title: "Posición Mensual", url: "/accounting/monthly-position" },
+      { title: "Contabilidad", url: "/accounting/ledger" },
+      { title: "Impuestos", url: "/accounting/iva" },
       { title: "Reportes", url: "/reports", module: "reports" as const },
       { title: "Configuración", url: "/finances/settings" },
     ],

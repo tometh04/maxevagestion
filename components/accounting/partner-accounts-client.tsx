@@ -311,7 +311,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Cuentas de Socios</h1>
+          <h2 className="text-lg font-semibold tracking-tight">Cuentas de Socios</h2>
           <p className="text-muted-foreground">Gestiona los retiros personales de los socios</p>
         </div>
         <div className="flex gap-2">

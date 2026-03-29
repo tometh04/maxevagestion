@@ -43,7 +43,7 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
     <div className="space-y-6">
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Libro Mayor (Ledger)</h1>
+          <h2 className="text-lg font-semibold tracking-tight">Libro Mayor</h2>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>

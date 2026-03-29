@@ -252,7 +252,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Posición Contable Mensual</h1>
+            <h2 className="text-lg font-semibold tracking-tight">Posición Contable Mensual</h2>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

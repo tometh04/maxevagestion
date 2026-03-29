@@ -153,11 +153,7 @@ export default function WithholdingsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Percepciones y Retenciones</h1>
-          <p className="text-muted-foreground">Control de percepciones sufridas y retenciones practicadas</p>
-        </div>
+      <div className="flex items-center justify-end">
         <Button onClick={() => setShowDialog(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Cargar Percepción / Retención
@@ -318,7 +314,7 @@ export default function WithholdingsPage() {
 
       {/* Dialog for manual entry */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Cargar Percepción / Retención</DialogTitle>
             <DialogDescription>

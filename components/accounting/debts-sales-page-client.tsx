@@ -456,28 +456,10 @@ export function DebtsSalesPageClient({ sellers: initialSellers }: DebtsSalesPage
 
   return (
     <div className="space-y-6">
-      <Breadcrumb>
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Dashboard</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/customers">Clientes</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbPage>Deudores por Ventas</BreadcrumbPage>
-        </BreadcrumbList>
-      </Breadcrumb>
-
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">Deudores por Ventas</h1>
+            <h2 className="text-lg font-semibold tracking-tight">Deudores por Ventas</h2>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

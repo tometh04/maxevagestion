@@ -11,8 +11,6 @@ interface IvaTabsProps {
 export function IvaTabs({ posicionContent, libroContent }: IvaTabsProps) {
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">IVA</h1>
-
       <Tabs defaultValue="posicion">
         <TabsList>
           <TabsTrigger value="posicion" className="gap-1.5">
