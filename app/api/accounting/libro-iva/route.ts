@@ -157,7 +157,6 @@ export async function GET(request: Request) {
       iva_compras_estimado: purchasesIva,
       percepciones: percs,
       totals,
-      _debug: invoicesError ? { invoicesError: invoicesError.message || invoicesError } : undefined,
     })
   } catch (error: any) {
     console.error("Error generating libro IVA:", error)
