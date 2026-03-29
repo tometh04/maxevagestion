@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -38,7 +39,8 @@ interface LedgerMovement {
   financial_accounts?: { name: string; type: string } | null
   sellers?: { name: string } | null
   operators?: { name: string } | null
-  operations?: { destination: string; file_code: string | null } | null
+  operation_id?: string | null
+  operations?: { id: string; destination: string; file_code: string | null } | null
   leads?: { contact_name: string } | null
 }
 
@@ -180,9 +182,13 @@ export function LedgerTable({ filters }: LedgerTableProps) {
               </TableCell>
               <TableCell>
                 {movement.operations?.file_code ? (
-                  <span className="text-xs font-mono">
+                  <Link
+                    href={`/operations/${movement.operation_id || movement.operations?.id}`}
+                    className="text-xs font-mono text-primary hover:underline"
+                    prefetch={false}
+                  >
                     {movement.operations.file_code}
-                  </span>
+                  </Link>
                 ) : movement.leads?.contact_name ? (
                   <span className="text-xs">Lead: {movement.leads.contact_name}</span>
                 ) : (

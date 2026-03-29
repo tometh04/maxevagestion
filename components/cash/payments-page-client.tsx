@@ -23,7 +23,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
   const [baseFilters, setBaseFilters] = useState(defaultFilters)
   const [status, setStatus] = useState("ALL")
   const [payerType, setPayerType] = useState("ALL")
-  const [direction, setDirection] = useState("ALL")
+  const [direction, setDirection] = useState("EXPENSE")
   const [searchInput, setSearchInput] = useState("")
   const [searchQuery, setSearchQuery] = useState("")
   const [refreshKey, setRefreshKey] = useState(0)
@@ -48,7 +48,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
   }
 
   const hasActiveFilters =
-    status !== "ALL" || payerType !== "ALL" || direction !== "ALL" || searchQuery !== ""
+    status !== "ALL" || payerType !== "ALL" || direction !== "EXPENSE" || searchQuery !== ""
 
   return (
     <div className="space-y-6">
@@ -107,7 +107,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
             setBaseFilters(defaultFilters)
             setStatus("ALL")
             setPayerType("ALL")
-            setDirection("ALL")
+            setDirection("EXPENSE")
             setSearchInput("")
             setSearchQuery("")
           }} className="h-8 rounded-full text-xs">

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -208,7 +209,11 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
                         {format(new Date(sale.sale_date), "dd/MM/yyyy", { locale: es })}
                       </TableCell>
                       <TableCell>
-                        {sale.operations?.file_code || sale.operations?.destination || "-"}
+                        {sale.operation_id ? (
+                          <Link href={`/operations/${sale.operation_id}`} className="text-primary hover:underline" prefetch={false}>
+                            {sale.operations?.file_code || sale.operations?.destination || "-"}
+                          </Link>
+                        ) : (sale.operations?.file_code || sale.operations?.destination || "-")}
                       </TableCell>
                       <TableCell>{formatCurrency(sale.sale_amount_total, sale.currency)}</TableCell>
                       <TableCell>{formatCurrency(sale.net_amount, sale.currency)}</TableCell>
@@ -255,7 +260,11 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
                         {format(new Date(purchase.purchase_date), "dd/MM/yyyy", { locale: es })}
                       </TableCell>
                       <TableCell>
-                        {purchase.operations?.file_code || purchase.operations?.destination || "-"}
+                        {purchase.operation_id ? (
+                          <Link href={`/operations/${purchase.operation_id}`} className="text-primary hover:underline" prefetch={false}>
+                            {purchase.operations?.file_code || purchase.operations?.destination || "-"}
+                          </Link>
+                        ) : (purchase.operations?.file_code || purchase.operations?.destination || "-")}
                       </TableCell>
                       <TableCell>{purchase.operators?.name || "-"}</TableCell>
                       <TableCell>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Dialog,
   DialogContent,
@@ -595,9 +596,14 @@ export function BulkPaymentDialog({
                                   </div>
                                 )}
                                 <div className="flex items-center gap-2">
-                                  <span className="font-mono text-xs text-muted-foreground">
+                                  <Link
+                                    href={`/operations/${payment.operation_id}`}
+                                    className="font-mono text-xs text-primary hover:underline"
+                                    prefetch={false}
+                                    target="_blank"
+                                  >
                                     {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
-                                  </span>
+                                  </Link>
                                   {payment.operations?.destination && (
                                     <span className="text-xs text-muted-foreground">
                                       · {payment.operations.destination}
@@ -852,9 +858,14 @@ export function BulkPaymentDialog({
                     return (
                       <div key={paymentId} className="flex justify-between items-center text-sm bg-background p-2 rounded">
                         <div className="flex-1">
-                          <div className="font-medium">
+                          <Link
+                            href={`/operations/${payment.operation_id}`}
+                            className="font-medium text-primary hover:underline"
+                            prefetch={false}
+                            target="_blank"
+                          >
                             {payment.operations?.file_code || `OP-${payment.operation_id.slice(0, 8)}`}
-                          </div>
+                          </Link>
                           <div className="text-xs text-muted-foreground">
                             {payment.operations?.destination || "Sin destino"}
                           </div>

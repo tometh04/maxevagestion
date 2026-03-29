@@ -15,6 +15,7 @@ import { es } from "date-fns/locale"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import Link from "next/link"
 
 interface MovementOperation {
   id: string
@@ -186,8 +187,17 @@ export function MovementsTable({
                 </TableCell>
                 <TableCell>
                   <div className="space-y-1">
-                    <p className="font-medium">{movement.operations?.destination || "Manual"}</p>
-                    <p className="text-xs text-muted-foreground">{movement.operations?.id || "-"}</p>
+                    {movement.operations?.id ? (
+                      <Link
+                        href={`/operations/${movement.operations.id}`}
+                        className="font-medium text-primary hover:underline"
+                        prefetch={false}
+                      >
+                        {movement.operations?.destination || "Manual"}
+                      </Link>
+                    ) : (
+                      <p className="font-medium">{movement.operations?.destination || "Manual"}</p>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell className={`text-right ${movement.type === "INCOME" ? "text-success" : "text-destructive"}`}>

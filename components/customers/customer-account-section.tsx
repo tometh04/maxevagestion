@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -19,6 +20,7 @@ import { es } from "date-fns/locale"
 
 interface Payment {
   id: string
+  operation_id?: string | null
   amount: number
   currency: string
   direction: string
@@ -27,6 +29,7 @@ interface Payment {
   date_paid: string | null
   method: string
   operations?: {
+    id?: string
     destination: string
     file_code: string
   } | null
@@ -227,7 +230,11 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
                       </div>
                       <div>
                         <p className="font-medium text-sm">
-                          {payment.operations?.destination || "Sin operación"}
+                          {payment.operation_id ? (
+                            <Link href={`/operations/${payment.operation_id}`} className="text-primary hover:underline" prefetch={false}>
+                              {payment.operations?.destination || "Sin operación"}
+                            </Link>
+                          ) : (payment.operations?.destination || "Sin operación")}
                         </p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Calendar className="h-3 w-3" />

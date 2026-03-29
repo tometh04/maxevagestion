@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -556,9 +557,19 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   return (
                     <TableRow key={payment.id}>
                       <TableCell>
-                        <div className="font-mono text-xs">
-                          {payment.operations?.file_code || "-"}
-                        </div>
+                        {payment.operation_id ? (
+                          <Link
+                            href={`/operations/${payment.operation_id}`}
+                            className="font-mono text-xs text-primary hover:underline"
+                            prefetch={false}
+                          >
+                            {payment.operations?.file_code || "-"}
+                          </Link>
+                        ) : (
+                          <div className="font-mono text-xs">
+                            {payment.operations?.file_code || "-"}
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
                           {payment.operations?.destination || "-"}
                         </div>

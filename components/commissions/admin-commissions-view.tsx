@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Table,
@@ -683,7 +684,13 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                                 <TableRow key={c.id} className="bg-muted/10">
                                   <TableCell />
                                   <TableCell className="text-sm text-muted-foreground pl-10">
-                                    {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                    <Link
+                                      href={`/operations/${c.operation_id}`}
+                                      className="text-primary hover:underline"
+                                      prefetch={false}
+                                    >
+                                      {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                                    </Link>
                                     {" - "}
                                     {c.operation?.destination || "Sin destino"}
                                     {hasPartial && (
@@ -869,8 +876,14 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                         <TableCell className="text-sm font-medium">
                           {c.sellers?.name || "Desconocido"}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                        <TableCell className="text-sm">
+                          <Link
+                            href={`/operations/${c.operation_id}`}
+                            className="text-primary hover:underline"
+                            prefetch={false}
+                          >
+                            {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                          </Link>
                         </TableCell>
                         <TableCell className="text-sm">
                           {c.operation?.destination || "Sin destino"}
@@ -957,7 +970,9 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
                           />
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">
-                              {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                              <Link href={`/operations/${c.operation_id}`} className="text-primary hover:underline" prefetch={false}>
+                                {c.operation?.file_code || c.operation_id.slice(0, 8)}
+                              </Link>
                               {" - "}
                               {c.operation?.destination || "Sin destino"}
                             </p>

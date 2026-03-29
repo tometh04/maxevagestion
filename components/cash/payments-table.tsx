@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MarkPaidDialog } from "@/components/payments/mark-paid-dialog"
+import Link from "next/link"
 
 interface PaymentOperation {
   id: string
@@ -179,9 +180,19 @@ export function PaymentsTable({
         header: "Operación",
         cell: ({ row }) => (
           <div className="space-y-1">
-            <p className="font-medium">
-              {row.original.operations?.destination || "Sin destino"}
-            </p>
+            {row.original.operation_id ? (
+              <Link
+                href={`/operations/${row.original.operation_id}`}
+                className="font-medium text-primary hover:underline"
+                prefetch={false}
+              >
+                {row.original.operations?.destination || "Sin destino"}
+              </Link>
+            ) : (
+              <p className="font-medium">
+                {row.original.operations?.destination || "Sin destino"}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {row.original.operations?.agencies?.name || "Sin agencia"}
             </p>
@@ -196,19 +207,6 @@ export function PaymentsTable({
         cell: ({ row }) => (
           <Badge variant="outline">
             {row.original.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: "direction",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Dirección" />
-        ),
-        cell: ({ row }) => (
-          <Badge
-            variant={row.original.direction === "INCOME" ? "default" : "destructive"}
-          >
-            {row.original.direction === "INCOME" ? "Ingreso" : "Egreso"}
           </Badge>
         ),
       },
