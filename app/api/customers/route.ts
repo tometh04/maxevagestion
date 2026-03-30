@@ -55,10 +55,21 @@ export async function GET(request: Request) {
       `)
 
     // Apply search filter AFTER select (or() is only available after select)
+    // Split search into words so "Emiliano Mossotti" matches first_name + last_name
     if (search) {
-      selectQuery = selectQuery.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
+      const words = search.trim().split(/\s+/)
+      if (words.length > 1) {
+        // Multi-word: each word must match at least one field (AND logic between words)
+        for (const word of words) {
+          selectQuery = selectQuery.or(
+            `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+          )
+        }
+      } else {
+        selectQuery = selectQuery.or(
+          `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+        )
+      }
     }
 
     // Now add order and range
@@ -108,9 +119,18 @@ export async function GET(request: Request) {
     let countSelectQuery = countQuery.select("*", { count: "exact", head: true })
     
     if (search) {
-      countSelectQuery = countSelectQuery.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
+      const words = search.trim().split(/\s+/)
+      if (words.length > 1) {
+        for (const word of words) {
+          countSelectQuery = countSelectQuery.or(
+            `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+          )
+        }
+      } else {
+        countSelectQuery = countSelectQuery.or(
+          `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+        )
+      }
     }
     
     const { count } = await countSelectQuery
