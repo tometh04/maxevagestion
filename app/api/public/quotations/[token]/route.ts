@@ -97,6 +97,7 @@ export async function GET(
             checkout_date: item.checkout_date,
             nights: item.nights,
             hotel_address: item.hotel_address,
+            hotel_photo_url: item.hotel_photo_url,
             rooms: item.rooms,
             airline: item.airline,
             flight_route: item.flight_route,

@@ -158,6 +158,7 @@ export async function PATCH(
             hotel_stars: item.hotel_stars || null,
             hotel_address: item.hotel_address || null,
             hotel_phone: item.hotel_phone || null,
+            hotel_photo_url: item.hotel_photo_url || null,
             room_type: item.room_type || null,
             meal_plan: item.meal_plan || null,
             checkin_date: item.checkin_date || null,
