@@ -61,6 +61,7 @@ interface FinancialAccount {
 const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
+  operator_id: z.string().optional(),
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
@@ -107,6 +108,7 @@ interface OperationPaymentsSectionProps {
   saleAmount: number
   operatorCost: number
   userRole: string
+  operators: Array<{ id: string; name: string }>
 }
 
 export function OperationPaymentsSection({
@@ -116,6 +118,7 @@ export function OperationPaymentsSection({
   saleAmount,
   operatorCost,
   userRole,
+  operators,
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -583,6 +586,7 @@ export function OperationPaymentsSection({
     defaultValues: {
       payer_type: "OPERATOR",
       direction: "EXPENSE",
+      operator_id: operators.length === 1 ? operators[0].id : "",
       method: "Transferencia",
       amount: 0,
       currency: "USD", // Default USD
@@ -778,7 +782,7 @@ export function OperationPaymentsSection({
     
     setIsLoading(true)
     try {
-      const { payer_type, direction, ...restValues } = values
+      const { payer_type, direction, operator_id, ...restValues } = values
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -786,6 +790,7 @@ export function OperationPaymentsSection({
           operation_id: operationId,
           payer_type: "OPERATOR",
           direction: "EXPENSE",
+          operator_id: operator_id || null,
           ...restValues,
           financial_account_id: values.financial_account_id,
           exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
@@ -1524,7 +1529,7 @@ export function OperationPaymentsSection({
 
       {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Registrar Pago a Operador</DialogTitle>
               <DialogDescription>
@@ -1534,6 +1539,45 @@ export function OperationPaymentsSection({
             
             <Form {...expenseForm}>
               <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="px-6 py-5 space-y-5">
+                {/* Operador */}
+                <FormField
+                  control={expenseForm.control}
+                  name="operator_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Operador</FormLabel>
+                      {operators.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">No hay operadores asignados a esta operación</p>
+                      ) : operators.length === 1 ? (
+                        <Select value={operators[0].id} disabled>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={operators[0].id}>{operators[0].name}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar operador" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {operators.map((op) => (
+                              <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 {/* Sub-card: Método y Monto */}
                 <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                   <div className="flex items-center gap-1.5">
@@ -1683,7 +1727,7 @@ export function OperationPaymentsSection({
                       control={expenseForm.control}
                       name="financial_account_id"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="flex flex-col">
                           <FormLabel>Cuenta Financiera *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>

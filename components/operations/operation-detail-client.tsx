@@ -527,6 +527,7 @@ export function OperationDetailClient({
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}
+            operators={operation.operators ? [{ id: operation.operators.id, name: operation.operators.name }] : []}
           />
         </TabsContent>
 
