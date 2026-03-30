@@ -1,5 +1,5 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 
@@ -50,17 +50,21 @@ export default async function OperationDetailPage({
   const { operation_customers, ...operationWithoutCustomers } = op
 
   // Get documents (de la operación Y del lead asociado si existe)
-  const { data: opDocs } = await supabase
+  // Usar admin client porque los documentos se insertan con service role (bypasa RLS)
+  // y el anon client no puede leerlos. El acceso del usuario ya fue verificado arriba.
+  const adminClient = createAdminClient()
+
+  const { data: opDocs } = await adminClient
     .from("documents")
     .select("*")
     .eq("operation_id", id)
     .order("uploaded_at", { ascending: false })
-  
+
   const documents: Array<any> = opDocs ? [...opDocs] : []
-  
+
   // Si la operación tiene un lead asociado, traer también sus documentos
   if (op.lead_id) {
-    const { data: leadDocs } = await supabase
+    const { data: leadDocs } = await adminClient
       .from("documents")
       .select("*")
       .eq("lead_id", op.lead_id)

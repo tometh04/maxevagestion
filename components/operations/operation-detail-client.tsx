@@ -226,61 +226,39 @@ export function OperationDetailClient({
           <TabsTrigger value="alerts">Alertas ({alerts?.length || 0})</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="info" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+        <TabsContent value="info" className="space-y-6">
+          {/* ── Row 1: Info Básica + Asignaciones ── */}
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* 📋 Información Básica */}
             <Card className="rounded-xl border border-border/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Información Básica</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Datos generales de la operación: tipo de viaje, destino, fechas y cantidad de pasajeros. Esta información se usa para generación automática de alertas y reportes.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  📋 Información Básica
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Tipo</p>
-                    <p className="text-sm">{typeLabels[operation.type] || operation.type}</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tipo</p>
+                    <p className="text-sm font-medium mt-0.5">{typeLabels[operation.type] || operation.type}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Estado</p>
-                    <Badge variant="secondary" className="bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Estado</p>
+                    <Badge variant="secondary" className="mt-0.5 bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Origen</p>
-                    <p className="text-sm">{operation.origin || "-"}</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Origen</p>
+                    <p className="text-sm font-medium mt-0.5">{operation.origin || "-"}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Destino</p>
-                    <p className="text-sm">{operation.destination}</p>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Destino</p>
+                    <p className="text-sm font-medium mt-0.5">{operation.destination}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Fecha Operación</p>
-                    <p className="text-sm font-semibold">
-                      {(() => {
-                        try {
-                          const dateStr = operation.operation_date || operation.created_at
-                          if (!dateStr) return "-"
-                          const d = dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00'
-                          return format(new Date(d), "dd/MM/yyyy", { locale: es })
-                        } catch { return "-" }
-                      })()}
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "📅 Salida"}
                     </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {operation.type === "ASSISTANCE" ? "Inicio Cobertura" : "Fecha Salida"}
-                    </p>
-                    <p className="text-sm">
+                    <p className="text-sm font-medium mt-0.5">
                       {(() => {
                         try {
                           if (!operation.departure_date) return "-"
@@ -289,299 +267,213 @@ export function OperationDetailClient({
                       })()}
                     </p>
                   </div>
-                  {operation.return_date && (
-                    <div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {operation.type === "ASSISTANCE" ? "Fin Cobertura" : "Fecha Regreso"}
-                      </p>
-                      <p className="text-sm">
-                        {(() => {
-                          try {
-                            return format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
-                          } catch { return "-" }
-                        })()}
-                      </p>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {operation.type === "ASSISTANCE" ? "Fin Cobertura" : "📅 Regreso"}
+                    </p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {(() => {
+                        try {
+                          if (!operation.return_date) return "-"
+                          return format(new Date(operation.return_date + 'T12:00:00'), "dd/MM/yyyy", { locale: es })
+                        } catch { return "-" }
+                      })()}
+                    </p>
+                  </div>
+                  <div className="col-span-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">👥 Pasajeros</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {operation.adults} adultos{operation.children > 0 ? `, ${operation.children} niños` : ""}{operation.infants > 0 ? `, ${operation.infants} infantes` : ""}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* 👤 Asignaciones */}
+            <Card className="rounded-xl border border-border/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  👤 Asignaciones
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
+                    </span>
+                    <span className="text-sm font-medium">
+                      {operation.sellers?.name || "-"}
+                      {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
+                        <span className="ml-1 text-xs text-muted-foreground">({(operation as any).commission_split}%)</span>
+                      )}
+                    </span>
+                  </div>
+                  {(operation as any).sellers_secondary && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Vendedor Secundario</span>
+                      <span className="text-sm font-medium">
+                        {(operation as any).sellers_secondary.name}
+                        {(operation as any).commission_split != null && (
+                          <span className="ml-1 text-xs text-muted-foreground">({100 - (operation as any).commission_split}%)</span>
+                        )}
+                      </span>
                     </div>
                   )}
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Pasajeros</p>
-                    <p className="text-sm">
-                      {operation.adults} adultos, {operation.children} niños, {operation.infants} infantes
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Operador</span>
+                    <span className="text-sm font-medium">{operation.operators?.name || "-"}</span>
                   </div>
-                </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {userRole !== "SELLER" && (() => {
-              // Calcular totales incluyendo servicios
-              const serviceSaleTotal = operationServices
-                .filter(s => s.sale_currency === operation.currency)
-                .reduce((sum, s) => sum + (s.sale_amount || 0), 0)
-              const serviceCostTotal = operationServices
-                .filter(s => s.cost_currency === operation.currency)
-                .reduce((sum, s) => sum + (s.cost_amount || 0), 0)
-              const totalSale = operation.sale_amount_total + serviceSaleTotal
-              const totalCost = operation.operator_cost + serviceCostTotal
-              const totalMargin = totalSale - totalCost
-              const totalMarginPct = totalSale > 0 ? (totalMargin / totalSale) * 100 : 0
-              const hasServices = operationServices.length > 0
-
-              return (
-            <Card className="rounded-xl border border-border/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Financiero</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Montos de venta, costo de operadores y margen bruto calculado automáticamente. {hasServices ? "Incluye servicios adicionales." : "El margen es la ganancia antes de gastos operativos."}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Monto Venta</p>
-                    <p className="text-lg font-semibold">
-                      {operation.currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                    {hasServices && (
-                      <p className="text-xs text-muted-foreground">
-                        Base: {operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })} + Servicios: {operation.currency} {serviceSaleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                      </p>
-                    )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Agencia</span>
+                    <span className="text-sm font-medium">{operation.agencies?.name || "-"}</span>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Costo Operador</p>
-                    <p className="text-lg font-semibold">
-                      {operation.currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                    {hasServices && (
-                      <p className="text-xs text-muted-foreground">
-                        Base: {operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })} + Servicios: {operation.currency} {serviceCostTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Margen</p>
-                    <p className="text-lg font-semibold text-green-600">
-                      {operation.currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Margen %</p>
-                    <p className="text-lg font-semibold text-green-600">
-                      {totalMarginPct.toFixed(1)}%
-                    </p>
-                  </div>
-                </div>
-                </div>
-              </CardContent>
-            </Card>
-              )
-            })()}
-
-            <Card className="rounded-xl border border-border/40">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <CardTitle>Asignaciones</CardTitle>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="text-xs">Vendedor asignado (para cálculo de comisiones), operador que provee el servicio, y agencia responsable. El vendedor determina quién recibe la comisión de la venta.</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    {(operation as any).sellers_secondary ? "Vendedor Principal" : "Vendedor"}
-                  </p>
-                  <p className="text-sm">
-                    {operation.sellers?.name || "-"}
-                    {(operation as any).sellers_secondary && (operation as any).commission_split != null && (
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        ({(operation as any).commission_split}% comisión)
-                      </span>
-                    )}
-                  </p>
-                </div>
-                {(operation as any).sellers_secondary && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Vendedor Secundario</p>
-                    <p className="text-sm">
-                      {(operation as any).sellers_secondary.name}
-                      {(operation as any).commission_split != null && (
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          ({100 - (operation as any).commission_split}% comisión)
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Operador</p>
-                  <p className="text-sm">{operation.operators?.name || "-"}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Agencia</p>
-                  <p className="text-sm">{operation.agencies?.name || "-"}</p>
-                </div>
-                {operation.leads && (
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Lead Original</p>
-                    <Link href={`/sales/leads?leadId=${operation.leads.id}`}>
-                      <Button variant="link" className="p-0 h-auto">
-                        {operation.leads.contact_name}
-                      </Button>
-                    </Link>
-                  </div>
-                )}
+                  {operation.leads && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Lead Original</span>
+                      <Link href={`/sales/leads?leadId=${operation.leads.id}`}>
+                        <Button variant="link" className="p-0 h-auto text-sm">
+                          {operation.leads.contact_name}
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           </div>
+
+          {/* ── Row 2: Financiero (full width) ── */}
+          {userRole !== "SELLER" && (() => {
+            const serviceSaleTotal = operationServices
+              .filter(s => s.sale_currency === operation.currency)
+              .reduce((sum, s) => sum + (s.sale_amount || 0), 0)
+            const serviceCostTotal = operationServices
+              .filter(s => s.cost_currency === operation.currency)
+              .reduce((sum, s) => sum + (s.cost_amount || 0), 0)
+            const totalSale = operation.sale_amount_total + serviceSaleTotal
+            const totalCost = operation.operator_cost + serviceCostTotal
+            const totalMargin = totalSale - totalCost
+            const totalMarginPct = totalSale > 0 ? (totalMargin / totalSale) * 100 : 0
+            const hasServices = operationServices.length > 0
+
+            const serviceTypeEmoji: Record<string, string> = {
+              HOTEL: "🏨", FLIGHT: "✈️", TRANSFER: "🚐", EXCURSION: "🗺️",
+              ASSISTANCE: "🛡️", SEAT: "💺", LUGGAGE: "🧳", VISA: "📄",
+            }
+            const serviceTypeLabel: Record<string, string> = {
+              HOTEL: "Hotel", FLIGHT: "Vuelo", TRANSFER: "Transfer", EXCURSION: "Excursión",
+              ASSISTANCE: "Asistencia", SEAT: "Asiento", LUGGAGE: "Equipaje", VISA: "Visa",
+            }
+
+            return (
+            <Card className="rounded-xl border border-border/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  💰 Financiero
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* KPIs principales */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/50 p-4">
+                    <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">💵 Venta Total</p>
+                    <p className="text-xl font-bold text-blue-700 dark:text-blue-300 mt-1">
+                      {operation.currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200/50 dark:border-orange-800/50 p-4">
+                    <p className="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wide">📦 Costo Total</p>
+                    <p className="text-xl font-bold text-orange-700 dark:text-orange-300 mt-1">
+                      {operation.currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200/50 dark:border-green-800/50 p-4">
+                    <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">📊 Margen</p>
+                    <p className="text-xl font-bold text-green-700 dark:text-green-300 mt-1">
+                      {operation.currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200/50 dark:border-purple-800/50 p-4">
+                    <p className="text-xs font-medium text-purple-600 dark:text-purple-400 uppercase tracking-wide">📈 Margen %</p>
+                    <p className="text-xl font-bold text-purple-700 dark:text-purple-300 mt-1">
+                      {totalMarginPct.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+
+                {/* Desglose: Operación Base */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">🎯 Operación Base</span>
+                    </div>
+                    <div className="flex items-center gap-6 text-sm">
+                      <div className="text-right">
+                        <span className="text-xs text-muted-foreground">Venta</span>
+                        <p className="font-semibold">{operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-muted-foreground">Costo</span>
+                        <p className="font-semibold">{operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs text-muted-foreground">Margen</span>
+                        <p className="font-semibold text-green-600">{operation.currency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Desglose: Servicios */}
+                {hasServices && (
+                  <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+                    <span className="text-sm font-semibold">🔧 Servicios Adicionales</span>
+                    <div className="space-y-2">
+                      {operationServices.map((svc) => {
+                        const margin = svc.sale_currency === svc.cost_currency ? svc.sale_amount - svc.cost_amount : null
+                        return (
+                          <div key={svc.id} className="flex items-center justify-between py-2 border-b border-border/30 last:border-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-base">{serviceTypeEmoji[svc.service_type] || "📦"}</span>
+                              <span className="text-sm font-medium">{serviceTypeLabel[svc.service_type] || svc.service_type}</span>
+                              {svc.description && <span className="text-xs text-muted-foreground">— {svc.description}</span>}
+                            </div>
+                            <div className="flex items-center gap-6 text-sm">
+                              <div className="text-right">
+                                <span className="text-xs text-muted-foreground">Venta</span>
+                                <p className="font-medium">{svc.sale_currency} {svc.sale_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-xs text-muted-foreground">Costo</span>
+                                <p className="font-medium">{svc.cost_currency} {svc.cost_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                              </div>
+                              {margin !== null && (
+                                <div className="text-right">
+                                  <span className="text-xs text-muted-foreground">Margen</span>
+                                  <p className={`font-medium ${margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                    {svc.sale_currency} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            )
+          })()}
 
           {/* Requisitos del destino */}
           <OperationRequirementsSection
             destination={operation.destination}
             departureDate={operation.departure_date || undefined}
           />
-
-          {/* Resumen financiero global (operación + servicios) */}
-          {servicePayments.length > 0 && (
-            <Card className="rounded-xl border border-border/40">
-              <CardHeader>
-                <CardTitle className="text-base">Resumen Financiero Global</CardTitle>
-                <CardDescription>
-                  Totales combinados de la operación base y sus servicios adicionales
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-border/40 p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Venta operación</p>
-                    <p className="font-semibold">
-                      {operation.currency} {Number(operation.sale_amount_total).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/40 p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Cobrado en servicios</p>
-                    {(() => {
-                      const totals: Record<string, number> = {}
-                      servicePayments.filter(p => p.direction === "INCOME" && p.status === "PAID").forEach(p => {
-                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
-                      })
-                      return Object.keys(totals).length > 0
-                        ? Object.entries(totals).map(([cur, amt]) => (
-                            <p key={cur} className="font-semibold text-green-700">
-                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                            </p>
-                          ))
-                        : <p className="text-muted-foreground text-sm">Sin cobros</p>
-                    })()}
-                  </div>
-                  <div className="rounded-xl border border-border/40 p-3">
-                    <p className="text-xs text-muted-foreground mb-1">Pagado a proveedores (servicios)</p>
-                    {(() => {
-                      const totals: Record<string, number> = {}
-                      servicePayments.filter(p => p.direction === "EXPENSE" && p.status === "PAID").forEach(p => {
-                        totals[p.currency] = (totals[p.currency] || 0) + Number(p.amount)
-                      })
-                      return Object.keys(totals).length > 0
-                        ? Object.entries(totals).map(([cur, amt]) => (
-                            <p key={cur} className="font-semibold text-red-700">
-                              {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                            </p>
-                          ))
-                        : <p className="text-muted-foreground text-sm">Sin pagos</p>
-                    })()}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Servicios cargados */}
-          {operationServices && operationServices.length > 0 && (
-            <Card className="rounded-xl border border-border/40">
-              <CardHeader>
-                <CardTitle className="text-base">Servicios Incluidos</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {operationServices.map((svc) => (
-                    <div key={svc.id} className="flex items-center justify-between py-2 border-b last:border-0">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          {svc.service_type === "HOTEL" ? "Hotel" :
-                           svc.service_type === "FLIGHT" ? "Vuelo" :
-                           svc.service_type === "TRANSFER" ? "Transfer" :
-                           svc.service_type === "EXCURSION" ? "Excursión" :
-                           svc.service_type === "ASSISTANCE" ? "Asistencia" :
-                           svc.service_type === "SEAT" ? "Asiento" :
-                           svc.service_type === "LUGGAGE" ? "Equipaje" :
-                           svc.service_type === "VISA" ? "Visa" : svc.service_type}
-                        </Badge>
-                        <span className="text-sm">{svc.description || svc.service_type}</span>
-                      </div>
-                      <div className="flex items-center gap-4 text-sm">
-                        <span className="text-muted-foreground">
-                          Venta: {svc.sale_currency} {svc.sale_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        </span>
-                        {userRole !== "SELLER" && (
-                          <span className="text-muted-foreground">
-                            Costo: {svc.cost_currency} {svc.cost_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                          </span>
-                        )}
-                        {userRole !== "SELLER" && svc.sale_currency === svc.cost_currency && svc.sale_amount - svc.cost_amount !== 0 && (
-                          <span className={svc.sale_amount - svc.cost_amount > 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
-                            Margen: {svc.sale_currency} {(svc.sale_amount - svc.cost_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                  {/* Totales */}
-                  {userRole !== "SELLER" && (
-                    <div className="flex items-center justify-between pt-3 border-t font-medium">
-                      <span className="text-sm">Total Servicios</span>
-                      <div className="flex items-center gap-4 text-sm">
-                        <span>
-                          Venta: {(() => {
-                            const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.sale_currency] = (byC[s.sale_currency] || 0) + s.sale_amount })
-                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
-                          })()}
-                        </span>
-                        <span className="text-green-600">
-                          Margen: {(() => {
-                            const byC: Record<string, number> = {}
-                            operationServices.forEach(s => { byC[s.sale_currency] = (byC[s.sale_currency] || 0) + (s.sale_amount - s.cost_amount) })
-                            return Object.entries(byC).map(([c, a]) => `${c} ${a.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`).join(" + ")
-                          })()}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </TabsContent>
 
         <TabsContent value="customers" className="space-y-4">
