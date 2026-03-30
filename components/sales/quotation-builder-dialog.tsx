@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { useState, useCallback, useEffect, useMemo } from "react"
+import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -10,8 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign } from "lucide-react"
+import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Pencil } from "lucide-react"
 import { toast } from "sonner"
+import { format, parseISO } from "date-fns"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -27,6 +29,11 @@ interface QuotationBuilderProps {
   }
   operators?: Array<{ id: string; name: string }>
   onSuccess?: (quotation: any) => void
+}
+
+interface StopoverInfo {
+  city: string
+  wait_time: string // e.g. "2h 30m"
 }
 
 interface QuotationItem {
@@ -58,6 +65,7 @@ interface QuotationItem {
   flight_return_date?: string
   flight_stops?: number
   flight_class?: string
+  stopovers?: StopoverInfo[]
   // Transfer
   transfer_description?: string
 }
@@ -111,6 +119,7 @@ function createEmptyItem(type: string = "FLIGHT"): QuotationItem {
     cost_currency: "USD",
     operator_id: null,
     generates_commission: COMMISSION_TYPES.has(type),
+    stopovers: [],
   }
 }
 
@@ -121,6 +130,37 @@ function createEmptyOption(number: number): QuotationOption {
     total_amount: 0,
     items: [createEmptyItem("FLIGHT")],
   }
+}
+
+// Helpers for date conversion
+function toDate(s: string | undefined): Date | undefined {
+  if (!s) return undefined
+  try { return parseISO(s) } catch { return undefined }
+}
+function toStr(d: Date | undefined): string {
+  if (!d) return ""
+  try { return format(d, "yyyy-MM-dd") } catch { return "" }
+}
+
+// Extract airport code from origin/destination string like "Buenos Aires" -> "BUE" (fallback: first 3 chars)
+function cityToCode(city: string): string {
+  const known: Record<string, string> = {
+    "buenos aires": "BUE", "miami": "MIA", "cancun": "CUN", "cancún": "CUN",
+    "punta cana": "PUJ", "nueva york": "NYC", "new york": "NYC", "orlando": "MCO",
+    "bogota": "BOG", "bogotá": "BOG", "lima": "LIM", "santiago": "SCL",
+    "rio de janeiro": "GIG", "río de janeiro": "GIG", "sao paulo": "GRU", "são paulo": "GRU",
+    "madrid": "MAD", "barcelona": "BCN", "roma": "FCO", "paris": "CDG", "parís": "CDG",
+    "londres": "LHR", "amsterdam": "AMS", "cartagena": "CTG", "cartagena de indias": "CTG",
+    "aruba": "AUA", "curacao": "CUR", "curaçao": "CUR", "montego bay": "MBJ",
+    "dubai": "DXB", "estambul": "IST", "bangkok": "BKK", "tokio": "NRT",
+    "bariloche": "BRC", "mendoza": "MDZ", "ushuaia": "USH", "salta": "SLA",
+    "córdoba": "COR", "iguazú": "IGR", "puerto iguazú": "IGR",
+    "florianópolis": "FLN", "salvador": "SSA", "salvador de bahía": "SSA",
+    "playa del carmen": "CUN", "riviera maya": "CUN", "tulum": "CUN",
+    "los cabos": "SJD", "puerto vallarta": "PVR",
+  }
+  const key = city.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+  return known[key] || city.substring(0, 3).toUpperCase()
 }
 
 // --- Search functions ---
@@ -150,8 +190,10 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
 export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess }: QuotationBuilderProps) {
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [savedQuotation, setSavedQuotation] = useState<any>(null)
 
   // General data
+  const [quotationTitle, setQuotationTitle] = useState(`Nueva Cotizacion — ${lead.contact_name}`)
   const [destination, setDestination] = useState(lead.destination || "")
   const [origin, setOrigin] = useState("")
   const [region, setRegion] = useState(lead.region || "OTROS")
@@ -166,12 +208,72 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // Options
   const [options, setOptions] = useState<QuotationOption[]>([createEmptyOption(1)])
 
-  // --- Hotel search by destination (base local, sin API externa) ---
+  // --- Auto-fill flight route when origin/destination change ---
+  useEffect(() => {
+    if (!origin && !destination) return
+    const route = origin && destination
+      ? `${cityToCode(origin)} - ${cityToCode(destination)}`
+      : ""
+    if (!route) return
+
+    setOptions(prev => prev.map(opt => ({
+      ...opt,
+      items: opt.items.map(item => {
+        if (item.item_type === "FLIGHT" && !item.flight_route) {
+          return { ...item, flight_route: route }
+        }
+        return item
+      })
+    })))
+  }, [origin, destination])
+
+  // --- Auto-fill dates on items when top-level dates change ---
+  useEffect(() => {
+    if (!departureDate && !returnDate) return
+    setOptions(prev => prev.map(opt => ({
+      ...opt,
+      items: opt.items.map(item => {
+        const updated = { ...item }
+        if (item.item_type === "FLIGHT") {
+          if (departureDate && !item.flight_date) updated.flight_date = departureDate
+          if (returnDate && !item.flight_return_date) updated.flight_return_date = returnDate
+        }
+        if ((item.item_type === "HOTEL" || item.item_type === "ACCOMMODATION")) {
+          if (departureDate && !item.checkin_date) updated.checkin_date = departureDate
+          if (returnDate && !item.checkout_date) updated.checkout_date = returnDate
+          // Auto-calc nights
+          if (updated.checkin_date && updated.checkout_date) {
+            const ci = new Date(updated.checkin_date)
+            const co = new Date(updated.checkout_date)
+            const diff = Math.round((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24))
+            if (diff > 0 && !item.nights) updated.nights = diff
+          }
+        }
+        return updated
+      })
+    })))
+  }, [departureDate, returnDate])
+
+  // --- Auto-calculate total_amount for each option ---
+  const priceKey = options.map(o => o.items.map(i => `${i.unit_price}:${i.quantity}`).join(",")).join("|")
+  useEffect(() => {
+    setOptions(prev => prev.map(opt => {
+      const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
+      // Only auto-update if user hasn't manually set a different value
+      // (auto-update when total is 0 or matches the previous auto-calc)
+      if (opt.total_amount === 0 || Math.abs(opt.total_amount - saleTotal) < 0.01) {
+        return { ...opt, total_amount: saleTotal }
+      }
+      return opt
+    }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceKey])
+
+  // --- Hotel search by destination ---
   const searchHotels = useCallback(async (query: string): Promise<ComboboxOption[]> => {
-    const options: ComboboxOption[] = []
-    // Si hay query, agregar opcion de texto libre
+    const opts: ComboboxOption[] = []
     if (query && query.length >= 1) {
-      options.push({ value: query, label: query, subtitle: "Escribir nombre manualmente" })
+      opts.push({ value: query, label: query, subtitle: "Escribir nombre manualmente" })
     }
     try {
       const params = new URLSearchParams()
@@ -183,7 +285,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         const hotels: Array<{ name: string; stars: number; city: string; country: string; zone: string | null }> = await res.json()
         for (const hotel of hotels) {
           const stars = hotel.stars ? "★".repeat(hotel.stars) : ""
-          options.push({
+          opts.push({
             value: hotel.name,
             label: hotel.name,
             subtitle: `${stars} ${hotel.city}${hotel.zone ? ` · ${hotel.zone}` : ""}, ${hotel.country}`,
@@ -191,9 +293,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         }
       }
     } catch {
-      // silencioso — el input manual sigue funcionando
+      // silencioso
     }
-    return options
+    return opts
   }, [destination])
 
   // --- Option management ---
@@ -235,9 +337,26 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   // --- Item management ---
   function addItem(optionId: string, type: string = "FLIGHT") {
+    const newItem = createEmptyItem(type)
+    // Auto-fill dates and route on new items
+    if (type === "FLIGHT") {
+      if (departureDate) newItem.flight_date = departureDate
+      if (returnDate) newItem.flight_return_date = returnDate
+      if (origin && destination) newItem.flight_route = `${cityToCode(origin)} - ${cityToCode(destination)}`
+    }
+    if (type === "HOTEL" || type === "ACCOMMODATION") {
+      if (departureDate) newItem.checkin_date = departureDate
+      if (returnDate) newItem.checkout_date = returnDate
+      if (newItem.checkin_date && newItem.checkout_date) {
+        const ci = new Date(newItem.checkin_date)
+        const co = new Date(newItem.checkout_date)
+        const diff = Math.round((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24))
+        if (diff > 0) newItem.nights = diff
+      }
+    }
     setOptions(
       options.map((o) =>
-        o.id === optionId ? { ...o, items: [...o.items, createEmptyItem(type)] } : o
+        o.id === optionId ? { ...o, items: [...o.items, newItem] } : o
       )
     )
   }
@@ -262,6 +381,23 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 if (field === "item_type") {
                   updated.generates_commission = COMMISSION_TYPES.has(value)
                 }
+                // Auto-calc nights when dates change
+                if ((field === "checkin_date" || field === "checkout_date") && updated.checkin_date && updated.checkout_date) {
+                  const ci = new Date(updated.checkin_date)
+                  const co = new Date(updated.checkout_date)
+                  const diff = Math.round((co.getTime() - ci.getTime()) / (1000 * 60 * 60 * 24))
+                  if (diff > 0) updated.nights = diff
+                }
+                // Auto-manage stopovers array when flight_stops changes
+                if (field === "flight_stops") {
+                  const stops = Number(value) || 0
+                  const current = updated.stopovers || []
+                  if (stops > current.length) {
+                    updated.stopovers = [...current, ...Array(stops - current.length).fill(null).map(() => ({ city: "", wait_time: "" }))]
+                  } else {
+                    updated.stopovers = current.slice(0, stops)
+                  }
+                }
                 return updated
               }),
             }
@@ -270,13 +406,43 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     )
   }
 
-  // --- Calculated totals per option ---
-  function getOptionCostTotal(opt: QuotationOption) {
-    return opt.items.reduce((sum, i) => sum + (i.cost_amount || 0) * (i.quantity || 1), 0)
+  function updateStopover(optionId: string, itemId: string, stopIndex: number, field: keyof StopoverInfo, value: string) {
+    setOptions(
+      options.map((o) =>
+        o.id === optionId
+          ? {
+              ...o,
+              items: o.items.map((i) => {
+                if (i.id !== itemId) return i
+                const stops = [...(i.stopovers || [])]
+                if (stops[stopIndex]) {
+                  stops[stopIndex] = { ...stops[stopIndex], [field]: value }
+                }
+                return { ...i, stopovers: stops }
+              }),
+            }
+          : o
+      )
+    )
   }
-  function getOptionSaleTotal(opt: QuotationOption) {
-    return opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
-  }
+
+  // --- Calculated totals ---
+  const globalTotals = useMemo(() => {
+    const allItems = options.flatMap(o => o.items)
+    const byType: Record<string, { sale: number; cost: number; count: number }> = {}
+    for (const item of allItems) {
+      const t = item.item_type
+      if (!byType[t]) byType[t] = { sale: 0, cost: 0, count: 0 }
+      byType[t].sale += (item.unit_price || 0) * (item.quantity || 1)
+      byType[t].cost += (item.cost_amount || 0) * (item.quantity || 1)
+      byType[t].count++
+    }
+    const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
+    const totalCost = Object.values(byType).reduce((s, v) => s + v.cost, 0)
+    const totalClient = options.reduce((s, o) => s + (o.total_amount || 0), 0)
+    const totalMargin = totalClient - totalCost
+    return { byType, totalSale, totalCost, totalClient, totalMargin }
+  }, [options])
 
   // --- Save ---
   async function handleSave(andSend: boolean = false) {
@@ -289,10 +455,6 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       return
     }
     for (const opt of options) {
-      if (!opt.total_amount || opt.total_amount <= 0) {
-        toast.error(`"${opt.title}" necesita un precio total`)
-        return
-      }
       if (opt.items.length === 0) {
         toast.error(`"${opt.title}" necesita al menos un servicio`)
         return
@@ -309,6 +471,15 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     if (andSend) setSending(true)
 
     try {
+      // Auto-calc totals if not set
+      const finalOptions = options.map(opt => {
+        const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
+        return {
+          ...opt,
+          total_amount: opt.total_amount || saleTotal,
+        }
+      })
+
       const payload = {
         lead_id: lead.id,
         agency_id: lead.agency_id,
@@ -322,7 +493,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         infants,
         currency,
         notes: notes || null,
-        options: options.map((opt) => ({
+        options: finalOptions.map((opt) => ({
           title: opt.title,
           total_amount: opt.total_amount,
           items: opt.items.map((item) => ({
@@ -370,6 +541,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       }
 
       const { data: quotation } = await res.json()
+      setSavedQuotation(quotation)
 
       if (andSend && quotation) {
         await fetch(`/api/quotations/${quotation.id}`, {
@@ -387,12 +559,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
 
         toast.success("Cotizacion creada y enviada")
+        onSuccess?.(quotation)
+        onOpenChange(false)
       } else {
         toast.success("Cotizacion guardada como borrador")
+        onSuccess?.(quotation)
       }
-
-      onSuccess?.(quotation)
-      onOpenChange(false)
     } catch (error: any) {
       toast.error(error.message || "Error al guardar cotizacion")
     } finally {
@@ -401,16 +573,28 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     }
   }
 
+  function handleViewQuotation() {
+    if (savedQuotation?.public_token) {
+      window.open(`/cotizacion/${savedQuotation.public_token}`, "_blank")
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col p-0">
-        <div className="px-6 pt-6 pb-2">
+        {/* Header — editable title */}
+        <div className="px-6 pt-5 pb-2 shrink-0">
           <div className="flex items-center gap-2">
-            <FileIcon className="h-5 w-5" />
-            <h2 className="text-lg font-semibold">Nueva Cotizacion — {lead.contact_name}</h2>
+            <FileIcon className="h-5 w-5 shrink-0" />
+            <input
+              value={quotationTitle}
+              onChange={(e) => setQuotationTitle(e.target.value)}
+              className="text-lg font-semibold bg-transparent border-0 outline-none w-full focus:ring-1 focus:ring-primary/30 rounded px-1 -mx-1"
+            />
           </div>
         </div>
 
+        {/* Scrollable content */}
         <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1" data-scroll-container>
           {/* Datos generales */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
@@ -465,11 +649,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Salida *</Label>
-                <Input type="date" value={departureDate} onChange={(e) => setDepartureDate(e.target.value)} />
+                <DateInputWithCalendar
+                  value={toDate(departureDate)}
+                  onChange={(d) => setDepartureDate(toStr(d))}
+                  placeholder="dd/mm/aaaa"
+                  className="h-9 rounded-md"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Regreso</Label>
-                <Input type="date" value={returnDate} onChange={(e) => setReturnDate(e.target.value)} />
+                <DateInputWithCalendar
+                  value={toDate(returnDate)}
+                  onChange={(d) => setReturnDate(toStr(d))}
+                  placeholder="dd/mm/aaaa"
+                  minDate={toDate(departureDate)}
+                  className="h-9 rounded-md"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Adultos</Label>
@@ -493,396 +688,399 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           </div>
 
           {/* Options */}
-          {options.map((option, optIndex) => {
-            const costTotal = getOptionCostTotal(option)
-            const saleTotal = getOptionSaleTotal(option)
-            const margin = (option.total_amount || 0) - costTotal
-
-            return (
-              <div key={option.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
-                    <ListChecks className="h-3.5 w-3.5 text-orange-500" />
-                  </div>
-                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Opcion {optIndex + 1}</h4>
+          {options.map((option, optIndex) => (
+            <div key={option.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                  <ListChecks className="h-3.5 w-3.5 text-orange-500" />
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
-                      Opcion {optIndex + 1}
-                    </Badge>
-                    <Input
-                      value={option.title}
-                      onChange={(e) => updateOption(option.id, "title", e.target.value)}
-                      className="h-7 w-48 text-sm"
-                      placeholder="Nombre de la opcion"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" onClick={() => duplicateOption(option.id)} title="Duplicar opcion">
-                      <Copy className="h-3.5 w-3.5" />
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Opcion {optIndex + 1}</h4>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30">
+                    Opcion {optIndex + 1}
+                  </Badge>
+                  <Input
+                    value={option.title}
+                    onChange={(e) => updateOption(option.id, "title", e.target.value)}
+                    className="h-7 w-48 text-sm"
+                    placeholder="Nombre de la opcion"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => duplicateOption(option.id)} title="Duplicar opcion">
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
+                  {options.length > 1 && (
+                    <Button variant="ghost" size="sm" onClick={() => removeOption(option.id)} className="text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                    {options.length > 1 && (
-                      <Button variant="ghost" size="sm" onClick={() => removeOption(option.id)} className="text-destructive">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {/* Items */}
-                  {option.items.map((item, itemIndex) => {
-                    const itemMargin = (item.unit_price || 0) - (item.cost_amount || 0)
-                    const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
-                    const TypeIcon = typeConfig?.icon || MapPin
-
-                    return (
-                      <div key={item.id} className="border rounded-lg p-3 space-y-3 bg-muted/30">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                            <Select
-                              value={item.item_type}
-                              onValueChange={(v) => updateItem(option.id, item.id, "item_type", v)}
-                            >
-                              <SelectTrigger className="h-7 w-36 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {ITEM_TYPES.map((t) => (
-                                  <SelectItem key={t.value} value={t.value}>
-                                    {t.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <span className="text-xs text-muted-foreground">#{itemIndex + 1}</span>
-                          </div>
-                          <Button variant="ghost" size="sm" onClick={() => removeItem(option.id, item.id)} className="text-destructive h-6 w-6 p-0">
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
-
-                        {/* Common fields */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          <div className="col-span-2 space-y-1">
-                            <Label className="text-xs">Descripcion *</Label>
-                            <Input
-                              value={item.description}
-                              onChange={(e) => updateItem(option.id, item.id, "description", e.target.value)}
-                              placeholder="Ej: Vuelo directo Buenos Aires - Miami"
-                              className="text-sm"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Operador</Label>
-                            {operators.length > 0 ? (
-                              <Select
-                                value={item.operator_id || ""}
-                                onValueChange={(v) => updateItem(option.id, item.id, "operator_id", v || null)}
-                              >
-                                <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
-                                <SelectContent>
-                                  {operators.map((op) => (
-                                    <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Input
-                                value={item.provider}
-                                onChange={(e) => updateItem(option.id, item.id, "provider", e.target.value)}
-                                placeholder="Ej: Aerolineas, Hyatt..."
-                                className="text-sm"
-                              />
-                            )}
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Cantidad</Label>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={item.quantity}
-                              onChange={(e) => updateItem(option.id, item.id, "quantity", Number(e.target.value))}
-                              className="text-sm"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Pricing row */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                          <div className="space-y-1">
-                            <Label className="text-xs text-blue-600">Precio venta</Label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                              <Input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                value={item.unit_price || ""}
-                                onChange={(e) => updateItem(option.id, item.id, "unit_price", Number(e.target.value))}
-                                placeholder="0.00"
-                                className="text-sm font-mono pl-7"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs text-orange-600">Costo operador</Label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                              <Input
-                                type="number"
-                                min={0}
-                                step={0.01}
-                                value={item.cost_amount || ""}
-                                onChange={(e) => updateItem(option.id, item.id, "cost_amount", Number(e.target.value))}
-                                placeholder="0.00"
-                                className="text-sm font-mono pl-7"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Moneda costo</Label>
-                            <Select
-                              value={item.cost_currency || "USD"}
-                              onValueChange={(v) => updateItem(option.id, item.id, "cost_currency", v)}
-                            >
-                              <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="USD">USD</SelectItem>
-                                <SelectItem value="ARS">ARS</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-end pb-1.5">
-                            {item.unit_price > 0 && (
-                              <div className="rounded-md bg-muted/50 px-2 py-1 text-xs">
-                                <span className="text-muted-foreground">Margen: </span>
-                                <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
-                                  {currency} {itemMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Hotel-specific fields */}
-                        {(item.item_type === "HOTEL" || item.item_type === "ACCOMMODATION") && (
-                          <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del hotel</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              <div className="col-span-2 space-y-1">
-                                <Label className="text-xs">Hotel</Label>
-                                <SearchableCombobox
-                                  value={item.hotel_name || ""}
-                                  onChange={(v) => updateItem(option.id, item.id, "hotel_name", v)}
-                                  placeholder="Buscar hotel..."
-                                  searchPlaceholder="Escribi el nombre del hotel..."
-                                  emptyMessage="No se encontraron hoteles"
-                                  initialLabel={item.hotel_name || ""}
-                                  searchFn={searchHotels}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Estrellas</Label>
-                                <Select
-                                  value={String(item.hotel_stars || "")}
-                                  onValueChange={(v) => updateItem(option.id, item.id, "hotel_stars", Number(v))}
-                                >
-                                  <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
-                                  <SelectContent>
-                                    {[1, 2, 3, 4, 5].map((s) => (
-                                      <SelectItem key={s} value={String(s)}>{s} estrellas</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Habitacion</Label>
-                                <Input
-                                  value={item.room_type || ""}
-                                  onChange={(e) => updateItem(option.id, item.id, "room_type", e.target.value)}
-                                  placeholder="Doble, Suite..."
-                                  className="text-sm"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Regimen</Label>
-                                <Select
-                                  value={item.meal_plan || ""}
-                                  onValueChange={(v) => updateItem(option.id, item.id, "meal_plan", v)}
-                                >
-                                  <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
-                                  <SelectContent>
-                                    {MEAL_PLANS.map((mp) => (
-                                      <SelectItem key={mp.value} value={mp.value}>{mp.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Check-in</Label>
-                                <Input type="date" value={item.checkin_date || ""} onChange={(e) => updateItem(option.id, item.id, "checkin_date", e.target.value)} className="text-sm" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Check-out</Label>
-                                <Input type="date" value={item.checkout_date || ""} onChange={(e) => updateItem(option.id, item.id, "checkout_date", e.target.value)} className="text-sm" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Noches</Label>
-                                <Input type="number" min={1} value={item.nights || ""} onChange={(e) => updateItem(option.id, item.id, "nights", Number(e.target.value))} className="text-sm" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Habitaciones</Label>
-                                <Input type="number" min={1} value={item.rooms || 1} onChange={(e) => updateItem(option.id, item.id, "rooms", Number(e.target.value))} className="text-sm" />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Flight-specific fields */}
-                        {item.item_type === "FLIGHT" && (
-                          <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del vuelo</p>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                              <div className="space-y-1">
-                                <Label className="text-xs">Aerolinea</Label>
-                                <Input
-                                  value={item.airline || ""}
-                                  onChange={(e) => updateItem(option.id, item.id, "airline", e.target.value)}
-                                  placeholder="Ej: Aerolineas Argentinas"
-                                  className="text-sm"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Ruta</Label>
-                                <Input
-                                  value={item.flight_route || ""}
-                                  onChange={(e) => updateItem(option.id, item.id, "flight_route", e.target.value)}
-                                  placeholder="Ej: EZE - MIA"
-                                  className="text-sm"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Clase</Label>
-                                <Select
-                                  value={item.flight_class || ""}
-                                  onValueChange={(v) => updateItem(option.id, item.id, "flight_class", v)}
-                                >
-                                  <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
-                                  <SelectContent>
-                                    {FLIGHT_CLASSES.map((fc) => (
-                                      <SelectItem key={fc.value} value={fc.value}>{fc.label}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Escalas</Label>
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  value={item.flight_stops ?? 0}
-                                  onChange={(e) => updateItem(option.id, item.id, "flight_stops", Number(e.target.value))}
-                                  className="text-sm"
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha ida</Label>
-                                <Input type="date" value={item.flight_date || ""} onChange={(e) => updateItem(option.id, item.id, "flight_date", e.target.value)} className="text-sm" />
-                              </div>
-                              <div className="space-y-1">
-                                <Label className="text-xs">Fecha vuelta</Label>
-                                <Input type="date" value={item.flight_return_date || ""} onChange={(e) => updateItem(option.id, item.id, "flight_return_date", e.target.value)} className="text-sm" />
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Transfer-specific fields */}
-                        {item.item_type === "TRANSFER" && (
-                          <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
-                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del traslado</p>
-                            <div className="space-y-1">
-                              <Label className="text-xs">Detalle</Label>
-                              <Input
-                                value={item.transfer_description || ""}
-                                onChange={(e) => updateItem(option.id, item.id, "transfer_description", e.target.value)}
-                                placeholder="Ej: Aeropuerto - Hotel, privado"
-                                className="text-sm"
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-
-                  {/* Add item buttons */}
-                  <div className="flex flex-wrap gap-1">
-                    {ITEM_TYPES.map((t) => {
-                      const Icon = t.icon
-                      return (
-                        <Button
-                          key={t.value}
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs gap-1"
-                          onClick={() => addItem(option.id, t.value)}
-                        >
-                          <Plus className="h-3 w-3" />
-                          <Icon className="h-3 w-3" />
-                          {t.label}
-                        </Button>
-                      )
-                    })}
-                  </div>
-                </div>
-
-                {/* Option footer — totals */}
-                <div className="rounded-lg border border-border/50 bg-background p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Suma precios individuales</span>
-                    <span className="font-mono">{currency} {saleTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground">
-                    <span>Costo total operadores</span>
-                    <span className="font-mono">{currency} {costTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <Label className="text-sm font-semibold">Precio final al cliente</Label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-muted-foreground">{currency}</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={option.total_amount || ""}
-                        onChange={(e) => updateOption(option.id, "total_amount", Number(e.target.value))}
-                        className="w-36 text-right font-mono font-semibold text-base"
-                        placeholder="0.00"
-                      />
-                    </div>
-                  </div>
-                  {option.total_amount > 0 && (
-                    <div className="flex items-center justify-between text-xs pt-1">
-                      <span className="text-muted-foreground">Margen estimado</span>
-                      <span className={`font-mono font-semibold ${margin >= 0 ? "text-green-600" : "text-red-500"}`}>
-                        {currency} {margin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                        {option.total_amount > 0 && (
-                          <span className="ml-1 text-muted-foreground">
-                            ({((margin / option.total_amount) * 100).toFixed(1)}%)
-                          </span>
-                        )}
-                      </span>
-                    </div>
                   )}
                 </div>
               </div>
-            )
-          })}
+
+              <div className="space-y-3">
+                {/* Items */}
+                {option.items.map((item, itemIndex) => {
+                  const itemMargin = (item.unit_price || 0) - (item.cost_amount || 0)
+                  const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
+                  const TypeIcon = typeConfig?.icon || MapPin
+
+                  return (
+                    <div key={item.id} className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                          <Select
+                            value={item.item_type}
+                            onValueChange={(v) => updateItem(option.id, item.id, "item_type", v)}
+                          >
+                            <SelectTrigger className="h-7 w-36 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ITEM_TYPES.map((t) => (
+                                <SelectItem key={t.value} value={t.value}>
+                                  {t.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <span className="text-xs text-muted-foreground">#{itemIndex + 1}</span>
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => removeItem(option.id, item.id)} className="text-destructive h-6 w-6 p-0">
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      {/* Common fields */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="col-span-2 space-y-1">
+                          <Label className="text-xs">Descripcion *</Label>
+                          <Input
+                            value={item.description}
+                            onChange={(e) => updateItem(option.id, item.id, "description", e.target.value)}
+                            placeholder="Ej: Vuelo directo Buenos Aires - Miami"
+                            className="text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Operador</Label>
+                          {operators.length > 0 ? (
+                            <Select
+                              value={item.operator_id || ""}
+                              onValueChange={(v) => updateItem(option.id, item.id, "operator_id", v || null)}
+                            >
+                              <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                              <SelectContent>
+                                {operators.map((op) => (
+                                  <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              value={item.provider}
+                              onChange={(e) => updateItem(option.id, item.id, "provider", e.target.value)}
+                              placeholder="Ej: Aerolineas, Hyatt..."
+                              className="text-sm"
+                            />
+                          )}
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Cantidad</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => updateItem(option.id, item.id, "quantity", Number(e.target.value))}
+                            className="text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Pricing row */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-blue-600">Precio venta</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={item.unit_price || ""}
+                              onChange={(e) => updateItem(option.id, item.id, "unit_price", Number(e.target.value))}
+                              placeholder="0.00"
+                              className="text-sm font-mono pl-7"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-orange-600">Costo operador</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                            <Input
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              value={item.cost_amount || ""}
+                              onChange={(e) => updateItem(option.id, item.id, "cost_amount", Number(e.target.value))}
+                              placeholder="0.00"
+                              className="text-sm font-mono pl-7"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Moneda costo</Label>
+                          <Select
+                            value={item.cost_currency || "USD"}
+                            onValueChange={(v) => updateItem(option.id, item.id, "cost_currency", v)}
+                          >
+                            <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="USD">USD</SelectItem>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="flex items-end pb-1.5">
+                          {item.unit_price > 0 && (
+                            <div className="rounded-md bg-muted/50 px-2 py-1 text-xs">
+                              <span className="text-muted-foreground">Margen: </span>
+                              <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
+                                {currency} {itemMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Hotel-specific fields */}
+                      {(item.item_type === "HOTEL" || item.item_type === "ACCOMMODATION") && (
+                        <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del hotel</p>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="col-span-2 space-y-1">
+                              <Label className="text-xs">Hotel</Label>
+                              <SearchableCombobox
+                                value={item.hotel_name || ""}
+                                onChange={(v) => updateItem(option.id, item.id, "hotel_name", v)}
+                                placeholder="Buscar hotel..."
+                                searchPlaceholder="Escribi el nombre del hotel..."
+                                emptyMessage="No se encontraron hoteles"
+                                initialLabel={item.hotel_name || ""}
+                                searchFn={searchHotels}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Estrellas</Label>
+                              <Select
+                                value={String(item.hotel_stars || "")}
+                                onValueChange={(v) => updateItem(option.id, item.id, "hotel_stars", Number(v))}
+                              >
+                                <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
+                                <SelectContent>
+                                  {[1, 2, 3, 4, 5].map((s) => (
+                                    <SelectItem key={s} value={String(s)}>{s} estrellas</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Habitacion</Label>
+                              <Input
+                                value={item.room_type || ""}
+                                onChange={(e) => updateItem(option.id, item.id, "room_type", e.target.value)}
+                                placeholder="Doble, Suite..."
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Regimen</Label>
+                              <Select
+                                value={item.meal_plan || ""}
+                                onValueChange={(v) => updateItem(option.id, item.id, "meal_plan", v)}
+                              >
+                                <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
+                                <SelectContent>
+                                  {MEAL_PLANS.map((mp) => (
+                                    <SelectItem key={mp.value} value={mp.value}>{mp.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Check-in</Label>
+                              <DateInputWithCalendar
+                                value={toDate(item.checkin_date)}
+                                onChange={(d) => updateItem(option.id, item.id, "checkin_date", toStr(d))}
+                                placeholder="dd/mm/aaaa"
+                                className="h-9 rounded-md text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Check-out</Label>
+                              <DateInputWithCalendar
+                                value={toDate(item.checkout_date)}
+                                onChange={(d) => updateItem(option.id, item.id, "checkout_date", toStr(d))}
+                                placeholder="dd/mm/aaaa"
+                                minDate={toDate(item.checkin_date)}
+                                className="h-9 rounded-md text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Noches</Label>
+                              <Input type="number" min={1} value={item.nights || ""} onChange={(e) => updateItem(option.id, item.id, "nights", Number(e.target.value))} className="text-sm" />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Habitaciones</Label>
+                              <Input type="number" min={1} value={item.rooms || 1} onChange={(e) => updateItem(option.id, item.id, "rooms", Number(e.target.value))} className="text-sm" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Flight-specific fields */}
+                      {item.item_type === "FLIGHT" && (
+                        <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del vuelo</p>
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Aerolinea</Label>
+                              <Input
+                                value={item.airline || ""}
+                                onChange={(e) => updateItem(option.id, item.id, "airline", e.target.value)}
+                                placeholder="Ej: Aerolineas Argentinas"
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Ruta</Label>
+                              <Input
+                                value={item.flight_route || ""}
+                                onChange={(e) => updateItem(option.id, item.id, "flight_route", e.target.value)}
+                                placeholder="Ej: EZE - MIA"
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Clase</Label>
+                              <Select
+                                value={item.flight_class || ""}
+                                onValueChange={(v) => updateItem(option.id, item.id, "flight_class", v)}
+                              >
+                                <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
+                                <SelectContent>
+                                  {FLIGHT_CLASSES.map((fc) => (
+                                    <SelectItem key={fc.value} value={fc.value}>{fc.label}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Escalas</Label>
+                              <Input
+                                type="number"
+                                min={0}
+                                value={item.flight_stops ?? 0}
+                                onChange={(e) => updateItem(option.id, item.id, "flight_stops", Number(e.target.value))}
+                                className="text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Fecha ida</Label>
+                              <DateInputWithCalendar
+                                value={toDate(item.flight_date)}
+                                onChange={(d) => updateItem(option.id, item.id, "flight_date", toStr(d))}
+                                placeholder="dd/mm/aaaa"
+                                className="h-9 rounded-md text-sm"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">Fecha vuelta</Label>
+                              <DateInputWithCalendar
+                                value={toDate(item.flight_return_date)}
+                                onChange={(d) => updateItem(option.id, item.id, "flight_return_date", toStr(d))}
+                                placeholder="dd/mm/aaaa"
+                                minDate={toDate(item.flight_date)}
+                                className="h-9 rounded-md text-sm"
+                              />
+                            </div>
+                          </div>
+                          {/* Stopover details */}
+                          {(item.stopovers || []).length > 0 && (
+                            <div className="space-y-2 pt-1">
+                              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Escalas</p>
+                              {(item.stopovers || []).map((stop, si) => (
+                                <div key={si} className="grid grid-cols-2 gap-2">
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Escala {si + 1} — Ciudad</Label>
+                                    <Input
+                                      value={stop.city}
+                                      onChange={(e) => updateStopover(option.id, item.id, si, "city", e.target.value)}
+                                      placeholder="Ej: Panama City"
+                                      className="text-sm"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-xs">Tiempo de espera</Label>
+                                    <Input
+                                      value={stop.wait_time}
+                                      onChange={(e) => updateStopover(option.id, item.id, si, "wait_time", e.target.value)}
+                                      placeholder="Ej: 2h 30m"
+                                      className="text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Transfer-specific fields */}
+                      {item.item_type === "TRANSFER" && (
+                        <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
+                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del traslado</p>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Detalle</Label>
+                            <Input
+                              value={item.transfer_description || ""}
+                              onChange={(e) => updateItem(option.id, item.id, "transfer_description", e.target.value)}
+                              placeholder="Ej: Aeropuerto - Hotel, privado"
+                              className="text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Add item buttons */}
+                <div className="flex flex-wrap gap-1">
+                  {ITEM_TYPES.map((t) => {
+                    const Icon = t.icon
+                    return (
+                      <Button
+                        key={t.value}
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        onClick={() => addItem(option.id, t.value)}
+                      >
+                        <Plus className="h-3 w-3" />
+                        <Icon className="h-3 w-3" />
+                        {t.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
 
           {/* Add option button */}
           {options.length < 4 && (
@@ -912,36 +1110,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           </div>
         </div>
 
-        {/* Sticky footer with subtotals + actions */}
-        <div className="border-t bg-background px-6 py-3 shrink-0 space-y-3">
-          {/* Subtotals per service type */}
-          {(() => {
-            // Aggregate across all options (use first option if single, or show global)
-            const allItems = options.flatMap(o => o.items)
-            const byType: Record<string, { sale: number; cost: number; count: number }> = {}
-            for (const item of allItems) {
-              const t = item.item_type
-              if (!byType[t]) byType[t] = { sale: 0, cost: 0, count: 0 }
-              byType[t].sale += (item.unit_price || 0) * (item.quantity || 1)
-              byType[t].cost += (item.cost_amount || 0) * (item.quantity || 1)
-              byType[t].count++
-            }
-            const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
-            const totalCost = Object.values(byType).reduce((s, v) => s + v.cost, 0)
-            const totalClient = options.reduce((s, o) => s + (o.total_amount || 0), 0)
-            const totalMargin = totalClient - totalCost
-            const hasAnyValue = totalSale > 0 || totalCost > 0 || totalClient > 0
-
-            if (!hasAnyValue) return null
-
-            return (
-              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
-                {Object.entries(byType).map(([type, vals]) => {
+        {/* ═══════ STICKY FOOTER ═══════ */}
+        <div className="border-t-2 border-primary/20 bg-muted/30 px-6 py-4 shrink-0 space-y-3">
+          {/* Subtotals by service type */}
+          {globalTotals.totalSale > 0 || globalTotals.totalCost > 0 ? (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+                {Object.entries(globalTotals.byType).map(([type, vals]) => {
                   const typeConfig = ITEM_TYPES.find(t => t.value === type)
                   const Icon = typeConfig?.icon || MapPin
                   return vals.sale > 0 || vals.cost > 0 ? (
-                    <div key={type} className="flex items-center justify-between text-muted-foreground">
-                      <span className="flex items-center gap-1">
+                    <div key={type} className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1.5">
                         <Icon className="h-3 w-3" />
                         {typeConfig?.label || type} ({vals.count})
                       </span>
@@ -949,43 +1129,61 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     </div>
                   ) : null
                 })}
-                {totalSale > 0 && (
-                  <>
-                    <div className="col-span-2 border-t border-border/40 my-1" />
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Suma servicios</span>
-                      <span className="font-mono">{currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Costo operadores</span>
-                      <span className="font-mono">{currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </>
-                )}
-                {totalClient > 0 && (
-                  <div className="col-span-2 flex items-center justify-between pt-1">
-                    <span className="text-sm font-semibold">Total cliente ({options.length > 1 ? `${options.length} opciones` : "1 opcion"})</span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm font-mono font-semibold">{currency} {totalClient.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                      <span className={`text-xs font-mono ${totalMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
-                        margen {currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                      </span>
+              </div>
+              <Separator className="my-1" />
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <div className="text-xs text-muted-foreground flex items-center gap-4">
+                    <span>Venta: <span className="font-mono font-medium text-foreground">{currency} {globalTotals.totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></span>
+                    <span>Costo: <span className="font-mono font-medium text-foreground">{currency} {globalTotals.totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Precio cliente</p>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground">{currency}</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={options[0]?.total_amount || ""}
+                        onChange={(e) => {
+                          const val = Number(e.target.value)
+                          setOptions(prev => prev.map((o, i) => i === 0 ? { ...o, total_amount: val } : o))
+                        }}
+                        className="w-32 text-right font-mono font-bold text-lg h-9"
+                        placeholder="0.00"
+                      />
                     </div>
                   </div>
-                )}
+                  <div className={`rounded-lg px-3 py-1.5 text-center ${globalTotals.totalMargin >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Margen</p>
+                    <p className={`text-sm font-mono font-bold ${globalTotals.totalMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
+                      {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
               </div>
-            )
-          })()}
+            </div>
+          ) : null}
 
           {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-2 justify-end">
+          <div className="flex flex-col sm:flex-row gap-2 justify-end pt-1">
             <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancelar
             </Button>
-            <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
-              {saving && !sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-              Guardar borrador
-            </Button>
+            {savedQuotation ? (
+              <Button variant="secondary" onClick={handleViewQuotation}>
+                <Eye className="h-4 w-4 mr-2" />
+                Ver cotizacion
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
+                {saving && !sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+                Guardar borrador
+              </Button>
+            )}
             <Button onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
               {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
               Guardar y enviar por WhatsApp
