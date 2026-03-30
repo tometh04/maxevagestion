@@ -19,9 +19,9 @@ describe('Permissions System', () => {
         ]
         const permissions: Permission[] = ['read', 'write', 'delete', 'export']
 
-        for (const module of modules) {
+        for (const mod of modules) {
           for (const perm of permissions) {
-            expect(hasPermission('SUPER_ADMIN', module, perm)).toBe(true)
+            expect(hasPermission('SUPER_ADMIN', mod, perm)).toBe(true)
           }
         }
       })
@@ -117,8 +117,8 @@ describe('Permissions System', () => {
           'dashboard', 'leads', 'operations', 'customers', 'operators',
           'cash', 'accounting', 'alerts', 'reports', 'commissions', 'documents', 'tasks',
         ]
-        for (const module of readableModules) {
-          expect(hasPermission('VIEWER', module, 'read')).toBe(true)
+        for (const mod of readableModules) {
+          expect(hasPermission('VIEWER', mod, 'read')).toBe(true)
         }
       })
 
@@ -131,8 +131,8 @@ describe('Permissions System', () => {
           'dashboard', 'leads', 'operations', 'customers', 'operators',
           'cash', 'accounting', 'alerts', 'reports', 'commissions', 'settings', 'documents', 'tasks',
         ]
-        for (const module of modules) {
-          expect(hasPermission('VIEWER', module, 'write')).toBe(false)
+        for (const mod of modules) {
+          expect(hasPermission('VIEWER', mod, 'write')).toBe(false)
         }
       })
 
@@ -278,8 +278,8 @@ describe('Permissions System', () => {
         'dashboard', 'leads', 'operations', 'customers', 'operators',
         'cash', 'accounting', 'alerts', 'reports', 'commissions', 'settings', 'documents', 'tasks',
       ]
-      for (const module of allModules) {
-        expect(shouldShowInSidebar('SUPER_ADMIN', module)).toBe(true)
+      for (const mod of allModules) {
+        expect(shouldShowInSidebar('SUPER_ADMIN', mod)).toBe(true)
       }
     })
 
@@ -291,15 +291,15 @@ describe('Permissions System', () => {
     describe('CONTABLE sidebar', () => {
       it('should show operations, operators, cash, accounting, alerts, reports, commissions, tasks', () => {
         const visible: Module[] = ['operations', 'operators', 'cash', 'accounting', 'alerts', 'reports', 'commissions', 'tasks']
-        for (const module of visible) {
-          expect(shouldShowInSidebar('CONTABLE', module)).toBe(true)
+        for (const mod of visible) {
+          expect(shouldShowInSidebar('CONTABLE', mod)).toBe(true)
         }
       })
 
       it('should hide dashboard, leads, customers, settings, documents', () => {
         const hidden: Module[] = ['dashboard', 'leads', 'customers', 'settings', 'documents']
-        for (const module of hidden) {
-          expect(shouldShowInSidebar('CONTABLE', module)).toBe(false)
+        for (const mod of hidden) {
+          expect(shouldShowInSidebar('CONTABLE', mod)).toBe(false)
         }
       })
     })
@@ -307,15 +307,15 @@ describe('Permissions System', () => {
     describe('SELLER sidebar', () => {
       it('should show dashboard, leads, operations, customers, alerts, reports, commissions, documents, tasks', () => {
         const visible: Module[] = ['dashboard', 'leads', 'operations', 'customers', 'alerts', 'reports', 'commissions', 'documents', 'tasks']
-        for (const module of visible) {
-          expect(shouldShowInSidebar('SELLER', module)).toBe(true)
+        for (const mod of visible) {
+          expect(shouldShowInSidebar('SELLER', mod)).toBe(true)
         }
       })
 
       it('should hide operators, cash, accounting, settings', () => {
         const hidden: Module[] = ['operators', 'cash', 'accounting', 'settings']
-        for (const module of hidden) {
-          expect(shouldShowInSidebar('SELLER', module)).toBe(false)
+        for (const mod of hidden) {
+          expect(shouldShowInSidebar('SELLER', mod)).toBe(false)
         }
       })
     })

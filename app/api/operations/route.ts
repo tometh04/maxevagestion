@@ -242,7 +242,7 @@ export async function POST(request: Request) {
       entity_type: "operation",
       entity_id: operation.id,
       details: { type, destination, sale_amount_total, currency },
-      ip_address: getClientIP(request),
+      ip_address: getClientIP(request) || undefined,
     })
 
     // Auto-generate file_code after operation is created (so we can use the real ID)

@@ -167,7 +167,7 @@ export async function POST(request: Request) {
       entity_type: "payment",
       entity_id: payment.id,
       details: { amount, currency, direction, payer_type },
-      ip_address: getClientIP(request),
+      ip_address: getClientIP(request) || undefined,
     })
 
     // Solo crear movimientos contables si el pago está PAID explícitamente
