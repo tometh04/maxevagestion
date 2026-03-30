@@ -1025,6 +1025,7 @@ export function LeadDetailDialog({
             region: lead.region,
             agency_id: lead.agency_id,
           }}
+          operators={operators}
           onSuccess={() => {
             loadQuotations()
           }}
