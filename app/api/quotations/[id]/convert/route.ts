@@ -7,13 +7,20 @@ export const dynamic = "force-dynamic"
 // Mapeo de item_type de cotización → service_type de operación
 const ITEM_TO_SERVICE_TYPE: Record<string, string> = {
   ACCOMMODATION: "HOTEL",
+  HOTEL: "HOTEL",
   FLIGHT: "FLIGHT",
   TRANSFER: "TRANSFER",
   ACTIVITY: "EXCURSION",
+  EXCURSION: "EXCURSION",
   INSURANCE: "ASSISTANCE",
+  ASSISTANCE: "ASSISTANCE",
   VISA: "VISA",
+  SEAT: "SEAT",
+  LUGGAGE: "LUGGAGE",
   OTHER: "SEAT", // fallback
 }
+
+const COMMISSION_SERVICE_TYPES = new Set(["HOTEL", "FLIGHT", "TRANSFER", "EXCURSION", "ASSISTANCE"])
 
 // POST — Convertir cotización aprobada a operación
 export async function POST(
@@ -148,20 +155,25 @@ export async function POST(
       ? optionTotal / selectedItems.length
       : 0
 
+    let totalOperatorCost = 0
+
     for (const item of selectedItems) {
       const serviceType = ITEM_TO_SERVICE_TYPE[item.item_type] || "SEAT"
-      const itemSaleAmount = item.subtotal || item.unit_price || distributedAmount
+      const itemSaleAmount = item.sale_amount || item.subtotal || item.unit_price || distributedAmount
+      const itemCostAmount = Number(item.cost_amount) || 0
+      totalOperatorCost += itemCostAmount
 
       const servicePayload: Record<string, any> = {
         operation_id: operation.id,
         agency_id: quotation.agency_id,
         service_type: serviceType,
         description: item.description,
+        operator_id: item.operator_id || null,
         sale_amount: itemSaleAmount,
         sale_currency: item.currency || quotation.currency,
-        cost_amount: 0, // El vendedor completará el costo después
-        cost_currency: item.currency || quotation.currency,
-        generates_commission: ["TRANSFER", "ASSISTANCE"].includes(serviceType),
+        cost_amount: itemCostAmount,
+        cost_currency: item.cost_currency || item.currency || quotation.currency,
+        generates_commission: COMMISSION_SERVICE_TYPES.has(serviceType),
       }
 
       // Campos específicos de hotel
@@ -186,6 +198,22 @@ export async function POST(
         console.error("Error creating service from quotation item:", serviceError)
         // No falla toda la operación por un servicio
       }
+    }
+
+    // 8b. Actualizar operator_cost y márgenes con los costos reales de servicios
+    if (totalOperatorCost > 0) {
+      const newMargin = saleTotal - totalOperatorCost
+      const newMarginPct = saleTotal > 0 ? (newMargin / saleTotal) * 100 : 0
+      await supabase
+        .from("operations")
+        .update({
+          operator_cost: totalOperatorCost,
+          margin_amount: newMargin,
+          margin_percentage: newMarginPct,
+          billing_margin_amount: newMargin,
+          billing_margin_percentage: newMarginPct,
+        })
+        .eq("id", operation.id)
     }
 
     // 9. Vincular cliente del lead a la operación (si existe)
