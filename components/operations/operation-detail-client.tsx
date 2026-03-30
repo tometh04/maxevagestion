@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import Link from "next/link"
-import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt } from "lucide-react"
+import { ArrowLeft, Pencil, AlertCircle, Trash2, Loader2, RefreshCw, HelpCircle, Receipt, Info, Users, FileText, CreditCard, Wrench, ShoppingBag, Calculator, BarChart3, Bell } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -209,21 +209,48 @@ export function OperationDetailClient({
 
       <Tabs defaultValue="info" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="info">Información</TabsTrigger>
-          <TabsTrigger value="customers">Clientes ({customers.length})</TabsTrigger>
-          <TabsTrigger value="documents">Documentos ({documents?.length || 0})</TabsTrigger>
+          <TabsTrigger value="info" className="gap-1.5">
+            <Info className="h-3.5 w-3.5" />
+            Información
+          </TabsTrigger>
+          <TabsTrigger value="customers" className="gap-1.5">
+            <Users className="h-3.5 w-3.5" />
+            Clientes ({customers.length})
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Documentos ({documents?.length || 0})
+          </TabsTrigger>
           {userRole !== "SELLER" && (
-            <TabsTrigger value="payments">Pagos Operación ({operationBasePayments.length})</TabsTrigger>
+            <TabsTrigger value="payments" className="gap-1.5">
+              <CreditCard className="h-3.5 w-3.5" />
+              Pagos Operación ({operationBasePayments.length})
+            </TabsTrigger>
           )}
-          <TabsTrigger value="services">Servicios</TabsTrigger>
-          <TabsTrigger value="itinerary">Detalle de Compra</TabsTrigger>
+          <TabsTrigger value="services" className="gap-1.5">
+            <Wrench className="h-3.5 w-3.5" />
+            Servicios
+          </TabsTrigger>
+          <TabsTrigger value="itinerary" className="gap-1.5">
+            <ShoppingBag className="h-3.5 w-3.5" />
+            Detalle de Compra
+          </TabsTrigger>
           {userRole !== "SELLER" && (
-            <TabsTrigger value="accounting">Contabilidad</TabsTrigger>
+            <TabsTrigger value="accounting" className="gap-1.5">
+              <Calculator className="h-3.5 w-3.5" />
+              Contabilidad
+            </TabsTrigger>
           )}
           {userRole !== "SELLER" && (
-            <TabsTrigger value="metrics">Métricas</TabsTrigger>
+            <TabsTrigger value="metrics" className="gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Métricas
+            </TabsTrigger>
           )}
-          <TabsTrigger value="alerts">Alertas ({alerts?.length || 0})</TabsTrigger>
+          <TabsTrigger value="alerts" className="gap-1.5">
+            <Bell className="h-3.5 w-3.5" />
+            Alertas ({alerts?.length || 0})
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="space-y-6">
