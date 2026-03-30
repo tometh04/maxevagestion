@@ -16,6 +16,7 @@ import {
   getExchangeRateWithFallback,
 } from "@/lib/accounting/exchange-rates"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 /**
  * POST /api/payments
@@ -157,6 +158,17 @@ export async function POST(request: Request) {
       console.error("Error creating payment:", paymentError)
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
     }
+
+    // Audit log for payment creation
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "PAYMENT_CREATE",
+      entity_type: "payment",
+      entity_id: payment.id,
+      details: { amount, currency, direction, payer_type },
+      ip_address: getClientIP(request),
+    })
 
     // Solo crear movimientos contables si el pago está PAID explícitamente
     // Si status no se especifica, el default es PENDING, así que no crear movimientos

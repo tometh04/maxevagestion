@@ -10,6 +10,7 @@ import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 export async function POST(request: Request) {
   try {
@@ -232,6 +233,17 @@ export async function POST(request: Request) {
       const errorMsg = operationError.message || operationError.details || operationError.hint || "Error al crear operación"
       return NextResponse.json({ error: errorMsg }, { status: 500 })
     }
+
+    // Audit log for operation creation
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "CREATE",
+      entity_type: "operation",
+      entity_id: operation.id,
+      details: { type, destination, sale_amount_total, currency },
+      ip_address: getClientIP(request),
+    })
 
     // Auto-generate file_code after operation is created (so we can use the real ID)
     const op = operation as any

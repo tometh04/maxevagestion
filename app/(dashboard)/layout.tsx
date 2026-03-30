@@ -44,6 +44,11 @@ export default async function DashboardLayout({
         />
         <SidebarInset className="min-w-0">
           <SiteHeader />
+          {process.env.DISABLE_AUTH === "true" && (
+            <div className="bg-yellow-500 text-yellow-950 text-center text-xs py-1 px-4 font-medium">
+              ⚠️ Modo desarrollo — Autenticación deshabilitada (DISABLE_AUTH=true)
+            </div>
+          )}
           <div className="flex flex-1 flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
               {children}

@@ -42,6 +42,7 @@ export async function GET(request: Request) {
         assigned_seller_id,
         has_deposit,
         deposit_amount,
+        deposit_currency,
         agency_id,
         archived_at
       `)
@@ -187,8 +188,9 @@ export async function GET(request: Request) {
         pipeline[lead.status].count++
         if (lead.has_deposit && lead.deposit_amount) {
           const depositAmount = parseFloat(lead.deposit_amount) || 0
-          totalDepositsUsd += depositAmount / latestExchangeRate
-          pipeline[lead.status].value += depositAmount / latestExchangeRate
+          const depositUsd = lead.deposit_currency === "USD" ? depositAmount : depositAmount / latestExchangeRate
+          totalDepositsUsd += depositUsd
+          pipeline[lead.status].value += depositUsd
         }
       }
 
