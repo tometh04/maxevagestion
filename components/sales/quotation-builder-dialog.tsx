@@ -411,7 +411,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           </div>
         </div>
 
-        <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1">
+        <div className="px-6 py-4 space-y-5 overflow-y-auto flex-1" data-scroll-container>
           {/* Datos generales */}
           <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center gap-2 mb-3">
@@ -912,19 +912,85 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           </div>
         </div>
 
-        {/* Sticky footer */}
-        <div className="border-t bg-background px-6 py-4 flex flex-col sm:flex-row gap-2 justify-end">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
-            {saving && !sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-            Guardar borrador
-          </Button>
-          <Button onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
-            {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-            Guardar y enviar por WhatsApp
-          </Button>
+        {/* Sticky footer with subtotals + actions */}
+        <div className="border-t bg-background px-6 py-3 shrink-0 space-y-3">
+          {/* Subtotals per service type */}
+          {(() => {
+            // Aggregate across all options (use first option if single, or show global)
+            const allItems = options.flatMap(o => o.items)
+            const byType: Record<string, { sale: number; cost: number; count: number }> = {}
+            for (const item of allItems) {
+              const t = item.item_type
+              if (!byType[t]) byType[t] = { sale: 0, cost: 0, count: 0 }
+              byType[t].sale += (item.unit_price || 0) * (item.quantity || 1)
+              byType[t].cost += (item.cost_amount || 0) * (item.quantity || 1)
+              byType[t].count++
+            }
+            const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
+            const totalCost = Object.values(byType).reduce((s, v) => s + v.cost, 0)
+            const totalClient = options.reduce((s, o) => s + (o.total_amount || 0), 0)
+            const totalMargin = totalClient - totalCost
+            const hasAnyValue = totalSale > 0 || totalCost > 0 || totalClient > 0
+
+            if (!hasAnyValue) return null
+
+            return (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-xs">
+                {Object.entries(byType).map(([type, vals]) => {
+                  const typeConfig = ITEM_TYPES.find(t => t.value === type)
+                  const Icon = typeConfig?.icon || MapPin
+                  return vals.sale > 0 || vals.cost > 0 ? (
+                    <div key={type} className="flex items-center justify-between text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Icon className="h-3 w-3" />
+                        {typeConfig?.label || type} ({vals.count})
+                      </span>
+                      <span className="font-mono">{currency} {vals.sale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  ) : null
+                })}
+                {totalSale > 0 && (
+                  <>
+                    <div className="col-span-2 border-t border-border/40 my-1" />
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Suma servicios</span>
+                      <span className="font-mono">{currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Costo operadores</span>
+                      <span className="font-mono">{currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </>
+                )}
+                {totalClient > 0 && (
+                  <div className="col-span-2 flex items-center justify-between pt-1">
+                    <span className="text-sm font-semibold">Total cliente ({options.length > 1 ? `${options.length} opciones` : "1 opcion"})</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-mono font-semibold">{currency} {totalClient.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
+                      <span className={`text-xs font-mono ${totalMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
+                        margen {currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Action buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 justify-end">
+            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
+              {saving && !sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Guardar borrador
+            </Button>
+            <Button onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
+              {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+              Guardar y enviar por WhatsApp
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
