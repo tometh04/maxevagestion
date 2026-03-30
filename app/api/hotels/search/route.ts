@@ -22,6 +22,9 @@ export async function GET(request: Request) {
         city: h.city,
         country: h.country,
         zone: h.zone || null,
+        address: h.address || null,
+        photo_url: h.photo_url || null,
+        google_rating: h.google_rating || null,
       }))
     )
   } catch (error: any) {

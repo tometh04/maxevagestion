@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +54,7 @@ interface QuotationItem {
   hotel_stars?: number
   hotel_address?: string
   hotel_phone?: string
+  hotel_photo_url?: string
   room_type?: string
   meal_plan?: string
   checkin_date?: string
@@ -257,6 +258,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 hotel_stars: item.hotel_stars || undefined,
                 hotel_address: item.hotel_address || undefined,
                 hotel_phone: item.hotel_phone || undefined,
+                hotel_photo_url: item.hotel_photo_url || undefined,
                 room_type: item.room_type || undefined,
                 meal_plan: item.meal_plan || undefined,
                 checkin_date: item.checkin_date || undefined,
@@ -341,6 +343,9 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   }, [priceKey])
 
   // --- Hotel search by destination ---
+  // Cache hotel data so we can auto-fill stars/address/photo when selected
+  const hotelDataCache = useRef<Record<string, { stars: number; address: string | null; photo_url: string | null; google_rating: number | null }>>({})
+
   const searchHotels = useCallback(async (query: string): Promise<ComboboxOption[]> => {
     const opts: ComboboxOption[] = []
     if (query && query.length >= 1) {
@@ -353,9 +358,16 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       params.set("limit", "15")
       const res = await fetch(`/api/hotels/search?${params.toString()}`)
       if (res.ok) {
-        const hotels: Array<{ name: string; stars: number; city: string; country: string; zone: string | null }> = await res.json()
+        const hotels: Array<{ name: string; stars: number; city: string; country: string; zone: string | null; address: string | null; photo_url: string | null; google_rating: number | null }> = await res.json()
         for (const hotel of hotels) {
           const stars = hotel.stars ? "★".repeat(hotel.stars) : ""
+          // Cache for auto-fill on selection
+          hotelDataCache.current[hotel.name] = {
+            stars: hotel.stars,
+            address: hotel.address,
+            photo_url: hotel.photo_url,
+            google_rating: hotel.google_rating,
+          }
           opts.push({
             value: hotel.name,
             label: hotel.name,
@@ -451,6 +463,13 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 const updated = { ...i, [field]: value }
                 if (field === "item_type") {
                   updated.generates_commission = COMMISSION_TYPES.has(value)
+                }
+                // Auto-fill hotel data when hotel is selected from search
+                if (field === "hotel_name" && value && hotelDataCache.current[value]) {
+                  const cached = hotelDataCache.current[value]
+                  if (cached.stars) updated.hotel_stars = cached.stars
+                  if (cached.address) updated.hotel_address = cached.address
+                  if (cached.photo_url) updated.hotel_photo_url = cached.photo_url
                 }
                 // Auto-calc nights when dates change
                 if ((field === "checkin_date" || field === "checkout_date") && updated.checkin_date && updated.checkout_date) {
@@ -583,6 +602,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             hotel_stars: item.hotel_stars || null,
             hotel_address: item.hotel_address || null,
             hotel_phone: item.hotel_phone || null,
+            hotel_photo_url: item.hotel_photo_url || null,
             room_type: item.room_type || null,
             meal_plan: item.meal_plan || null,
             checkin_date: item.checkin_date || null,
@@ -948,7 +968,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                       {/* Hotel-specific fields */}
                       {(item.item_type === "HOTEL" || item.item_type === "ACCOMMODATION") && (
                         <div className="rounded-md border border-border/30 bg-background/50 p-3 space-y-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del hotel</p>
+                          <div className="flex items-center gap-3">
+                            {item.hotel_photo_url ? (
+                              <img src={item.hotel_photo_url} alt={item.hotel_name || ""} className="w-20 h-14 object-cover rounded-md border flex-shrink-0" />
+                            ) : null}
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del hotel</p>
+                          </div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                             <div className="col-span-2 space-y-1">
                               <Label className="text-xs">Hotel</Label>

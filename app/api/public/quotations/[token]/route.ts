@@ -28,7 +28,7 @@ export async function GET(
           id, item_type, description, quantity, subtotal, currency,
           order_index, notes, provider, option_id,
           checkin_date, checkout_date, nights,
-          hotel_name, hotel_stars, room_type, meal_plan, hotel_address, rooms,
+          hotel_name, hotel_stars, room_type, meal_plan, hotel_address, hotel_photo_url, rooms,
           airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date,
           transfer_description,
           unit_price

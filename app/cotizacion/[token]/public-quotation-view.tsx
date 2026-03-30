@@ -31,6 +31,7 @@ interface QuotationItem {
   checkout_date?: string
   nights?: number
   hotel_address?: string
+  hotel_photo_url?: string
   rooms?: number
   airline?: string
   flight_route?: string
@@ -144,7 +145,24 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
   const mealLabel = item.meal_plan ? (MEAL_PLAN_LABELS[item.meal_plan] || item.meal_plan) : null
 
   return (
-    <div className="bg-white border rounded-xl p-4 space-y-3">
+    <div className="bg-white border rounded-xl overflow-hidden space-y-0">
+      {/* Hotel photo banner */}
+      {item.hotel_photo_url && (
+        <div className="relative w-full h-36 overflow-hidden">
+          <img src={item.hotel_photo_url} alt={item.hotel_name || "Hotel"} className="w-full h-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          <div className="absolute bottom-2 left-3 flex items-center gap-2">
+            {stars && <span className="text-amber-400 text-sm drop-shadow-lg">{stars}</span>}
+            <h4 className="font-bold text-white text-sm drop-shadow-lg">
+              {item.hotel_name || item.description}
+            </h4>
+          </div>
+        </div>
+      )}
+
+      <div className="p-4 space-y-3">
+      {/* Header without photo */}
+      {!item.hotel_photo_url && (
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-lg flex-shrink-0">
@@ -164,6 +182,7 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
           </p>
         )}
       </div>
+      )}
 
       {/* Hotel name if different from description */}
       {item.hotel_name && item.description && item.hotel_name !== item.description && (
@@ -216,6 +235,7 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
       {item.provider && (
         <p className="text-xs text-muted-foreground">Operador: {item.provider}</p>
       )}
+      </div>
     </div>
   )
 }
