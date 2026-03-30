@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Pencil } from "lucide-react"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye } from "lucide-react"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 
@@ -29,6 +29,8 @@ interface QuotationBuilderProps {
   }
   operators?: Array<{ id: string; name: string }>
   onSuccess?: (quotation: any) => void
+  /** If set, loads and edits an existing quotation instead of creating new */
+  existingQuotationId?: string | null
 }
 
 interface StopoverInfo {
@@ -187,13 +189,14 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
   return options
 }
 
-export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess }: QuotationBuilderProps) {
+export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
+  const [loadingExisting, setLoadingExisting] = useState(false)
 
   // General data
-  const [quotationTitle, setQuotationTitle] = useState(`Nueva Cotizacion — ${lead.contact_name}`)
+  const [quotationTitle, setQuotationTitle] = useState(lead.contact_name)
   const [destination, setDestination] = useState(lead.destination || "")
   const [origin, setOrigin] = useState("")
   const [region, setRegion] = useState(lead.region || "OTROS")
@@ -207,6 +210,76 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>([createEmptyOption(1)])
+
+  // Load existing quotation for editing
+  useEffect(() => {
+    if (!open || !existingQuotationId) return
+    let cancelled = false
+    setLoadingExisting(true)
+    fetch(`/api/quotations/${existingQuotationId}`)
+      .then(r => r.json())
+      .then(({ data }) => {
+        if (cancelled || !data) return
+        setSavedQuotation(data)
+        setQuotationTitle(lead.contact_name)
+        setDestination(data.destination || "")
+        setOrigin(data.origin || "")
+        setRegion(data.region || "OTROS")
+        setDepartureDate(data.departure_date || "")
+        setReturnDate(data.return_date || "")
+        setAdults(data.adults || 1)
+        setChildren(data.children || 0)
+        setInfants(data.infants || 0)
+        setCurrency(data.currency || "USD")
+        setNotes(data.notes || "")
+        // Reconstruct options from quotation_options + quotation_items
+        const opts = (data.quotation_options || [])
+          .sort((a: any, b: any) => a.option_number - b.option_number)
+          .map((opt: any) => ({
+            id: opt.id,
+            title: opt.title || `Opcion ${opt.option_number}`,
+            total_amount: opt.total_amount || 0,
+            items: (data.quotation_items || [])
+              .filter((item: any) => item.option_id === opt.id)
+              .sort((a: any, b: any) => a.order_index - b.order_index)
+              .map((item: any) => ({
+                id: generateId(),
+                item_type: item.item_type || "OTHER",
+                description: item.description || "",
+                provider: item.provider || "",
+                unit_price: item.sale_amount || item.unit_price || 0,
+                quantity: item.quantity || 1,
+                cost_amount: item.cost_amount || 0,
+                cost_currency: item.cost_currency || "USD",
+                operator_id: item.operator_id || null,
+                generates_commission: item.generates_commission || false,
+                hotel_name: item.hotel_name || undefined,
+                hotel_stars: item.hotel_stars || undefined,
+                hotel_address: item.hotel_address || undefined,
+                hotel_phone: item.hotel_phone || undefined,
+                room_type: item.room_type || undefined,
+                meal_plan: item.meal_plan || undefined,
+                checkin_date: item.checkin_date || undefined,
+                checkout_date: item.checkout_date || undefined,
+                nights: item.nights || undefined,
+                rooms: item.rooms || undefined,
+                airline: item.airline || undefined,
+                flight_route: item.flight_route || undefined,
+                flight_date: item.flight_date || undefined,
+                flight_return_date: item.flight_return_date || undefined,
+                flight_stops: item.flight_stops ?? 0,
+                flight_class: item.flight_class || undefined,
+                transfer_description: item.transfer_description || undefined,
+                stopovers: [],
+              })),
+          }))
+        if (opts.length > 0) setOptions(opts)
+      })
+      .catch(err => console.error("Error loading quotation:", err))
+      .finally(() => { if (!cancelled) setLoadingExisting(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, existingQuotationId])
 
   // --- Auto-fill flight route when origin/destination change ---
   useEffect(() => {
@@ -254,14 +327,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     })))
   }, [departureDate, returnDate])
 
-  // --- Auto-calculate total_amount for each option ---
+  // --- Auto-calculate total_amount for each option (always syncs from item prices) ---
   const priceKey = options.map(o => o.items.map(i => `${i.unit_price}:${i.quantity}`).join(",")).join("|")
   useEffect(() => {
     setOptions(prev => prev.map(opt => {
       const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
-      // Only auto-update if user hasn't manually set a different value
-      // (auto-update when total is 0 or matches the previous auto-calc)
-      if (opt.total_amount === 0 || Math.abs(opt.total_amount - saleTotal) < 0.01) {
+      if (Math.abs(opt.total_amount - saleTotal) > 0.001) {
         return { ...opt, total_amount: saleTotal }
       }
       return opt
@@ -529,26 +600,41 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         })),
       }
 
-      const res = await fetch("/api/quotations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+      // If editing existing, use PATCH; otherwise POST to create new
+      const isEditing = !!(savedQuotation?.id || existingQuotationId)
+      const quotationId = savedQuotation?.id || existingQuotationId
+
+      let res: Response
+      if (isEditing && quotationId) {
+        res = await fetch(`/api/quotations/${quotationId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      } else {
+        res = await fetch("/api/quotations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        })
+      }
 
       if (!res.ok) {
         const err = await res.json()
-        throw new Error(err.error || "Error al crear cotizacion")
+        throw new Error(err.error || "Error al guardar cotizacion")
       }
 
       const { data: quotation } = await res.json()
       setSavedQuotation(quotation)
 
       if (andSend && quotation) {
-        await fetch(`/api/quotations/${quotation.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: "SENT" }),
-        })
+        if (quotation.status !== "SENT") {
+          await fetch(`/api/quotations/${quotation.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "SENT" }),
+          })
+        }
 
         const publicUrl = `${window.location.origin}/cotizacion/${quotation.public_token}`
         const phone = lead.contact_phone?.replace(/[\s\-\(\)]/g, "") || ""
@@ -558,11 +644,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         )
         window.open(`https://wa.me/${cleanPhone}?text=${message}`, "_blank")
 
-        toast.success("Cotizacion creada y enviada")
+        toast.success(isEditing ? "Cotizacion actualizada y enviada" : "Cotizacion creada y enviada")
         onSuccess?.(quotation)
         onOpenChange(false)
       } else {
-        toast.success("Cotizacion guardada como borrador")
+        toast.success(isEditing ? "Cotizacion actualizada" : "Cotizacion guardada como borrador")
         onSuccess?.(quotation)
       }
     } catch (error: any) {
@@ -582,14 +668,16 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col p-0">
-        {/* Header — editable title */}
+        {/* Header — editable lead name */}
         <div className="px-6 pt-5 pb-2 shrink-0">
           <div className="flex items-center gap-2">
-            <FileIcon className="h-5 w-5 shrink-0" />
+            <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
+            <span className="text-lg font-semibold text-muted-foreground">{existingQuotationId || savedQuotation ? "Editar" : "Nueva"} Cotizacion —</span>
             <input
               value={quotationTitle}
               onChange={(e) => setQuotationTitle(e.target.value)}
-              className="text-lg font-semibold bg-transparent border-0 outline-none w-full focus:ring-1 focus:ring-primary/30 rounded px-1 -mx-1"
+              className="text-lg font-semibold bg-transparent border-0 outline-none flex-1 focus:ring-1 focus:ring-primary/30 rounded px-1"
+              placeholder="Nombre del cliente"
             />
           </div>
         </div>
@@ -1111,81 +1199,61 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         </div>
 
         {/* ═══════ STICKY FOOTER ═══════ */}
-        <div className="border-t-2 border-primary/20 bg-muted/30 px-6 py-4 shrink-0 space-y-3">
-          {/* Subtotals by service type */}
-          {globalTotals.totalSale > 0 || globalTotals.totalCost > 0 ? (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-1">
+        <div className="border-t border-border/60 bg-muted/20 px-6 py-3 shrink-0 space-y-3">
+          {/* Compact pricing summary */}
+          {(globalTotals.totalSale > 0 || globalTotals.totalCost > 0) && (
+            <div className="flex items-center justify-between gap-4">
+              {/* Left: service breakdown inline */}
+              <div className="flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
                 {Object.entries(globalTotals.byType).map(([type, vals]) => {
                   const typeConfig = ITEM_TYPES.find(t => t.value === type)
                   const Icon = typeConfig?.icon || MapPin
-                  return vals.sale > 0 || vals.cost > 0 ? (
-                    <div key={type} className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1.5">
-                        <Icon className="h-3 w-3" />
-                        {typeConfig?.label || type} ({vals.count})
-                      </span>
-                      <span className="font-mono">{currency} {vals.sale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span>
-                    </div>
+                  return vals.sale > 0 ? (
+                    <span key={type} className="flex items-center gap-1">
+                      <Icon className="h-3 w-3" />
+                      {typeConfig?.label || type} ({vals.count})
+                    </span>
                   ) : null
                 })}
               </div>
-              <Separator className="my-1" />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <div className="text-xs text-muted-foreground flex items-center gap-4">
-                    <span>Venta: <span className="font-mono font-medium text-foreground">{currency} {globalTotals.totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></span>
-                    <span>Costo: <span className="font-mono font-medium text-foreground">{currency} {globalTotals.totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</span></span>
-                  </div>
+              {/* Right: totals */}
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground">Venta</p>
+                  <p className="text-sm font-mono font-semibold">{currency} {globalTotals.totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="flex items-center gap-3">
+                {globalTotals.totalCost > 0 && (
                   <div className="text-right">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Precio cliente</p>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground">{currency}</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={options[0]?.total_amount || ""}
-                        onChange={(e) => {
-                          const val = Number(e.target.value)
-                          setOptions(prev => prev.map((o, i) => i === 0 ? { ...o, total_amount: val } : o))
-                        }}
-                        className="w-32 text-right font-mono font-bold text-lg h-9"
-                        placeholder="0.00"
-                      />
-                    </div>
+                    <p className="text-[10px] text-muted-foreground">Costo</p>
+                    <p className="text-sm font-mono font-semibold">{currency} {globalTotals.totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                   </div>
-                  <div className={`rounded-lg px-3 py-1.5 text-center ${globalTotals.totalMargin >= 0 ? "bg-green-500/10" : "bg-red-500/10"}`}>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Margen</p>
-                    <p className={`text-sm font-mono font-bold ${globalTotals.totalMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
-                      {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                </div>
+                )}
+                {globalTotals.totalCost > 0 && (
+                  <Badge variant="secondary" className={`text-xs font-mono ${globalTotals.totalMargin >= 0 ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-600"}`}>
+                    Margen: {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                  </Badge>
+                )}
               </div>
             </div>
-          ) : null}
+          )}
 
           {/* Action buttons */}
-          <div className="flex flex-col sm:flex-row gap-2 justify-end pt-1">
-            <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <div className="flex items-center gap-2 justify-end">
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
               Cancelar
             </Button>
-            {savedQuotation ? (
-              <Button variant="secondary" onClick={handleViewQuotation}>
-                <Eye className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving}>
+              {saving && !sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
+              {savedQuotation || existingQuotationId ? "Actualizar borrador" : "Guardar borrador"}
+            </Button>
+            {savedQuotation?.public_token && (
+              <Button variant="secondary" size="sm" onClick={handleViewQuotation}>
+                <Eye className="h-3.5 w-3.5 mr-1.5" />
                 Ver cotizacion
               </Button>
-            ) : (
-              <Button variant="secondary" onClick={() => handleSave(false)} disabled={saving}>
-                {saving && !sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
-                Guardar borrador
-              </Button>
             )}
-            <Button onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
-              {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
+            <Button size="sm" onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
+              {sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
               Guardar y enviar por WhatsApp
             </Button>
           </div>

@@ -202,6 +202,7 @@ export function LeadDetailDialog({
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
+  const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -630,7 +631,10 @@ export function LeadDetailDialog({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setQuotationDialogOpen(true)}
+                    onClick={() => {
+                      setEditingQuotationId(null)
+                      setQuotationDialogOpen(true)
+                    }}
                     className="h-7 text-xs"
                   >
                     <FileText className="h-3 w-3 mr-1" />
@@ -686,6 +690,21 @@ export function LeadDetailDialog({
                           </div>
                         </div>
                         <div className="flex items-center gap-1 ml-2">
+                          {q.status === "DRAFT" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingQuotationId(q.id)
+                                setQuotationDialogOpen(true)
+                              }}
+                              title="Editar borrador"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                           {q.public_token && (
                             <Button
                               variant="ghost"
@@ -909,7 +928,10 @@ export function LeadDetailDialog({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setQuotationDialogOpen(true)}
+                    onClick={() => {
+                      setEditingQuotationId(null)
+                      setQuotationDialogOpen(true)
+                    }}
                     className="shrink-0"
                   >
                     <FileText className="h-3.5 w-3.5" />
@@ -1015,7 +1037,10 @@ export function LeadDetailDialog({
       {lead && (
         <QuotationBuilderDialog
           open={quotationDialogOpen}
-          onOpenChange={setQuotationDialogOpen}
+          onOpenChange={(isOpen) => {
+            setQuotationDialogOpen(isOpen)
+            if (!isOpen) setEditingQuotationId(null)
+          }}
           lead={{
             id: lead.id,
             contact_name: lead.contact_name,
@@ -1026,6 +1051,7 @@ export function LeadDetailDialog({
             agency_id: lead.agency_id,
           }}
           operators={operators}
+          existingQuotationId={editingQuotationId}
           onSuccess={() => {
             loadQuotations()
           }}
