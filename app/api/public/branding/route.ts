@@ -26,6 +26,15 @@ export async function GET() {
       "company_email",
       "company_website",
       "company_instagram",
+      "company_legajo",
+      "company_tax_id",
+      "legajo",
+      "tax_id",
+      "address",
+      "phone",
+      "email",
+      "website",
+      "instagram",
     ]
 
     for (const item of data) {

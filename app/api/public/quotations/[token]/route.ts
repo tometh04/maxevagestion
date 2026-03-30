@@ -28,8 +28,10 @@ export async function GET(
           id, item_type, description, quantity, subtotal, currency,
           order_index, notes, provider, option_id,
           checkin_date, checkout_date, nights,
-          hotel_name, hotel_stars, room_type, meal_plan,
-          airline, flight_route, flight_class
+          hotel_name, hotel_stars, room_type, meal_plan, hotel_address, rooms,
+          airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date,
+          transfer_description,
+          unit_price
         )
       `)
       .eq("public_token", token)
@@ -94,9 +96,16 @@ export async function GET(
             checkin_date: item.checkin_date,
             checkout_date: item.checkout_date,
             nights: item.nights,
+            hotel_address: item.hotel_address,
+            rooms: item.rooms,
             airline: item.airline,
             flight_route: item.flight_route,
             flight_class: item.flight_class,
+            flight_stops: item.flight_stops,
+            flight_date: item.flight_date,
+            flight_return_date: item.flight_return_date,
+            transfer_description: item.transfer_description,
+            price_per_unit: item.unit_price,
           })),
       })),
     }

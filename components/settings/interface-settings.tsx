@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Palette, Image, Building2, Upload, X } from "lucide-react"
+import { Palette, Image, Building2, Upload, X, Pencil, Trash2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -86,6 +86,8 @@ async function loadAllSettings(): Promise<Record<string, string>> {
     "email",
     "website",
     "tax_id",
+    "legajo",
+    "instagram",
   ]
   for (const k of keys) {
     const v = localStorage.getItem(k)
@@ -154,13 +156,16 @@ export function InterfaceSettings() {
   const [uploading, setUploading] = useState(false)
   const [companyData, setCompanyData] = useState({
     company_name: "",
+    tax_id: "",
+    legajo: "",
     address: "",
     phone: "",
     email: "",
     website: "",
-    tax_id: "",
+    instagram: "",
   })
   const [savingCompany, setSavingCompany] = useState(false)
+  const [logoHover, setLogoHover] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Load all settings on mount
@@ -174,11 +179,13 @@ export function InterfaceSettings() {
       setCompanyData((prev) => ({
         ...prev,
         company_name: settings.company_name || "",
+        tax_id: settings.tax_id || "",
+        legajo: settings.legajo || "",
         address: settings.address || "",
         phone: settings.phone || "",
         email: settings.email || "",
         website: settings.website || "",
-        tax_id: settings.tax_id || "",
+        instagram: settings.instagram || "",
       }))
     })
   }, [])
@@ -223,10 +230,6 @@ export function InterfaceSettings() {
     try {
       // Upload to Supabase Storage via a simple approach:
       // Create a FormData and use the existing upload pattern
-      const formData = new FormData()
-      formData.append("file", file)
-
-      // Try uploading via API — if no bucket route exists, use a data URL fallback
       try {
         const ext = file.name.split(".").pop() || "png"
         const fileName = `brand-logo-${Date.now()}.${ext}`
@@ -288,6 +291,12 @@ export function InterfaceSettings() {
     [handleLogoUpload]
   )
 
+  const handleDeleteLogo = useCallback(async () => {
+    setLogoUrl(null)
+    await saveSetting("brand_logo", "")
+    toast.success("Logo eliminado")
+  }, [])
+
   // --- Company data handler ---
   const handleSaveCompanyData = useCallback(async () => {
     setSavingCompany(true)
@@ -305,153 +314,7 @@ export function InterfaceSettings() {
   return (
     <div className="space-y-6">
       {/* ----------------------------------------------------------------- */}
-      {/* Sub-card 1: Color Principal */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-            <Palette className="h-3.5 w-3.5 text-primary" />
-          </div>
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
-            Color Principal
-          </span>
-        </div>
-
-        <div className="flex flex-wrap gap-3">
-          {COLOR_OPTIONS.map((color) => (
-            <button
-              key={color.name}
-              type="button"
-              title={color.name}
-              onClick={() => handleColorSelect(color.hsl, color.hex)}
-              className={`h-10 w-10 rounded-full transition-all ${
-                selectedColor === color.hsl
-                  ? "ring-2 ring-offset-2 ring-offset-background ring-primary"
-                  : "hover:scale-110"
-              }`}
-              style={{ backgroundColor: color.hex }}
-            />
-          ))}
-        </div>
-
-        {/* Custom color input */}
-        <div className="flex items-center gap-3 mt-4">
-          <span className="text-xs text-muted-foreground">o color personalizado:</span>
-          <div className="flex items-center gap-1.5">
-            {customHex && /^#[0-9A-Fa-f]{6}$/.test(customHex) && (
-              <div
-                className={`h-8 w-8 rounded-full border-2 ${
-                  selectedColor && selectedColor === hexToHsl(customHex)
-                    ? "ring-2 ring-offset-2 ring-offset-background ring-primary border-border/40"
-                    : "border-border/40"
-                }`}
-                style={{ backgroundColor: customHex }}
-              />
-            )}
-            <Input
-              value={customHex}
-              onChange={(e) => {
-                let val = e.target.value
-                if (!val.startsWith('#')) val = '#' + val
-                setCustomHex(val)
-                if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-                  const hsl = hexToHsl(val)
-                  if (hsl) {
-                    handleColorSelect(hsl, val)
-                  }
-                }
-              }}
-              placeholder="#4F46E5"
-              className="w-28 h-8 text-xs font-mono"
-              maxLength={7}
-            />
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="flex items-center gap-3 pt-2">
-          <span className="text-xs text-muted-foreground">Vista previa:</span>
-          <button
-            type="button"
-            className="rounded-md px-4 py-1.5 text-xs font-medium text-primary-foreground"
-            style={{
-              backgroundColor: selectedColor
-                ? `hsl(${selectedColor})`
-                : "hsl(var(--primary))",
-            }}
-          >
-            Botón de ejemplo
-          </button>
-        </div>
-      </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Sub-card 2: Logo de la Empresa */}
-      {/* ----------------------------------------------------------------- */}
-      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
-        <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/10">
-            <Image className="h-3.5 w-3.5 text-emerald-500" />
-          </div>
-          <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
-            Logo de la Empresa
-          </span>
-        </div>
-
-        {/* Current logo preview */}
-        {logoUrl && (
-          <div className="relative inline-block rounded-lg bg-zinc-900 p-4">
-            <img
-              src={logoUrl}
-              alt="Logo de la empresa"
-              className="h-12 w-auto object-contain"
-            />
-            <button
-              type="button"
-              onClick={async () => {
-                setLogoUrl(null)
-                await saveSetting("brand_logo", "")
-                toast.success("Logo eliminado")
-              }}
-              className="absolute -right-2 -top-2 rounded-full bg-destructive p-0.5 text-destructive-foreground hover:bg-destructive/80"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        )}
-
-        {/* Upload area */}
-        <div
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/60 bg-background/50 p-8 transition-colors hover:border-primary/40 hover:bg-muted/40"
-        >
-          <Upload className="h-8 w-8 text-muted-foreground/60" />
-          <span className="text-sm text-muted-foreground">
-            {uploading
-              ? "Subiendo..."
-              : "Arrastrá o hacé click para subir tu logo"}
-          </span>
-          <span className="text-[11px] text-muted-foreground/60">
-            PNG, SVG o WEBP — Max 2MB
-          </span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".png,.svg,.webp,image/png,image/svg+xml,image/webp"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-        </div>
-
-        <p className="text-xs text-muted-foreground/70">
-          Recomendamos un logo con fondo transparente en formato PNG o SVG
-        </p>
-      </div>
-
-      {/* ----------------------------------------------------------------- */}
-      {/* Sub-card 3: Datos de la Empresa */}
+      {/* Section 1: Datos de la Empresa */}
       {/* ----------------------------------------------------------------- */}
       <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
         <div className="flex items-center gap-2">
@@ -463,7 +326,7 @@ export function InterfaceSettings() {
           </span>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-1.5">
             <Label htmlFor="company_name" className="text-xs">
               Nombre de la Empresa
@@ -488,6 +351,19 @@ export function InterfaceSettings() {
                 setCompanyData((d) => ({ ...d, tax_id: e.target.value }))
               }
               placeholder="30-12345678-9"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="legajo" className="text-xs">
+              Legajo (N° de Licencia)
+            </Label>
+            <Input
+              id="legajo"
+              value={companyData.legajo}
+              onChange={(e) =>
+                setCompanyData((d) => ({ ...d, legajo: e.target.value }))
+              }
+              placeholder="Ej: 12345"
             />
           </div>
           <div className="space-y-1.5">
@@ -543,12 +419,187 @@ export function InterfaceSettings() {
               placeholder="https://miempresa.com"
             />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="instagram" className="text-xs">
+              Instagram
+            </Label>
+            <Input
+              id="instagram"
+              value={companyData.instagram}
+              onChange={(e) =>
+                setCompanyData((d) => ({ ...d, instagram: e.target.value }))
+              }
+              placeholder="@miempresa"
+            />
+          </div>
         </div>
 
         <div className="flex justify-end pt-2">
           <Button onClick={handleSaveCompanyData} disabled={savingCompany}>
             {savingCompany ? "Guardando..." : "Guardar Datos"}
           </Button>
+        </div>
+      </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Section 2: Color Principal + Logo (side by side) */}
+      {/* ----------------------------------------------------------------- */}
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {/* Color Principal */}
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+              <Palette className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+              Color Principal
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {COLOR_OPTIONS.map((color) => (
+              <button
+                key={color.name}
+                type="button"
+                title={color.name}
+                onClick={() => handleColorSelect(color.hsl, color.hex)}
+                className={`h-10 w-10 rounded-full transition-all ${
+                  selectedColor === color.hsl
+                    ? "ring-2 ring-offset-2 ring-offset-background ring-primary"
+                    : "hover:scale-110"
+                }`}
+                style={{ backgroundColor: color.hex }}
+              />
+            ))}
+          </div>
+
+          {/* Custom color input */}
+          <div className="flex items-center gap-3 mt-4">
+            <span className="text-xs text-muted-foreground">o color personalizado:</span>
+            <div className="flex items-center gap-1.5">
+              {customHex && /^#[0-9A-Fa-f]{6}$/.test(customHex) && (
+                <div
+                  className={`h-8 w-8 rounded-full border-2 ${
+                    selectedColor && selectedColor === hexToHsl(customHex)
+                      ? "ring-2 ring-offset-2 ring-offset-background ring-primary border-border/40"
+                      : "border-border/40"
+                  }`}
+                  style={{ backgroundColor: customHex }}
+                />
+              )}
+              <Input
+                value={customHex}
+                onChange={(e) => {
+                  let val = e.target.value
+                  if (!val.startsWith('#')) val = '#' + val
+                  setCustomHex(val)
+                  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                    const hsl = hexToHsl(val)
+                    if (hsl) {
+                      handleColorSelect(hsl, val)
+                    }
+                  }
+                }}
+                placeholder="#4F46E5"
+                className="w-28 h-8 text-xs font-mono"
+                maxLength={7}
+              />
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="flex items-center gap-3 pt-2">
+            <span className="text-xs text-muted-foreground">Vista previa:</span>
+            <button
+              type="button"
+              className="rounded-md px-4 py-1.5 text-xs font-medium text-primary-foreground"
+              style={{
+                backgroundColor: selectedColor
+                  ? `hsl(${selectedColor})`
+                  : "hsl(var(--primary))",
+              }}
+            >
+              Boton de ejemplo
+            </button>
+          </div>
+        </div>
+
+        {/* Logo de la Empresa */}
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/10">
+              <Image className="h-3.5 w-3.5 text-emerald-500" />
+            </div>
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+              Logo de la Empresa
+            </span>
+          </div>
+
+          {/* Logo area: upload placeholder OR logo preview */}
+          {logoUrl ? (
+            <div
+              className="relative flex items-center justify-center rounded-lg bg-zinc-900/80 p-6 min-h-[160px]"
+              onMouseEnter={() => setLogoHover(true)}
+              onMouseLeave={() => setLogoHover(false)}
+            >
+              <img
+                src={logoUrl}
+                alt="Logo de la empresa"
+                className="max-h-24 w-auto object-contain"
+              />
+              {/* Hover overlay with edit/delete buttons */}
+              {logoHover && (
+                <div className="absolute inset-0 flex items-center justify-center gap-3 rounded-lg bg-black/60 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 rounded-md bg-white/90 px-3 py-1.5 text-xs font-medium text-zinc-900 hover:bg-white transition-colors"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Cambiar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteLogo}
+                    className="flex items-center gap-1.5 rounded-md bg-destructive/90 px-3 py-1.5 text-xs font-medium text-destructive-foreground hover:bg-destructive transition-colors"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Eliminar
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border/60 bg-background/50 p-8 min-h-[160px] transition-colors hover:border-primary/40 hover:bg-muted/40"
+            >
+              <Upload className="h-8 w-8 text-muted-foreground/60" />
+              <span className="text-sm text-muted-foreground text-center">
+                {uploading
+                  ? "Subiendo..."
+                  : "Arrastra o hace click para subir tu logo"}
+              </span>
+              <span className="text-[11px] text-muted-foreground/60">
+                PNG, SVG o WEBP — Max 2MB
+              </span>
+            </div>
+          )}
+
+          {/* Hidden file input (shared by both states) */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".png,.svg,.webp,image/png,image/svg+xml,image/webp"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <p className="text-xs text-muted-foreground/70">
+            Recomendamos un logo con fondo transparente en formato PNG o SVG
+          </p>
         </div>
       </div>
     </div>

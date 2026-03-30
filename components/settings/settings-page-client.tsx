@@ -93,7 +93,7 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       router.push(`/settings?${params.toString()}`, { scroll: false })
     }}>
       <TabsList className="flex-wrap">
-        <TabsTrigger value="interface">Interfaz</TabsTrigger>
+        <TabsTrigger value="interface">Mi Empresa</TabsTrigger>
         <TabsTrigger value="users">Usuarios</TabsTrigger>
         <TabsTrigger value="operadores">Operadores</TabsTrigger>
         <TabsTrigger value="agencies">Agencias</TabsTrigger>
