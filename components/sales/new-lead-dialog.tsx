@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DestinationCombobox } from "@/components/ui/destination-combobox"
+import { getLeadRegionForDestination } from "@/lib/destinations"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -116,6 +117,17 @@ export function NewLeadDialog({
   const watchedAgencyId = form.watch("agency_id")
 
   const watchedRegion = form.watch("region")
+  const watchedDestination = form.watch("destination")
+
+  // Auto-asignar región cuando cambia el destino
+  useEffect(() => {
+    if (watchedDestination) {
+      const detectedRegion = getLeadRegionForDestination(watchedDestination)
+      if (detectedRegion) {
+        form.setValue("region", detectedRegion as any)
+      }
+    }
+  }, [watchedDestination, form])
 
   // Auto-asignar lista cuando cambia la región
   useEffect(() => {

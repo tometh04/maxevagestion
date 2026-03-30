@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DestinationCombobox } from "@/components/ui/destination-combobox"
+import { getLeadRegionForDestination } from "@/lib/destinations"
 import {
   Select,
   SelectContent,
@@ -241,6 +242,26 @@ export function EditLeadDialog({
       }
     }
   }, [lead, open, form, agencies])
+
+  // Auto-actualizar región cuando cambia el destino
+  const watchedDestination = form.watch("destination")
+  const [initialDestination, setInitialDestination] = useState<string>("")
+
+  useEffect(() => {
+    if (lead && open) {
+      setInitialDestination(lead.destination || "")
+    }
+  }, [lead, open])
+
+  useEffect(() => {
+    // Solo auto-actualizar si el destino cambió respecto al original (no en carga inicial)
+    if (watchedDestination && watchedDestination !== initialDestination) {
+      const detectedRegion = getLeadRegionForDestination(watchedDestination)
+      if (detectedRegion) {
+        form.setValue("region", detectedRegion as any)
+      }
+    }
+  }, [watchedDestination, initialDestination, form])
 
   const handleSubmit = async (values: LeadFormValues) => {
     if (!lead) return
