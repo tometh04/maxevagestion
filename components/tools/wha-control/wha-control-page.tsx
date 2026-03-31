@@ -7,12 +7,18 @@ import { InboxView } from "./inbox-view"
 import { MetricsDashboard } from "./metrics-dashboard"
 import { Smartphone, MessageSquare, BarChart3 } from "lucide-react"
 
+interface Agency {
+  id: string
+  name: string
+}
+
 interface WhaControlPageProps {
   userId: string
   userName: string
+  agencies: Agency[]
 }
 
-export function WhaControlPage({ userId, userName }: WhaControlPageProps) {
+export function WhaControlPage({ userId, userName, agencies }: WhaControlPageProps) {
   return (
     <PasswordGate>
       <div className="flex flex-1 flex-col">
@@ -40,15 +46,15 @@ export function WhaControlPage({ userId, userName }: WhaControlPageProps) {
           </TabsList>
 
           <TabsContent value="devices" className="flex-1 mt-4">
-            <DeviceList />
+            <DeviceList agencies={agencies} />
           </TabsContent>
 
           <TabsContent value="inbox" className="flex-1 mt-4">
-            <InboxView />
+            <InboxView agencies={agencies} />
           </TabsContent>
 
           <TabsContent value="metrics" className="flex-1 mt-4">
-            <MetricsDashboard />
+            <MetricsDashboard agencies={agencies} />
           </TabsContent>
         </Tabs>
       </div>

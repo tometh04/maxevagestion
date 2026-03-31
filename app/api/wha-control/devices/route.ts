@@ -10,15 +10,20 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const includeInactive = searchParams.get("includeInactive") === "true"
+  const agencyId = searchParams.get("agencyId")
 
   const supabase = createAdminClient() as any
   let devicesQuery = supabase
     .from("wa_devices")
-    .select("*")
+    .select("*, agencies:agency_id(id, name)")
     .order("created_at", { ascending: false })
 
   if (!includeInactive) {
     devicesQuery = devicesQuery.eq("is_active", true)
+  }
+
+  if (agencyId && agencyId !== "all") {
+    devicesQuery = devicesQuery.eq("agency_id", agencyId)
   }
 
   const { data: devices, error } = await devicesQuery
@@ -62,20 +67,23 @@ export async function POST(request: Request) {
   if (!auth.authorized) return auth.response
 
   const body = await request.json()
-  const { displayName } = body
+  const { displayName, agencyId } = body
 
   if (!displayName) {
     return NextResponse.json({ error: "displayName is required" }, { status: 400 })
   }
 
-  
+
   const supabasePost = createAdminClient() as any
 
   // Create device record
+  const insertData: any = { display_name: displayName, status: "PENDING_QR" }
+  if (agencyId) insertData.agency_id = agencyId
+
   const { data: device, error } = await supabasePost
     .from("wa_devices")
-    .insert({ display_name: displayName, status: "PENDING_QR" })
-    .select()
+    .insert(insertData)
+    .select("*, agencies:agency_id(id, name)")
     .single()
 
   if (error) {

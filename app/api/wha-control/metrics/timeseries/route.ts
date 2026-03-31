@@ -8,6 +8,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url)
   const deviceId = searchParams.get("deviceId")
+  const agencyId = searchParams.get("agencyId")
   const dateFrom = searchParams.get("dateFrom")
   const dateTo = searchParams.get("dateTo")
 
@@ -25,11 +26,15 @@ export async function GET(request: Request) {
   if (deviceId && deviceId !== "all") {
     query = query.eq("device_id", deviceId)
   } else {
-    // When "all", only include messages from active devices
-    const { data: activeDevices } = await supabase
+    // When "all", only include messages from active devices (optionally filtered by agency)
+    let devQuery = supabase
       .from("wa_devices")
       .select("id")
       .eq("is_active", true)
+    if (agencyId && agencyId !== "all") {
+      devQuery = devQuery.eq("agency_id", agencyId)
+    }
+    const { data: activeDevices } = await devQuery
     if (activeDevices && activeDevices.length > 0) {
       query = query.in("device_id", activeDevices.map((d: any) => d.id))
     }

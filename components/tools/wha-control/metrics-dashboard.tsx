@@ -8,10 +8,17 @@ import { Label } from "@/components/ui/label"
 import { Loader2, MessageCircle, MessageSquareText, Clock, Users, AlertCircle, UserPlus, Send, FileText } from "lucide-react"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend } from "recharts"
 
+interface Agency {
+  id: string
+  name: string
+}
+
 interface Device {
   id: string
   display_name: string
   is_active?: boolean
+  agency_id: string | null
+  agencies: { id: string; name: string } | null
 }
 
 interface Summary {
@@ -35,8 +42,13 @@ interface TimeseriesPoint {
   avg_response: number | null
 }
 
-export function MetricsDashboard() {
+interface MetricsDashboardProps {
+  agencies: Agency[]
+}
+
+export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
   const [devices, setDevices] = useState<Device[]>([])
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("all")
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date()
@@ -56,11 +68,26 @@ export function MetricsDashboard() {
       .catch(console.error)
   }, [])
 
+  // Filter devices by agency for dropdown
+  const filteredDevices = selectedAgencyId === "all"
+    ? devices
+    : devices.filter((d) => d.agency_id === selectedAgencyId)
+
+  // Reset device selection when agency changes
+  useEffect(() => {
+    if (selectedAgencyId !== "all" && selectedDeviceId !== "all") {
+      const stillValid = filteredDevices.find((d) => d.id === selectedDeviceId)
+      if (!stillValid) setSelectedDeviceId("all")
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId])
+
   const fetchMetrics = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (selectedDeviceId !== "all") params.set("deviceId", selectedDeviceId)
+      if (selectedAgencyId !== "all") params.set("agencyId", selectedAgencyId)
 
       const [summaryRes, timeseriesRes] = await Promise.all([
         fetch(`/api/wha-control/metrics/summary?${params}`),
@@ -80,7 +107,7 @@ export function MetricsDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [selectedDeviceId, dateFrom, dateTo])
+  }, [selectedDeviceId, selectedAgencyId, dateFrom, dateTo])
 
   useEffect(() => {
     fetchMetrics()
@@ -111,6 +138,20 @@ export function MetricsDashboard() {
       {/* Filters */}
       <div className="flex flex-wrap gap-4 items-end">
         <div className="space-y-1">
+          <Label className="text-xs">Agencia</Label>
+          <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+              <SelectValue placeholder="Todas" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las agencias</SelectItem>
+              {agencies.map((a) => (
+                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
           <Label className="text-xs">Dispositivo</Label>
           <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
             <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
@@ -118,7 +159,7 @@ export function MetricsDashboard() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos</SelectItem>
-              {devices.map((d) => (
+              {filteredDevices.map((d) => (
                 <SelectItem key={d.id} value={d.id}>
                   {d.display_name}
                 </SelectItem>

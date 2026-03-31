@@ -11,19 +11,33 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { CheckCircle2, Loader2, QrCode } from "lucide-react"
+
+interface Agency {
+  id: string
+  name: string
+}
 
 interface ConnectDeviceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onDeviceCreated: () => void
+  agencies: Agency[]
 }
 
 type Step = "name" | "qr" | "success"
 
-export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated }: ConnectDeviceDialogProps) {
+export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agencies }: ConnectDeviceDialogProps) {
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState("")
+  const [agencyId, setAgencyId] = useState<string>("")
   const [deviceId, setDeviceId] = useState<string | null>(null)
   const [qrValue, setQrValue] = useState<string | null>(null)
   const [status, setStatus] = useState<string>("PENDING_QR")
@@ -35,6 +49,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated }: Con
     if (!open) {
       setStep("name")
       setName("")
+      setAgencyId("")
       setDeviceId(null)
       setQrValue(null)
       setStatus("PENDING_QR")
@@ -80,7 +95,10 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated }: Con
       const res = await fetch("/api/wha-control/devices", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName: name.trim() }),
+        body: JSON.stringify({
+          displayName: name.trim(),
+          agencyId: agencyId || null,
+        }),
       })
       if (res.ok) {
         const data = await res.json()
@@ -102,7 +120,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated }: Con
             <DialogHeader>
               <DialogTitle>Vincular nuevo número</DialogTitle>
               <DialogDescription>
-                Poné un nombre para identificar este teléfono (ej: &quot;Josefina&quot;, &quot;Santiago Ventas 2&quot;)
+                Poné un nombre para identificar este teléfono y seleccioná la agencia
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -116,6 +134,21 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated }: Con
                   onKeyDown={(e) => e.key === "Enter" && handleCreateDevice()}
                   autoFocus
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Agencia</Label>
+                <Select value={agencyId} onValueChange={setAgencyId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar agencia" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agencies.map((agency) => (
+                      <SelectItem key={agency.id} value={agency.id}>
+                        {agency.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button
                 onClick={handleCreateDevice}

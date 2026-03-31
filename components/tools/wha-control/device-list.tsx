@@ -4,8 +4,13 @@ import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Plus, RefreshCw, Power, PowerOff, Trash2, Smartphone, Loader2 } from "lucide-react"
+import { Plus, RefreshCw, Power, PowerOff, Trash2, Smartphone, Loader2, Building2 } from "lucide-react"
 import { ConnectDeviceDialog } from "./connect-device-dialog"
+
+interface Agency {
+  id: string
+  name: string
+}
 
 interface Device {
   id: string
@@ -16,6 +21,8 @@ interface Device {
   last_seen_event_at: string | null
   is_active: boolean
   created_at: string
+  agency_id: string | null
+  agencies: { id: string; name: string } | null
 }
 
 const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -28,7 +35,26 @@ const STATUS_CONFIG: Record<string, { label: string; variant: "default" | "secon
   ERROR: { label: "Error", variant: "destructive" },
 }
 
-export function DeviceList() {
+// Colores fijos por agencia para consistencia visual
+const AGENCY_COLORS = [
+  "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  "bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400",
+  "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400",
+]
+
+function getAgencyColor(agencyId: string, agencies: Agency[]): string {
+  const idx = agencies.findIndex((a) => a.id === agencyId)
+  return AGENCY_COLORS[idx % AGENCY_COLORS.length] || AGENCY_COLORS[0]
+}
+
+interface DeviceListProps {
+  agencies: Agency[]
+}
+
+export function DeviceList({ agencies }: DeviceListProps) {
   const [devices, setDevices] = useState<Device[]>([])
   const [loading, setLoading] = useState(true)
   const [showConnect, setShowConnect] = useState(false)
@@ -50,7 +76,6 @@ export function DeviceList() {
 
   useEffect(() => {
     fetchDevices()
-    // Poll every 10 seconds
     const interval = setInterval(fetchDevices, 10000)
     return () => clearInterval(interval)
   }, [fetchDevices])
@@ -141,6 +166,7 @@ export function DeviceList() {
           {devices.map((device) => {
             const statusConfig = STATUS_CONFIG[device.status] || { label: device.status, variant: "outline" as const }
             const isLoading = actionLoading === device.id
+            const agencyName = device.agencies?.name
 
             return (
               <Card key={device.id} className="rounded-xl border border-border/40">
@@ -149,6 +175,14 @@ export function DeviceList() {
                     <CardTitle className="text-base">{device.display_name}</CardTitle>
                     <Badge variant={statusConfig.variant}>{statusConfig.label}</Badge>
                   </div>
+                  {agencyName && device.agency_id && (
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${getAgencyColor(device.agency_id, agencies)}`}>
+                        <Building2 className="h-3 w-3" />
+                        {agencyName}
+                      </span>
+                    </div>
+                  )}
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="space-y-1 text-sm">
@@ -211,6 +245,7 @@ export function DeviceList() {
         open={showConnect}
         onOpenChange={setShowConnect}
         onDeviceCreated={fetchDevices}
+        agencies={agencies}
       />
     </div>
   )

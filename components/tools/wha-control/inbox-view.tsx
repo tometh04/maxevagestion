@@ -11,11 +11,18 @@ import { ArrowDown, ArrowLeft, Loader2, MessageSquare, Search, User, Users } fro
 import { formatDistanceToNow } from "date-fns"
 import { es } from "date-fns/locale"
 
+interface Agency {
+  id: string
+  name: string
+}
+
 interface Device {
   id: string
   display_name: string
   phone_number: string | null
   status: string
+  agency_id: string | null
+  agencies: { id: string; name: string } | null
 }
 
 interface Chat {
@@ -41,8 +48,13 @@ interface Message {
   sender_name: string | null
 }
 
-export function InboxView() {
+interface InboxViewProps {
+  agencies: Agency[]
+}
+
+export function InboxView({ agencies }: InboxViewProps) {
   const [devices, setDevices] = useState<Device[]>([])
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>("all")
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("")
   const [chats, setChats] = useState<Chat[]>([])
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
@@ -74,6 +86,21 @@ export function InboxView() {
       .catch(console.error)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Filter devices by agency
+  const filteredDevices = selectedAgencyId === "all"
+    ? devices
+    : devices.filter((d) => d.agency_id === selectedAgencyId)
+
+  // Auto-select first device when agency changes
+  useEffect(() => {
+    if (filteredDevices.length > 0 && !filteredDevices.find((d) => d.id === selectedDeviceId)) {
+      setSelectedDeviceId(filteredDevices[0].id)
+      setSelectedChat(null)
+      setShowThread(false)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId, filteredDevices.length])
 
   // Load chats when device changes
   const fetchChats = useCallback(async () => {
@@ -172,13 +199,26 @@ export function InboxView() {
     <div className="flex h-[calc(100vh-240px)] min-h-[500px] gap-4">
       {/* Chat List Panel */}
       <div className={`w-full md:w-80 flex-shrink-0 flex flex-col gap-3 ${showThread ? "hidden md:flex" : "flex"}`}>
+        {/* Agency filter */}
+        <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background">
+            <SelectValue placeholder="Agencia" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas las agencias</SelectItem>
+            {agencies.map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
         {/* Device selector */}
         <Select value={selectedDeviceId} onValueChange={(v) => { setSelectedDeviceId(v); setSelectedChat(null); setShowThread(false) }}>
           <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
             <SelectValue placeholder="Seleccionar dispositivo" />
           </SelectTrigger>
           <SelectContent>
-            {devices.map((d) => (
+            {filteredDevices.map((d) => (
               <SelectItem key={d.id} value={d.id}>
                 {d.display_name} {d.phone_number ? `(${d.phone_number})` : ""}
               </SelectItem>
