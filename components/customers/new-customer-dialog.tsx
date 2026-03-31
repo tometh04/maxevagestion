@@ -362,11 +362,32 @@ export function NewCustomerDialog({
       const cuil = generateCUIL(cuilDni, cuilSex)
       setGeneratedCuil(cuil)
 
-      // Auto-completar campos del formulario
+      // Auto-completar campos básicos del formulario
       const dniClean = cuilDni.replace(/\D/g, "")
       form.setValue("document_type", "DNI")
       form.setValue("document_number", dniClean)
       form.setValue("nationality", "Argentina")
+
+      // Intentar buscar datos del contribuyente por CUIL en AFIP
+      try {
+        const cuilClean = cuil.replace(/-/g, "")
+        const response = await fetch(`/api/customers/cuil-lookup?cuil=${cuilClean}`)
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            if (result.data.firstName) {
+              form.setValue("first_name", result.data.firstName)
+            }
+            if (result.data.lastName) {
+              form.setValue("last_name", result.data.lastName)
+            }
+            toast.success(`CUIL generado: ${cuil} — Datos completados desde AFIP`)
+            return
+          }
+        }
+      } catch (afipError) {
+        console.error("Error looking up CUIL in AFIP:", afipError)
+      }
 
       toast.success(`CUIL generado: ${cuil}`)
     } catch (error) {

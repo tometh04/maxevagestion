@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign } from "lucide-react"
+import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign, Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import {
   Tooltip,
@@ -80,6 +81,13 @@ interface LedgerMovement {
     id: string
     destination: string
     file_code: string
+    customer_names?: string
+    operation_customers?: Array<{
+      customers: {
+        first_name: string
+        last_name: string
+      }
+    }>
   } | null
 }
 
@@ -119,6 +127,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [loadingChart, setLoadingChart] = useState(false)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
+  const [searchQuery, setSearchQuery] = useState("")
 
   // Cargar cuentas financieras (rápido, no depende de fechas)
   const fetchAccounts = useCallback(async () => {
@@ -550,8 +559,17 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       {accountMovements[account.id] && !isLoading && (
                         <div>
                           <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          <div className="relative mb-2">
+                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              placeholder="Buscar por cliente, operacion, concepto..."
+                              className="h-8 pl-8 text-xs"
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                          </div>
                           {movements.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el periodo seleccionado</p>
                           ) : (
                             <div className="rounded-xl border border-border/40 max-h-[40vh] overflow-y-auto">
                               <Table>
@@ -564,7 +582,16 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {movements.map((movement) => (
+                                  {movements.filter(m => {
+                                    if (!searchQuery) return true
+                                    const q = searchQuery.toLowerCase()
+                                    return (
+                                      (m.concept || "").toLowerCase().includes(q) ||
+                                      (m.operations?.file_code || "").toLowerCase().includes(q) ||
+                                      (m.operations?.destination || "").toLowerCase().includes(q) ||
+                                      (m.operations?.customer_names || "").toLowerCase().includes(q)
+                                    )
+                                  }).map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
                                         {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
@@ -578,7 +605,14 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {movement.concept}
                                         {movement.operations && (
                                           <span className="text-muted-foreground ml-1">
-                                            ({movement.operations.file_code})
+                                            {(() => {
+                                              const customerNames = movement.operations.operation_customers
+                                                ?.map(oc => `${oc.customers.first_name} ${oc.customers.last_name}`.trim())
+                                                .filter(Boolean)
+                                                .join(", ")
+                                              const parts = [customerNames, movement.operations.file_code].filter(Boolean)
+                                              return parts.length > 0 ? `(${parts.join(" \u00b7 ")})` : ""
+                                            })()}
                                           </span>
                                         )}
                                       </TableCell>
@@ -676,8 +710,17 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                       {accountMovements[account.id] && !isLoading && (
                         <div>
                           <h4 className="text-sm font-medium mb-2">Movimientos</h4>
+                          <div className="relative mb-2">
+                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                            <Input
+                              placeholder="Buscar por cliente, operacion, concepto..."
+                              className="h-8 pl-8 text-xs"
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                          </div>
                           {movements.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No hay movimientos en el período seleccionado</p>
+                            <p className="text-sm text-muted-foreground">No hay movimientos en el periodo seleccionado</p>
                           ) : (
                             <div className="rounded-xl border border-border/40 max-h-[40vh] overflow-y-auto">
                               <Table>
@@ -690,7 +733,16 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {movements.map((movement) => (
+                                  {movements.filter(m => {
+                                    if (!searchQuery) return true
+                                    const q = searchQuery.toLowerCase()
+                                    return (
+                                      (m.concept || "").toLowerCase().includes(q) ||
+                                      (m.operations?.file_code || "").toLowerCase().includes(q) ||
+                                      (m.operations?.destination || "").toLowerCase().includes(q) ||
+                                      (m.operations?.customer_names || "").toLowerCase().includes(q)
+                                    )
+                                  }).map((movement) => (
                                     <TableRow key={movement.id}>
                                       <TableCell className="text-sm">
                                         {format(new Date(movement.movement_date ?? movement.created_at), "dd/MM/yyyy", { locale: es })}
@@ -704,7 +756,14 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {movement.concept}
                                         {movement.operations && (
                                           <span className="text-muted-foreground ml-1">
-                                            ({movement.operations.file_code})
+                                            {(() => {
+                                              const customerNames = movement.operations.operation_customers
+                                                ?.map(oc => `${oc.customers.first_name} ${oc.customers.last_name}`.trim())
+                                                .filter(Boolean)
+                                                .join(", ")
+                                              const parts = [customerNames, movement.operations.file_code].filter(Boolean)
+                                              return parts.length > 0 ? `(${parts.join(" \u00b7 ")})` : ""
+                                            })()}
                                           </span>
                                         )}
                                       </TableCell>
