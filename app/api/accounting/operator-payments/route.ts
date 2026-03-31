@@ -30,7 +30,7 @@ export async function GET(request: Request) {
         *,
         operations:operation_id (id, destination, file_code, sale_amount_total, agency_id),
         operators:operator_id (id, name, contact_email),
-        ledger_movements:ledger_movement_id (id, created_at)
+        ledger_movements:ledger_movement_id (id, created_at, receipt_number, method, notes, account_id, financial_accounts:account_id(name))
       `
       )
       .order("due_date", { ascending: true })

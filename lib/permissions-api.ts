@@ -220,8 +220,8 @@ export async function getUserAgencyIds(
   
   return unstable_cache(
     async () => {
-      if (userRole === "SUPER_ADMIN") {
-        // SUPER_ADMIN ve todas las agencias
+      if (userRole === "SUPER_ADMIN" || userRole === "CONTABLE") {
+        // SUPER_ADMIN y CONTABLE ven todas las agencias
         const { data: allAgencies } = await supabase.from("agencies").select("id")
         return (allAgencies || []).map((a: any) => a.id)
       }

@@ -9,7 +9,7 @@ import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Info } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,14 +18,30 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MarkPaidDialog } from "@/components/payments/mark-paid-dialog"
+import { PaymentInfoDialog } from "@/components/payments/payment-info-dialog"
 import Link from "next/link"
 
 interface PaymentOperation {
   id: string
   destination: string
+  file_code?: string | null
   agency_id?: string | null
   agencies?: { name: string | null } | null
   sellers?: { name: string | null } | null
+  operation_customers?: Array<{
+    role?: string
+    customers?: { id: string; first_name: string; last_name: string } | null
+  }> | null
+}
+
+interface PaymentLedger {
+  id: string
+  created_at: string
+  receipt_number?: string | null
+  method?: string | null
+  notes?: string | null
+  account_id?: string | null
+  financial_accounts?: { name: string | null } | null
 }
 
 export interface Payment {
@@ -40,7 +56,10 @@ export interface Payment {
   date_paid: string | null
   status: "PENDING" | "PAID" | "OVERDUE"
   reference: string | null
+  created_at?: string
+  updated_at?: string
   operations?: PaymentOperation | null
+  ledger_movements?: PaymentLedger | null
 }
 
 interface PaymentsTableProps {
@@ -77,6 +96,8 @@ export function PaymentsTable({
   const [loading, setLoading] = useState(!initialPayments)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [infoPayment, setInfoPayment] = useState<Payment | null>(null)
   
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
@@ -270,6 +291,15 @@ export function PaymentsTable({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setInfoPayment(payment)
+                    setInfoDialogOpen(true)
+                  }}
+                >
+                  <Info className="h-4 w-4 mr-2" />
+                  Ver info
+                </DropdownMenuItem>
                 {payment.status !== "PAID" && (
                   <DropdownMenuItem
                     onClick={() => {
@@ -347,6 +377,13 @@ export function PaymentsTable({
             fetchPayments() // Recargar si usa paginación server-side
           }
         }}
+      />
+
+      <PaymentInfoDialog
+        open={infoDialogOpen}
+        onOpenChange={setInfoDialogOpen}
+        payment={infoPayment}
+        type="customer"
       />
     </>
   )

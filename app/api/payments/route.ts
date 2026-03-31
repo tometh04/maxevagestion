@@ -515,6 +515,7 @@ export async function GET(request: Request) {
       operations:operation_id(
         id,
         destination,
+        file_code,
         agency_id,
         seller_id,
         agencies:agency_id(
@@ -522,12 +523,22 @@ export async function GET(request: Request) {
           name
         ),
         operation_customers(
-          customers(
+          role,
+          customers:customer_id(
             id,
             first_name,
             last_name
           )
         )
+      ),
+      ledger_movements:ledger_movement_id(
+        id,
+        created_at,
+        receipt_number,
+        method,
+        notes,
+        account_id,
+        financial_accounts:account_id(name)
       )
     `, { count: "exact" })
 

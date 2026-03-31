@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
 import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
-import { CreditCard, Download, Plus, HelpCircle } from "lucide-react"
+import { CreditCard, Download, Plus, HelpCircle, MoreHorizontal, Info } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -37,6 +37,14 @@ import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { PaymentInfoDialog } from "@/components/payments/payment-info-dialog"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -84,6 +92,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [selectedPayment, setSelectedPayment] = useState<any>(null)
   
   // Refs para los timeouts de debounce
   const amountMinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -534,6 +544,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
                     <TableHead className="sticky top-0 bg-background z-10">Fecha Pago</TableHead>
                   )}
+                  <TableHead className="sticky top-0 bg-background z-10 w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -630,6 +641,28 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                           {paidAt || "-"}
                         </TableCell>
                       )}
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Abrir menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedPayment(payment)
+                                setInfoDialogOpen(true)
+                              }}
+                            >
+                              <Info className="h-4 w-4 mr-2" />
+                              Ver info
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
@@ -656,6 +689,14 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           fetchPayments()
         }}
         operators={operators}
+      />
+
+      {/* Payment Info Dialog */}
+      <PaymentInfoDialog
+        open={infoDialogOpen}
+        onOpenChange={setInfoDialogOpen}
+        payment={selectedPayment}
+        type="operator"
       />
     </div>
   )
