@@ -5,6 +5,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { CheckCircle2, Loader2, QrCode } from "lucide-react"
+import { CheckCircle2, Loader2, QrCode, Smartphone, Building2 } from "lucide-react"
 
 interface Agency {
   id: string
@@ -37,7 +38,7 @@ type Step = "name" | "qr" | "success"
 export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agencies }: ConnectDeviceDialogProps) {
   const [step, setStep] = useState<Step>("name")
   const [name, setName] = useState("")
-  const [agencyId, setAgencyId] = useState<string>("")
+  const [agencyId, setAgencyId] = useState<string | undefined>(undefined)
   const [deviceId, setDeviceId] = useState<string | null>(null)
   const [qrValue, setQrValue] = useState<string | null>(null)
   const [status, setStatus] = useState<string>("PENDING_QR")
@@ -49,7 +50,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
     if (!open) {
       setStep("name")
       setName("")
-      setAgencyId("")
+      setAgencyId(undefined)
       setDeviceId(null)
       setQrValue(null)
       setStatus("PENDING_QR")
@@ -80,8 +81,8 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
       }
     }
 
-    poll() // Initial fetch
-    pollRef.current = setInterval(poll, 3000) // Poll every 3 seconds
+    poll()
+    pollRef.current = setInterval(poll, 3000)
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current)
@@ -123,42 +124,57 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
                 Poné un nombre para identificar este teléfono y seleccioná la agencia
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="device-name">Nombre del dispositivo</Label>
-                <Input
-                  id="device-name"
-                  placeholder="Ej: Josefina"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreateDevice()}
-                  autoFocus
-                />
+            <div className="px-6 py-5 space-y-5">
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <Smartphone className="h-3.5 w-3.5 text-foreground/70" />
+                  <span className="text-xs font-medium text-foreground/70">Datos del dispositivo</span>
+                </div>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="device-name" className="text-xs">Nombre del dispositivo</Label>
+                    <Input
+                      id="device-name"
+                      placeholder="Ej: Josefina"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateDevice()}
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Agencia</Label>
+                    <Select value={agencyId} onValueChange={setAgencyId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Seleccionar agencia" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agencies.map((agency) => (
+                          <SelectItem key={agency.id} value={agency.id}>
+                            <div className="flex items-center gap-2">
+                              <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                              {agency.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Agencia</Label>
-                <Select value={agencyId} onValueChange={setAgencyId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar agencia" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agencies.map((agency) => (
-                      <SelectItem key={agency.id} value={agency.id}>
-                        {agency.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => onOpenChange(false)}>
+                Cancelar
+              </Button>
               <Button
                 onClick={handleCreateDevice}
                 disabled={!name.trim() || loading}
-                className="w-full"
               >
                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Continuar
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
 
@@ -170,11 +186,11 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
                 Abrí WhatsApp en el teléfono de <strong>{name}</strong> → Dispositivos vinculados → Vincular dispositivo → Escaneá este QR
               </DialogDescription>
             </DialogHeader>
-            <div className="flex flex-col items-center py-6 space-y-4">
+            <div className="px-6 py-6 flex flex-col items-center space-y-4">
               {qrValue ? (
-                <div className="rounded-lg border bg-white p-4">
+                <div className="rounded-xl border border-border/40 bg-white p-4">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                  <img
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=256x256&data=${encodeURIComponent(qrValue)}`}
                     alt="QR Code"
                     width={256}
@@ -183,7 +199,7 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
                   />
                 </div>
               ) : (
-                <div className="flex h-[288px] w-[288px] items-center justify-center rounded-lg border">
+                <div className="flex h-[288px] w-[288px] items-center justify-center rounded-xl border border-border/40">
                   <div className="text-center">
                     <QrCode className="h-12 w-12 text-muted-foreground/50 mx-auto mb-2" />
                     <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mx-auto" />
@@ -201,19 +217,21 @@ export function ConnectDeviceDialog({ open, onOpenChange, onDeviceCreated, agenc
         {step === "success" && (
           <>
             <DialogHeader>
-              <DialogTitle>¡Vinculado exitosamente!</DialogTitle>
+              <DialogTitle>Vinculado exitosamente</DialogTitle>
             </DialogHeader>
-            <div className="flex flex-col items-center py-8 space-y-4">
+            <div className="px-6 py-8 flex flex-col items-center space-y-4">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
                 <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
               </div>
               <p className="text-center text-sm text-muted-foreground">
                 <strong>{name}</strong> se vinculó correctamente. Los mensajes se empezarán a sincronizar automáticamente.
               </p>
+            </div>
+            <DialogFooter>
               <Button onClick={() => onOpenChange(false)} className="w-full">
                 Cerrar
               </Button>
-            </div>
+            </DialogFooter>
           </>
         )}
       </DialogContent>
