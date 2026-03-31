@@ -3,7 +3,11 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 
 /**
- * GET /api/payments/detail?ledgerMovementId=xxx&type=customer|operator
+ * GET /api/payments/detail
+ *
+ * Params:
+ * - ledgerMovementId: ID directo del ledger_movement (preferido)
+ * - operationId: ID de la operación (fallback para pagos parciales sin ledger_movement_id vinculado)
  *
  * Retorna info de la cuenta financiera usada para un pago,
  * incluyendo balance antes y después del movimiento.
@@ -15,44 +19,70 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
 
     const ledgerMovementId = searchParams.get("ledgerMovementId")
-    if (!ledgerMovementId) {
-      return NextResponse.json({ error: "ledgerMovementId es requerido" }, { status: 400 })
+    const operationId = searchParams.get("operationId")
+
+    if (!ledgerMovementId && !operationId) {
+      return NextResponse.json({ error: "ledgerMovementId o operationId es requerido" }, { status: 400 })
     }
 
-    // 1. Obtener el ledger_movement con su cuenta financiera
-    const { data: movement, error: movError } = await (supabase
-      .from("ledger_movements") as any)
-      .select(`
-        id,
-        created_at,
-        type,
-        amount_original,
-        amount_ars_equivalent,
-        currency,
-        method,
-        receipt_number,
-        notes,
-        account_id,
-        financial_accounts:account_id(
-          id,
-          name,
-          currency,
-          type,
-          initial_balance,
-          chart_account_id
-        )
-      `)
-      .eq("id", ledgerMovementId)
-      .single()
+    // 1. Encontrar el ledger_movement relevante
+    let movement: any = null
 
-    if (movError || !movement) {
-      return NextResponse.json({ error: "Movimiento no encontrado" }, { status: 404 })
+    if (ledgerMovementId) {
+      // Búsqueda directa por ID
+      const { data, error } = await (supabase
+        .from("ledger_movements") as any)
+        .select(`
+          id, created_at, type, amount_original, amount_ars_equivalent,
+          currency, method, receipt_number, notes, account_id,
+          financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
+        `)
+        .eq("id", ledgerMovementId)
+        .single()
+
+      if (!error && data) movement = data
+    }
+
+    if (!movement && operationId) {
+      // Fallback: buscar por operation_id (para pagos parciales, pagos masivos, etc.)
+      // Buscar el movimiento EXPENSE más reciente de esta operación
+      const { data, error } = await (supabase
+        .from("ledger_movements") as any)
+        .select(`
+          id, created_at, type, amount_original, amount_ars_equivalent,
+          currency, method, receipt_number, notes, account_id,
+          financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
+        `)
+        .eq("operation_id", operationId)
+        .in("type", ["EXPENSE", "OPERATOR_PAYMENT"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (!error && data) movement = data
+    }
+
+    if (!movement) {
+      return NextResponse.json({
+        account: null,
+        movement: null,
+        balanceBefore: null,
+        balanceAfter: null,
+      })
     }
 
     const account = movement.financial_accounts
     if (!account) {
       return NextResponse.json({
         account: null,
+        movement: {
+          receipt_number: movement.receipt_number,
+          method: movement.method,
+          notes: movement.notes,
+          created_at: movement.created_at,
+          amount_original: movement.amount_original,
+          currency: movement.currency,
+        },
         balanceBefore: null,
         balanceAfter: null,
       })
@@ -83,34 +113,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error calculando balances" }, { status: 500 })
     }
 
+    // Helper para calcular delta
+    const calcDelta = (m: any) => {
+      const amount = parseFloat(
+        accountCurrency === "USD"
+          ? (m.amount_original || "0")
+          : (m.amount_ars_equivalent || "0")
+      )
+      if (category === "PASIVO") {
+        if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") return amount
+        if (m.type === "INCOME" || m.type === "FX_GAIN") return -amount
+        return 0
+      }
+      if (m.type === "INCOME" || m.type === "FX_GAIN") return amount
+      if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") return -amount
+      return 0
+    }
+
     // 4. Calcular balance antes y después del movimiento
     let balanceBefore = initialBalance
     let balanceAfter = initialBalance
     let foundMovement = false
 
     for (const m of (allMovements || [])) {
-      const amount = parseFloat(
-        accountCurrency === "USD"
-          ? (m.amount_original || "0")
-          : (m.amount_ars_equivalent || "0")
-      )
+      const delta = calcDelta(m)
 
-      let delta = 0
-      if (category === "PASIVO") {
-        if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
-          delta = amount
-        } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
-          delta = -amount
-        }
-      } else {
-        if (m.type === "INCOME" || m.type === "FX_GAIN") {
-          delta = amount
-        } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
-          delta = -amount
-        }
-      }
-
-      if (m.id === ledgerMovementId) {
+      if (m.id === movement.id) {
         foundMovement = true
         balanceBefore = balanceAfter
         balanceAfter = balanceAfter + delta
@@ -122,30 +150,10 @@ export async function GET(request: Request) {
       }
     }
 
-    // Si no encontramos el movimiento en la iteración, usar balance actual como fallback
+    // Si no encontramos el movimiento, usar balance total como "before"
     if (!foundMovement) {
       balanceBefore = balanceAfter
-      // Calcular el delta de este movimiento específico
-      const movAmount = parseFloat(
-        accountCurrency === "USD"
-          ? (movement.amount_original || "0")
-          : (movement.amount_ars_equivalent || "0")
-      )
-      let delta = 0
-      if (category === "PASIVO") {
-        if (movement.type === "EXPENSE" || movement.type === "OPERATOR_PAYMENT" || movement.type === "FX_LOSS") {
-          delta = movAmount
-        } else if (movement.type === "INCOME" || movement.type === "FX_GAIN") {
-          delta = -movAmount
-        }
-      } else {
-        if (movement.type === "INCOME" || movement.type === "FX_GAIN") {
-          delta = movAmount
-        } else if (movement.type === "EXPENSE" || movement.type === "FX_LOSS" || movement.type === "COMMISSION" || movement.type === "OPERATOR_PAYMENT") {
-          delta = -movAmount
-        }
-      }
-      balanceAfter = balanceBefore + delta
+      balanceAfter = balanceBefore + calcDelta(movement)
     }
 
     return NextResponse.json({

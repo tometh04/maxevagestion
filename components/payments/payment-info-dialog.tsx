@@ -124,11 +124,13 @@ export function PaymentInfoDialog({
       return
     }
 
-    const ledgerMovementId = isOperatorPayment
-      ? payment.ledger_movements?.id || payment.ledger_movement_id
-      : payment.ledger_movements?.id || payment.ledger_movement_id
+    const ledgerMovementId =
+      payment.ledger_movements?.id || payment.ledger_movement_id
+    const operationId =
+      payment.operation_id || payment.operations?.id
 
-    if (!ledgerMovementId) {
+    // Need at least one identifier to fetch detail
+    if (!ledgerMovementId && !operationId) {
       setAccountDetail(null)
       return
     }
@@ -136,8 +138,12 @@ export function PaymentInfoDialog({
     const fetchDetail = async () => {
       setLoadingDetail(true)
       try {
+        const params = new URLSearchParams()
+        if (ledgerMovementId) params.append("ledgerMovementId", ledgerMovementId)
+        if (operationId) params.append("operationId", operationId)
+
         const res = await fetch(
-          `/api/payments/detail?ledgerMovementId=${ledgerMovementId}`
+          `/api/payments/detail?${params.toString()}`
         )
         if (res.ok) {
           const data = await res.json()
