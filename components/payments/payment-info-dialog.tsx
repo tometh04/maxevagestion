@@ -128,6 +128,9 @@ export function PaymentInfoDialog({
       payment.ledger_movements?.id || payment.ledger_movement_id
     const operationId =
       payment.operation_id || payment.operations?.id
+    const operatorId =
+      payment.operator_id || payment.operators?.id
+    const paymentAmount = payment.paid_amount || payment.amount
 
     // Need at least one identifier to fetch detail
     if (!ledgerMovementId && !operationId) {
@@ -141,6 +144,8 @@ export function PaymentInfoDialog({
         const params = new URLSearchParams()
         if (ledgerMovementId) params.append("ledgerMovementId", ledgerMovementId)
         if (operationId) params.append("operationId", operationId)
+        if (operatorId) params.append("operatorId", operatorId)
+        if (paymentAmount) params.append("paymentAmount", String(paymentAmount))
 
         const res = await fetch(
           `/api/payments/detail?${params.toString()}`

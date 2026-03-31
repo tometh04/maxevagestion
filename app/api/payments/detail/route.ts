@@ -8,6 +8,8 @@ import { getCurrentUser } from "@/lib/auth"
  * Params:
  * - ledgerMovementId: ID directo del ledger_movement (preferido)
  * - operationId: ID de la operación (fallback para pagos parciales sin ledger_movement_id vinculado)
+ * - operatorId: ID del operador (para afinar búsqueda por operación)
+ * - paymentAmount: Monto del pago (para buscar el ledger_movement que mejor matchea)
  *
  * Retorna info de la cuenta financiera usada para un pago,
  * incluyendo balance antes y después del movimiento.
@@ -20,10 +22,18 @@ export async function GET(request: Request) {
 
     const ledgerMovementId = searchParams.get("ledgerMovementId")
     const operationId = searchParams.get("operationId")
+    const operatorId = searchParams.get("operatorId")
+    const paymentAmount = searchParams.get("paymentAmount")
 
     if (!ledgerMovementId && !operationId) {
       return NextResponse.json({ error: "ledgerMovementId o operationId es requerido" }, { status: 400 })
     }
+
+    const movementSelect = `
+      id, created_at, type, amount_original, amount_ars_equivalent,
+      currency, method, receipt_number, notes, account_id,
+      financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
+    `
 
     // 1. Encontrar el ledger_movement relevante
     let movement: any = null
@@ -32,11 +42,7 @@ export async function GET(request: Request) {
       // Búsqueda directa por ID
       const { data, error } = await (supabase
         .from("ledger_movements") as any)
-        .select(`
-          id, created_at, type, amount_original, amount_ars_equivalent,
-          currency, method, receipt_number, notes, account_id,
-          financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
-        `)
+        .select(movementSelect)
         .eq("id", ledgerMovementId)
         .single()
 
@@ -44,17 +50,41 @@ export async function GET(request: Request) {
     }
 
     if (!movement && operationId) {
-      // Fallback: buscar por operation_id (para pagos parciales, pagos masivos, etc.)
-      // Buscar el movimiento EXPENSE más reciente de esta operación
-      const { data, error } = await (supabase
-        .from("ledger_movements") as any)
-        .select(`
-          id, created_at, type, amount_original, amount_ars_equivalent,
-          currency, method, receipt_number, notes, account_id,
-          financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
-        `)
+      // Fallback: buscar por operation_id
+      // Intentar matchear por operator_id y/o monto para mayor precisión
+      let query = (supabase.from("ledger_movements") as any)
+        .select(movementSelect)
         .eq("operation_id", operationId)
         .in("type", ["EXPENSE", "OPERATOR_PAYMENT"])
+        .order("created_at", { ascending: false })
+
+      if (operatorId) {
+        query = query.eq("operator_id", operatorId)
+      }
+
+      const { data: candidates, error } = await query.limit(10)
+
+      if (!error && candidates && candidates.length > 0) {
+        // Si tenemos monto, buscar el que mejor matchea
+        if (paymentAmount) {
+          const targetAmount = parseFloat(paymentAmount)
+          const match = candidates.find((c: any) => {
+            const amt = parseFloat(c.amount_original || "0")
+            return Math.abs(amt - targetAmount) < 0.01
+          })
+          movement = match || candidates[0]
+        } else {
+          movement = candidates[0]
+        }
+      }
+    }
+
+    // 2. Si todavía no encontramos, buscar en TODOS los movements de la operación (sin filtro de type)
+    if (!movement && operationId) {
+      const { data, error } = await (supabase
+        .from("ledger_movements") as any)
+        .select(movementSelect)
+        .eq("operation_id", operationId)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -88,7 +118,7 @@ export async function GET(request: Request) {
       })
     }
 
-    // 2. Determinar categoría del plan de cuentas (para lógica PASIVO vs ACTIVO)
+    // 3. Determinar categoría del plan de cuentas (para lógica PASIVO vs ACTIVO)
     let category: string | null = null
     if (account.chart_account_id) {
       const { data: chartAccount } = await (supabase
@@ -102,7 +132,7 @@ export async function GET(request: Request) {
     const accountCurrency = account.currency as "ARS" | "USD"
     const initialBalance = parseFloat(account.initial_balance || "0")
 
-    // 3. Obtener TODOS los movimientos de esta cuenta para calcular balance
+    // 4. Obtener TODOS los movimientos de esta cuenta para calcular balance
     const { data: allMovements, error: allMovError } = await (supabase
       .from("ledger_movements") as any)
       .select("id, type, amount_original, amount_ars_equivalent, created_at")
@@ -130,7 +160,7 @@ export async function GET(request: Request) {
       return 0
     }
 
-    // 4. Calcular balance antes y después del movimiento
+    // 5. Calcular balance antes y después del movimiento
     let balanceBefore = initialBalance
     let balanceAfter = initialBalance
     let foundMovement = false
