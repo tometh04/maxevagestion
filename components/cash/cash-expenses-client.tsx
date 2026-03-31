@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react"
 import { CashFilters, CashFiltersState } from "./cash-filters"
 import { PaymentsTable, Payment } from "./payments-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Search } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
+import { useDebounce } from "@/hooks/use-debounce"
 
 interface CashExpensesClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -13,6 +16,8 @@ interface CashExpensesClientProps {
 
 export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesClientProps) {
   const [filters, setFilters] = useState(defaultFilters)
+  const [contactNameInput, setContactNameInput] = useState("")
+  const contactName = useDebounce(contactNameInput, 400)
   const [totalExpenses, setTotalExpenses] = useState({ ars: 0, usd: 0 })
 
   const fetchTotalExpenses = useCallback(async () => {
@@ -62,6 +67,17 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
 
       <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
 
+      {/* Búsqueda por nombre de cliente/operador */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          placeholder="Buscar por cliente u operador..."
+          value={contactNameInput}
+          onChange={(e) => setContactNameInput(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+
       {/* KPIs de totales */}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-xl border border-border/40 p-5">
@@ -80,6 +96,7 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
         currency={filters.currency}
         agencyId={filters.agencyId}
         direction="EXPENSE"
+        contactName={contactName}
         emptyMessage="No hay egresos en el rango seleccionado"
       />
     </div>

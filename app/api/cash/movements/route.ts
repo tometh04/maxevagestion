@@ -256,7 +256,7 @@ export async function GET(request: Request) {
       }
     }
     if (dateFrom) {
-      query = query.gte("movement_date", dateFrom)
+      query = query.gte("movement_date", `${dateFrom}T00:00:00`)
     }
     if (dateTo) {
       // Incluir el día completo hasta las 23:59:59

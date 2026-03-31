@@ -88,9 +88,36 @@ export async function calculateCommission(operation: Operation): Promise<{
   }
 
   // Obtener porcentaje del vendedor principal
-  const percentage = await getSellerPercentage(operation.seller_id)
+  const primaryPercentage = await getSellerPercentage(operation.seller_id)
 
-  if (percentage <= 0) {
+  const hasSecondary = !!operation.seller_secondary_id
+
+  if (hasSecondary) {
+    // Cuando la comisión es compartida, cada vendedor recibe la mitad de SU porcentaje
+    // El commission_split (0-100) controla el factor de división (default 50 = mitad)
+    const splitFactor = (operation.commission_split ?? 50) / 100
+
+    // Porcentaje efectivo de cada vendedor: su porcentaje × factor de split
+    const effectivePrimaryPct = primaryPercentage * splitFactor
+    const primaryCommission = Math.round((operation.margin_amount * effectivePrimaryPct) / 100 * 100) / 100
+
+    // Obtener porcentaje del vendedor secundario (su propia regla)
+    const secondaryPercentage = await getSellerPercentage(operation.seller_secondary_id!)
+    const effectiveSecondaryPct = secondaryPercentage * splitFactor
+    const secondaryCommission = Math.round((operation.margin_amount * effectiveSecondaryPct) / 100 * 100) / 100
+
+    const totalCommission = Math.round((primaryCommission + secondaryCommission) * 100) / 100
+
+    return {
+      totalCommission,
+      percentage: Math.round(primaryPercentage * 100) / 100,
+      primaryCommission,
+      secondaryCommission,
+    }
+  }
+
+  // Sin vendedor secundario: comisión completa para el primario
+  if (primaryPercentage <= 0) {
     return {
       totalCommission: 0,
       percentage: 0,
@@ -99,26 +126,13 @@ export async function calculateCommission(operation: Operation): Promise<{
     }
   }
 
-  // Calcular comisión: margen × porcentaje / 100
-  let totalCommission = (operation.margin_amount * percentage) / 100
-  totalCommission = Math.round(totalCommission * 100) / 100
-
-  // Si hay seller_secondary, dividir según commission_split (50/50 por defecto)
-  const hasSecondary = !!operation.seller_secondary_id
-  const splitPrimary = (operation.commission_split ?? 50) / 100
-  const splitSecondary = 1 - splitPrimary
-  const primaryCommission = hasSecondary
-    ? Math.round(totalCommission * splitPrimary * 100) / 100
-    : totalCommission
-  const secondaryCommission = hasSecondary
-    ? Math.round(totalCommission * splitSecondary * 100) / 100
-    : null
+  const totalCommission = Math.round((operation.margin_amount * primaryPercentage) / 100 * 100) / 100
 
   return {
     totalCommission,
-    percentage: Math.round(percentage * 100) / 100,
-    primaryCommission,
-    secondaryCommission,
+    percentage: Math.round(primaryPercentage * 100) / 100,
+    primaryCommission: totalCommission,
+    secondaryCommission: null,
   }
 }
 

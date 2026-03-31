@@ -358,6 +358,41 @@ export async function POST(request: Request) {
           continue
         }
 
+        // Si se pagó más que el monto original (hasta 10% extra), actualizar operator_cost y monto de la deuda
+        const originalAmount = parseFloat(item.operatorPayment.amount)
+        if (item.newPaidAmount > originalAmount) {
+          const extraAmount = roundMoney(item.newPaidAmount - originalAmount)
+          // Actualizar el monto de la deuda del operador para reflejar el pago extra
+          await (supabase.from("operator_payments") as any)
+            .update({ amount: item.newPaidAmount, updated_at: new Date().toISOString() })
+            .eq("id", operator_payment_id)
+
+          // Actualizar el operator_cost de la operación en tiempo real
+          if (item.paymentItem.operation_id) {
+            const { data: currentOp } = await (supabase.from("operations") as any)
+              .select("operator_cost, sale_amount_total")
+              .eq("id", item.paymentItem.operation_id)
+              .single()
+
+            if (currentOp) {
+              const newCost = roundMoney(parseFloat(currentOp.operator_cost) + extraAmount)
+              const newMargin = roundMoney(parseFloat(currentOp.sale_amount_total) - newCost)
+              const newMarginPct = parseFloat(currentOp.sale_amount_total) > 0
+                ? roundMoney((newMargin / parseFloat(currentOp.sale_amount_total)) * 100)
+                : 0
+
+              await (supabase.from("operations") as any)
+                .update({
+                  operator_cost: newCost,
+                  margin_amount: newMargin,
+                  margin_percentage: newMarginPct,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", item.paymentItem.operation_id)
+            }
+          }
+        }
+
         processedPayments.push({
           operator_payment_id,
           amount_paid: amount_to_pay,

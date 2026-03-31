@@ -70,6 +70,51 @@ const nationalities = [
   { value: "Otro", label: "Otro" },
 ]
 
+// Generador de CUIL argentino
+function generateCUIL(dni: string, sex: "M" | "F"): string {
+  const dniClean = dni.replace(/\D/g, "").padStart(8, "0")
+  if (dniClean.length !== 7 && dniClean.length !== 8) return ""
+
+  const prefix = sex === "M" ? "20" : "27"
+  const base = prefix + dniClean
+
+  // Cálculo del dígito verificador
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  let sum = 0
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(base[i]) * weights[i]
+  }
+  const remainder = sum % 11
+  let checkDigit: number
+
+  if (remainder === 0) {
+    checkDigit = 0
+  } else if (remainder === 1) {
+    // Caso especial: si el dígito es 1, se cambia el prefijo
+    if (sex === "M") {
+      return generateCUILWithPrefix("23", dniClean)
+    } else {
+      return generateCUILWithPrefix("23", dniClean)
+    }
+  } else {
+    checkDigit = 11 - remainder
+  }
+
+  return `${prefix}-${dniClean}-${checkDigit}`
+}
+
+function generateCUILWithPrefix(prefix: string, dni: string): string {
+  const base = prefix + dni
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  let sum = 0
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(base[i]) * weights[i]
+  }
+  const remainder = sum % 11
+  const checkDigit = remainder === 0 ? 0 : 11 - remainder
+  return `${prefix}-${dni}-${checkDigit}`
+}
+
 export function NewCustomerDialog({
   open,
   onOpenChange,
@@ -82,6 +127,12 @@ export function NewCustomerDialog({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { settings, loading: settingsLoading } = useCustomerSettings()
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+
+  // Estado para generador de CUIL
+  const [cuilDni, setCuilDni] = useState("")
+  const [cuilSex, setCuilSex] = useState<"M" | "F">("M")
+  const [generatedCuil, setGeneratedCuil] = useState("")
+  const [isLookingUpCuil, setIsLookingUpCuil] = useState(false)
 
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
@@ -296,6 +347,33 @@ export function NewCustomerDialog({
     setOcrSuccess(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
+    }
+  }
+
+  // Buscar datos del cliente con DNI + Sexo y generar CUIL
+  const handleCuilLookup = async () => {
+    if (!cuilDni || cuilDni.replace(/\D/g, "").length < 7) {
+      toast.error("Ingresá un DNI válido (7-8 dígitos)")
+      return
+    }
+
+    setIsLookingUpCuil(true)
+    try {
+      const cuil = generateCUIL(cuilDni, cuilSex)
+      setGeneratedCuil(cuil)
+
+      // Auto-completar campos del formulario
+      const dniClean = cuilDni.replace(/\D/g, "")
+      form.setValue("document_type", "DNI")
+      form.setValue("document_number", dniClean)
+      form.setValue("nationality", "Argentina")
+
+      toast.success(`CUIL generado: ${cuil}`)
+    } catch (error) {
+      console.error("Error generating CUIL:", error)
+      toast.error("Error al generar el CUIL")
+    } finally {
+      setIsLookingUpCuil(false)
     }
   }
 
@@ -626,6 +704,63 @@ export function NewCustomerDialog({
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Sección: Crear desde CUIL */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium text-foreground/70">Crear desde CUIL</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Ingresá el DNI y sexo para generar el CUIL automáticamente
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="md:col-span-1">
+                  <label className="text-sm font-medium mb-1.5 block">DNI</label>
+                  <Input
+                    placeholder="12345678"
+                    value={cuilDni}
+                    onChange={(e) => setCuilDni(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Sexo</label>
+                  <Select value={cuilSex} onValueChange={(v) => setCuilSex(v as "M" | "F")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="M">Masculino</SelectItem>
+                      <SelectItem value="F">Femenino</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleCuilLookup}
+                    disabled={isLookingUpCuil || !cuilDni}
+                  >
+                    {isLookingUpCuil ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Buscando...
+                      </>
+                    ) : (
+                      "Generar CUIL"
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {generatedCuil && (
+                <div className="flex items-center gap-2 p-3 bg-background rounded-md border border-emerald-200">
+                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                  <span className="text-sm font-medium">CUIL: {generatedCuil}</span>
                 </div>
               )}
             </div>

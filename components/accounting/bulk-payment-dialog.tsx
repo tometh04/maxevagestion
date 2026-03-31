@@ -292,9 +292,11 @@ export function BulkPaymentDialog({
 
     const numValue = parseFloat(value) || 0
     const paidAmount = payment.paid_amount || 0
-    const maxAmount = payment.amount - paidAmount
+    const pendingAmount = payment.amount - paidAmount
+    // Permitir hasta 10% adicional sobre el pendiente
+    const maxAmount = Math.round(pendingAmount * 1.10 * 100) / 100
 
-    // No permitir más del pendiente ni valores negativos
+    // No permitir más del 110% del pendiente ni valores negativos
     const finalValue = Math.max(0, Math.min(numValue, maxAmount))
 
     setPaymentAmounts(prev => ({
@@ -659,14 +661,20 @@ export function BulkPaymentDialog({
                                     type="number"
                                     step="0.01"
                                     min="0"
-                                    max={remaining}
+                                    max={Math.round(remaining * 1.10 * 100) / 100}
                                     value={amountToPay}
                                     onChange={(e) => handleAmountChange(payment.id, e.target.value)}
-                                    className="w-32"
+                                    className={`w-32 ${amountToPay > remaining ? 'border-warning text-warning' : ''}`}
                                     placeholder="0.00"
                                   />
                                   <div className="text-xs text-muted-foreground">
-                                    Máx: {formatCurrency(remaining, payment.currency)}
+                                    {amountToPay > remaining ? (
+                                      <span className="text-warning font-medium">
+                                        +{formatCurrency(amountToPay - remaining, payment.currency)} extra (afecta costo)
+                                      </span>
+                                    ) : (
+                                      <>Máx: {formatCurrency(Math.round(remaining * 1.10 * 100) / 100, payment.currency)} (+10%)</>
+                                    )}
                                   </div>
                                 </div>
                               ) : (

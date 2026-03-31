@@ -527,7 +527,23 @@ export function OperationDetailClient({
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}
-            operators={operation.operators ? [{ id: operation.operators.id, name: operation.operators.name }] : []}
+            operators={(() => {
+              // Incluir operador principal + operadores múltiples (operation_operators)
+              const ops: Array<{ id: string; name: string }> = []
+              if (operation.operators) {
+                ops.push({ id: operation.operators.id, name: operation.operators.name })
+              }
+              // Agregar operadores múltiples si existen
+              if (operation.operation_operators && Array.isArray(operation.operation_operators)) {
+                for (const oo of operation.operation_operators) {
+                  const op = oo.operators || oo
+                  if (op?.id && !ops.some(o => o.id === op.id)) {
+                    ops.push({ id: op.id, name: op.name || "Operador" })
+                  }
+                }
+              }
+              return ops
+            })()}
           />
         </TabsContent>
 

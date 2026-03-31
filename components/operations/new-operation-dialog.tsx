@@ -196,6 +196,11 @@ export function NewOperationDialog({
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [pendingClose, setPendingClose] = useState(false)
   
+  // Estado para alerta de moneda incorrecta
+  const [showCurrencyWarning, setShowCurrencyWarning] = useState(false)
+  const [currencyWarningMessage, setCurrencyWarningMessage] = useState("")
+  const [pendingSubmitValues, setPendingSubmitValues] = useState<OperationFormValues | null>(null)
+
   // Estado para crear nuevo operador
   const [showNewOperatorDialog, setShowNewOperatorDialog] = useState(false)
   const [newOperatorName, setNewOperatorName] = useState("")
@@ -445,7 +450,32 @@ export function NewOperationDialog({
     }
   }
 
+  // Verificar si el monto y la moneda son coherentes
+  const checkCurrencyMismatch = (values: OperationFormValues): string | null => {
+    const saleCurrency = values.sale_currency || values.currency || "USD"
+    const saleAmount = values.sale_amount_total || 0
+
+    if (saleCurrency === "ARS" && saleAmount > 0 && saleAmount < 100000) {
+      return `El monto de venta es ${saleCurrency} $${saleAmount.toLocaleString("es-AR")}. ¿No será que esta operación debería estar en USD?`
+    }
+    if (saleCurrency === "USD" && saleAmount > 100000) {
+      return `El monto de venta es ${saleCurrency} $${saleAmount.toLocaleString("es-AR")}. ¿No será que esta operación debería estar en ARS?`
+    }
+    return null
+  }
+
   const onSubmit = async (values: OperationFormValues) => {
+    // Verificar mismatch de moneda antes de enviar
+    const currencyWarning = checkCurrencyMismatch(values)
+    if (currencyWarning && !pendingSubmitValues) {
+      setCurrencyWarningMessage(currencyWarning)
+      setPendingSubmitValues(values)
+      setShowCurrencyWarning(true)
+      return
+    }
+    // Limpiar estado de pending si viene de confirmación
+    setPendingSubmitValues(null)
+
     setIsLoading(true)
     setApiError(null)
     try {
@@ -1587,6 +1617,37 @@ export function NewOperationDialog({
             <AlertDialogCancel onClick={handleCancelClose}>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleConfirmClose} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               Cerrar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Diálogo de alerta de moneda incorrecta */}
+      <AlertDialog open={showCurrencyWarning} onOpenChange={setShowCurrencyWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-warning" />
+              Verificación de Moneda
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-base">
+              {currencyWarningMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => {
+              setShowCurrencyWarning(false)
+              setPendingSubmitValues(null)
+            }}>
+              Corregir moneda
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              setShowCurrencyWarning(false)
+              if (pendingSubmitValues) {
+                onSubmit(pendingSubmitValues)
+              }
+            }}>
+              Es correcto, continuar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

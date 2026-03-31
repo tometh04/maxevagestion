@@ -105,9 +105,9 @@ export async function POST(request: Request) {
     // Generar número de cotización
     const { data: quotationNumber } = await supabase.rpc("generate_quotation_number")
 
-    // Calcular vencimiento (48hs desde ahora)
+    // Calcular vencimiento (24hs desde ahora)
     const validUntil = new Date()
-    validUntil.setHours(validUntil.getHours() + 48)
+    validUntil.setHours(validUntil.getHours() + 24)
 
     // El total de la cotización es el de la primera opción (referencial)
     const firstOption = options[0]

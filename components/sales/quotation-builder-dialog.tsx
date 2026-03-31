@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye } from "lucide-react"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X } from "lucide-react"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 
@@ -68,6 +68,7 @@ interface QuotationItem {
   flight_return_date?: string
   flight_stops?: number
   flight_class?: string
+  flight_screenshot_url?: string
   stopovers?: StopoverInfo[]
   // Transfer
   transfer_description?: string
@@ -271,6 +272,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 flight_return_date: item.flight_return_date || undefined,
                 flight_stops: item.flight_stops ?? 0,
                 flight_class: item.flight_class || undefined,
+                flight_screenshot_url: item.flight_screenshot_url || undefined,
                 transfer_description: item.transfer_description || undefined,
                 stopovers: [],
               })),
@@ -615,6 +617,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             flight_return_date: item.flight_return_date || null,
             flight_stops: item.flight_stops ?? 0,
             flight_class: item.flight_class || null,
+            flight_screenshot_url: item.flight_screenshot_url || null,
             transfer_description: item.transfer_description || null,
           })),
         })),
@@ -1121,6 +1124,84 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                 className="h-9 rounded-md text-sm"
                               />
                             </div>
+                          </div>
+                          {/* Screenshot de vuelo */}
+                          <div className="space-y-2 pt-1">
+                            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Screenshot del vuelo</p>
+                            {item.flight_screenshot_url ? (
+                              <div className="relative group">
+                                <img
+                                  src={item.flight_screenshot_url}
+                                  alt="Screenshot del vuelo"
+                                  className="w-full max-h-48 object-contain rounded-md border"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  size="icon"
+                                  className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={() => updateItem(option.id, item.id, "flight_screenshot_url", "")}
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            ) : (
+                              <div>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  id={`flight-screenshot-${item.id}`}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0]
+                                    if (!file) return
+                                    if (file.size > 10 * 1024 * 1024) {
+                                      toast.error("La imagen no puede superar 10MB")
+                                      return
+                                    }
+                                    try {
+                                      const formData = new FormData()
+                                      formData.append("file", file)
+                                      formData.append("type", "FLIGHT_SCREENSHOT")
+                                      const res = await fetch("/api/documents/upload", {
+                                        method: "POST",
+                                        body: formData,
+                                      })
+                                      if (res.ok) {
+                                        const data = await res.json()
+                                        updateItem(option.id, item.id, "flight_screenshot_url", data.url || data.publicUrl || data.file_url)
+                                        toast.success("Screenshot subido correctamente")
+                                      } else {
+                                        // Fallback: usar base64 como URL temporal
+                                        const reader = new FileReader()
+                                        reader.onload = () => {
+                                          updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
+                                          toast.success("Screenshot cargado")
+                                        }
+                                        reader.readAsDataURL(file)
+                                      }
+                                    } catch {
+                                      // Fallback: usar base64
+                                      const reader = new FileReader()
+                                      reader.onload = () => {
+                                        updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
+                                        toast.success("Screenshot cargado")
+                                      }
+                                      reader.readAsDataURL(file)
+                                    }
+                                    e.target.value = ""
+                                  }}
+                                />
+                                <label htmlFor={`flight-screenshot-${item.id}`}>
+                                  <Button type="button" variant="outline" size="sm" className="cursor-pointer" asChild>
+                                    <span>
+                                      <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                      Subir screenshot del vuelo
+                                    </span>
+                                  </Button>
+                                </label>
+                              </div>
+                            )}
                           </div>
                           {/* Stopover details */}
                           {(item.stopovers || []).length > 0 && (

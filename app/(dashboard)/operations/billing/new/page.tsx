@@ -32,6 +32,8 @@ interface Customer {
   first_name: string
   last_name: string
   email: string
+  document_type?: string | null
+  document_number?: string | null
   cuit?: string
   dni?: string
 }
@@ -212,20 +214,27 @@ export default function NewInvoicePage() {
    * - Sin CUIT       → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
    */
   const getReceptorDefaults = (customer: Customer) => {
-    if (customer.cuit) {
+    // Determinar CUIT y DNI desde los campos del customer
+    const docType = customer.document_type?.toUpperCase()
+    const docNumber = customer.document_number || ''
+    const cuit = customer.cuit || (docType === 'CUIT' ? docNumber : '')
+    const dni = customer.dni || (docType === 'DNI' ? docNumber : '')
+
+    if (cuit) {
       // Tiene CUIT → asumir Responsable Inscripto → Factura A
       return {
         cbte_tipo: 1,           // Factura A
         receptor_doc_tipo: 80,  // CUIT
-        receptor_doc_nro: customer.cuit,
+        receptor_doc_nro: cuit,
         receptor_condicion_iva: 1, // RI
       }
     } else {
       // Sin CUIT → Consumidor Final → Factura B
+      // Si tiene DNI, usarlo automáticamente
       return {
         cbte_tipo: 6,           // Factura B
-        receptor_doc_tipo: customer.dni ? 96 : 99, // DNI o sin especificar
-        receptor_doc_nro: customer.dni || '0',
+        receptor_doc_tipo: dni ? 96 : 99, // 96=DNI o 99=sin especificar
+        receptor_doc_nro: dni || '0',
         receptor_condicion_iva: 5, // Consumidor Final
       }
     }
