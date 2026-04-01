@@ -2,6 +2,16 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 
+// Message types that don't count as real messages (reactions, stickers, etc.)
+const EXCLUDED_MESSAGE_TYPES = new Set(["reaction", "sticker", "unknown"])
+
+/** Check if a document is a PDF based on mime type */
+function isPdfDocument(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return true // If no mime type, assume it could be a PDF (backwards compat)
+  const mime = mimeType.toLowerCase()
+  return mime === "application/pdf" || mime.includes("pdf")
+}
+
 export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
@@ -11,22 +21,18 @@ export async function GET(request: Request) {
   const agencyId = searchParams.get("agencyId")
   const dateFrom = searchParams.get("dateFrom")
   const dateTo = searchParams.get("dateTo")
+  const includeGroups = searchParams.get("includeGroups") === "true"
 
   const supabase = createAdminClient() as any
 
   const fromDate = dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined
   const toDate = dateTo ? `${dateTo}T23:59:59.999Z` : undefined
 
-  // Query messages directly (real-time)
-  let query = supabase
-    .from("wa_messages")
-    .select("direction, sent_at, chat_id, message_type")
-    .order("sent_at", { ascending: true })
-
+  // Get device IDs to filter
+  let deviceIds: string[] | null = null
   if (deviceId && deviceId !== "all") {
-    query = query.eq("device_id", deviceId)
+    deviceIds = [deviceId]
   } else {
-    // When "all", only include messages from active devices (optionally filtered by agency)
     let devQuery = supabase
       .from("wa_devices")
       .select("id")
@@ -36,8 +42,32 @@ export async function GET(request: Request) {
     }
     const { data: activeDevices } = await devQuery
     if (activeDevices && activeDevices.length > 0) {
-      query = query.in("device_id", activeDevices.map((d: any) => d.id))
+      deviceIds = activeDevices.map((d: any) => d.id)
     }
+  }
+
+  // Get individual chat IDs (exclude groups unless includeGroups is true)
+  let allowedChatIds: Set<string> | null = null
+  if (!includeGroups) {
+    let chatQuery = supabase
+      .from("wa_chats")
+      .select("id")
+      .eq("is_group", false)
+    if (deviceIds) {
+      chatQuery = chatQuery.in("device_id", deviceIds)
+    }
+    const { data: individualChats } = await chatQuery
+    allowedChatIds = new Set((individualChats || []).map((c: any) => c.id))
+  }
+
+  // Query messages directly (real-time)
+  let query = supabase
+    .from("wa_messages")
+    .select("direction, sent_at, chat_id, message_type, media_mime_type")
+    .order("sent_at", { ascending: true })
+
+  if (deviceIds) {
+    query = query.in("device_id", deviceIds)
   }
   if (fromDate) query = query.gte("sent_at", fromDate)
   if (toDate) query = query.lte("sent_at", toDate)
@@ -48,10 +78,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Filter messages: exclude groups (unless toggled) and non-real message types
+  const filteredMessages = (messages || []).filter((m: any) => {
+    if (allowedChatIds && !allowedChatIds.has(m.chat_id)) return false
+    if (EXCLUDED_MESSAGE_TYPES.has(m.message_type)) return false
+    return true
+  })
+
   // Get chats created in range (new contacts only) for "initiated" metric
   let newChatsQuery = supabase.from("wa_chats").select("id, created_at")
   if (deviceId && deviceId !== "all") {
     newChatsQuery = newChatsQuery.eq("device_id", deviceId)
+  }
+  if (!includeGroups) {
+    newChatsQuery = newChatsQuery.eq("is_group", false)
   }
   if (fromDate) newChatsQuery = newChatsQuery.gte("created_at", fromDate)
   if (toDate) newChatsQuery = newChatsQuery.lte("created_at", toDate)
@@ -65,7 +105,7 @@ export async function GET(request: Request) {
     chatFirstMsg: Map<string, { direction: string; sent_at: string }>
   }>()
 
-  for (const m of (messages || [])) {
+  for (const m of filteredMessages) {
     // Extract YYYY-MM-DD from sent_at
     const dateStr = m.sent_at.substring(0, 10)
     if (!byDate.has(dateStr)) {
@@ -87,7 +127,8 @@ export async function GET(request: Request) {
       if (!day.chatFirstOutbound.has(m.chat_id)) {
         day.chatFirstOutbound.set(m.chat_id, m.sent_at)
       }
-      if (m.message_type === "document") {
+      // Only count actual PDF documents, not all document types
+      if (m.message_type === "document" && isPdfDocument(m.media_mime_type)) {
         day.pdfs++
       }
     }

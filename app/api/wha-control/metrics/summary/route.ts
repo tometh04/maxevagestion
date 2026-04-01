@@ -2,6 +2,9 @@ import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 
+// Message types that don't count as real messages (reactions, stickers, etc.)
+const EXCLUDED_MESSAGE_TYPES = new Set(["reaction", "sticker", "unknown"])
+
 export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
@@ -11,6 +14,7 @@ export async function GET(request: Request) {
   const agencyId = searchParams.get("agencyId")
   const dateFrom = searchParams.get("dateFrom")
   const dateTo = searchParams.get("dateTo")
+  const includeGroups = searchParams.get("includeGroups") === "true"
 
   const supabase = createAdminClient() as any
 
@@ -18,15 +22,11 @@ export async function GET(request: Request) {
   const fromDate = dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined
   const toDate = dateTo ? `${dateTo}T23:59:59.999Z` : undefined
 
-  // Query all messages in range directly (real-time, no pre-aggregation)
-  let msgQuery = supabase
-    .from("wa_messages")
-    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me")
-
+  // Get device IDs to filter
+  let deviceIds: string[] | null = null
   if (deviceId && deviceId !== "all") {
-    msgQuery = msgQuery.eq("device_id", deviceId)
+    deviceIds = [deviceId]
   } else {
-    // When "all", only include messages from active devices (optionally filtered by agency)
     let devQuery = supabase
       .from("wa_devices")
       .select("id")
@@ -36,8 +36,31 @@ export async function GET(request: Request) {
     }
     const { data: activeDevices } = await devQuery
     if (activeDevices && activeDevices.length > 0) {
-      msgQuery = msgQuery.in("device_id", activeDevices.map((d: any) => d.id))
+      deviceIds = activeDevices.map((d: any) => d.id)
     }
+  }
+
+  // Get individual chat IDs (exclude groups unless includeGroups is true)
+  let allowedChatIds: Set<string> | null = null
+  if (!includeGroups) {
+    let chatQuery = supabase
+      .from("wa_chats")
+      .select("id")
+      .eq("is_group", false)
+    if (deviceIds) {
+      chatQuery = chatQuery.in("device_id", deviceIds)
+    }
+    const { data: individualChats } = await chatQuery
+    allowedChatIds = new Set((individualChats || []).map((c: any) => c.id))
+  }
+
+  // Query all messages in range directly (real-time, no pre-aggregation)
+  let msgQuery = supabase
+    .from("wa_messages")
+    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type")
+
+  if (deviceIds) {
+    msgQuery = msgQuery.in("device_id", deviceIds)
   }
   if (fromDate) msgQuery = msgQuery.gte("sent_at", fromDate)
   if (toDate) msgQuery = msgQuery.lte("sent_at", toDate)
@@ -48,7 +71,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const msgs = messages || []
+  const msgs = (messages || []).filter((m: any) => {
+    // Filter out group messages if not including groups
+    if (allowedChatIds && !allowedChatIds.has(m.chat_id)) return false
+    // Filter out non-real message types (reactions, stickers, etc.)
+    if (EXCLUDED_MESSAGE_TYPES.has(m.message_type)) return false
+    return true
+  })
 
   // Count inbound/outbound + PDFs sent + initiated conversations
   let inbound_count = 0
@@ -68,8 +97,8 @@ export async function GET(request: Request) {
     } else if (m.direction === "outbound") {
       outbound_count++
       outboundChatIds.add(m.chat_id)
-      // Count PDFs (documents) sent by the device
-      if (m.message_type === "document") {
+      // Count PDFs sent: only actual PDF documents, not all document types
+      if (m.message_type === "document" && isPdfDocument(m.media_mime_type)) {
         pdfs_sent_count++
       }
     }
@@ -86,6 +115,9 @@ export async function GET(request: Request) {
     .select("id")
   if (deviceId && deviceId !== "all") {
     newChatsForInitiatedQuery = newChatsForInitiatedQuery.eq("device_id", deviceId)
+  }
+  if (!includeGroups) {
+    newChatsForInitiatedQuery = newChatsForInitiatedQuery.eq("is_group", false)
   }
   if (fromDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.gte("created_at", fromDate)
   if (toDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.lte("created_at", toDate)
@@ -113,17 +145,11 @@ export async function GET(request: Request) {
   let newChatsQuery = supabase
     .from("wa_chats")
     .select("id", { count: "exact", head: true })
-  if (deviceId && deviceId !== "all") {
-    newChatsQuery = newChatsQuery.eq("device_id", deviceId)
-  } else {
-    // Filter by active devices only
-    const { data: activeDevicesForChats } = await supabase
-      .from("wa_devices")
-      .select("id")
-      .eq("is_active", true)
-    if (activeDevicesForChats && activeDevicesForChats.length > 0) {
-      newChatsQuery = newChatsQuery.in("device_id", activeDevicesForChats.map((d: any) => d.id))
-    }
+  if (deviceIds) {
+    newChatsQuery = newChatsQuery.in("device_id", deviceIds)
+  }
+  if (!includeGroups) {
+    newChatsQuery = newChatsQuery.eq("is_group", false)
   }
   if (fromDate) newChatsQuery = newChatsQuery.gte("created_at", fromDate)
   if (toDate) newChatsQuery = newChatsQuery.lte("created_at", toDate)
@@ -232,4 +258,11 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ summary })
+}
+
+/** Check if a document is a PDF based on mime type */
+function isPdfDocument(mimeType: string | null | undefined): boolean {
+  if (!mimeType) return true // If no mime type, assume it could be a PDF (backwards compat)
+  const mime = mimeType.toLowerCase()
+  return mime === "application/pdf" || mime.includes("pdf")
 }

@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Loader2, MessageCircle, MessageSquareText, Clock, Users, AlertCircle, UserPlus, Send, FileText } from "lucide-react"
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Legend } from "recharts"
 
@@ -58,6 +59,7 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
   const [dateTo, setDateTo] = useState(() => new Date().toISOString().split("T")[0])
   const [summary, setSummary] = useState<Summary | null>(null)
   const [timeseries, setTimeseries] = useState<TimeseriesPoint[]>([])
+  const [includeGroups, setIncludeGroups] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -88,6 +90,7 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (selectedDeviceId !== "all") params.set("deviceId", selectedDeviceId)
       if (selectedAgencyId !== "all") params.set("agencyId", selectedAgencyId)
+      if (includeGroups) params.set("includeGroups", "true")
 
       const [summaryRes, timeseriesRes] = await Promise.all([
         fetch(`/api/wha-control/metrics/summary?${params}`),
@@ -107,7 +110,7 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
     } finally {
       setLoading(false)
     }
-  }, [selectedDeviceId, selectedAgencyId, dateFrom, dateTo])
+  }, [selectedDeviceId, selectedAgencyId, dateFrom, dateTo, includeGroups])
 
   useEffect(() => {
     fetchMetrics()
@@ -174,6 +177,14 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
         <div className="space-y-1">
           <Label className="text-xs">Hasta</Label>
           <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs rounded-full border-border/60 bg-background w-[150px]" />
+        </div>
+        <div className="flex items-center gap-2 pb-0.5">
+          <Checkbox
+            id="includeGroups"
+            checked={includeGroups}
+            onCheckedChange={(checked) => setIncludeGroups(checked === true)}
+          />
+          <Label htmlFor="includeGroups" className="text-xs cursor-pointer">Incluir grupos</Label>
         </div>
       </div>
 
