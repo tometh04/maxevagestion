@@ -25,20 +25,46 @@ interface Agency {
 }
 
 interface Voucher {
+  // AFIP mis-comprobantes field names (Spanish with spaces)
+  "Fecha de Emisión"?: string
+  "Fecha de Emision"?: string
+  "Tipo de Comprobante"?: string
+  "Punto de Venta"?: string
+  "Número Desde"?: string
+  "Numero Desde"?: string
+  "Denominación Receptor"?: string
+  "Denominacion Receptor"?: string
+  "Denominación Emisor"?: string
+  "Nro. Doc. Receptor"?: string
+  "Nro. Doc. Emisor"?: string
+  "Imp. Total"?: string
+  "Imp. Neto Gravado"?: string
+  "IVA"?: string
+  "Moneda"?: string
+  "Cód. Autorización"?: string
+  "Cod. Autorizacion"?: string
+  // Legacy/alternative field names
   fecha?: string
+  fechaEmision?: string
   tipoComprobante?: string
   tipo?: string
   puntoVenta?: string | number
   numero?: string | number
   nroComprobante?: string | number
+  nroDesde?: string | number
   cuitEmisor?: string
   denominacionEmisor?: string
   razonSocial?: string
   impTotal?: number
+  importeTotal?: number
   impNeto?: number
+  importeNeto?: number
   impIVA?: number
+  importeIVA?: number
   moneda?: string
+  tipoMoneda?: string
   cae?: string
+  codAutorizacion?: string
   estado?: string
   [key: string]: any
 }
@@ -106,19 +132,29 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
     fetchVouchers(afipPassword)
   }
 
-  // Normalize voucher fields (AFIP responses vary)
+  // Parse AFIP money strings like "4.687,20" or "0,00" to numbers
+  const parseAfipMoney = (val: any): number => {
+    if (typeof val === "number") return val
+    if (!val || val === "—") return 0
+    // AFIP format: "1.234,56" → remove dots (thousands), replace comma with dot
+    return parseFloat(String(val).replace(/\./g, "").replace(",", ".")) || 0
+  }
+
+  // Normalize voucher fields — AFIP mis-comprobantes returns fields with
+  // Spanish names and spaces like "Fecha de Emisión", "Imp. Total", etc.
+  // For received invoices (t=R), the counterpart is labeled "Receptor" in the data.
   const normalizeVoucher = (v: Voucher) => ({
-    fecha: v.fecha || v.fechaEmision || "—",
-    tipo: v.tipoComprobante || v.tipo || "—",
-    puntoVenta: v.puntoVenta || v.ptoVta || "—",
-    numero: v.numero || v.nroComprobante || v.nroDesde || "—",
-    emisor: v.denominacionEmisor || v.razonSocial || v.cuitEmisor || "—",
-    cuitEmisor: v.cuitEmisor || "—",
-    total: v.impTotal ?? v.importeTotal ?? 0,
-    neto: v.impNeto ?? v.importeNeto ?? 0,
-    iva: v.impIVA ?? v.importeIVA ?? 0,
-    moneda: v.moneda || v.tipoMoneda || "ARS",
-    cae: v.cae || v.codAutorizacion || "—",
+    fecha: v["Fecha de Emisión"] || v["Fecha de Emision"] || v.fecha || v.fechaEmision || "—",
+    tipo: v["Tipo de Comprobante"] || v.tipoComprobante || v.tipo || "—",
+    puntoVenta: v["Punto de Venta"] || v.puntoVenta || v.ptoVta || "—",
+    numero: v["Número Desde"] || v["Numero Desde"] || v.numero || v.nroComprobante || v.nroDesde || "—",
+    emisor: v["Denominación Receptor"] || v["Denominacion Receptor"] || v["Denominación Emisor"] || v.denominacionEmisor || v.razonSocial || "—",
+    cuitEmisor: v["Nro. Doc. Receptor"] || v["Nro. Doc. Emisor"] || v.cuitEmisor || "—",
+    total: parseAfipMoney(v["Imp. Total"] ?? v.impTotal ?? v.importeTotal ?? 0),
+    neto: parseAfipMoney(v["Imp. Neto Gravado"] ?? v.impNeto ?? v.importeNeto ?? 0),
+    iva: parseAfipMoney(v["IVA"] ?? v.impIVA ?? v.importeIVA ?? 0),
+    moneda: v["Moneda"] || v.moneda || v.tipoMoneda || "ARS",
+    cae: v["Cód. Autorización"] || v["Cod. Autorizacion"] || v.cae || v.codAutorizacion || "—",
     estado: v.estado || "—",
   })
 
