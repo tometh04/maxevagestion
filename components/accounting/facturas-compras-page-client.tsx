@@ -16,7 +16,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { FileText, Download, Loader2, Search, ShieldAlert, RefreshCw, AlertCircle } from "lucide-react"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
+import { Separator } from "@/components/ui/separator"
+import { FileText, Download, Loader2, Search, ShieldAlert, RefreshCw, AlertCircle, Eye, ExternalLink, Copy, Check } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface Agency {
@@ -86,6 +94,10 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
   // Password dialog
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [afipPassword, setAfipPassword] = useState("")
+
+  // Detail view
+  const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
 
   const fetchVouchers = useCallback(async (password: string) => {
     if (!selectedAgencyId || !password) return
@@ -158,9 +170,10 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
     estado: v.estado || "—",
   })
 
-  const filteredVouchers = vouchers
-    .map(normalizeVoucher)
-    .filter((v) => {
+  // Keep track of original voucher index for detail view
+  const filteredVouchersWithIndex = vouchers
+    .map((v, originalIdx) => ({ normalized: normalizeVoucher(v), originalIdx }))
+    .filter(({ normalized: v }) => {
       if (!searchTerm) return true
       const term = searchTerm.toLowerCase()
       return (
@@ -170,6 +183,8 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
         String(v.numero).includes(term)
       )
     })
+
+  const filteredVouchers = filteredVouchersWithIndex.map((f) => f.normalized)
 
   const totalAmount = filteredVouchers.reduce((sum, v) => sum + Number(v.total || 0), 0)
   const totalIVA = filteredVouchers.reduce((sum, v) => sum + Number(v.iva || 0), 0)
@@ -197,6 +212,50 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
     link.download = `facturas-compras-${dateFrom.replace(/\//g, "")}-${dateTo.replace(/\//g, "")}.csv`
     link.click()
     URL.revokeObjectURL(url)
+  }
+
+  // AFIP voucher type codes to human-readable names
+  const voucherTypeName = (code: string): string => {
+    const types: Record<string, string> = {
+      "1": "Factura A", "2": "Nota de Débito A", "3": "Nota de Crédito A",
+      "6": "Factura B", "7": "Nota de Débito B", "8": "Nota de Crédito B",
+      "11": "Factura C", "12": "Nota de Débito C", "13": "Nota de Crédito C",
+      "51": "Factura M", "52": "Nota de Débito M", "53": "Nota de Crédito M",
+      "201": "Factura de Crédito Electrónica MiPyMEs A",
+      "206": "Factura de Crédito Electrónica MiPyMEs B",
+      "211": "Factura de Crédito Electrónica MiPyMEs C",
+    }
+    return types[code] || `Tipo ${code}`
+  }
+
+  const copyToClipboard = (value: string, field: string) => {
+    navigator.clipboard.writeText(value)
+    setCopiedField(field)
+    setTimeout(() => setCopiedField(null), 1500)
+  }
+
+  // Get all raw fields from a voucher for display
+  const getVoucherDetailRows = (v: Voucher) => {
+    const norm = normalizeVoucher(v)
+    return [
+      { label: "Fecha de Emisión", value: norm.fecha },
+      { label: "Tipo Comprobante", value: `${norm.tipo} — ${voucherTypeName(String(norm.tipo))}` },
+      { label: "Punto de Venta", value: String(norm.puntoVenta) },
+      { label: "Número Desde", value: String(norm.numero) },
+      { label: "Número Hasta", value: v["Número Hasta"] || v["Numero Hasta"] || String(norm.numero) },
+      { label: "Emisor / Receptor", value: norm.emisor, copyable: true },
+      { label: "CUIT", value: norm.cuitEmisor, copyable: true },
+      { label: "Tipo Doc.", value: v["Tipo Doc. Receptor"] || v["Tipo Doc. Emisor"] || "—" },
+      { label: "Imp. Neto Gravado", value: formatMoney(norm.neto), money: true },
+      { label: "Imp. Neto No Gravado", value: formatMoney(parseAfipMoney(v["Imp. Neto No Gravado"])), money: true },
+      { label: "Imp. Op. Exentas", value: formatMoney(parseAfipMoney(v["Imp. Op. Exentas"])), money: true },
+      { label: "IVA", value: formatMoney(norm.iva), money: true },
+      { label: "Otros Tributos", value: formatMoney(parseAfipMoney(v["Otros Tributos"])), money: true },
+      { label: "Imp. Total", value: formatMoney(norm.total), money: true, highlight: true },
+      { label: "Moneda", value: norm.moneda },
+      { label: "Tipo Cambio", value: v["Tipo Cambio"] || "1,00" },
+      { label: "Cód. Autorización (CAE)", value: norm.cae, copyable: true },
+    ]
   }
 
   return (
@@ -350,11 +409,16 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
                         <TableHead className="text-xs text-right">IVA</TableHead>
                         <TableHead className="text-xs text-right">Total</TableHead>
                         <TableHead className="text-xs">CAE</TableHead>
+                        <TableHead className="text-xs w-[40px]" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredVouchers.map((v, idx) => (
-                        <TableRow key={idx}>
+                      {filteredVouchersWithIndex.map(({ normalized: v, originalIdx }, idx) => (
+                        <TableRow
+                          key={idx}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => setSelectedVoucher(vouchers[originalIdx] || null)}
+                        >
                           <TableCell className="text-xs whitespace-nowrap">{v.fecha}</TableCell>
                           <TableCell>
                             <Badge variant={getTypeBadgeVariant(v.tipo)} className="text-[10px] font-mono">
@@ -369,6 +433,19 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
                           <TableCell className="text-xs text-right">{formatMoney(v.iva)}</TableCell>
                           <TableCell className="text-xs text-right font-medium">{formatMoney(v.total)}</TableCell>
                           <TableCell className="text-xs font-mono text-muted-foreground">{v.cae}</TableCell>
+                          <TableCell className="text-xs">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelectedVoucher(vouchers[originalIdx] || null)
+                              }}
+                            >
+                              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                       {/* Totals row */}
@@ -379,7 +456,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
                         </TableCell>
                         <TableCell className="text-xs text-right">{formatMoney(totalIVA)}</TableCell>
                         <TableCell className="text-xs text-right">{formatMoney(totalAmount)}</TableCell>
-                        <TableCell />
+                        <TableCell colSpan={2} />
                       </TableRow>
                     </TableBody>
                   </Table>
@@ -445,6 +522,85 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Voucher Detail Sheet */}
+      <Sheet open={!!selectedVoucher} onOpenChange={(open) => !open && setSelectedVoucher(null)}>
+        <SheetContent className="sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="pb-4">
+            <SheetTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-orange-500" />
+              Detalle del Comprobante
+            </SheetTitle>
+            {selectedVoucher && (
+              <SheetDescription>
+                {voucherTypeName(String(normalizeVoucher(selectedVoucher).tipo))} — Pto Vta {normalizeVoucher(selectedVoucher).puntoVenta} Nº {normalizeVoucher(selectedVoucher).numero}
+              </SheetDescription>
+            )}
+          </SheetHeader>
+
+          {selectedVoucher && (
+            <div className="space-y-5 pt-2">
+              {/* Total highlight */}
+              <div className="rounded-xl border border-orange-200 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-800/30 p-4 text-center">
+                <div className="text-sm text-muted-foreground">Importe Total</div>
+                <div className="text-3xl font-bold text-foreground">
+                  {formatMoney(normalizeVoucher(selectedVoucher).total)}
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  {normalizeVoucher(selectedVoucher).moneda === "PES" ? "Pesos Argentinos" : normalizeVoucher(selectedVoucher).moneda}
+                </div>
+              </div>
+
+              {/* Detail rows */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 divide-y divide-border/40">
+                {getVoucherDetailRows(selectedVoucher).map((row, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center justify-between px-4 py-2.5 ${row.highlight ? "bg-orange-50/50 dark:bg-orange-950/10" : ""}`}
+                  >
+                    <span className="text-xs text-muted-foreground">{row.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-xs font-medium ${row.money ? "font-mono tabular-nums" : ""} ${row.highlight ? "text-base font-bold" : ""}`}>
+                        {row.value}
+                      </span>
+                      {row.copyable && row.value !== "—" && (
+                        <button
+                          onClick={() => copyToClipboard(String(row.value), row.label)}
+                          className="text-muted-foreground hover:text-foreground transition-colors"
+                          title="Copiar"
+                        >
+                          {copiedField === row.label ? (
+                            <Check className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <Copy className="h-3 w-3" />
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* AFIP portal link */}
+              <div className="pt-2">
+                <Button
+                  variant="outline"
+                  className="w-full text-xs"
+                  onClick={() => {
+                    window.open(
+                      `https://serviciosjava2.afip.gob.ar/mcmp/jsp/index.jsp`,
+                      "_blank"
+                    )
+                  }}
+                >
+                  <ExternalLink className="mr-2 h-3.5 w-3.5" />
+                  Ver en portal AFIP / Mis Comprobantes
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
