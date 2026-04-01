@@ -80,6 +80,21 @@ export async function POST(request: Request) {
 
     console.log("[Facturas Compras] Automation result status:", result?.status, "data length:", Array.isArray(result?.data) ? result.data.length : "not array")
 
+    // Check if automation returned an error status
+    if (result?.status === "error") {
+      const errMsg = result.data?.message || "Error en la automatización de AFIP"
+      console.error("[Facturas Compras] Automation error:", errMsg)
+
+      const isCredErr = errMsg.toLowerCase().includes("clave") || errMsg.toLowerCase().includes("usuario")
+      return NextResponse.json({
+        error: isCredErr
+          ? "Clave fiscal o usuario incorrecto. Verificá tus credenciales de AFIP/ARCA."
+          : errMsg,
+        needsPassword: isCredErr,
+        vouchers: [],
+      }, { status: 200 })
+    }
+
     if (!result || !result.data) {
       return NextResponse.json({
         vouchers: [],
@@ -106,14 +121,19 @@ export async function POST(request: Request) {
       console.error("[Facturas Compras] Error status:", error.status)
     }
 
-    // Check if it's a credentials error
+    // Check if it's a credentials error (AFIP returns Spanish messages)
     const errorMsg = error.message || ""
     const errorData = error.data ? JSON.stringify(error.data) : ""
     const combinedError = `${errorMsg} ${errorData}`.toLowerCase()
 
-    if (combinedError.includes("password") || combinedError.includes("credential") || combinedError.includes("auth") || combinedError.includes("login")) {
+    const isCredentialError = [
+      "password", "credential", "auth", "login",
+      "clave", "usuario incorrecto", "contraseña",
+    ].some((term) => combinedError.includes(term))
+
+    if (isCredentialError) {
       return NextResponse.json({
-        error: "Credenciales de AFIP inválidas. Verificá tu clave fiscal.",
+        error: "Clave fiscal o usuario incorrecto. Verificá tus credenciales de AFIP/ARCA.",
         needsPassword: true,
         vouchers: [],
       }, { status: 200 })
