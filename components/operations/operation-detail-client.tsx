@@ -28,6 +28,7 @@ import { OperationAccountingSection } from "@/components/operations/operation-ac
 import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
+import { PassengerBalancesSection } from "@/components/operations/passenger-balances-section"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -544,6 +545,13 @@ export function OperationDetailClient({
               }
               return ops
             })()}
+          />
+          <PassengerBalancesSection
+            operationId={operation.id}
+            customers={customers}
+            payments={operationBasePayments}
+            currency={operation.currency}
+            saleAmount={operation.sale_amount_total}
           />
         </TabsContent>
 
