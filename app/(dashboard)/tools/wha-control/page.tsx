@@ -15,7 +15,6 @@ export default async function WhaControlPageRoute() {
   const { data: agencies } = await (supabase as any)
     .from("agencies")
     .select("id, name")
-    .eq("is_active", true)
     .order("name")
 
   return (
