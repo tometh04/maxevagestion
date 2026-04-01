@@ -36,6 +36,15 @@ export async function GET(request: Request) {
     }, { status: 200 })
   }
 
+  const afipPassword = searchParams.get("afipPassword")
+  if (!afipPassword) {
+    return NextResponse.json({
+      error: "Se requiere la clave fiscal de AFIP",
+      needsPassword: true,
+      vouchers: [],
+    })
+  }
+
   try {
     // Use AfipSDK automation to fetch received invoices
     /* eslint-disable-next-line */
@@ -48,16 +57,20 @@ export async function GET(request: Request) {
       ...(afipConfig.key && { key: afipConfig.key }),
     })
 
+    console.log("[Facturas Compras] Calling mis-comprobantes automation for CUIT:", afipConfig.cuit, "range:", dateFrom, "-", dateTo)
+
     // Call "mis-comprobantes" automation with filter t=R (Recibidos)
     const result = await afip.CreateAutomation("mis-comprobantes", {
       cuit: afipConfig.cuit,
       username: afipConfig.cuit, // AFIP portal username is usually the CUIT
-      password: searchParams.get("afipPassword") || "",
+      password: afipPassword,
       filters: {
         t: "R", // R = Recibidos (received), E = Emitidos (issued)
         fechaEmision: `${dateFrom} - ${dateTo}`,
       },
     }, true) // true = wait for completion
+
+    console.log("[Facturas Compras] Automation result:", JSON.stringify(result).substring(0, 500))
 
     if (!result || !result.data) {
       return NextResponse.json({

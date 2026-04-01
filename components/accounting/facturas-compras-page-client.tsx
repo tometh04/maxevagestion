@@ -61,9 +61,10 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
   const [showPasswordDialog, setShowPasswordDialog] = useState(false)
   const [afipPassword, setAfipPassword] = useState("")
 
-  const fetchVouchers = useCallback(async (password?: string) => {
-    if (!selectedAgencyId) return
+  const fetchVouchers = useCallback(async (password: string) => {
+    if (!selectedAgencyId || !password) return
 
+    setShowPasswordDialog(false)
     setLoading(true)
     setError(null)
 
@@ -72,17 +73,11 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
         agencyId: selectedAgencyId,
         dateFrom,
         dateTo,
+        afipPassword: password,
       })
-      if (password) params.set("afipPassword", password)
 
       const res = await fetch(`/api/accounting/facturas-compras?${params}`)
       const data = await res.json()
-
-      if (data.needsPassword) {
-        setShowPasswordDialog(true)
-        setLoading(false)
-        return
-      }
 
       if (data.error && !data.vouchers?.length) {
         setError(data.error)
@@ -97,8 +92,12 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
     }
   }, [selectedAgencyId, dateFrom, dateTo])
 
+  const handleConsultarClick = () => {
+    if (!selectedAgencyId) return
+    setShowPasswordDialog(true)
+  }
+
   const handlePasswordSubmit = () => {
-    setShowPasswordDialog(false)
     fetchVouchers(afipPassword)
   }
 
@@ -212,7 +211,7 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
 
             <Button
               size="sm"
-              onClick={() => fetchVouchers()}
+              onClick={handleConsultarClick}
               disabled={loading || !selectedAgencyId}
             >
               {loading ? (
