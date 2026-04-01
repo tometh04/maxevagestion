@@ -55,6 +55,16 @@ const MonthlyPositionPageClient = dynamic(
   }
 )
 
+const FacturasComprasPageClient = dynamic(
+  () =>
+    import("@/components/accounting/facturas-compras-page-client").then((m) => ({
+      default: m.FacturasComprasPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 export default async function ContabilidadPage() {
   const { user } = await getCurrentUser()
   const userRole = user.role as any
@@ -127,6 +137,9 @@ export default async function ContabilidadPage() {
         showPartnerAccounts
           ? <PartnerAccountsClient userRole={user.role} agencies={agencies} />
           : <div />
+      }
+      facturasComprasContent={
+        <FacturasComprasPageClient agencies={agencies} />
       }
       showPartnerAccounts={showPartnerAccounts}
     />

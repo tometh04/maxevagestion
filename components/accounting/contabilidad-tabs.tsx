@@ -1,7 +1,7 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Users, Plane, UserCheck, BarChart3 } from "lucide-react"
+import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText } from "lucide-react"
 
 interface ContabilidadTabsProps {
   ledgerContent: React.ReactNode
@@ -9,6 +9,7 @@ interface ContabilidadTabsProps {
   operatorPaymentsContent: React.ReactNode
   partnerAccountsContent: React.ReactNode
   monthlyPositionContent: React.ReactNode
+  facturasComprasContent: React.ReactNode
   showPartnerAccounts?: boolean
 }
 
@@ -18,6 +19,7 @@ export function ContabilidadTabs({
   operatorPaymentsContent,
   partnerAccountsContent,
   monthlyPositionContent,
+  facturasComprasContent,
   showPartnerAccounts = true,
 }: ContabilidadTabsProps) {
   return (
@@ -48,6 +50,10 @@ export function ContabilidadTabs({
             <BarChart3 className="h-3.5 w-3.5" />
             Posición Mensual
           </TabsTrigger>
+          <TabsTrigger value="facturas-compras" className="gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Facturas Compras
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ledger" className="mt-6">
@@ -70,6 +76,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="posicion" className="mt-6">
           {monthlyPositionContent}
+        </TabsContent>
+
+        <TabsContent value="facturas-compras" className="mt-6">
+          {facturasComprasContent}
         </TabsContent>
       </Tabs>
     </div>
