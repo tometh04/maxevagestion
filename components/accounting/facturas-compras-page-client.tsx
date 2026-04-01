@@ -69,18 +69,23 @@ export function FacturasComprasPageClient({ agencies }: FacturasComprasPageClien
     setError(null)
 
     try {
-      const params = new URLSearchParams({
-        agencyId: selectedAgencyId,
-        dateFrom,
-        dateTo,
-        afipPassword: password,
+      const res = await fetch("/api/accounting/facturas-compras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agencyId: selectedAgencyId,
+          dateFrom,
+          dateTo,
+          afipPassword: password,
+        }),
       })
-
-      const res = await fetch(`/api/accounting/facturas-compras?${params}`)
       const data = await res.json()
 
       if (data.error && !data.vouchers?.length) {
-        setError(data.error)
+        const errorMsg = data.errorDetails
+          ? `${data.error} (${typeof data.errorDetails === "string" ? data.errorDetails : JSON.stringify(data.errorDetails)})`
+          : data.error
+        setError(errorMsg)
       }
 
       setVouchers(data.vouchers || [])
