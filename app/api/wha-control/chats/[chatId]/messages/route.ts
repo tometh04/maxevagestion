@@ -13,16 +13,33 @@ export async function GET(
   const { searchParams } = new URL(request.url)
   const limit = parseInt(searchParams.get("limit") || "100")
   const before = searchParams.get("before")
+  // Support merged conversations: comma-separated extra chat IDs
+  const extraChatIds = searchParams.get("chatIds")
 
-  
+
   const supabase = createAdminClient() as any
+
+  // Build list of all chat IDs to query (primary + extras from merged conversations)
+  const allChatIds = [chatId]
+  if (extraChatIds) {
+    const extras = extraChatIds.split(",").map((id) => id.trim()).filter(Boolean)
+    for (const id of extras) {
+      if (!allChatIds.includes(id)) allChatIds.push(id)
+    }
+  }
 
   let query = supabase
     .from("wa_messages")
     .select("id, direction, message_type, body_text, sent_at, from_me, participant_jid, raw_payload")
-    .eq("chat_id", chatId)
-    .order("sent_at", { ascending: true })
-    .limit(limit)
+
+  // Use .in() for multiple chat IDs, .eq() for single
+  if (allChatIds.length === 1) {
+    query = query.eq("chat_id", chatId)
+  } else {
+    query = query.in("chat_id", allChatIds)
+  }
+
+  query = query.order("sent_at", { ascending: true }).limit(limit)
 
   if (before) {
     query = query.lt("sent_at", before)

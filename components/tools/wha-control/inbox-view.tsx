@@ -35,6 +35,7 @@ interface Chat {
   unread_count: number
   last_message_at: string | null
   last_message_preview: string | null
+  _chatIds?: string[] // merged conversation IDs
 }
 
 interface Message {
@@ -134,7 +135,12 @@ export function InboxView({ agencies }: InboxViewProps) {
       setLoadingMessages(true)
     }
     try {
-      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?limit=100`)
+      const chatIds = selectedChat._chatIds || [selectedChat.id]
+      const params = new URLSearchParams({ limit: "100" })
+      if (chatIds.length > 1) {
+        params.set("chatIds", chatIds.join(","))
+      }
+      const res = await fetch(`/api/wha-control/chats/${selectedChat.id}/messages?${params}`)
       if (res.ok) {
         const data = await res.json()
         setMessages(data.messages || [])
