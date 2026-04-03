@@ -98,7 +98,14 @@ export async function getLatestExchangeRate(
  * Intenta: 1) tasa por fecha, 2) tasa más reciente, 3) FALLBACK_RATE con warning visible.
  * Usar esta función en vez de hardcodear 1450 en cada API route.
  */
-const FALLBACK_RATE = 1450
+/**
+ * Default fallback exchange rate USD→ARS when no rate is available in the database.
+ * Used across API routes as a last-resort value. Update this single constant
+ * instead of hunting down hardcoded values scattered across the codebase.
+ */
+export const DEFAULT_USD_ARS_FALLBACK_RATE = 1200
+
+const FALLBACK_RATE = DEFAULT_USD_ARS_FALLBACK_RATE
 let _lastFallbackWarning = 0
 
 export async function getExchangeRateWithFallback(

@@ -66,8 +66,6 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log("[AFIP Setup] Guardando config para CUIT:", cuitClean, "agency:", agency_id, "env:", environment, "cert:", !!cert, "key:", !!key)
-
     const saveResult = await saveAfipConfigForAgency(
       supabase,
       agency_id,

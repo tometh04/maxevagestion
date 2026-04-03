@@ -54,7 +54,6 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: "Error al mover tarjeta en Trello" }, { status: 500 })
         }
 
-        console.log(`✅ Tarjeta ${lead.external_id} movida a lista ${trelloListId} en Trello`)
 
         // El webhook de Trello actualizará la BD automáticamente,
         // pero también actualizamos localmente para respuesta inmediata

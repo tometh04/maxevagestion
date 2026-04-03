@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { subMonths, format } from "date-fns"
-import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -118,7 +118,7 @@ export async function GET(request: Request) {
 
     // Build exchange rate map for ARS operations
     let getRate: (date: any) => number | null = () => null
-    let fallbackRate = 1200
+    let fallbackRate = DEFAULT_USD_ARS_FALLBACK_RATE
     try {
       const arsOps = operationsData
         .filter((oc: any) => {
@@ -130,7 +130,7 @@ export async function GET(request: Request) {
           return op.departure_date || op.created_at
         })
       getRate = await buildExchangeRateMap(supabase, arsOps)
-      fallbackRate = await getLatestExchangeRate(supabase) || 1200
+      fallbackRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
     } catch (err) {
       console.error("Error building exchange rate map for customers:", err)
     }

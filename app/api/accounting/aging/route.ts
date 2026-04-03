@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = "force-dynamic"
 
@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId") || null
 
     const now = new Date()
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     const result: { receivable: AgingSection | null; payable: AgingSection | null } = {
       receivable: null,

@@ -51,7 +51,6 @@ export async function DELETE(
 
     // Si es la última cuenta, se permite eliminar todo (incluyendo movimientos)
     if (isLastAccount) {
-      console.log(`⚠️ Última cuenta financiera. Se eliminarán todos los movimientos contables.`)
       
       // Eliminar TODOS los movimientos contables del sistema
       // Usar una condición que siempre sea verdadera (id IS NOT NULL siempre es true para registros válidos)
@@ -64,7 +63,6 @@ export async function DELETE(
         return NextResponse.json({ error: "Error al eliminar movimientos contables" }, { status: 500 })
       }
       
-      console.log(`✅ Todos los movimientos contables eliminados`)
     } else if (Math.abs(balance) > 1e-6) {
       // Si NO es la última cuenta y tiene saldo, requiere transferencia
       if (!transfer_to_account_id) {
@@ -186,7 +184,6 @@ export async function DELETE(
       }
 
       const verifyBalance = await getAccountBalance(target.id, supabase)
-      console.log(`[DELETE account] Transferido ${amount} ${account.currency} a ${target.name}. Balance destino: ${verifyBalance}`)
       if (Math.abs(verifyBalance) < 1e-6 && amount > 1e-6) {
         console.warn(`[DELETE account] Balance destino sigue ~0 tras transferir ${amount}. Revisar getAccountBalance/chart.`)
       }

@@ -51,8 +51,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Clave Fiscal no configurada. Agregá AFIP_PASSWORD a las variables de entorno o ingresala en el formulario." }, { status: 400 })
     }
 
-    console.log(`[AFIP Automation] Iniciando '${automation}' para CUIT ${params.cuit}`)
-
     const response = await fetch(`${AFIP_SDK_BASE_URL}/automations`, {
       method: "POST",
       headers: {
@@ -75,8 +73,6 @@ export async function POST(request: Request) {
       console.error("[AFIP Automation] Error al iniciar:", response.status, JSON.stringify(data))
       return NextResponse.json({ error: errorMsg }, { status: response.status })
     }
-
-    console.log(`[AFIP Automation] Iniciada OK. ID: ${data.id || data.automation_id}, Status: ${data.status}`)
 
     return NextResponse.json({
       automation_id: data.id || data.automation_id,

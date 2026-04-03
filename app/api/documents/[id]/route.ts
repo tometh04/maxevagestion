@@ -51,7 +51,6 @@ export async function DELETE(
         if (urlParts.length > 1) {
           const filePath = urlParts[1]
           await supabase.storage.from("documents").remove([filePath])
-          console.log(`✅ Archivo eliminado de storage: ${filePath}`)
         }
       } catch (storageError) {
         console.error("Error eliminando archivo de storage:", storageError)

@@ -12,20 +12,17 @@ export async function GET(request: Request) {
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
 
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
     const supabase = await createServerClient()
     
-    console.log("📱 Iniciando generación de mensajes WhatsApp...")
     const startTime = Date.now()
     
     const { results, total } = await runAllMessageGenerators(supabase)
     
     const duration = Date.now() - startTime
-    console.log(`✅ Generación completada en ${duration}ms`)
-
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),

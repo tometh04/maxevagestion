@@ -270,7 +270,6 @@ export async function POST(request: Request) {
       const commissionData = await calculateCommission(commissionOp)
       if (commissionData.totalCommission > 0) {
         await createOrUpdateCommissionRecords(commissionOp, commissionData)
-        console.log(`✅ Comisión creada para nueva operación ${op.id}: $${commissionData.totalCommission} (${commissionData.percentage}%)`)
       }
     } catch (error) {
       console.error("Error calculating commission for new operation:", error)
@@ -313,7 +312,6 @@ export async function POST(request: Request) {
           operatorCostForIVA // Pasar el costo del operador (convertido si es necesario) para calcular IVA sobre ganancia
         )
         const ganancia = sale_amount_total - operatorCostForIVA
-        console.log(`✅ Created sale IVA record for operation ${operation.id} (IVA sobre ganancia: ${ganancia} ${finalSaleCurrency})`)
       }
 
       // Crear IVA para cada operador (si hay operadores)
@@ -329,7 +327,6 @@ export async function POST(request: Request) {
                 operatorData.cost_currency as "ARS" | "USD",
           departure_date
         )
-              console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
             } catch (error) {
               console.error(`Error creating IVA for operator ${operatorData.operator_id}:`, error)
             }
@@ -359,7 +356,6 @@ export async function POST(request: Request) {
         if (opOpError) {
           console.error("Error creating operation_operators:", opOpError)
         } else {
-          console.log(`✅ Created ${operatorsList.length} operation_operators records for operation ${op.id}`)
         }
       } catch (error) {
         console.error("Error creating operation_operators:", error)
@@ -387,7 +383,6 @@ export async function POST(request: Request) {
           op.id, // operationId
           `Pago automático generado para operación ${operation.id}`
         )
-            console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)
       } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
         // No lanzamos error para no romper la creación de la operación
@@ -461,7 +456,6 @@ export async function POST(request: Request) {
           },
           supabase
         )
-        console.log(`✅ Registered sale in chart of accounts (Accounts Receivable) for operation ${op.id}`)
       }
 
       // 2. Registrar costos de operadores en "Cuentas por Pagar"
@@ -534,7 +528,6 @@ export async function POST(request: Request) {
             },
             supabase
           )
-          console.log(`✅ Registered operator costs in chart of accounts (Accounts Payable) for operation ${op.id}`)
         }
       }
     } catch (error) {
@@ -601,7 +594,6 @@ export async function POST(request: Request) {
           
           if (!customerError && newCustomer) {
             customerId = newCustomer.id
-            console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
           }
         }
           }
@@ -627,7 +619,6 @@ export async function POST(request: Request) {
             console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
             // No lanzar error, pero loguear para debug
           } else {
-            console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
             
             // Enviar notificación al cliente si está configurada
             try {
@@ -683,7 +674,6 @@ export async function POST(request: Request) {
                 .in("id", leadDocuments.map((d: any) => d.id))
               
               if (!updateDocsError) {
-                console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
               } else {
                 console.error("Error transferring documents:", updateDocsError)
               }
@@ -706,7 +696,6 @@ export async function POST(request: Request) {
                 .in("id", leadDocsForOp.map((d: any) => d.id))
               
               if (!updateDocsOpError) {
-                console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
               } else {
                 console.error("Error transferring documents to operation:", updateDocsOpError)
               }
@@ -725,7 +714,6 @@ export async function POST(request: Request) {
       // Transfer all ledger_movements from lead to operation
       try {
         const result = await transferLeadToOperation(lead_id, operation.id, supabase)
-        console.log(`✅ Transferred ${result.transferred} ledger movements from lead ${lead_id} to operation ${operation.id}`)
       } catch (error) {
         console.error("Error transferring ledger movements:", error)
         // No lanzamos error para no romper la creación de la operación
@@ -778,7 +766,6 @@ export async function POST(request: Request) {
           status: "PENDING",
           date_calculated: new Date().toISOString(),
         })
-        console.log(`✅ Created commission record for operation ${operation.id}: ${commission_percentage}% = ${commissionAmount}`)
       } catch (error) {
         console.error("Error creating commission record:", error)
         // No lanzamos error para no romper la creación de la operación
@@ -1057,7 +1044,6 @@ export async function GET(request: Request) {
 
     // Si hay error y es porque operation_operators no existe, intentar sin esa relación
     if (error && (error.message?.includes("operation_operators") || error.message?.includes("relation") || error.code === "PGRST116")) {
-      console.log("operation_operators table not found, retrying without it...")
       const retryResult = await query
         .select(`
           *,
@@ -1265,7 +1251,6 @@ async function generateDestinationRequirementAlerts(
   }
 
   if (matchingCodes.length === 0) {
-    console.log(`ℹ️ No se encontraron requisitos para destino: ${destination}`)
     return
   }
 
@@ -1277,7 +1262,6 @@ async function generateDestinationRequirementAlerts(
     .eq("is_required", true)
 
   if (error || !requirements || requirements.length === 0) {
-    console.log(`ℹ️ No hay requisitos obligatorios para: ${matchingCodes.join(", ")}`)
     return
   }
 
@@ -1307,14 +1291,12 @@ async function generateDestinationRequirementAlerts(
     if (insertError) {
       console.error("Error creando alertas de requisitos:", insertError)
     } else {
-      console.log(`✅ Creadas ${alertsToCreate.length} alertas de requisitos para operación ${operationId}`)
       
       // Generar mensajes de WhatsApp para las alertas creadas
       if (createdAlerts && createdAlerts.length > 0) {
         try {
           const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
           if (messagesGenerated > 0) {
-            console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de requisitos`)
           }
         } catch (error) {
           console.error("Error generando mensajes de WhatsApp para alertas de requisitos:", error)
@@ -1439,13 +1421,11 @@ async function generateOperationAlerts(
     if (insertError) {
       console.error("Error creando alertas de operación:", insertError)
     } else {
-      console.log(`✅ Creadas ${alertsToCreate.length} alertas de check-in/check-out para operación ${operationId}`)
       
       // Generar mensajes de WhatsApp para las alertas creadas
       try {
         const messagesGenerated = await generateMessagesFromAlerts(supabase, alertsToCreate)
         if (messagesGenerated > 0) {
-          console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para las alertas`)
         }
       } catch (error) {
         console.error("Error generando mensajes de WhatsApp:", error)

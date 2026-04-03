@@ -64,8 +64,6 @@ export async function POST(request: Request) {
 
     const cuitStr = String(afipConfig.cuit).replace(/[-\s]/g, "")
 
-    console.log("[Facturas Compras] Calling mis-comprobantes automation for CUIT:", cuitStr, "range:", dateFrom, "-", dateTo)
-
     // Call "mis-comprobantes" automation with filter t=R (Recibidos)
     // Params follow AfipSDK docs: https://afipsdk.com/docs/automations/mis-comprobantes/api/
     const result = await afip.CreateAutomation("mis-comprobantes", {
@@ -77,8 +75,6 @@ export async function POST(request: Request) {
         fechaEmision: `${dateFrom} - ${dateTo}`,
       },
     }, true) // true = wait for completion
-
-    console.log("[Facturas Compras] Automation result status:", result?.status, "data length:", Array.isArray(result?.data) ? result.data.length : "not array")
 
     // Check if automation returned an error status
     if (result?.status === "error") {

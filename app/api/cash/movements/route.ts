@@ -367,7 +367,7 @@ export async function DELETE(request: Request) {
         const { error: delLm } = await (supabase.from("ledger_movements") as any)
           .delete()
           .eq("id", movement.ledger_movement_id)
-        if (!delLm) console.log(`✅ Ledger movement ${movement.ledger_movement_id} eliminado`)
+        // ledger movement deleted with the cash movement
       }
     } else {
       const ledgerType = movement.type === "INCOME" ? "INCOME" : "EXPENSE"
@@ -386,7 +386,6 @@ export async function DELETE(request: Request) {
         const toDelete = ledgerRows[0]
         accountIdToInvalidate = toDelete.account_id
         await (supabase.from("ledger_movements") as any).delete().eq("id", toDelete.id)
-        console.log(`✅ Ledger movement ${toDelete.id} (fallback match) eliminado`)
       }
     }
 
@@ -400,7 +399,6 @@ export async function DELETE(request: Request) {
     }
 
     if (accountIdToInvalidate) invalidateBalanceCache(accountIdToInvalidate)
-    console.log(`✅ Cash movement ${movementId} eliminado`)
 
     return NextResponse.json({
       success: true,

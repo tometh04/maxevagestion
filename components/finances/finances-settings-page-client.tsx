@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Badge } from "@/components/ui/badge"
 import { Save, Loader2 } from "lucide-react"
 import {
@@ -49,7 +50,7 @@ export function FinancesSettingsPageClient() {
   const [settings, setSettings] = useState<FinancialSettings>({
     primary_currency: "USD",
     enabled_currencies: ["ARS", "USD"],
-    default_usd_rate: 1000.0,
+    default_usd_rate: DEFAULT_USD_ARS_FALLBACK_RATE,
     default_iva_rate: 21,
     tax_regime: "TRAVEL_AGENCY",
     retention_ganancias_rate: 0,

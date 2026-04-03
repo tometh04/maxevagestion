@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { z } from "zod"
+import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -104,7 +105,7 @@ export async function GET(request: Request) {
           source: 'manual',
           auto_update: false,
         },
-        default_usd_rate: 1000.00,
+        default_usd_rate: DEFAULT_USD_ARS_FALLBACK_RATE,
         default_accounts: {},
         auto_create_accounts: false,
         enabled_payment_methods: ['CASH', 'BANK', 'MP'],

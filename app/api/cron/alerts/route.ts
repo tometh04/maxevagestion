@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
     const hasValidToken = authHeader === `Bearer ${cronSecret}`
 
-    if (!isVercelCron && !hasValidToken && cronSecret) {
+    if (!isVercelCron && !hasValidToken) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -58,9 +58,6 @@ export async function POST(request: Request) {
           upcomingTripEnabled: upcomingTrip?.enabled ?? true,
         }
 
-        console.log("📋 Alert settings loaded from DB:", JSON.stringify(alertSettings))
-      } else {
-        console.log("📋 No operation_settings found, using defaults")
       }
     } catch (settingsError) {
       console.error("Error loading alert settings, using defaults:", settingsError)

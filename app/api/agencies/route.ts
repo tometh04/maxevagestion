@@ -23,7 +23,6 @@ export async function GET() {
         return []
       }
 
-      console.log("✅ Agencies loaded:", data?.length || 0)
       return data || []
     })
 

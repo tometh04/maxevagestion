@@ -6,8 +6,8 @@ import { WhaControlPage } from "@/components/tools/wha-control/wha-control-page"
 export default async function WhaControlPageRoute() {
   const { user } = await getCurrentUser()
 
-  // Access control: only maxi@erplozada.com
-  if (user.email !== "maxi@erplozada.com") {
+  // Access control: only SUPER_ADMIN and ADMIN roles
+  if (!["SUPER_ADMIN", "ADMIN"].includes(user.role)) {
     redirect("/dashboard")
   }
 

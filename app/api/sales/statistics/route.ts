@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
-import { getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -169,7 +169,7 @@ export async function GET(request: Request) {
     }
 
     // Obtener tasa de cambio más reciente para depósitos en ARS
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Procesar leads
     let totalLeads = 0

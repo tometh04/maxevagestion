@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -155,7 +155,7 @@ export async function GET(request: Request) {
     }> = []
 
     // Obtener tasa de cambio más reciente como fallback (una sola vez fuera del loop)
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Cambiar forEach a for...of para permitir await dentro del loop
     const customersList = (customers || []) as any[]

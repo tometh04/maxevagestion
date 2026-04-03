@@ -18,8 +18,6 @@ export async function GET(request: Request) {
     const amountMax = searchParams.get("amountMax") || undefined
     const operationSearch = searchParams.get("operationSearch") || undefined
 
-    console.log("[OperatorPayments API] Params:", { operatorId, status, agencyId, dueDateFrom, dueDateTo })
-
     // Update overdue payments first
     await updateOverduePayments(supabase)
 
@@ -36,7 +34,6 @@ export async function GET(request: Request) {
       .order("due_date", { ascending: true })
 
     if (operatorId) {
-      console.log("[OperatorPayments API] Filtering by operatorId:", operatorId)
       query = query.eq("operator_id", operatorId)
     }
 
@@ -62,18 +59,6 @@ export async function GET(request: Request) {
     if (error) {
       console.error("Error fetching operator payments:", error)
       return NextResponse.json({ error: "Error al obtener pagos a operadores" }, { status: 500 })
-    }
-
-    console.log("[OperatorPayments API] Query returned", payments?.length || 0, "payments")
-    if (payments && payments.length > 0 && operatorId) {
-      console.log("[OperatorPayments API] First payment:", {
-        id: payments[0].id,
-        operator_id: payments[0].operator_id,
-        status: payments[0].status,
-        currency: payments[0].currency,
-        amount: payments[0].amount,
-        paid_amount: payments[0].paid_amount,
-      })
     }
 
     // Filtrar por agencia si se especifica

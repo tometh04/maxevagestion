@@ -53,8 +53,6 @@ export async function POST(request: Request) {
     const folder = operationId || customerId || "general"
     const fileName = `${folder}/${timestamp}-${randomStr}.${fileExt}`
 
-    console.log(`📄 Subiendo documento: ${fileName}`)
-
     // Upload to Supabase Storage
     const fileBuffer = await file.arrayBuffer()
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -78,8 +76,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Error al subir el archivo: ${errorMessage}` }, { status: 500 })
     }
 
-    console.log(`✅ Archivo subido: ${uploadData.path}`)
-
     // Get public URL
     const { data: urlData } = supabase.storage.from("documents").getPublicUrl(fileName)
     const fileUrl = urlData.publicUrl
@@ -99,7 +95,6 @@ export async function POST(request: Request) {
       
       if (operationCustomer) {
         finalCustomerId = (operationCustomer as any).customer_id
-        console.log(`✅ Documento asociado automáticamente al cliente ${finalCustomerId} de la operación ${operationId}`)
       }
     }
     
@@ -119,7 +114,6 @@ export async function POST(request: Request) {
         const mainOperation = operationCustomers.find((oc: any) => oc.role === "MAIN") || operationCustomers[0]
         if (mainOperation) {
           finalOperationId = mainOperation.operation_id
-          console.log(`✅ Documento asociado automáticamente a la operación ${mainOperation.operation_id} del cliente ${customerId}`)
         }
       }
     }
@@ -143,12 +137,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al crear registro del documento" }, { status: 500 })
     }
 
-    console.log(`✅ Documento creado: ${document.id}`)
-
     // Si es imagen y es DNI/Pasaporte, procesar con IA
     let scannedData = null
     if (file.type.startsWith("image/") && ["PASSPORT", "DNI", "LICENSE"].includes(type)) {
-      console.log(`📄 Iniciando escaneo OCR para documento tipo: ${type}`)
       try {
         scannedData = await scanDocumentWithAI(fileUrl, type)
         
@@ -160,7 +151,6 @@ export async function POST(request: Request) {
           if (updateError) {
             console.error("❌ Error actualizando scanned_data:", updateError)
           } else {
-            console.log("✅ scanned_data actualizado correctamente")
           }
         }
       } catch (error) {
@@ -196,7 +186,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
   })
 
   try {
-    console.log("📄 Descargando imagen desde:", fileUrl)
     const imageResponse = await fetch(fileUrl)
     if (!imageResponse.ok) {
       console.error("❌ Error descargando imagen:", imageResponse.status)
@@ -237,7 +226,6 @@ Si un campo no es legible, usa null.`
       return null
     }
 
-    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -260,8 +248,6 @@ Si un campo no es legible, usa null.`
     })
 
     const responseText = completion.choices[0]?.message?.content || ""
-    console.log("📄 OpenAI response:", responseText.substring(0, 300))
-
     if (!responseText || responseText.trim() === "{}") {
       return null
     }

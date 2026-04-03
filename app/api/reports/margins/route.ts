@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     }
 
     // Obtener tasa de cambio más reciente como fallback
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Calcular totales - TODO en USD (según requisito: todo el sistema en USD)
     const totals: any = {

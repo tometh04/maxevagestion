@@ -109,7 +109,6 @@ export async function GET(request: Request) {
 
       // If no movements found, return empty array
       if (!movements || movements.length === 0) {
-        console.log("No cash movements found for filters:", { dateFrom, dateTo, agencyId, userRole: user.role })
       return NextResponse.json({ cashflow: [] })
       }
 

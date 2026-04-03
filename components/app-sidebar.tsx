@@ -205,8 +205,8 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
 
             // Ocultar Cerebro para SELLER
 
-            // Ocultar WHA Control para todos excepto maxi@erplozada.com
-            if (subItem.url === "/tools/wha-control" && user.email !== "maxi@erplozada.com") {
+            // Ocultar WHA Control para todos excepto SUPER_ADMIN y ADMIN
+            if (subItem.url === "/tools/wha-control" && !["SUPER_ADMIN", "ADMIN"].includes(userRole)) {
               return null
             }
             if (userRole === "SELLER" && subItem.url === "/tools/cerebro") {

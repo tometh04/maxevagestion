@@ -38,8 +38,6 @@ export async function DELETE(request: Request) {
       // No fallar si las alertas no se pueden eliminar
     }
 
-    console.log(`✅ Limpieza completada: ${deletedPayments || 0} pagos, ${deletedAlerts || 0} alertas`)
-
     return NextResponse.json({ 
       success: true, 
       deletedPayments: deletedPayments || 0,

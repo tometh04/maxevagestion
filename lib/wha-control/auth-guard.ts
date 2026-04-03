@@ -1,7 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { NextResponse } from "next/server"
 
-const ALLOWED_EMAIL = "maxi@erplozada.com"
+const ALLOWED_ROLES = ["SUPER_ADMIN", "ADMIN"]
 
 /**
  * Validate that the current user is authorized for WHA Control.
@@ -10,7 +10,7 @@ const ALLOWED_EMAIL = "maxi@erplozada.com"
 export async function whaControlAuthGuard() {
   const { user } = await getCurrentUser()
 
-  if (user.email !== ALLOWED_EMAIL) {
+  if (!ALLOWED_ROLES.includes(user.role)) {
     return {
       authorized: false as const,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 403 }),

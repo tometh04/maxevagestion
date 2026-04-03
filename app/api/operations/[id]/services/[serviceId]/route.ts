@@ -207,7 +207,6 @@ export async function PATCH(
     if (saleChanged || costChanged) {
       try {
         await recalculateOperationTotals(supabase, operationId)
-        console.log(`✅ Totales y comisiones recalculados para operación ${operationId} tras editar servicio ${serviceId}`)
       } catch (err) {
         console.warn("[Services PATCH] Error recalculando totales:", err)
         warnings.push("No se pudieron recalcular los totales de la operación automáticamente")
@@ -349,7 +348,6 @@ export async function DELETE(
     // ── Recalcular totales de la operación y comisiones tras eliminar servicio ──
     try {
       await recalculateOperationTotals(supabase, operationId)
-      console.log(`✅ Totales y comisiones recalculados para operación ${operationId} tras eliminar servicio ${serviceId}`)
     } catch (err) {
       console.warn("[Services DELETE] Error recalculando totales:", err)
       warnings.push("No se pudieron recalcular los totales de la operación automáticamente")

@@ -215,7 +215,7 @@ export async function generateMessageFromAlert(
 
     console.log(`✅ Mensaje WhatsApp creado para alerta ${alert.id}: ${triggerType}`)
     return true
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error en generateMessageFromAlert:", error)
     return false
   }

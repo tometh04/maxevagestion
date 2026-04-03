@@ -50,7 +50,7 @@ export async function POST(request: Request) {
         .upsert({ name: providerName }, { onConflict: "name" })
     } catch (e) {
       // Ignorar errores - el proveedor se usará igual
-      console.log("Provider table may not exist, continuing anyway")
+
     }
 
     // Siempre devolver éxito - el proveedor se usa directamente en recurring_payments

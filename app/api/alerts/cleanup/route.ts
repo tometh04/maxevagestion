@@ -25,8 +25,6 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Error al eliminar alertas" }, { status: 500 })
     }
 
-    console.log(`✅ Eliminadas ${count || 0} alertas de operación ${operationId}`)
-
     return NextResponse.json({ 
       success: true, 
       deletedAlerts: count || 0 

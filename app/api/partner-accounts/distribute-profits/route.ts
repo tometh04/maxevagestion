@@ -110,8 +110,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al guardar asignaciones" }, { status: 500 })
     }
 
-    console.log(`[DistributeProfits] Distribuidas ganancias de ${month}/${year}: ${profitAmount} USD entre ${allocations.length} socios`)
-
     return NextResponse.json({
       success: true,
       message: `Ganancias distribuidas exitosamente entre ${allocations.length} socios`,

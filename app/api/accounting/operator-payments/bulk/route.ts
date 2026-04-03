@@ -82,7 +82,6 @@ export async function POST(request: Request) {
     }
 
     const accountCurrency = paymentAccount.currency as "ARS" | "USD"
-    console.log("[BulkPayment API] Cuenta:", paymentAccount.name, "currency:", accountCurrency, "payment_currency:", payment_currency)
     if (accountCurrency !== payment_currency) {
       console.error("[BulkPayment API] ❌ Moneda mismatch:", accountCurrency, "vs", payment_currency)
       return NextResponse.json(
@@ -194,14 +193,12 @@ export async function POST(request: Request) {
     }
     const actualDebitFromAccount = roundMoney(totalDebit - bonusTotal)
 
-    console.log("[BulkPayment API] totalDebit:", totalDebit, "bonusTotal:", bonusTotal, "actualDebitFromAccount:", actualDebitFromAccount)
     const balanceCheck = await validateSufficientBalance(
       payment_account_id,
       actualDebitFromAccount,
       payment_currency as "ARS" | "USD",
       supabase
     )
-    console.log("[BulkPayment API] Balance check:", balanceCheck)
     if (!balanceCheck.valid) {
       console.error("[BulkPayment API] ❌ Saldo insuficiente:", balanceCheck.error)
       return NextResponse.json(
@@ -286,7 +283,6 @@ export async function POST(request: Request) {
           .eq("account_id", payment_account_id)
           .limit(1)
         if (existingBulk && existingBulk.length > 0) {
-          console.log(`[bulk] Skipping duplicate movement for operation ${operation_id}`)
           errors.push(`Movimiento duplicado detectado para operación ${operation_id}, se omitió`)
           continue
         }

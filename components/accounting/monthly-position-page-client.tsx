@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -227,7 +228,7 @@ export function MonthlyPositionPageClient({ agencies, userRole }: Props) {
   // Formatear moneda (con manejo de NaN)
   const formatMoney = (amount: number | null | undefined): string => {
     const safeAmount = typeof amount === "number" && !isNaN(amount) ? amount : 0
-    const rate = parseFloat(displayTC) || data?.tcUsado || 1000
+    const rate = parseFloat(displayTC) || data?.tcUsado || DEFAULT_USD_ARS_FALLBACK_RATE
     const value = currency === "ARS" ? safeAmount * rate : safeAmount
     
     return new Intl.NumberFormat(currency === "ARS" ? "es-AR" : "en-US", {

@@ -80,24 +80,9 @@ export async function POST(request: Request) {
               webhook.action?.data?.card?.board?.id ||
               null
 
-    console.log("📥 ========== TRELLO WEBHOOK RECEIVED ==========")
-    console.log("📋 Action Type:", webhook.action?.type || "N/A")
-    console.log("📋 Model Type:", webhook.model?.type || "N/A")
-    console.log("🆔 Card ID:", cardId || "N/A")
-    console.log("🆔 Board ID:", boardId || "N/A")
-    console.log("📦 Full payload keys:", {
-      action: webhook.action ? Object.keys(webhook.action) : null,
-      model: webhook.model ? Object.keys(webhook.model) : null,
-      actionData: webhook.action?.data ? Object.keys(webhook.action.data) : null,
-    })
-
     // Get the action type
     const actionType = webhook.action?.type
     const modelType = webhook.model?.type || webhook.action?.data?.card?.type
-
-    // Log action details
-    console.log("🔍 Processing action:", actionType)
-    console.log("🔍 Model type:", modelType)
 
     // Only process card-related actions
     // Para createCard, el card puede estar en action.data.card
@@ -113,19 +98,10 @@ export async function POST(request: Request) {
     }
     
     if (!hasCard && !cardId) {
-      console.log("⏭️ Skipping non-card action (no card data found)")
       return NextResponse.json({ received: true, skipped: true, reason: "Not a card action" })
     }
 
     if (!cardId) {
-      console.log("⏭️ No card ID found in webhook")
-      console.log("📦 Webhook structure:", JSON.stringify({
-        actionType: webhook.action?.type,
-        modelType: modelType,
-        hasActionDataCard: !!webhook.action?.data?.card,
-        actionDataKeys: webhook.action?.data ? Object.keys(webhook.action.data) : [],
-        modelKeys: webhook.model ? Object.keys(webhook.model) : [],
-      }, null, 2))
       return NextResponse.json({ received: true, skipped: true, reason: "No card ID" })
     }
 
@@ -148,9 +124,6 @@ export async function POST(request: Request) {
                 webhook.model?.id ||
                 null
     }
-    
-    console.log("🔍 Looking for board:", boardId, "in", allSettings.length, "settings")
-    console.log("📋 Available board IDs in settings:", allSettings.map((s: any) => s.board_id))
     
     // Helper function to normalize board IDs (Trello can use short or long IDs)
     const normalizeBoardId = (id: string): string => {
@@ -178,7 +151,6 @@ export async function POST(request: Request) {
     
     // If not found, try to fetch the board info from Trello to get the full ID
     if (!settings && boardId) {
-      console.log("🔍 Board not found with exact match, trying to fetch board info from Trello:", boardId)
       try {
         // Try with ALL available settings to fetch the board (to get full ID)
         for (const testSettings of allSettings as any[]) {
@@ -191,8 +163,6 @@ export async function POST(request: Request) {
                 const boardData = await boardResponse.json()
                 const fullBoardId = boardData.id
                 const shortLink = boardData.shortLink
-                console.log("✅ Fetched board info:", { fullBoardId, shortLink, originalId: boardId })
-                
                 // Now try to match with the full ID
                 settings = (allSettings as any[]).find((s) => 
                   boardIdsMatch(s.board_id, fullBoardId) || 
@@ -200,13 +170,11 @@ export async function POST(request: Request) {
                   (boardId ? boardIdsMatch(s.board_id, boardId) : false)
                 )
                 if (settings) {
-                  console.log("✅ Found matching settings using fetched board info")
                   break
                 }
               }
             } catch (fetchError: any) {
               // Continue to next settings
-              console.log("⚠️ Could not fetch board with these settings:", fetchError.message)
               continue
             }
           }
@@ -218,7 +186,6 @@ export async function POST(request: Request) {
 
     // If still not found, try to fetch the card and get its board ID
     if (!settings && cardId) {
-      console.log("🔍 Board still not found, fetching card to get board ID:", cardId)
       try {
         // Try with ALL available settings to fetch the card (maybe the card is from a different board)
         for (const testSettings of allSettings as any[]) {
@@ -231,8 +198,6 @@ export async function POST(request: Request) {
                 const cardData = await cardResponse.json()
                 const cardBoardId = cardData.idBoard
                 const cardBoardShort = cardData.idBoardShort
-                console.log("✅ Found board ID from card:", { cardBoardId, cardBoardShort, originalBoardId: boardId })
-                
                 // Now find settings for this board
                 settings = (allSettings as any[]).find((s) => 
                   boardIdsMatch(s.board_id, cardBoardId) || 
@@ -240,13 +205,11 @@ export async function POST(request: Request) {
                   boardIdsMatch(s.board_id, boardId || "")
                 )
                 if (settings) {
-                  console.log("✅ Found matching settings for board from card data")
                   break
                 }
               }
             } catch (fetchError: any) {
               // Continue to next settings
-              console.log("⚠️ Could not fetch card with these settings:", fetchError.message)
               continue
             }
           }
@@ -272,8 +235,6 @@ export async function POST(request: Request) {
       })
     }
     
-    console.log("✅ Found settings for board:", settings.board_id)
-
     const trelloSettings = {
       agency_id: settings.agency_id,
       trello_api_key: settings.trello_api_key,
@@ -321,12 +282,8 @@ export async function POST(request: Request) {
       if (isClosed) {
         // Card fue archivada, eliminar lead
         try {
-          console.log("🗑️ Card archived, deleting lead:", cardId)
           const deleted = await deleteLeadByExternalId(cardId || "", supabase)
           const duration = Date.now() - startTime
-          if (deleted) {
-            console.log("✅ Lead deleted (card archived):", cardId, `(${duration}ms)`)
-          }
           return NextResponse.json({ received: true, deleted: deleted, cardId, action: actionType })
         } catch (error: any) {
           console.error("❌ Error deleting lead (archived card):", error)
@@ -345,7 +302,6 @@ export async function POST(request: Request) {
       
       if (isListClosed && listId) {
         try {
-          console.log("🗑️ List archived/closed, deleting leads from list:", listId)
           // Eliminar todos los leads de esta lista
           const { error } = await (supabase.from("leads") as any)
             .delete()
@@ -355,7 +311,6 @@ export async function POST(request: Request) {
           if (error) {
             console.error("❌ Error deleting leads from archived list:", error)
           } else {
-            console.log("✅ Leads deleted from archived list:", listId)
           }
           
           // Actualizar mapeo de listas si es necesario
@@ -368,7 +323,6 @@ export async function POST(request: Request) {
         }
       } else if (actionType === "createList") {
         // Nueva lista creada - no hacer nada, se actualizará en la próxima sincronización
-        console.log("📋 New list created:", listId)
         return NextResponse.json({ received: true, listId, action: actionType })
       }
     }
@@ -376,8 +330,6 @@ export async function POST(request: Request) {
     if (cardActions.includes(processedActionType || "")) {
       // Sync the card
       try {
-        console.log("🔄 Syncing card:", cardId, "for action:", processedActionType)
-        
         // MEJORADO: Usar retry logic (fetchTrelloCard ya tiene retry integrado)
         const card = await fetchTrelloCard(
           cardId, 
@@ -388,29 +340,12 @@ export async function POST(request: Request) {
         if (card) {
           // Si la card está archivada, eliminar el lead
           if (card.closed) {
-            console.log("🗑️ Card is archived, deleting lead:", cardId)
             const deleted = await deleteLeadByExternalId(cardId, supabase)
             return NextResponse.json({ received: true, deleted: deleted, cardId, action: actionType })
           }
           
-          console.log("✅ Card fetched successfully:", card.name)
-          console.log("📋 Card details:", {
-            id: card.id,
-            name: card.name,
-            listId: card.idList,
-            members: card.idMembers?.length || 0,
-            labels: card.labels?.length || 0,
-          })
-          
           const result = await syncTrelloCardToLead(card, trelloSettings, supabase)
           const duration = Date.now() - startTime
-          console.log("✅ Card synced successfully:", {
-            created: result.created,
-            leadId: result.leadId,
-            duration: `${duration}ms`,
-          })
-          console.log("📥 ========== WEBHOOK PROCESSED SUCCESSFULLY ==========")
-          
           return NextResponse.json({ 
             received: true, 
             synced: true, 
@@ -421,7 +356,6 @@ export async function POST(request: Request) {
             duration: `${duration}ms`,
           })
         } else {
-          console.log("⚠️ Card not found or deleted in Trello")
           // Si la card no existe, eliminar el lead
           if (cardId) {
             await deleteLeadByExternalId(cardId, supabase)
@@ -469,23 +403,12 @@ export async function POST(request: Request) {
       
       if (!deleteCardId) {
         console.warn("⚠️ deleteCard received but no cardId found in webhook")
-        console.log("📦 Webhook structure for deleteCard:", JSON.stringify({
-          actionType: webhook.action?.type,
-          actionData: webhook.action?.data,
-          model: webhook.model,
-        }, null, 2))
         return NextResponse.json({ received: true, skipped: true, reason: "No cardId found in deleteCard webhook" })
       }
       
       try {
-        console.log("🗑️ Deleting lead for card:", deleteCardId)
         const deleted = await deleteLeadByExternalId(deleteCardId, supabase)
         const duration = Date.now() - startTime
-        if (deleted) {
-          console.log("✅ Lead deleted successfully:", deleteCardId, `(${duration}ms)`)
-        } else {
-          console.log("⚠️ Lead not found or already deleted:", deleteCardId, `(${duration}ms)`)
-        }
         return NextResponse.json({ received: true, deleted: deleted, cardId: deleteCardId })
       } catch (error: any) {
         console.error("❌ Error deleting lead:", error)
@@ -494,7 +417,6 @@ export async function POST(request: Request) {
       }
     } else {
       // Log ignored actions for debugging
-      console.log("⏭️ Ignoring action type:", actionType)
       return NextResponse.json({ received: true, skipped: true, actionType, reason: "Action type not processed" })
     }
   } catch (error: any) {
@@ -521,7 +443,6 @@ export async function POST(request: Request) {
 // Trello webhooks need to verify the endpoint with a HEAD request
 // This is called by Trello to verify the webhook URL is valid
 export async function HEAD(request: Request) {
-  console.log("✅ Trello HEAD request received - endpoint verified")
   return new NextResponse(null, { status: 200 })
 }
 

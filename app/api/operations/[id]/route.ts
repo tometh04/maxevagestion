@@ -209,9 +209,6 @@ export async function PATCH(
     // ============================================
     if (currencyChanged) {
       try {
-        console.log(`⚠️ Cambio de moneda detectado: ${oldCurrency} → ${newCurrency}`)
-        console.log(`⚠️ ADVERTENCIA: Se cambió la moneda de la operación. Los movimientos contables existentes mantienen su moneda original.`)
-        console.log(`⚠️ Considera recalcular movimientos contables si es necesario.`)
         // TODO: En el futuro, implementar recálculo automático de movimientos contables
         // cuando cambia la moneda de una operación
       } catch (error) {
@@ -246,7 +243,6 @@ export async function PATCH(
           if (opOpError) {
             console.error("Error inserting operation operators:", opOpError)
           } else {
-            console.log(`✅ Actualizados ${incomingOperators.length} operation_operators para operación ${operationId}`)
           }
         }
       } catch (error) {
@@ -285,7 +281,6 @@ export async function PATCH(
         
         await updateSaleIVA(supabase, operationId, newSaleAmount, saleCurrency, operatorCostForIVA)
         const ganancia = newSaleAmount - operatorCostForIVA
-        console.log(`✅ IVA Ventas actualizado para operación ${operationId} (IVA sobre ganancia: ${ganancia} ${saleCurrency})`)
       } catch (error) {
         console.error("Error updating sale IVA:", error)
       }
@@ -295,7 +290,6 @@ export async function PATCH(
     if (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost) {
       try {
         await updatePurchaseIVA(supabase, operationId, newOperatorCost, currency)
-        console.log(`✅ IVA Compras actualizado para operación ${operationId}: ${newOperatorCost}`)
       } catch (error) {
         console.error("Error updating purchase IVA:", error)
       }
@@ -328,7 +322,6 @@ export async function PATCH(
               .update(updateFields)
               .eq("id", payment.id)
           }
-          console.log(`✅ Operator payment(s) actualizado(s) para operación ${operationId}: ${newOperatorCost} ${operatorCostCurrency}`)
         }
       } catch (error) {
         console.error("Error updating operator payment:", error)
@@ -358,7 +351,6 @@ export async function PATCH(
         } else {
           const count = reassigned?.length || 0
           if (count > 0) {
-            console.log(`✅ ${count} operator_payment(s) reasignados de operador ${oldOperatorId} → ${newOperatorId} para operación ${operationId}`)
           }
         }
       } catch (error) {
@@ -397,8 +389,6 @@ export async function PATCH(
           const totalCost = operatorsArray.reduce((sum, op) => sum + Number(op.cost || 0), 0)
           const primaryCurrency = primaryOperator.cost_currency || op.operator_cost_currency || op.currency || "ARS"
 
-          console.log(`🔄 Centralizando costos de ${operationOperators.length} operadores al operador principal ${primaryOperator.operator_id}`)
-          console.log(`   Costo total: ${totalCost} ${primaryCurrency}`)
 
           // 1. Actualizar el operador principal con el costo total
           await (supabase.from("operation_operators") as any)
@@ -415,7 +405,6 @@ export async function PATCH(
             await (supabase.from("operation_operators") as any)
               .delete()
               .in("id", otherOperatorIds)
-            console.log(`   ✅ Eliminados ${otherOperatorIds.length} operadores secundarios`)
           }
 
           // 3. Actualizar operator_payments: consolidar en un solo pago al operador principal
@@ -450,7 +439,6 @@ export async function PATCH(
                   updated_at: new Date().toISOString(),
                 })
                 .eq("id", primaryPayment.id)
-              console.log(`   ✅ Actualizado operator_payment principal: ${totalCost} ${primaryCurrency}`)
             } else {
               // Si no existe pago del operador principal, crear uno nuevo
               const { calculateDueDate } = await import("@/lib/accounting/operator-payments")
@@ -470,7 +458,6 @@ export async function PATCH(
                   status: "PENDING",
                   notes: `Pago centralizado de múltiples operadores al confirmar operación`,
                 })
-              console.log(`   ✅ Creado nuevo operator_payment principal: ${totalCost} ${primaryCurrency}`)
             }
 
             // Eliminar los pagos de los otros operadores
@@ -479,7 +466,6 @@ export async function PATCH(
               await (supabase.from("operator_payments") as any)
                 .delete()
                 .in("id", otherPaymentIds)
-              console.log(`   ✅ Eliminados ${otherPaymentIds.length} operator_payments secundarios`)
             }
           }
 
@@ -492,7 +478,6 @@ export async function PATCH(
             })
             .eq("id", operationId)
 
-          console.log(`✅ Centralización completada: costo total ${totalCost} ${primaryCurrency} asignado al operador principal`)
         }
       } catch (error) {
         console.error("Error centralizando costos de operadores:", error)
@@ -517,7 +502,6 @@ export async function PATCH(
 
       if (commissionData.totalCommission > 0) {
         await createOrUpdateCommissionRecords(op, commissionData)
-        console.log(`✅ Comisión calculada para operación ${operationId}: $${commissionData.totalCommission} (${commissionData.percentage}%)`)
       }
     } catch (error) {
       console.error("Error calculating commission:", error)
@@ -566,7 +550,6 @@ export async function DELETE(
 
     const op = operation as any
 
-    console.log(`🗑️ Iniciando eliminación de operación ${operationId}...`)
 
     // GUARD: Verificar si hay pagos PAID — no se puede eliminar una operación con pagos ya realizados
     const { data: paidPayments } = await (supabase
@@ -590,7 +573,6 @@ export async function DELETE(
     try {
       await deleteSaleIVA(supabase, operationId)
       await deletePurchaseIVA(supabase, operationId)
-      console.log(`  ✓ IVA eliminado`)
     } catch (error) {
       console.error("Error deleting IVA:", error)
     }
@@ -634,7 +616,6 @@ export async function DELETE(
 
         // Invalidar cache de balances para cuentas afectadas
         Array.from(paymentAccountIds).forEach((accountId) => invalidateBalanceCache(accountId as string))
-        console.log(`  ✓ ${payments.length} pagos eliminados con sus movimientos`)
       }
     } catch (error) {
       console.error("Error deleting payments:", error)
@@ -656,7 +637,6 @@ export async function DELETE(
         const accountIds = Array.from(new Set(movementsToDelete.map((m: any) => m.account_id).filter(Boolean))) as string[]
         accountIds.forEach((accountId) => invalidateBalanceCache(accountId))
       }
-      console.log(`  ✓ Ledger movements eliminados`)
     } catch (error) {
       console.error("Error deleting ledger movements:", error)
     }
@@ -666,7 +646,6 @@ export async function DELETE(
       await (supabase.from("cash_movements") as any)
         .delete()
         .eq("operation_id", operationId)
-      console.log(`  ✓ Cash movements eliminados`)
     } catch (error) {
       console.error("Error deleting cash movements:", error)
     }
@@ -676,7 +655,6 @@ export async function DELETE(
       await (supabase.from("operator_payments") as any)
         .delete()
         .eq("operation_id", operationId)
-      console.log(`  ✓ Operator payments eliminados`)
     } catch (error) {
       console.error("Error deleting operator payments:", error)
     }
@@ -684,7 +662,6 @@ export async function DELETE(
     // 6. Eliminar alertas
     try {
       await supabase.from("alerts").delete().eq("operation_id", operationId)
-      console.log(`  ✓ Alertas eliminadas`)
     } catch (error) {
       console.error("Error deleting alerts:", error)
     }
@@ -694,7 +671,6 @@ export async function DELETE(
       await (supabase.from("commission_records") as any)
         .delete()
         .eq("operation_id", operationId)
-      console.log(`  ✓ Comisiones (commission_records) eliminadas`)
     } catch (error) {
       console.error("Error deleting commission_records:", error)
     }
@@ -702,7 +678,6 @@ export async function DELETE(
     // 8. Eliminar documentos (el storage se limpia con policies)
     try {
       await supabase.from("documents").delete().eq("operation_id", operationId)
-      console.log(`  ✓ Documentos eliminados`)
     } catch (error) {
       console.error("Error deleting documents:", error)
     }
@@ -713,7 +688,6 @@ export async function DELETE(
         await (supabase.from("leads") as any)
           .update({ status: "IN_PROGRESS" })
           .eq("id", op.lead_id)
-        console.log(`  ✓ Lead ${op.lead_id} revertido a IN_PROGRESS`)
       } catch (error) {
         console.error("Error reverting lead:", error)
       }
@@ -730,7 +704,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Error al eliminar operación" }, { status: 500 })
     }
 
-    console.log(`✅ Operación ${operationId} eliminada completamente`)
 
     // Invalidar caché del dashboard (los KPIs cambian al eliminar una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)

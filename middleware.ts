@@ -109,11 +109,13 @@ export async function middleware(req: NextRequest) {
   // Refresh session if expired - required for Server Components
   try {
     await supabase.auth.getUser()
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Silenciar errores de refresh token inválido/no encontrado (normal cuando no hay sesión)
-    if (error?.message?.includes('Refresh Token') || 
-        error?.message?.includes('JWT') ||
-        error?.status === 401) {
+    const message = error instanceof Error ? error.message : ""
+    const status = error && typeof error === "object" && "status" in error ? (error as { status: number }).status : undefined
+    if (message.includes('Refresh Token') ||
+        message.includes('JWT') ||
+        status === 401) {
       // No hacer nada, es normal cuando no hay sesión activa
       return response
     }

@@ -248,16 +248,6 @@ export async function POST(request: Request) {
           }
         }
 
-        console.log(`💰 Creando movimiento contable en cuenta seleccionada:`, {
-          accountId: accountId,
-          accountName: selectedAccount.name,
-          accountCurrency: selectedAccount.currency,
-          direction: direction,
-          amount: amount,
-          currency: currency,
-          type: direction === "INCOME" ? "INCOME" : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
-        })
-
         // 5. Mapear método de pago a método de ledger
         const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
           "Transferencia": "BANK",
@@ -325,18 +315,6 @@ export async function POST(request: Request) {
           supabase
         )
         
-        console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
-          ledgerMovementId: ledgerMovementId,
-          accountId: accountId,
-          accountName: selectedAccount.name,
-          accountCurrency: selectedAccount.currency,
-          type: ledgerType,
-          direction: direction,
-          amount: amount,
-          currency: currency,
-          effect: direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
-        })
-
         // 8. Actualizar payment con referencia al ledger_movement
         const { error: linkError } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
@@ -382,8 +360,6 @@ export async function POST(request: Request) {
           console.warn(`⚠️ Error creando cash_movement para pago ${payment.id}:`, cashMovementError)
         }
 
-        console.log(`✅ Pago ${payment.id} creado con movimiento contable en cuenta ${accountId}`)
-
         // 10. Si es pago a operador, marcar operator_payment como PAID
         if (payer_type === "OPERATOR") {
           const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
@@ -403,8 +379,6 @@ export async function POST(request: Request) {
               .eq("id", operatorPayment.id)
           }
         }
-
-        console.log(`✅ Pago ${payment.id} creado con ledger ${ledgerMovementId}`)
 
       } catch (accountingError) {
         const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
@@ -690,7 +664,6 @@ export async function DELETE(request: Request) {
       if (orphanError) {
         console.warn("Warning: Could not delete orphaned cash movement:", orphanError)
       } else {
-        console.log(`⚠️ Eliminado cash_movement huérfano (sin payment_id) para operation ${payment.operation_id}`)
       }
     }
 
@@ -787,7 +760,6 @@ export async function DELETE(request: Request) {
           if (counterpartError) {
             console.warn("Warning: Could not delete counterpart CpC/CpP ledger movements:", counterpartError)
           } else if (counterpartMovements?.length > 0) {
-            console.log(`✅ Eliminados ${counterpartMovements.length} movimientos CpC/CpP counterpart para operación ${payment.operation_id}`)
             // Invalidar cache de las cuentas CpC/CpP afectadas
             counterpartMovements.forEach((m: any) => {
               if (m.account_id) invalidateBalanceCache(m.account_id)
@@ -806,11 +778,6 @@ export async function DELETE(request: Request) {
       console.error("Error deleting payment:", deleteError)
       return NextResponse.json({ error: "Error al eliminar pago" }, { status: 500 })
     }
-
-    console.log(`✅ Pago ${paymentId} eliminado junto con sus movimientos contables`)
-    console.log(`  ✓ Cash movement eliminado`)
-    console.log(`  ✓ Ledger movement eliminado (si existía)`)
-    console.log(`  ✓ Operator payment revertido a PENDING (si estaba marcado como pagado)`)
 
     // Invalidar caché del dashboard (los KPIs cambian al eliminar un pago)
     revalidateTag(CACHE_TAGS.DASHBOARD)
@@ -1145,8 +1112,6 @@ export async function PATCH(request: Request) {
         if (cashInsertError) {
           console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
         }
-
-        console.log(`✅ Pago ${paymentId} editado. Nuevo ledger_movement: ${newLedgerMovementId}`)
 
       } catch (accountingError) {
         console.error("Error recreating accounting movements:", accountingError)

@@ -162,13 +162,10 @@ export async function POST(
     // Si es una imagen, procesar con IA automáticamente
     let scannedData = null
     if (file.type.startsWith("image/") && ["PASSPORT", "DNI", "LICENSE"].includes(documentType)) {
-      console.log(`📄 Iniciando escaneo OCR para documento tipo: ${documentType}`)
-      console.log(`📄 URL del archivo: ${fileUrl}`)
       
       try {
         scannedData = await scanDocumentWithAI(fileUrl, documentType)
         
-        console.log(`📄 Resultado del OCR:`, JSON.stringify(scannedData, null, 2))
         
         // Actualizar el documento con los datos escaneados
         if (scannedData) {
@@ -179,7 +176,6 @@ export async function POST(
           if (updateError) {
             console.error("❌ Error actualizando scanned_data:", updateError)
           } else {
-            console.log("✅ scanned_data actualizado correctamente")
           }
         } else {
           console.warn("⚠️ El OCR devolvió null")
@@ -189,7 +185,6 @@ export async function POST(
         // No fallar si el escaneo falla, el documento ya está subido
       }
     } else {
-      console.log(`📄 No se escanea: tipo de archivo=${file.type}, tipo de documento=${documentType}`)
     }
 
     return NextResponse.json({
@@ -223,7 +218,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
 
   try {
     // Obtener la imagen
-    console.log("📄 Descargando imagen desde:", fileUrl)
     const imageResponse = await fetch(fileUrl)
     if (!imageResponse.ok) {
       console.error("❌ Error descargando imagen:", imageResponse.status, imageResponse.statusText)
@@ -232,7 +226,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
 
     const imageBuffer = await imageResponse.arrayBuffer()
     const imageSizeKB = Math.round(imageBuffer.byteLength / 1024)
-    console.log(`📄 Imagen descargada: ${imageSizeKB} KB`)
     
     // Si la imagen es muy grande, puede causar problemas
     if (imageSizeKB > 5000) {
@@ -240,7 +233,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
     }
     
     const base64Image = Buffer.from(imageBuffer).toString("base64")
-    console.log(`📄 Base64 generado: ${Math.round(base64Image.length / 1024)} KB`)
 
     // Determinar el prompt según el tipo de documento
     let prompt = ""
@@ -310,7 +302,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     }
 
     // Llamar a OpenAI Vision
-    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -335,10 +326,8 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
       temperature: 0.1, // Más determinístico para OCR
     })
     
-    console.log("📄 OpenAI respondió, finish_reason:", completion.choices[0]?.finish_reason)
 
     const responseText = completion.choices[0]?.message?.content || ""
-    console.log("📄 OpenAI response raw:", responseText.substring(0, 500) + (responseText.length > 500 ? "..." : ""))
     
     if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
       console.error("❌ OpenAI devolvió respuesta vacía")
@@ -350,7 +339,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     try {
       // Intentar parsear directamente
       parsedData = JSON.parse(responseText)
-      console.log("📄 Parsed JSON successfully:", Object.keys(parsedData))
     } catch (parseError) {
       console.warn("⚠️ No es JSON directo, intentando extraer...")
       
@@ -363,7 +351,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
         try {
           const jsonStr = jsonMatch[1] || jsonMatch[0]
           parsedData = JSON.parse(jsonStr)
-          console.log("📄 Extracted JSON:", Object.keys(parsedData))
         } catch (innerError) {
           console.error("❌ Error parsing extracted JSON:", innerError)
           console.error("❌ Content was:", jsonMatch[0]?.substring(0, 200))
@@ -394,7 +381,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     
     // Contar campos no nulos
     const nonNullFields = Object.entries(parsedData).filter(([k, v]) => v !== null && v !== "").length
-    console.log(`📄 Campos extraídos: ${nonNullFields}`)
 
     return parsedData
   } catch (error) {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react"
+import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export interface FinancialSettings {
   id?: string
@@ -47,9 +48,10 @@ export function useFinancialSettings() {
 
       const data = await response.json()
       setSettings(data)
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error loading financial settings:', err)
-      setError(err.message || 'Error al cargar configuración')
+      const message = err instanceof Error ? err.message : 'Error al cargar configuración'
+      setError(message)
       // Usar configuración por defecto si falla
       setSettings({
         primary_currency: 'USD',
@@ -58,7 +60,7 @@ export function useFinancialSettings() {
           source: 'manual',
           auto_update: false,
         },
-        default_usd_rate: 1000.00,
+        default_usd_rate: DEFAULT_USD_ARS_FALLBACK_RATE,
         default_accounts: {},
         auto_create_accounts: false,
         enabled_payment_methods: ['CASH', 'BANK', 'MP'],

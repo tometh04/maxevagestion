@@ -370,7 +370,6 @@ export async function POST(request: Request) {
           },
           supabase
         )
-        console.log(`✅ Created ledger movement for deposit of ${deposit_amount} ${deposit_currency} for lead ${lead.id}`)
       } catch (error) {
         console.error("Error creating ledger movement for deposit:", error)
         // No lanzamos error para no romper la creación del lead

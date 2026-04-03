@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
@@ -20,8 +20,6 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId") || "ALL"
     const dateFrom = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateTo = searchParams.get("dateTo") // YYYY-MM-DD
-
-    console.log("[PendingBalances] Iniciando cálculo de balances...", { agencyId, dateFrom, dateTo })
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
@@ -103,7 +101,7 @@ export async function GET(request: Request) {
             .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
             .map((op: any) => op.departure_date || op.created_at)
           const getRate = await buildExchangeRateMap(supabase, arsDates)
-          const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+          const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
           // Calcular deuda para cada operación
           for (const operation of filteredOperations) {
@@ -173,7 +171,7 @@ export async function GET(request: Request) {
         }
 
         // Obtener tasa de cambio más reciente como fallback
-        const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+        const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
         // Calcular deuda pendiente en USD
         for (const payment of filteredPayments) {
@@ -200,8 +198,6 @@ export async function GET(request: Request) {
     } catch (error) {
       console.error("[PendingBalances] Error calculando deuda a operadores:", error)
     }
-
-    console.log(`[PendingBalances] Balance final - Deudores por Ventas: ${accountsReceivableTotal} USD, Deuda a Operadores: ${accountsPayableTotal} USD`)
 
     return NextResponse.json({
       accountsReceivable: Math.max(0, accountsReceivableTotal), // Solo valores positivos

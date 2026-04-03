@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -35,8 +35,6 @@ export async function GET(request: Request) {
     const fechaCorte = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
     const fechaInicioMes = `${year}-${String(month).padStart(2, "0")}-01`
 
-    console.log(`[Balance] Periodo: ${fechaInicioMes} a ${fechaCorte}, Agencia: ${agencyId}`)
-
     // Obtener TC del mes (si existe)
     let monthlyTC: number | null = null
     const { data: tcData } = await (supabase.from("monthly_exchange_rates") as any)
@@ -50,7 +48,7 @@ export async function GET(request: Request) {
     }
 
     // TC de referencia (el más reciente del sistema)
-    const latestTC = await getLatestExchangeRate(supabase) || 1000
+    const latestTC = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
     const tcParaCalculos = monthlyTC || latestTC
 
     // ===========================================
@@ -132,8 +130,6 @@ export async function GET(request: Request) {
       console.error("[Balance] Error fetching operations:", opsError)
     }
 
-    console.log(`[Balance] Operaciones encontradas: ${operations?.length || 0}`)
-
     if (operations && operations.length > 0) {
       const operationIds = (operations as any[]).map(op => op.id)
 
@@ -149,8 +145,6 @@ export async function GET(request: Request) {
       if (paymentsError) {
         console.error("[Balance] Error fetching customer payments:", paymentsError)
       }
-
-      console.log(`[Balance] Pagos de clientes encontrados: ${customerPayments?.length || 0}`)
 
       // Obtener clientes de operaciones
       const { data: opCustomers } = await supabase
@@ -228,8 +222,6 @@ export async function GET(request: Request) {
       cuentasPorCobrar.cantidadDeudores = cuentasPorCobrar.detalle.length
       cuentasPorCobrar.totalUSD = Math.round(cuentasPorCobrar.totalUSD * 100) / 100
     }
-
-    console.log(`[Balance] Cuentas por Cobrar: USD ${cuentasPorCobrar.totalUSD} (${cuentasPorCobrar.cantidadDeudores} deudores)`)
 
     // ===========================================
     // 2.5. CUENTAS POR COBRAR - SOCIOS (deuda de socios cuando gastaron más de lo asignado)
@@ -341,8 +333,6 @@ export async function GET(request: Request) {
       )
     }
 
-    console.log(`[Balance] Cuentas por Cobrar - Socios: USD ${cuentasPorCobrarSocios.totalUSD} (${cuentasPorCobrarSocios.cantidadDeudores} deudores)`)
-
     // ===========================================
     // 3. CUENTAS POR PAGAR (tabla operator_payments)
     // ===========================================
@@ -367,8 +357,6 @@ export async function GET(request: Request) {
     if (opPayError) {
       console.error("[Balance] Error fetching operator payments:", opPayError)
     }
-
-    console.log(`[Balance] Operator payments encontrados: ${operatorPayments?.length || 0}`)
 
     if (operatorPayments) {
       for (const payment of operatorPayments as any[]) {
@@ -406,10 +394,6 @@ export async function GET(request: Request) {
       cuentasPorPagar.cantidadAcreedores = cuentasPorPagar.detalle.length
       cuentasPorPagar.totalUSD = Math.round(cuentasPorPagar.totalUSD * 100) / 100
     }
-
-    console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
-
-    console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD.toFixed(2)} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
 
     // ===========================================
     // 4. GASTOS RECURRENTES PENDIENTES

@@ -25,7 +25,6 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
 
-    console.log("🔄 Iniciando migración de datos históricos contables...")
 
     // 1. Migrar IVA
     const { data: operationsWithoutIVA } = await supabase

@@ -223,7 +223,6 @@ export async function PATCH(
               if (updateError) {
                 console.error("Error updating ledger movement:", updateError)
               } else {
-                console.log(`✅ Updated ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
               }
             } else {
               await createLedgerMovement(
@@ -244,7 +243,6 @@ export async function PATCH(
                 },
                 supabase
               )
-              console.log(`✅ Created ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
             }
           } catch (error) {
             console.error("Error creating/updating ledger movement for deposit:", error)
@@ -260,7 +258,6 @@ export async function PATCH(
         } else {
           // Invalidar cache de balance de la cuenta afectada
           if (movementAccountId) invalidateBalanceCache(movementAccountId)
-          console.log(`✅ Deleted ledger movement for lead ${id} (deposit removed)`)
         }
       }
     }

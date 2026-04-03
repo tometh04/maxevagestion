@@ -75,7 +75,6 @@ export async function PUT(
     if (error) {
       // Si la tabla no existe, simplemente retornar éxito
       // Las preferencias se guardarán en memoria hasta que exista la tabla
-      console.log("Note: user_notification_preferences table may not exist yet")
       return NextResponse.json({ success: true, preferences })
     }
 

@@ -10,15 +10,11 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q")
 
-    console.log("[Search API] Received query:", query)
-
     if (!query || query.length < 2) {
-      console.log("[Search API] Query too short, returning empty results")
       return NextResponse.json({ results: [] })
     }
 
     const searchTerm = `%${query}%`
-    console.log("[Search API] Search term:", searchTerm)
     const results: Array<{
       id: string
       type: string
@@ -141,8 +137,6 @@ export async function GET(request: Request) {
 
     // Ejecutar todas las búsquedas en paralelo
     const searchResults = await Promise.all(searchPromises)
-    console.log("[Search API] All searches completed:", searchResults.length, "results")
-
     // Procesar resultados
     searchResults.forEach((result: any) => {
       if (result.error) {
@@ -228,7 +222,6 @@ export async function GET(request: Request) {
       }
     })
 
-    console.log("[Search API] Returning", results.length, "total results")
     return NextResponse.json({ results })
   } catch (error) {
     console.error("[Search API] Error in search:", error)

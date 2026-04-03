@@ -88,7 +88,6 @@ export async function POST(request: Request) {
     // ============================================
     // Si el pago ya está PAID, rechazar la operación completamente
     if (paymentData.status === "PAID") {
-      console.log(`⚠️ Intento de marcar pago ${paymentId} como pagado, pero ya está en estado PAID`)
       return NextResponse.json({
         error: "Este pago ya fue marcado como pagado anteriormente",
         already_paid: true
@@ -106,7 +105,6 @@ export async function POST(request: Request) {
 
     if (!atomicUpdate) {
       // Otro request ya tomó este pago, o cambió de estado
-      console.log(`⚠️ Race condition detectada: pago ${paymentId} ya no está PENDING`)
       return NextResponse.json({
         error: "Este pago ya está siendo procesado por otra operación",
         already_paid: true
@@ -193,7 +191,6 @@ export async function POST(request: Request) {
         // No fallar, continuar con el flujo
       }
     } else {
-      console.log(`⚠️ Pago ${paymentId} ya tiene cash_movement ${(existingCashMovement as any).id}, omitiendo creación`)
     }
 
     // ============================================
@@ -222,7 +219,6 @@ export async function POST(request: Request) {
           // IMPORTANTE: Verificar que "Cuentas por Cobrar" NO sea la misma cuenta que la seleccionada
           // Si es la misma, NO crear este movimiento para evitar duplicación
           if (accountsReceivableAccount.id === financial_account_id) {
-            console.log(`⚠️ "Cuentas por Cobrar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
           } else {
             // Calcular exchange rate si es USD
             let exchangeRate: number | null = null
@@ -268,7 +264,6 @@ export async function POST(request: Request) {
               },
               supabase
             )
-            console.log(`✅ Reducido "Cuentas por Cobrar" (${accountsReceivableAccount.id}) por pago de cliente ${paymentId}`)
           }
         }
       }
@@ -292,7 +287,6 @@ export async function POST(request: Request) {
           // IMPORTANTE: Verificar que "Cuentas por Pagar" NO sea la misma cuenta que la seleccionada
           // Si es la misma, NO crear este movimiento para evitar duplicación
           if (accountsPayableAccount.id === financial_account_id) {
-            console.log(`⚠️ "Cuentas por Pagar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
           } else {
             // Calcular exchange rate si es USD
             let exchangeRate: number | null = null
@@ -338,7 +332,6 @@ export async function POST(request: Request) {
               },
               supabase
             )
-            console.log(`✅ Reducido "Cuentas por Pagar" (${accountsPayableAccount.id}) por pago a operador ${paymentId}`)
           }
         }
       }
@@ -398,18 +391,6 @@ export async function POST(request: Request) {
     if (accountId === accountsReceivableAccountId || accountId === accountsPayableAccountId) {
       console.warn(`⚠️ La cuenta seleccionada es la misma que "Cuentas por Cobrar/Pagar". Esto puede causar duplicación de movimientos.`)
     }
-
-    console.log(`💰 Creando movimiento contable PRINCIPAL en cuenta seleccionada:`, {
-      accountId: accountId,
-      accountCurrency: financialAccount.currency,
-      direction: paymentData.direction,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      paymentId: paymentId,
-      accountsReceivableAccountId: accountsReceivableAccountId,
-      accountsPayableAccountId: accountsPayableAccountId,
-      isSameAccount: accountId === accountsReceivableAccountId || accountId === accountsPayableAccountId
-    })
 
     // Calcular ARS equivalent
     // Priorizar exchange_rate proporcionado por el frontend
@@ -515,24 +496,6 @@ export async function POST(request: Request) {
       supabase
     )
     
-    console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
-      ledgerMovementId: ledgerMovementId,
-      accountId: accountId,
-      accountName: financialAccount.name || "N/A",
-      accountCurrency: financialAccount.currency,
-      type: ledgerType,
-      direction: paymentData.direction,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      effect: paymentData.direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
-    })
-
-    // NOTA: Solo creamos movimientos contables necesarios:
-    // 1. Movimiento para reducir Cuentas por Cobrar/Pagar (líneas 172-294) - parte de la contabilidad de doble entrada
-    // 2. Movimiento en la cuenta financiera seleccionada (líneas 365-388) - este es el que afecta el balance de la cuenta
-    // NO creamos un tercer movimiento duplicado
-    console.log(`✅ Movimiento contable creado en cuenta ${accountId} por pago ${paymentId}`)
-
     // Si es un pago a operador, marcar operator_payment como PAID
     if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id) {
       try {
@@ -546,7 +509,6 @@ export async function POST(request: Request) {
 
         if (operatorPayment) {
           await markOperatorPaymentAsPaid(supabase, operatorPayment.id, ledgerMovementId)
-          console.log(`✅ Marcado operator_payment ${operatorPayment.id} como PAID`)
         }
       } catch (error) {
         console.error("Error marcando operator_payment como PAID:", error)

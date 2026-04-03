@@ -136,16 +136,7 @@ export async function POST(request: Request) {
       )
     }
 
-    console.log(`💸 partner-withdrawals: Cuenta seleccionada para retiro`, {
-      partner_id,
-      account_id,
-      account_name: account.name,
-      account_type: account.type,
-      account_currency: account.currency,
-      account_agency_id: account.agency_id,
-      withdrawal_amount: amount,
-      withdrawal_currency: currency,
-    })
+
 
     // Determinar método de pago según el tipo de cuenta financiera
     // Los tipos de cuenta son: CASH_ARS, CASH_USD, CHECKING_ARS, CHECKING_USD, etc.
@@ -260,15 +251,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Error al registrar retiro" }, { status: 500 })
     }
 
-    console.log(`✅ partner-withdrawals: Retiro registrado exitosamente`, {
-      withdrawal_id: withdrawal.id,
-      partner_name: partner.partner_name,
-      amount,
-      currency,
-      account_id,
-      account_name: account.name,
-      ledger_movement_id: ledgerMovementId,
-    })
+
 
     return NextResponse.json({ 
       withdrawal,
