@@ -1709,6 +1709,26 @@ export const HOTELS: HotelEntry[] = [
   { name: "Park Hyatt Saigon", stars: 5, city: "Ho Chi Minh (Saigón)", country: "Vietnam", address: "2 Công trường Lam Sơn, Bến Nghé, Sài Gòn, Hồ Chí Minh 700000, Vietnam", photo_url: "https://lh3.googleusercontent.com/places/ANXAkqG3RrX3elxNAj6QPn2UFDDNDsSN25ndk8khYvShcl-_eRvfVJCP_UVmhTfjXN7IbwQlkn_X1iw41Tv5kCrjmsjsHt5PAFu37OI=s4800-w800", google_rating: 4.5 },
 ]
 
+function matchesNormalizedValue(candidate: string, target: string) {
+  if (!candidate || !target) return false
+  return candidate.includes(target) || target.includes(candidate)
+}
+
+function hotelMatchesDestination(hotel: HotelEntry, destination: string) {
+  const destNorm = normalize(destination)
+  if (!destNorm) return false
+
+  const cityNorm = normalize(hotel.city)
+  const countryNorm = normalize(hotel.country)
+  const zoneNorm = hotel.zone ? normalize(hotel.zone) : ""
+
+  return (
+    matchesNormalizedValue(cityNorm, destNorm) ||
+    matchesNormalizedValue(zoneNorm, destNorm) ||
+    matchesNormalizedValue(countryNorm, destNorm)
+  )
+}
+
 /**
  * Search hotels by query string — local, instantanea (no API calls)
  * Prioriza hoteles en el destino seleccionado.
@@ -1726,6 +1746,11 @@ export function searchHotels(query: string, destination?: string, limit = 20): H
     const cityNorm = normalize(h.city)
     const countryNorm = normalize(h.country)
     const zoneNorm = h.zone ? normalize(h.zone) : ""
+    const destinationMatch = destNorm ? hotelMatchesDestination(h, destination || "") : false
+
+    if (destNorm && !destinationMatch) {
+      return { hotel: h, score: 0 }
+    }
 
     // Match por nombre del hotel
     if (nameNorm.includes(q)) score += 500
@@ -1737,7 +1762,7 @@ export function searchHotels(query: string, destination?: string, limit = 20): H
     if (zoneNorm.includes(q)) score += 150
 
     // Bonus si el hotel esta en el destino seleccionado
-    if (destNorm && (cityNorm.includes(destNorm) || destNorm.includes(cityNorm))) {
+    if (destinationMatch) {
       score += 1000
     }
 
@@ -1757,19 +1782,21 @@ export function searchHotels(query: string, destination?: string, limit = 20): H
 export function searchHotelsByDestination(destination: string, limit = 20): HotelEntry[] {
   if (!destination) return []
 
-  const destNorm = normalize(destination)
-
   return HOTELS
     .map(h => {
-      let score = 0
+      if (!hotelMatchesDestination(h, destination)) {
+        return { hotel: h, score: 0 }
+      }
 
+      let score = 0
       const cityNorm = normalize(h.city)
       const countryNorm = normalize(h.country)
       const zoneNorm = h.zone ? normalize(h.zone) : ""
+      const destNorm = normalize(destination)
 
-      if (cityNorm.includes(destNorm) || destNorm.includes(cityNorm)) score += 1000
-      if (zoneNorm && (zoneNorm.includes(destNorm) || destNorm.includes(zoneNorm))) score += 700
-      if (countryNorm.includes(destNorm)) score += 150
+      if (matchesNormalizedValue(cityNorm, destNorm)) score += 1000
+      if (matchesNormalizedValue(zoneNorm, destNorm)) score += 700
+      if (matchesNormalizedValue(countryNorm, destNorm)) score += 150
       score += h.stars * 2
 
       return { hotel: h, score }

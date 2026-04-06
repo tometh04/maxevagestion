@@ -5,6 +5,12 @@ import { searchGeoapifyHotels } from "@/lib/hotels/geoapify"
 
 export const dynamic = "force-dynamic"
 
+function isRedirectError(error: unknown) {
+  if (!error || typeof error !== "object") return false
+  const err = error as { digest?: string; message?: string }
+  return err.digest === "NEXT_REDIRECT" || err.message === "NEXT_REDIRECT"
+}
+
 function normalizeHotelKey(hotel: Pick<HotelEntry, "name" | "city" | "country">) {
   const normalize = (value: string) =>
     value
@@ -29,11 +35,20 @@ function mergeHotelResults(localResults: HotelEntry[], externalResults: HotelEnt
 // GET — Buscar hoteles por nombre/destino (base local + fallback externo)
 export async function GET(request: Request) {
   try {
-    await getCurrentUser()
+    try {
+      await getCurrentUser()
+    } catch (error) {
+      if (isRedirectError(error)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      }
+      throw error
+    }
+
     const { searchParams } = new URL(request.url)
     const q = (searchParams.get("q") || "").trim()
     const destination = (searchParams.get("destination") || "").trim()
-    const limit = parseInt(searchParams.get("limit") || "20")
+    const parsedLimit = parseInt(searchParams.get("limit") || "20")
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 20) : 20
 
     const localResults = q.length >= 2
       ? searchHotels(q, destination, limit)
@@ -61,8 +76,7 @@ export async function GET(request: Request) {
       }))
     )
   } catch (error: any) {
-    if (error?.digest === "NEXT_REDIRECT") throw error
     console.error("Error in hotel search:", error)
-    return NextResponse.json([])
+    return NextResponse.json({ error: "Error interno al buscar hoteles" }, { status: 500 })
   }
 }

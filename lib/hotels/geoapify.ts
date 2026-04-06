@@ -40,6 +40,22 @@ function buildHotelKey(hotel: Pick<HotelEntry, "name" | "city" | "country">) {
   return `${normalizeCacheKey(hotel.name)}::${normalizeCacheKey(hotel.city)}::${normalizeCacheKey(hotel.country)}`
 }
 
+function matchesNormalizedValue(candidate: string, target: string) {
+  if (!candidate || !target) return false
+  return candidate.includes(target) || target.includes(candidate)
+}
+
+function geoapifyHotelMatchesDestination(hotel: HotelEntry, destination: string) {
+  const destinationNorm = normalizeCacheKey(destination)
+  if (!destinationNorm) return false
+
+  return (
+    matchesNormalizedValue(normalizeCacheKey(hotel.city || ""), destinationNorm) ||
+    matchesNormalizedValue(normalizeCacheKey(hotel.country || ""), destinationNorm) ||
+    matchesNormalizedValue(normalizeCacheKey(hotel.address || ""), destinationNorm)
+  )
+}
+
 async function resolveDestinationCoordinates(destination: string, apiKey: string) {
   const cacheKey = normalizeCacheKey(destination)
   if (geocodeCache.has(cacheKey)) {
@@ -150,6 +166,8 @@ export async function searchGeoapifyHotels(
   }
 
   const hotels = Array.from(uniqueHotels.values())
-  hotelsCache.set(cacheKey, hotels)
-  return hotels
+  const destinationMatches = hotels.filter(hotel => geoapifyHotelMatchesDestination(hotel, destination))
+  const finalHotels = destinationMatches.length > 0 ? destinationMatches : hotels
+  hotelsCache.set(cacheKey, finalHotels)
+  return finalHotels
 }
