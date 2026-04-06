@@ -44,10 +44,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2 } from "lucide-react"
+import { Loader2, Plus, FileText, DollarSign, MoreHorizontal, Pencil, Trash2, CreditCard } from "lucide-react"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { NewVariableExpenseDialog } from "./new-variable-expense-dialog"
 import { ExpenseReceiptDialog } from "./expense-receipt-dialog"
+import { CCPaymentDialog } from "./cc-payment-dialog"
+
+const CLASSIFICATION_BADGES: Record<string, { label: string; className: string }> = {
+  GASTOS_AGENCIA: { label: "Agencia", className: "border-blue-400 text-blue-600 dark:text-blue-400" },
+  VENTAS: { label: "Ventas", className: "border-green-400 text-green-600 dark:text-green-400" },
+  RETIRO_PERSONAL: { label: "Retiro", className: "border-orange-400 text-orange-600 dark:text-orange-400" },
+}
 
 interface Category {
   id: string
@@ -67,6 +74,8 @@ interface Expense {
   receipt_count: number
   financial_account: { id: string; name: string; currency: string } | null
   users: { name: string } | null
+  expense_classification: string | null
+  cc_payment_group_id: string | null
 }
 
 export function VariableExpensesTab() {
@@ -87,6 +96,7 @@ export function VariableExpensesTab() {
 
   // Dialogs
   const [newExpenseOpen, setNewExpenseOpen] = useState(false)
+  const [ccPaymentOpen, setCcPaymentOpen] = useState(false)
   const [receiptDialog, setReceiptDialog] = useState<{ open: boolean; expenseId: string; name: string }>({
     open: false,
     expenseId: "",
@@ -281,7 +291,11 @@ export function VariableExpensesTab() {
             </SelectContent>
           </Select>
         </div>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setCcPaymentOpen(true)} className="rounded-full">
+            <CreditCard className="h-4 w-4 mr-2" />
+            Pago Tarjeta
+          </Button>
           <Button size="sm" onClick={() => setNewExpenseOpen(true)} className="rounded-full">
             <Plus className="h-4 w-4 mr-2" />
             Nuevo Gasto
@@ -309,6 +323,7 @@ export function VariableExpensesTab() {
                 <SortableTableHead sortKey="category_info.name" sortConfig={sortConfig} onSort={requestSort}>Categoría</SortableTableHead>
                 <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">Monto</SortableTableHead>
                 <SortableTableHead sortKey="financial_account.name" sortConfig={sortConfig} onSort={requestSort}>Cuenta</SortableTableHead>
+                <SortableTableHead sortKey="expense_classification" sortConfig={sortConfig} onSort={requestSort}>Tipo</SortableTableHead>
                 <TableHead className="text-center">Comprobante</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
@@ -350,6 +365,18 @@ export function VariableExpensesTab() {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {expense.financial_account?.name || "—"}
+                  </TableCell>
+                  <TableCell>
+                    {expense.expense_classification && CLASSIFICATION_BADGES[expense.expense_classification] ? (
+                      <Badge
+                        variant="outline"
+                        className={`text-xs ${CLASSIFICATION_BADGES[expense.expense_classification].className}`}
+                      >
+                        {CLASSIFICATION_BADGES[expense.expense_classification].label}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-center">
                     <Button
@@ -405,6 +432,11 @@ export function VariableExpensesTab() {
       <NewVariableExpenseDialog
         open={newExpenseOpen}
         onOpenChange={setNewExpenseOpen}
+        onSuccess={fetchExpenses}
+      />
+      <CCPaymentDialog
+        open={ccPaymentOpen}
+        onOpenChange={setCcPaymentOpen}
         onSuccess={fetchExpenses}
       />
       <ExpenseReceiptDialog

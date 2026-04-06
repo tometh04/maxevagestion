@@ -334,6 +334,8 @@ export interface Database {
         Row: {
           id: string
           operation_id: string
+          operator_id: string | null
+          operator_payment_id: string | null
           payer_type: 'CUSTOMER' | 'OPERATOR'
           direction: 'INCOME' | 'EXPENSE'
           method: string
@@ -349,6 +351,8 @@ export interface Database {
         Insert: {
           id?: string
           operation_id: string
+          operator_id?: string | null
+          operator_payment_id?: string | null
           payer_type: 'CUSTOMER' | 'OPERATOR'
           direction: 'INCOME' | 'EXPENSE'
           method: string
@@ -364,6 +368,8 @@ export interface Database {
         Update: {
           id?: string
           operation_id?: string
+          operator_id?: string | null
+          operator_payment_id?: string | null
           payer_type?: 'CUSTOMER' | 'OPERATOR'
           direction?: 'INCOME' | 'EXPENSE'
           method?: string

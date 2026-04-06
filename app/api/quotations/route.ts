@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
+import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
 
 export const dynamic = "force-dynamic"
 
@@ -89,6 +90,7 @@ export async function POST(request: Request) {
       children,
       infants,
       currency,
+      pricing_mode,
       notes,
       terms_and_conditions,
       options, // Array de opciones: [{ title, total_amount, items: [...] }]
@@ -132,6 +134,7 @@ export async function POST(request: Request) {
         subtotal: firstOption.total_amount,
         total_amount: firstOption.total_amount,
         currency: currency || "USD",
+        pricing_mode: normalizeQuotationPricingMode(pricing_mode ?? "PER_PERSON"),
         status: "DRAFT",
         notes: notes || null,
         terms_and_conditions: terms_and_conditions || null,
@@ -185,6 +188,7 @@ export async function POST(request: Request) {
           order_index: idx,
           notes: item.notes || null,
           // Hotel
+          destination_city: item.destination_city || null,
           hotel_name: item.hotel_name || null,
           hotel_stars: item.hotel_stars || null,
           hotel_address: item.hotel_address || null,
@@ -203,6 +207,7 @@ export async function POST(request: Request) {
           flight_return_date: item.flight_return_date || null,
           flight_stops: item.flight_stops != null ? Number(item.flight_stops) : 0,
           flight_class: item.flight_class || null,
+          flight_screenshot_url: item.flight_screenshot_url || null,
           // Transfer
           transfer_description: item.transfer_description || null,
         }))

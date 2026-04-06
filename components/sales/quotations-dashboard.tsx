@@ -20,6 +20,11 @@ import {
   Eye, Loader2, Briefcase, Download
 } from "lucide-react"
 import { downloadQuotationPDF } from "@/lib/pdf/quotation-pdf"
+import {
+  formatQuotationCurrency,
+  getQuotationOptionPricing,
+  normalizeQuotationForPresentation,
+} from "@/lib/quotations/presentation"
 
 interface QuotationsDashboardProps {
   sellers: Array<{ id: string; name: string }>
@@ -70,6 +75,23 @@ interface RegionStat {
 function formatCurrency(amount: number, currency: string) {
   const prefix = currency === "USD" ? "US$" : "$"
   return `${prefix} ${Number(amount).toLocaleString("es-AR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+}
+
+function getQuotationDisplayAmount(quotation: any) {
+  const pricing = getQuotationOptionPricing(
+    { total_amount: quotation.total_amount || 0 },
+    {
+      adults: Number(quotation.adults || 0),
+      children: Number(quotation.children || 0),
+      infants: Number(quotation.infants || 0),
+      pricing_mode: quotation.pricing_mode,
+    }
+  )
+
+  return {
+    amount: formatQuotationCurrency(pricing.primaryAmount, quotation.currency),
+    label: pricing.primaryLabel,
+  }
 }
 
 const MONTH_NAMES: Record<string, string> = {
@@ -162,28 +184,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
       const brandRes = await fetch("/api/public/branding")
       const brandJson = brandRes.ok ? await brandRes.json() : { data: {} }
 
-      const pdfData = {
-        quotation_number: q.quotation_number,
-        destination: q.destination,
-        origin: q.origin,
-        departure_date: q.departure_date,
-        return_date: q.return_date,
-        valid_until: q.valid_until,
-        adults: q.adults,
-        children: q.children,
-        infants: q.infants,
-        currency: q.currency,
-        status: q.status,
-        notes: q.notes,
-        terms_and_conditions: q.terms_and_conditions,
-        created_at: q.created_at,
-        seller_name: q.seller?.name || "Vendedor",
-        agency_name: q.agency?.name || "Agencia",
-        options: (q.quotation_options || []).map((opt: any) => ({
-          ...opt,
-          items: (q.quotation_items || []).filter((item: any) => item.option_id === opt.id),
-        })),
-      }
+      const pdfData = normalizeQuotationForPresentation(q)
 
       await downloadQuotationPDF(pdfData, brandJson.data || {})
     } catch (err) {
@@ -580,6 +581,7 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                     }
                     const sc = statusConfig[q.status] || statusConfig.DRAFT
                     const canConvert = q.status === "APPROVED"
+                    const displayAmount = getQuotationDisplayAmount(q)
 
                     return (
                       <TableRow key={q.id}>
@@ -590,7 +592,10 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
                         <TableCell className="text-xs">{q.destination}</TableCell>
                         <TableCell className="text-xs">{q.seller?.name || "-"}</TableCell>
                         <TableCell className="text-xs font-medium tabular-nums">
-                          {formatCurrency(q.total_amount, q.currency)}
+                          {displayAmount.amount}
+                          <span className="ml-1 text-[10px] font-normal text-muted-foreground">
+                            {displayAmount.label === "Precio por persona" ? "pp" : "total"}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${sc.color}`}>
@@ -678,14 +683,24 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
             <AlertDialogTitle>Convertir cotizacion a operacion</AlertDialogTitle>
             <AlertDialogDescription>
               {selectedQuotation && (
-                <>
+                (() => {
+                  const displayAmount = getQuotationDisplayAmount(selectedQuotation)
+
+                  return (
+                    <>
                   Se creara una operacion a partir de la cotizacion{" "}
                   <strong>{selectedQuotation.quotation_number}</strong> por{" "}
-                  <strong>{formatCurrency(selectedQuotation.total_amount, selectedQuotation.currency)}</strong>.
+                  <strong>{displayAmount.amount}</strong>
+                  {displayAmount.label === "Precio por persona" && (
+                    <> (total {formatCurrency(selectedQuotation.total_amount, selectedQuotation.currency)})</>
+                  )}
+                  .
                   <br /><br />
                   Esto creara la operacion con todos los servicios, vinculara al cliente del lead,
                   y marcara el lead como ganado. Esta accion no se puede deshacer.
-                </>
+                    </>
+                  )
+                })()
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

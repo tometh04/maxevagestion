@@ -8,61 +8,19 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Loader2, Plane, Hotel, Bus, Shield, MapPin, Calendar, Users, CheckCircle2, Clock, XCircle, AlertTriangle, Download } from "lucide-react"
 import { downloadQuotationPDF } from "@/lib/pdf/quotation-pdf"
-
-interface QuotationOption {
-  id: string
-  option_number: number
-  title: string
-  total_amount: number
-  is_selected: boolean
-  items: QuotationItem[]
-}
-
-interface QuotationItem {
-  item_type: string
-  description: string
-  quantity: number
-  provider?: string
-  hotel_name?: string
-  hotel_stars?: number
-  room_type?: string
-  meal_plan?: string
-  checkin_date?: string
-  checkout_date?: string
-  nights?: number
-  hotel_address?: string
-  hotel_photo_url?: string
-  rooms?: number
-  airline?: string
-  flight_route?: string
-  flight_class?: string
-  flight_stops?: number
-  flight_date?: string
-  flight_return_date?: string
-  transfer_description?: string
-  price_per_unit?: number
-}
-
-interface QuotationData {
-  quotation_number: string
-  destination: string
-  origin?: string
-  region?: string
-  departure_date: string
-  return_date?: string
-  valid_until: string
-  adults: number
-  children: number
-  infants: number
-  currency: string
-  status: string
-  notes?: string
-  terms_and_conditions?: string
-  created_at: string
-  seller_name: string
-  agency_name: string
-  options: QuotationOption[]
-}
+import {
+  formatQuotationCurrency,
+  formatQuotationDateLong,
+  formatQuotationDateShort,
+  getQuotationOptionPricing,
+  getQuotationPassengerCount,
+  getQuotationPassengersText,
+  QUOTATION_FLIGHT_CLASS_LABELS,
+  QUOTATION_MEAL_PLAN_LABELS,
+  QUOTATION_STATUS_LABELS,
+  type QuotationPresentationData,
+  type QuotationPresentationItem,
+} from "@/lib/quotations/presentation"
 
 const ITEM_TYPE_CONFIG: Record<string, { label: string; icon: typeof Plane; emoji: string; bgColor: string }> = {
   FLIGHT: { label: "Vuelo", icon: Plane, emoji: "\u2708\uFE0F", bgColor: "bg-blue-50" },
@@ -77,47 +35,13 @@ const ITEM_TYPE_CONFIG: Record<string, { label: string; icon: typeof Plane; emoj
   OTHER: { label: "Otro", icon: MapPin, emoji: "\uD83D\uDCCB", bgColor: "bg-gray-50" },
 }
 
-const MEAL_PLAN_LABELS: Record<string, string> = {
-  SOLO_ALOJAMIENTO: "Solo alojamiento",
-  DESAYUNO: "Desayuno incluido",
-  MEDIA_PENSION: "Media pension",
-  PENSION_COMPLETA: "Pension completa",
-  ALL_INCLUSIVE: "All Inclusive",
-}
-
-const FLIGHT_CLASS_LABELS: Record<string, string> = {
-  ECONOMY: "Economica",
-  PREMIUM_ECONOMY: "Premium Economy",
-  BUSINESS: "Business",
-  FIRST: "Primera Clase",
-}
-
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
-  SENT: { label: "Pendiente de revision", color: "bg-blue-100 text-blue-700 border-blue-200", icon: Clock },
-  PENDING_APPROVAL: { label: "Pendiente de aprobacion", color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock },
-  APPROVED: { label: "Aceptada", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
-  REJECTED: { label: "Rechazada", color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
-  EXPIRED: { label: "Vencida", color: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertTriangle },
-  CONVERTED: { label: "Confirmada", color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
-}
-
-function formatCurrency(amount: number, currency: string) {
-  const prefix = currency === "USD" ? "US$" : "$"
-  return `${prefix} ${Number(amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-}
-
-function formatDateLong(dateStr: string) {
-  const date = new Date(dateStr + "T12:00:00")
-  const day = date.getDate()
-  const month = date.toLocaleDateString("es-AR", { month: "long" })
-  const year = date.getFullYear()
-  const capitalMonth = month.charAt(0).toUpperCase() + month.slice(1)
-  return `${day} de ${capitalMonth}, ${year}`
-}
-
-function formatDateShort(dateStr: string) {
-  const date = new Date(dateStr + "T12:00:00")
-  return date.toLocaleDateString("es-AR", { day: "2-digit", month: "short", year: "numeric" })
+  SENT: { label: QUOTATION_STATUS_LABELS.SENT, color: "bg-blue-100 text-blue-700 border-blue-200", icon: Clock },
+  PENDING_APPROVAL: { label: QUOTATION_STATUS_LABELS.PENDING_APPROVAL, color: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: Clock },
+  APPROVED: { label: QUOTATION_STATUS_LABELS.APPROVED, color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
+  REJECTED: { label: QUOTATION_STATUS_LABELS.REJECTED, color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
+  EXPIRED: { label: QUOTATION_STATUS_LABELS.EXPIRED, color: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertTriangle },
+  CONVERTED: { label: QUOTATION_STATUS_LABELS.CONVERTED, color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
 }
 
 function getRemainingTime(validUntil: string): { text: string; urgent: boolean; expired: boolean } {
@@ -140,9 +64,9 @@ function getRemainingTime(validUntil: string): { text: string; urgent: boolean; 
 
 // --- Service card sub-components ---
 
-function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
+function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   const stars = item.hotel_stars ? "\u2605".repeat(item.hotel_stars) : ""
-  const mealLabel = item.meal_plan ? (MEAL_PLAN_LABELS[item.meal_plan] || item.meal_plan) : null
+  const mealLabel = item.meal_plan ? (QUOTATION_MEAL_PLAN_LABELS[item.meal_plan] || item.meal_plan) : null
 
   return (
     <div className="bg-white border rounded-xl overflow-hidden space-y-0">
@@ -191,6 +115,12 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
 
       {/* Badges row */}
       <div className="flex flex-wrap gap-2">
+        {item.destination_city && (
+          <Badge variant="secondary" className="flex items-center gap-1 text-xs font-medium bg-slate-100 text-slate-700">
+            <MapPin className="h-3 w-3" />
+            {item.destination_city}
+          </Badge>
+        )}
         {item.room_type && (
           <Badge variant="secondary" className="text-xs font-medium bg-gray-100 text-gray-700">
             {item.room_type}
@@ -212,9 +142,9 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
       {item.checkin_date && item.checkout_date && (
         <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
           <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-          <span>{formatDateShort(item.checkin_date)}</span>
+          <span>{formatQuotationDateShort(item.checkin_date)}</span>
           <span className="text-gray-400">&rarr;</span>
-          <span>{formatDateShort(item.checkout_date)}</span>
+          <span>{formatQuotationDateShort(item.checkout_date)}</span>
           {item.nights && (
             <span className="text-xs text-muted-foreground ml-auto">
               {item.nights} noche{item.nights > 1 ? "s" : ""}
@@ -240,8 +170,8 @@ function HotelCard({ item, brandColor }: { item: QuotationItem; brandColor: stri
   )
 }
 
-function FlightCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
-  const classLabel = item.flight_class ? (FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class) : null
+function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
+  const classLabel = item.flight_class ? (QUOTATION_FLIGHT_CLASS_LABELS[item.flight_class] || item.flight_class) : null
   // Format route as "EZE ✈ MIA"
   const routeDisplay = item.flight_route
     ? item.flight_route.replace(/\s*[-→>]+\s*/g, " \u2708 ")
@@ -296,15 +226,30 @@ function FlightCard({ item, brandColor }: { item: QuotationItem; brandColor: str
       {(item.flight_date || item.flight_return_date) && (
         <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 rounded-lg px-3 py-2">
           <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
-          {item.flight_date && <span>Ida: {formatDateShort(item.flight_date)}</span>}
+          {item.flight_date && <span>Ida: {formatQuotationDateShort(item.flight_date)}</span>}
           {item.flight_date && item.flight_return_date && <span className="text-gray-400">|</span>}
-          {item.flight_return_date && <span>Vuelta: {formatDateShort(item.flight_return_date)}</span>}
+          {item.flight_return_date && <span>Vuelta: {formatQuotationDateShort(item.flight_return_date)}</span>}
         </div>
       )}
 
       {/* Description as extra info when route exists */}
       {routeDisplay && item.description && item.description !== item.flight_route && (
         <p className="text-xs text-muted-foreground">{item.description}</p>
+      )}
+
+      {item.flight_screenshot_url && (
+        <div className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground text-center">
+            Itinerario del vuelo
+          </p>
+          <div className="rounded-xl border bg-slate-50 p-2">
+            <img
+              src={item.flight_screenshot_url}
+              alt="Itinerario del vuelo"
+              className="w-full max-h-80 object-contain rounded-lg"
+            />
+          </div>
+        </div>
       )}
 
       {item.provider && (
@@ -314,7 +259,7 @@ function FlightCard({ item, brandColor }: { item: QuotationItem; brandColor: str
   )
 }
 
-function TransferCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
+function TransferCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   return (
     <div className="bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
@@ -338,7 +283,7 @@ function TransferCard({ item, brandColor }: { item: QuotationItem; brandColor: s
   )
 }
 
-function InsuranceCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
+function InsuranceCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   return (
     <div className="bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
@@ -357,7 +302,7 @@ function InsuranceCard({ item, brandColor }: { item: QuotationItem; brandColor: 
   )
 }
 
-function ActivityCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
+function ActivityCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   const config = ITEM_TYPE_CONFIG[item.item_type] || ITEM_TYPE_CONFIG.OTHER
   return (
     <div className="bg-white border rounded-xl p-4 space-y-2">
@@ -377,7 +322,7 @@ function ActivityCard({ item, brandColor }: { item: QuotationItem; brandColor: s
   )
 }
 
-function ServiceCard({ item, brandColor }: { item: QuotationItem; brandColor: string }) {
+function ServiceCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   switch (item.item_type) {
     case "ACCOMMODATION":
     case "HOTEL":
@@ -404,7 +349,7 @@ export function PublicQuotationView() {
   const token = params.token as string
 
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<QuotationData | null>(null)
+  const [data, setData] = useState<QuotationPresentationData | null>(null)
   const [branding, setBranding] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
@@ -509,7 +454,7 @@ export function PublicQuotationView() {
   const statusConfig = STATUS_CONFIG[data.status] || STATUS_CONFIG.SENT
   const StatusIcon = statusConfig.icon
   const canAccept = ["SENT", "PENDING_APPROVAL"].includes(data.status) && !remaining.expired
-  const totalPassengers = data.adults + data.children + data.infants
+  const totalPassengers = getQuotationPassengerCount(data)
 
   const brandColor = branding.brand_color || "#f97316"
   const companyName = branding.company_name || data.agency_name
@@ -618,9 +563,9 @@ export function PublicQuotationView() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Fechas</p>
-                  <p className="font-semibold text-gray-900 text-sm">{formatDateLong(data.departure_date)}</p>
+                  <p className="font-semibold text-gray-900 text-sm">{formatQuotationDateLong(data.departure_date)}</p>
                   {data.return_date && (
-                    <p className="text-xs text-muted-foreground mt-0.5">Regreso: {formatDateLong(data.return_date)}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Regreso: {formatQuotationDateLong(data.return_date)}</p>
                   )}
                 </div>
               </div>
@@ -633,9 +578,7 @@ export function PublicQuotationView() {
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Pasajeros</p>
                   <p className="font-semibold text-gray-900 text-sm">
-                    {data.adults} adulto{data.adults > 1 ? "s" : ""}
-                    {data.children > 0 ? `, ${data.children} menor${data.children > 1 ? "es" : ""}` : ""}
-                    {data.infants > 0 ? `, ${data.infants} bebe${data.infants > 1 ? "s" : ""}` : ""}
+                    {getQuotationPassengersText(data)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{totalPassengers} pasajero{totalPassengers > 1 ? "s" : ""} en total</p>
                 </div>
@@ -648,7 +591,7 @@ export function PublicQuotationView() {
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Valida hasta</p>
-                  <p className="font-semibold text-gray-900 text-sm">{formatDateLong(data.valid_until)}</p>
+                  <p className="font-semibold text-gray-900 text-sm">{formatQuotationDateLong(data.valid_until)}</p>
                 </div>
               </div>
             </div>
@@ -668,6 +611,7 @@ export function PublicQuotationView() {
           .sort((a, b) => a.option_number - b.option_number)
           .map((option) => {
             const isSelected = accepted && option.is_selected
+            const pricing = getQuotationOptionPricing(option, data)
             return (
               <Card
                 key={option.id}
@@ -695,15 +639,15 @@ export function PublicQuotationView() {
                   <div className="rounded-xl p-4 mt-4" style={{ backgroundColor: `${brandColor}08` }}>
                     <div className="flex items-end justify-between">
                       <div>
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Precio total</p>
-                        {totalPassengers > 1 && (
+                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{pricing.primaryLabel}</p>
+                        {pricing.secondaryAmount != null && pricing.secondaryLabel && (
                           <p className="text-sm text-muted-foreground mt-0.5">
-                            {formatCurrency(option.total_amount / totalPassengers, data.currency)} por persona
+                            {pricing.secondaryLabel}: {formatQuotationCurrency(pricing.secondaryAmount, data.currency)}
                           </p>
                         )}
                       </div>
                       <p className="text-2xl font-bold" style={{ color: brandColor }}>
-                        {formatCurrency(option.total_amount, data.currency)}
+                        {formatQuotationCurrency(pricing.primaryAmount, data.currency)}
                       </p>
                     </div>
                   </div>
@@ -815,7 +759,7 @@ export function PublicQuotationView() {
             {/* Seller + generation date */}
             <div className="text-center text-xs text-muted-foreground space-y-1">
               <p>Asesor: <span className="font-medium text-gray-600">{data.seller_name}</span></p>
-              <p>Cotizacion generada el {formatDateLong(data.created_at.split("T")[0])}</p>
+              <p>Cotizacion generada el {formatQuotationDateLong(data.created_at.split("T")[0])}</p>
             </div>
 
             {/* Terms & conditions */}

@@ -5,13 +5,15 @@ import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
-  getOrCreateDefaultAccount,
   validateSufficientBalance,
   getMainPassengerName,
 } from "@/lib/accounting/ledger"
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
-import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
-import { getExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import {
+  applyOperatorPaymentSettlement,
+  findMatchingOperatorPayment,
+} from "@/lib/accounting/operator-payment-settlement"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 
 export async function POST(request: Request) {
@@ -55,6 +57,8 @@ export async function POST(request: Request) {
     const { data: payment } = await paymentsSelect
       .select(`
         operation_id, 
+        operator_id,
+        operator_payment_id,
         amount, 
         currency, 
         direction, 
@@ -82,6 +86,26 @@ export async function POST(request: Request) {
     const paymentData = payment as any
     const operation = paymentData.operations || null
     const paymentsTable = supabase.from("payments") as any
+    let linkedOperatorId: string | null = paymentData.operator_id || null
+    let linkedOperatorPaymentId: string | null = paymentData.operator_payment_id || null
+
+    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id && !linkedOperatorPaymentId) {
+      const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+        operationId: paymentData.operation_id,
+        operatorId: linkedOperatorId,
+      })
+
+      if (matchedOperatorPayment) {
+        linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
+        linkedOperatorPaymentId = matchedOperatorPayment.id
+      }
+    }
+
+    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id && !linkedOperatorPaymentId) {
+      return NextResponse.json({
+        error: "No se pudo identificar la deuda del operador para este pago. Volvé a crearlo seleccionando el operador correcto.",
+      }, { status: 400 })
+    }
 
     // ============================================
     // GUARD DE IDEMPOTENCIA: Verificar ANTES de cualquier modificación
@@ -125,6 +149,10 @@ export async function POST(request: Request) {
       status: "PAID",
       reference: reference || null,
       updated_at: new Date().toISOString(),
+    }
+    if (paymentData.payer_type === "OPERATOR") {
+      updateData.operator_id = linkedOperatorId
+      updateData.operator_payment_id = linkedOperatorPaymentId
     }
     
     // Si se proporcionó exchange_rate, guardarlo y calcular amount_usd
@@ -324,7 +352,7 @@ export async function POST(request: Request) {
                 method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
                 account_id: accountsPayableAccount.id, // Cuenta "Cuentas por Pagar" (diferente a la seleccionada)
                 seller_id: operation?.seller_id || null,
-                operator_id: operation?.operator_id || null,
+                operator_id: linkedOperatorId,
                 receipt_number: reference || null,
                 notes: `Pago realizado: ${reference || ""}`,
                 created_by: user.id,
@@ -418,7 +446,7 @@ export async function POST(request: Request) {
     
     // Obtener seller_id y operator_id de la operación si existe
     const sellerId = operation?.seller_id || null
-    const operatorId = operation?.operator_id || null
+    const operatorId = linkedOperatorId || operation?.operator_id || null
     
     // Mapear method del payment a ledger method
     const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
@@ -497,19 +525,14 @@ export async function POST(request: Request) {
     )
     
     // Si es un pago a operador, marcar operator_payment como PAID
-    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id) {
+    if (paymentData.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
       try {
-        // Buscar el operator_payment correspondiente
-        const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-          .select("id")
-          .eq("operation_id", paymentData.operation_id)
-          .eq("status", "PENDING")
-          .limit(1)
-          .maybeSingle()
-
-        if (operatorPayment) {
-          await markOperatorPaymentAsPaid(supabase, operatorPayment.id, ledgerMovementId)
-        }
+        await applyOperatorPaymentSettlement(
+          supabase,
+          linkedOperatorPaymentId,
+          parseFloat(paymentData.amount),
+          ledgerMovementId
+        )
       } catch (error) {
         console.error("Error marcando operator_payment como PAID:", error)
         // No lanzamos error para no romper el flujo

@@ -47,6 +47,8 @@ interface PaymentLedger {
 export interface Payment {
   id: string
   operation_id: string
+  operator_id?: string | null
+  operator_payment_id?: string | null
   payer_type: "CUSTOMER" | "OPERATOR"
   direction: "INCOME" | "EXPENSE"
   method: string
@@ -59,6 +61,7 @@ export interface Payment {
   created_at?: string
   updated_at?: string
   operations?: PaymentOperation | null
+  operators?: { id: string; name: string; contact_email?: string | null } | null
   ledger_movements?: PaymentLedger | null
 }
 
@@ -226,9 +229,14 @@ export function PaymentsTable({
           <DataTableColumnHeader column={column} title="Payer" />
         ),
         cell: ({ row }) => (
-          <Badge variant="outline">
-            {row.original.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
-          </Badge>
+          <div className="space-y-1">
+            <Badge variant="outline">
+              {row.original.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
+            </Badge>
+            {row.original.payer_type === "OPERATOR" && row.original.operators?.name && (
+              <p className="text-xs text-muted-foreground">{row.original.operators.name}</p>
+            )}
+          </div>
         ),
       },
       {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
+import { normalizeQuotationForPresentation } from "@/lib/quotations/presentation"
 
 export const dynamic = "force-dynamic"
 
@@ -18,7 +19,7 @@ export async function GET(
         id, quotation_number, destination, origin, region,
         departure_date, return_date, valid_until,
         adults, children, infants,
-        total_amount, currency, status,
+        total_amount, currency, pricing_mode, status,
         notes, terms_and_conditions,
         created_at,
         seller:seller_id(name, email),
@@ -27,9 +28,9 @@ export async function GET(
         quotation_items(
           id, item_type, description, quantity, subtotal, currency,
           order_index, notes, provider, option_id,
-          checkin_date, checkout_date, nights,
+          checkin_date, checkout_date, nights, destination_city,
           hotel_name, hotel_stars, room_type, meal_plan, hotel_address, hotel_photo_url, rooms,
-          airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date,
+          airline, flight_route, flight_class, flight_stops, flight_date, flight_return_date, flight_screenshot_url,
           transfer_description,
           unit_price
         )
@@ -56,60 +57,11 @@ export async function GET(
       }
     }
 
-    // No exponer datos internos
-    const publicData = {
-      quotation_number: data.quotation_number,
-      destination: data.destination,
-      origin: data.origin,
-      region: data.region,
-      departure_date: data.departure_date,
-      return_date: data.return_date,
-      valid_until: data.valid_until,
-      adults: data.adults,
-      children: data.children,
-      infants: data.infants,
-      currency: data.currency,
-      status: data.status,
-      notes: data.notes,
-      terms_and_conditions: data.terms_and_conditions,
-      created_at: data.created_at,
+    const publicData = normalizeQuotationForPresentation({
+      ...data,
       seller_name: (data.seller as any)?.name || "",
       agency_name: (data.agency as any)?.name || "",
-      options: (data.quotation_options || []).map((opt: any) => ({
-        id: opt.id,
-        option_number: opt.option_number,
-        title: opt.title,
-        total_amount: opt.total_amount,
-        is_selected: opt.is_selected,
-        items: (data.quotation_items || [])
-          .filter((item: any) => item.option_id === opt.id)
-          .sort((a: any, b: any) => a.order_index - b.order_index)
-          .map((item: any) => ({
-            item_type: item.item_type,
-            description: item.description,
-            quantity: item.quantity,
-            provider: item.provider,
-            hotel_name: item.hotel_name,
-            hotel_stars: item.hotel_stars,
-            room_type: item.room_type,
-            meal_plan: item.meal_plan,
-            checkin_date: item.checkin_date,
-            checkout_date: item.checkout_date,
-            nights: item.nights,
-            hotel_address: item.hotel_address,
-            hotel_photo_url: item.hotel_photo_url,
-            rooms: item.rooms,
-            airline: item.airline,
-            flight_route: item.flight_route,
-            flight_class: item.flight_class,
-            flight_stops: item.flight_stops,
-            flight_date: item.flight_date,
-            flight_return_date: item.flight_return_date,
-            transfer_description: item.transfer_description,
-            price_per_unit: item.unit_price,
-          })),
-      })),
-    }
+    })
 
     return NextResponse.json({ data: publicData })
   } catch (error: any) {

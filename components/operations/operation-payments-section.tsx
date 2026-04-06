@@ -132,6 +132,7 @@ export function OperationPaymentsSection({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
+  const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
@@ -597,6 +598,19 @@ export function OperationPaymentsSection({
     },
   })
 
+  useEffect(() => {
+    const currentOperatorId = expenseForm.getValues("operator_id")
+
+    if (operators.length === 1) {
+      expenseForm.setValue("operator_id", operators[0].id, { shouldValidate: true })
+      return
+    }
+
+    if (currentOperatorId && !operators.some((operator) => operator.id === currentOperatorId)) {
+      expenseForm.setValue("operator_id", "", { shouldValidate: true })
+    }
+  }, [expenseForm, operators])
+
   const editForm = useForm<EditPaymentFormValues>({
     resolver: zodResolver(editPaymentSchema),
     defaultValues: {
@@ -768,6 +782,11 @@ export function OperationPaymentsSection({
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
+    if (operators.length > 0 && !values.operator_id) {
+      expenseForm.setError("operator_id", { message: "Debe seleccionar un operador" })
+      return
+    }
+
     // Validar cuenta financiera
     if (!values.financial_account_id) {
       alert("Debe seleccionar una cuenta financiera")
@@ -932,9 +951,16 @@ export function OperationPaymentsSection({
                         <Badge variant={payment.direction === "INCOME" ? "default" : "destructive"}>
                           {payment.direction === "INCOME" ? "Ingreso" : "Egreso"}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-muted-foreground">
+                            {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
+                          </span>
+                          {payment.payer_type === "OPERATOR" && payment.operator_id && (
+                            <span className="text-xs font-medium">
+                              {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{payment.method || "-"}</TableCell>

@@ -14,6 +14,12 @@ import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X } from "lucide-react"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
+import {
+  formatQuotationCurrency,
+  getQuotationOptionPricing,
+  normalizeQuotationPricingMode,
+  type QuotationPricingMode,
+} from "@/lib/quotations/presentation"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -50,6 +56,7 @@ interface QuotationItem {
   operator_id: string | null
   generates_commission: boolean
   // Hotel
+  destination_city?: string
   hotel_name?: string
   hotel_stars?: number
   hotel_address?: string
@@ -107,6 +114,11 @@ const FLIGHT_CLASSES = [
   { value: "FIRST", label: "First Class" },
 ]
 
+const PRICING_MODES: Array<{ value: QuotationPricingMode; label: string }> = [
+  { value: "PER_PERSON", label: "Por persona" },
+  { value: "GROUP_TOTAL", label: "Grupo familiar" },
+]
+
 function generateId() {
   return Math.random().toString(36).substring(2, 9)
 }
@@ -127,12 +139,24 @@ function createEmptyItem(type: string = "FLIGHT"): QuotationItem {
   }
 }
 
-function createEmptyOption(number: number): QuotationOption {
+function cloneStopovers(stopovers?: StopoverInfo[]) {
+  return (stopovers || []).map((stop) => ({ ...stop }))
+}
+
+function cloneQuotationItem(item: QuotationItem, idOverride?: string): QuotationItem {
+  return {
+    ...item,
+    id: idOverride || generateId(),
+    stopovers: cloneStopovers(item.stopovers),
+  }
+}
+
+function createEmptyOption(number: number, items?: QuotationItem[]): QuotationOption {
   return {
     id: generateId(),
     title: `Opcion ${number}`,
     total_amount: 0,
-    items: [createEmptyItem("FLIGHT")],
+    items: items ?? [createEmptyItem("FLIGHT")],
   }
 }
 
@@ -208,10 +232,38 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [children, setChildren] = useState(0)
   const [infants, setInfants] = useState(0)
   const [currency, setCurrency] = useState("USD")
+  const [pricingMode, setPricingMode] = useState<QuotationPricingMode>("PER_PERSON")
   const [notes, setNotes] = useState("")
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>([createEmptyOption(1)])
+
+  const syncLinkedFlights = useCallback((nextOptions: QuotationOption[]) => {
+    if (nextOptions.length === 0) return nextOptions
+
+    const masterFlights = nextOptions[0].items.filter((item) => item.item_type === "FLIGHT")
+
+    return nextOptions.map((option, index) => {
+      if (index === 0) {
+        return option
+      }
+
+      const currentFlights = option.items.filter((item) => item.item_type === "FLIGHT")
+      const nonFlights = option.items.filter((item) => item.item_type !== "FLIGHT")
+      const syncedFlights = masterFlights.map((flight, flightIndex) =>
+        cloneQuotationItem(flight, currentFlights[flightIndex]?.id)
+      )
+
+      return {
+        ...option,
+        items: [...syncedFlights, ...nonFlights],
+      }
+    })
+  }, [])
+
+  const applyOptionsUpdate = useCallback((updater: (current: QuotationOption[]) => QuotationOption[]) => {
+    setOptions((current) => syncLinkedFlights(updater(current)))
+  }, [syncLinkedFlights])
 
   // Load existing quotation for editing
   useEffect(() => {
@@ -233,6 +285,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         setChildren(data.children || 0)
         setInfants(data.infants || 0)
         setCurrency(data.currency || "USD")
+        setPricingMode(normalizeQuotationPricingMode(data.pricing_mode))
         setNotes(data.notes || "")
         // Reconstruct options from quotation_options + quotation_items
         const opts = (data.quotation_options || [])
@@ -255,6 +308,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 cost_currency: item.cost_currency || "USD",
                 operator_id: item.operator_id || null,
                 generates_commission: item.generates_commission || false,
+                destination_city: item.destination_city || undefined,
                 hotel_name: item.hotel_name || undefined,
                 hotel_stars: item.hotel_stars || undefined,
                 hotel_address: item.hotel_address || undefined,
@@ -277,13 +331,13 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 stopovers: [],
               })),
           }))
-        if (opts.length > 0) setOptions(opts)
+        if (opts.length > 0) setOptions(syncLinkedFlights(opts))
       })
       .catch(err => console.error("Error loading quotation:", err))
       .finally(() => { if (!cancelled) setLoadingExisting(false) })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, existingQuotationId])
+  }, [open, existingQuotationId, lead.contact_name, syncLinkedFlights])
 
   // --- Auto-fill flight route when origin/destination change ---
   useEffect(() => {
@@ -293,7 +347,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       : ""
     if (!route) return
 
-    setOptions(prev => prev.map(opt => ({
+    applyOptionsUpdate((current) => current.map(opt => ({
       ...opt,
       items: opt.items.map(item => {
         if (item.item_type === "FLIGHT" && !item.flight_route) {
@@ -302,12 +356,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         return item
       })
     })))
-  }, [origin, destination])
+  }, [origin, destination, applyOptionsUpdate])
 
   // --- Auto-fill dates on items when top-level dates change ---
   useEffect(() => {
     if (!departureDate && !returnDate) return
-    setOptions(prev => prev.map(opt => ({
+    applyOptionsUpdate((current) => current.map(opt => ({
       ...opt,
       items: opt.items.map(item => {
         const updated = { ...item }
@@ -329,7 +383,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         return updated
       })
     })))
-  }, [departureDate, returnDate])
+  }, [departureDate, returnDate, applyOptionsUpdate])
 
   // --- Auto-calculate total_amount for each option (always syncs from item prices) ---
   const priceKey = options.map(o => o.items.map(i => `${i.unit_price}:${i.quantity}`).join(",")).join("|")
@@ -348,15 +402,16 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // Cache hotel data so we can auto-fill stars/address/photo when selected
   const hotelDataCache = useRef<Record<string, { stars: number; address: string | null; photo_url: string | null; google_rating: number | null }>>({})
 
-  const searchHotels = useCallback(async (query: string): Promise<ComboboxOption[]> => {
+  const searchHotels = useCallback(async (query: string, hotelDestination?: string): Promise<ComboboxOption[]> => {
     const opts: ComboboxOption[] = []
     if (query && query.length >= 1) {
       opts.push({ value: query, label: query, subtitle: "Escribir nombre manualmente" })
     }
     try {
       const params = new URLSearchParams()
+      const selectedDestination = hotelDestination || destination
       if (query) params.set("q", query)
-      if (destination) params.set("destination", destination)
+      if (selectedDestination) params.set("destination", selectedDestination)
       params.set("limit", "15")
       const res = await fetch(`/api/hotels/search?${params.toString()}`)
       if (res.ok) {
@@ -389,7 +444,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       toast.error("Maximo 4 opciones por cotizacion")
       return
     }
-    setOptions([...options, createEmptyOption(options.length + 1)])
+    applyOptionsUpdate((current) => {
+      const masterFlights = current[0]?.items
+        .filter((item) => item.item_type === "FLIGHT")
+        .map((item) => cloneQuotationItem(item)) || []
+      return [...current, createEmptyOption(current.length + 1, masterFlights)]
+    })
   }
 
   function removeOption(optionId: string) {
@@ -397,7 +457,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       toast.error("Debe haber al menos una opcion")
       return
     }
-    setOptions(options.filter((o) => o.id !== optionId))
+    applyOptionsUpdate((current) => current.filter((o) => o.id !== optionId))
   }
 
   function duplicateOption(optionId: string) {
@@ -411,17 +471,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       id: generateId(),
       title: `${source.title} (copia)`,
       total_amount: source.total_amount,
-      items: source.items.map((item) => ({ ...item, id: generateId() })),
+      items: source.items.map((item) => cloneQuotationItem(item)),
     }
-    setOptions([...options, newOption])
+    applyOptionsUpdate((current) => [...current, newOption])
   }
 
   function updateOption(optionId: string, field: string, value: any) {
-    setOptions(options.map((o) => (o.id === optionId ? { ...o, [field]: value } : o)))
+    applyOptionsUpdate((current) => current.map((o) => (o.id === optionId ? { ...o, [field]: value } : o)))
   }
 
   // --- Item management ---
   function addItem(optionId: string, type: string = "FLIGHT") {
+    const optionIndex = options.findIndex((o) => o.id === optionId)
+    if (optionIndex > 0 && type === "FLIGHT") {
+      toast.error("Los vuelos se editan desde la opcion 1")
+      return
+    }
     const newItem = createEmptyItem(type)
     // Auto-fill dates and route on new items
     if (type === "FLIGHT") {
@@ -430,6 +495,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       if (origin && destination) newItem.flight_route = `${cityToCode(origin)} - ${cityToCode(destination)}`
     }
     if (type === "HOTEL" || type === "ACCOMMODATION") {
+      if (destination) newItem.destination_city = destination
       if (departureDate) newItem.checkin_date = departureDate
       if (returnDate) newItem.checkout_date = returnDate
       if (newItem.checkin_date && newItem.checkout_date) {
@@ -439,24 +505,44 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         if (diff > 0) newItem.nights = diff
       }
     }
-    setOptions(
-      options.map((o) =>
+    applyOptionsUpdate((current) =>
+      current.map((o) =>
         o.id === optionId ? { ...o, items: [...o.items, newItem] } : o
       )
     )
   }
 
   function removeItem(optionId: string, itemId: string) {
-    setOptions(
-      options.map((o) =>
+    const option = options.find((o) => o.id === optionId)
+    const optionIndex = options.findIndex((o) => o.id === optionId)
+    const item = option?.items.find((i) => i.id === itemId)
+    if (optionIndex > 0 && item?.item_type === "FLIGHT") {
+      toast.error("Los vuelos se eliminan desde la opcion 1")
+      return
+    }
+    applyOptionsUpdate((current) =>
+      current.map((o) =>
         o.id === optionId ? { ...o, items: o.items.filter((i) => i.id !== itemId) } : o
       )
     )
   }
 
   function updateItem(optionId: string, itemId: string, field: string, value: any) {
-    setOptions(
-      options.map((o) =>
+    const optionIndex = options.findIndex((o) => o.id === optionId)
+    const option = options.find((o) => o.id === optionId)
+    const currentItem = option?.items.find((i) => i.id === itemId)
+
+    if (optionIndex > 0 && currentItem?.item_type === "FLIGHT") {
+      toast.error("Los vuelos se editan desde la opcion 1")
+      return
+    }
+    if (optionIndex > 0 && field === "item_type" && value === "FLIGHT") {
+      toast.error("Los vuelos se agregan y editan desde la opcion 1")
+      return
+    }
+
+    applyOptionsUpdate((current) =>
+      current.map((o) =>
         o.id === optionId
           ? {
               ...o,
@@ -483,11 +569,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 // Auto-manage stopovers array when flight_stops changes
                 if (field === "flight_stops") {
                   const stops = Number(value) || 0
-                  const current = updated.stopovers || []
-                  if (stops > current.length) {
-                    updated.stopovers = [...current, ...Array(stops - current.length).fill(null).map(() => ({ city: "", wait_time: "" }))]
+                  const currentStops = updated.stopovers || []
+                  if (stops > currentStops.length) {
+                    updated.stopovers = [...currentStops, ...Array(stops - currentStops.length).fill(null).map(() => ({ city: "", wait_time: "" }))]
                   } else {
-                    updated.stopovers = current.slice(0, stops)
+                    updated.stopovers = currentStops.slice(0, stops)
                   }
                 }
                 return updated
@@ -499,8 +585,15 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   }
 
   function updateStopover(optionId: string, itemId: string, stopIndex: number, field: keyof StopoverInfo, value: string) {
-    setOptions(
-      options.map((o) =>
+    const optionIndex = options.findIndex((o) => o.id === optionId)
+    const option = options.find((o) => o.id === optionId)
+    const item = option?.items.find((i) => i.id === itemId)
+    if (optionIndex > 0 && item?.item_type === "FLIGHT") {
+      toast.error("Las escalas se editan desde la opcion 1")
+      return
+    }
+    applyOptionsUpdate((current) =>
+      current.map((o) =>
         o.id === optionId
           ? {
               ...o,
@@ -538,6 +631,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   // --- Save ---
   async function handleSave(andSend: boolean = false) {
+    const syncedOptions = syncLinkedFlights(options)
+
     if (!destination.trim()) {
       toast.error("El destino es requerido")
       return
@@ -546,7 +641,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       toast.error("La fecha de salida es requerida")
       return
     }
-    for (const opt of options) {
+    for (const opt of syncedOptions) {
       if (opt.items.length === 0) {
         toast.error(`"${opt.title}" necesita al menos un servicio`)
         return
@@ -564,7 +659,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
     try {
       // Auto-calc totals if not set
-      const finalOptions = options.map(opt => {
+      const finalOptions = syncedOptions.map(opt => {
         const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
         return {
           ...opt,
@@ -584,6 +679,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         children,
         infants,
         currency,
+        pricing_mode: normalizeQuotationPricingMode(pricingMode),
         notes: notes || null,
         options: finalOptions.map((opt) => ({
           title: opt.title,
@@ -600,6 +696,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             operator_id: item.operator_id || null,
             generates_commission: item.generates_commission || false,
             provider: item.provider || null,
+            destination_city: item.destination_city || null,
             hotel_name: item.hotel_name || null,
             hotel_stars: item.hotel_stars || null,
             hotel_address: item.hotel_address || null,
@@ -757,7 +854,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Salida *</Label>
                 <DateInputWithCalendar
@@ -795,12 +892,57 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Mostrar precio como</Label>
+                <Select value={pricingMode} onValueChange={(value) => setPricingMode(value as QuotationPricingMode)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PRICING_MODES.map((mode) => (
+                      <SelectItem key={mode.value} value={mode.value}>{mode.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
           {/* Options */}
           {options.map((option, optIndex) => (
             <div key={option.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              {(() => {
+                const pricing = getQuotationOptionPricing(option, {
+                  adults,
+                  children,
+                  infants,
+                  pricing_mode: pricingMode,
+                })
+
+                return (
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-orange-200 bg-orange-50/70 px-3 py-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-orange-700">Se mostrara al cliente</p>
+                      <p className="text-sm font-semibold text-orange-950">
+                        {pricing.primaryLabel}: {formatQuotationCurrency(pricing.primaryAmount, currency)}
+                      </p>
+                      {pricing.secondaryAmount != null && pricing.secondaryLabel && (
+                        <p className="text-xs text-orange-800/80 mt-0.5">
+                          {pricing.secondaryLabel}: {formatQuotationCurrency(pricing.secondaryAmount, currency)}
+                        </p>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="shrink-0 border-orange-200 bg-white/80 text-orange-700">
+                      {pricingMode === "PER_PERSON" ? "Por persona" : "Grupo"}
+                    </Badge>
+                  </div>
+                )
+              })()}
+
+              {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
+                  Los vuelos de esta opcion estan vinculados a la opcion 1. Itinerario, precio y screenshot se editan solo ahi.
+                </div>
+              )}
+
               <div className="flex items-center gap-2 mb-1">
                 <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
                   <ListChecks className="h-3.5 w-3.5 text-orange-500" />
@@ -837,6 +979,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   const itemMargin = (item.unit_price || 0) - (item.cost_amount || 0)
                   const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
                   const TypeIcon = typeConfig?.icon || MapPin
+                  const isLinkedFlightReadonly = optIndex > 0 && item.item_type === "FLIGHT"
 
                   return (
                     <div key={item.id} className="border rounded-lg p-3 space-y-3 bg-muted/30">
@@ -845,6 +988,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
                           <Select
                             value={item.item_type}
+                            disabled={isLinkedFlightReadonly}
                             onValueChange={(v) => updateItem(option.id, item.id, "item_type", v)}
                           >
                             <SelectTrigger className="h-7 w-36 text-xs">
@@ -852,15 +996,26 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             </SelectTrigger>
                             <SelectContent>
                               {ITEM_TYPES.map((t) => (
-                                <SelectItem key={t.value} value={t.value}>
+                                <SelectItem key={t.value} value={t.value} disabled={optIndex > 0 && t.value === "FLIGHT"}>
                                   {t.label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
                           <span className="text-xs text-muted-foreground">#{itemIndex + 1}</span>
+                          {isLinkedFlightReadonly && (
+                            <Badge variant="outline" className="h-6 border-blue-200 bg-blue-50 text-blue-700">
+                              Vinculado
+                            </Badge>
+                          )}
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => removeItem(option.id, item.id)} className="text-destructive h-6 w-6 p-0">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={isLinkedFlightReadonly}
+                          onClick={() => removeItem(option.id, item.id)}
+                          className="text-destructive h-6 w-6 p-0"
+                        >
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -871,6 +1026,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           <Label className="text-xs">Descripcion *</Label>
                           <Input
                             value={item.description}
+                            disabled={isLinkedFlightReadonly}
                             onChange={(e) => updateItem(option.id, item.id, "description", e.target.value)}
                             placeholder="Ej: Vuelo directo Buenos Aires - Miami"
                             className="text-sm"
@@ -881,6 +1037,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           {operators.length > 0 ? (
                             <Select
                               value={item.operator_id || ""}
+                              disabled={isLinkedFlightReadonly}
                               onValueChange={(v) => updateItem(option.id, item.id, "operator_id", v || null)}
                             >
                               <SelectTrigger className="text-sm"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
@@ -893,6 +1050,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           ) : (
                             <Input
                               value={item.provider}
+                              disabled={isLinkedFlightReadonly}
                               onChange={(e) => updateItem(option.id, item.id, "provider", e.target.value)}
                               placeholder="Ej: Aerolineas, Hyatt..."
                               className="text-sm"
@@ -905,6 +1063,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             type="number"
                             min={1}
                             value={item.quantity}
+                            disabled={isLinkedFlightReadonly}
                             onChange={(e) => updateItem(option.id, item.id, "quantity", Number(e.target.value))}
                             className="text-sm"
                           />
@@ -922,6 +1081,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               min={0}
                               step={0.01}
                               value={item.unit_price || ""}
+                              disabled={isLinkedFlightReadonly}
                               onChange={(e) => updateItem(option.id, item.id, "unit_price", Number(e.target.value))}
                               placeholder="0.00"
                               className="text-sm font-mono pl-7"
@@ -937,6 +1097,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               min={0}
                               step={0.01}
                               value={item.cost_amount || ""}
+                              disabled={isLinkedFlightReadonly}
                               onChange={(e) => updateItem(option.id, item.id, "cost_amount", Number(e.target.value))}
                               placeholder="0.00"
                               className="text-sm font-mono pl-7"
@@ -947,6 +1108,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           <Label className="text-xs">Moneda costo</Label>
                           <Select
                             value={item.cost_currency || "USD"}
+                            disabled={isLinkedFlightReadonly}
                             onValueChange={(v) => updateItem(option.id, item.id, "cost_currency", v)}
                           >
                             <SelectTrigger className="text-sm"><SelectValue /></SelectTrigger>
@@ -978,6 +1140,15 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Datos del hotel</p>
                           </div>
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs">Ciudad / destino</Label>
+                              <Input
+                                value={item.destination_city || ""}
+                                onChange={(e) => updateItem(option.id, item.id, "destination_city", e.target.value)}
+                                placeholder="Ej: Maragogi"
+                                className="text-sm"
+                              />
+                            </div>
                             <div className="col-span-2 space-y-1">
                               <Label className="text-xs">Hotel</Label>
                               <SearchableCombobox
@@ -987,8 +1158,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                 searchPlaceholder="Escribi el nombre del hotel..."
                                 emptyMessage="No se encontraron hoteles"
                                 initialLabel={item.hotel_name || ""}
-                                searchFn={searchHotels}
+                                searchFn={(query) => searchHotels(query, item.destination_city || destination)}
                               />
+                              <p className="text-[10px] text-muted-foreground">
+                                Busca en: {item.destination_city || destination || "todos los destinos"}
+                              </p>
                             </div>
                             <div className="space-y-1">
                               <Label className="text-xs">Estrellas</Label>
@@ -1067,6 +1241,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               <Label className="text-xs">Aerolinea</Label>
                               <Input
                                 value={item.airline || ""}
+                                disabled={isLinkedFlightReadonly}
                                 onChange={(e) => updateItem(option.id, item.id, "airline", e.target.value)}
                                 placeholder="Ej: Aerolineas Argentinas"
                                 className="text-sm"
@@ -1076,6 +1251,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               <Label className="text-xs">Ruta</Label>
                               <Input
                                 value={item.flight_route || ""}
+                                disabled={isLinkedFlightReadonly}
                                 onChange={(e) => updateItem(option.id, item.id, "flight_route", e.target.value)}
                                 placeholder="Ej: EZE - MIA"
                                 className="text-sm"
@@ -1085,6 +1261,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               <Label className="text-xs">Clase</Label>
                               <Select
                                 value={item.flight_class || ""}
+                                disabled={isLinkedFlightReadonly}
                                 onValueChange={(v) => updateItem(option.id, item.id, "flight_class", v)}
                               >
                                 <SelectTrigger className="text-sm"><SelectValue placeholder="--" /></SelectTrigger>
@@ -1101,6 +1278,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                 type="number"
                                 min={0}
                                 value={item.flight_stops ?? 0}
+                                disabled={isLinkedFlightReadonly}
                                 onChange={(e) => updateItem(option.id, item.id, "flight_stops", Number(e.target.value))}
                                 className="text-sm"
                               />
@@ -1109,6 +1287,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               <Label className="text-xs">Fecha ida</Label>
                               <DateInputWithCalendar
                                 value={toDate(item.flight_date)}
+                                disabled={isLinkedFlightReadonly}
                                 onChange={(d) => updateItem(option.id, item.id, "flight_date", toStr(d))}
                                 placeholder="dd/mm/aaaa"
                                 className="h-9 rounded-md text-sm"
@@ -1118,6 +1297,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               <Label className="text-xs">Fecha vuelta</Label>
                               <DateInputWithCalendar
                                 value={toDate(item.flight_return_date)}
+                                disabled={isLinkedFlightReadonly}
                                 onChange={(d) => updateItem(option.id, item.id, "flight_return_date", toStr(d))}
                                 placeholder="dd/mm/aaaa"
                                 minDate={toDate(item.flight_date)}
@@ -1135,71 +1315,87 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                   alt="Screenshot del vuelo"
                                   className="w-full max-h-48 object-contain rounded-md border"
                                 />
-                                <Button
-                                  type="button"
-                                  variant="destructive"
-                                  size="icon"
-                                  className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => updateItem(option.id, item.id, "flight_screenshot_url", "")}
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </Button>
+                                {!isLinkedFlightReadonly && (
+                                  <Button
+                                    type="button"
+                                    variant="destructive"
+                                    size="icon"
+                                    className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => updateItem(option.id, item.id, "flight_screenshot_url", "")}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </Button>
+                                )}
                               </div>
                             ) : (
                               <div>
-                                <input
-                                  type="file"
-                                  accept="image/*"
-                                  className="hidden"
-                                  id={`flight-screenshot-${item.id}`}
-                                  onChange={async (e) => {
-                                    const file = e.target.files?.[0]
-                                    if (!file) return
-                                    if (file.size > 10 * 1024 * 1024) {
-                                      toast.error("La imagen no puede superar 10MB")
-                                      return
-                                    }
-                                    try {
-                                      const formData = new FormData()
-                                      formData.append("file", file)
-                                      formData.append("type", "FLIGHT_SCREENSHOT")
-                                      const res = await fetch("/api/documents/upload", {
-                                        method: "POST",
-                                        body: formData,
-                                      })
-                                      if (res.ok) {
-                                        const data = await res.json()
-                                        updateItem(option.id, item.id, "flight_screenshot_url", data.url || data.publicUrl || data.file_url)
-                                        toast.success("Screenshot subido correctamente")
-                                      } else {
-                                        // Fallback: usar base64 como URL temporal
-                                        const reader = new FileReader()
-                                        reader.onload = () => {
-                                          updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
-                                          toast.success("Screenshot cargado")
-                                        }
-                                        reader.readAsDataURL(file)
-                                      }
-                                    } catch {
-                                      // Fallback: usar base64
-                                      const reader = new FileReader()
-                                      reader.onload = () => {
-                                        updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
-                                        toast.success("Screenshot cargado")
-                                      }
-                                      reader.readAsDataURL(file)
-                                    }
-                                    e.target.value = ""
-                                  }}
-                                />
-                                <label htmlFor={`flight-screenshot-${item.id}`}>
-                                  <Button type="button" variant="outline" size="sm" className="cursor-pointer" asChild>
-                                    <span>
-                                      <Upload className="h-3.5 w-3.5 mr-1.5" />
-                                      Subir screenshot del vuelo
-                                    </span>
+                                {isLinkedFlightReadonly ? (
+                                  <Button type="button" variant="outline" size="sm" disabled>
+                                    <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                    Subir screenshot del vuelo
                                   </Button>
-                                </label>
+                                ) : (
+                                  <>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      id={`flight-screenshot-${item.id}`}
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0]
+                                        if (!file) return
+                                        if (file.size > 10 * 1024 * 1024) {
+                                          toast.error("La imagen no puede superar 10MB")
+                                          return
+                                        }
+                                        try {
+                                          const formData = new FormData()
+                                          formData.append("file", file)
+                                          formData.append("type", "FLIGHT_SCREENSHOT")
+                                          const res = await fetch("/api/documents/upload", {
+                                            method: "POST",
+                                            body: formData,
+                                          })
+                                          if (res.ok) {
+                                            const data = await res.json()
+                                            const uploadedUrl = data.url || data.publicUrl || data.file_url || data.document?.file_url
+                                            if (uploadedUrl) {
+                                              updateItem(option.id, item.id, "flight_screenshot_url", uploadedUrl)
+                                              toast.success("Screenshot subido correctamente")
+                                            } else {
+                                              throw new Error("La subida no devolvió una URL pública")
+                                            }
+                                          } else {
+                                            // Fallback: usar base64 como URL temporal
+                                            const reader = new FileReader()
+                                            reader.onload = () => {
+                                              updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
+                                              toast.success("Screenshot cargado")
+                                            }
+                                            reader.readAsDataURL(file)
+                                          }
+                                        } catch {
+                                          // Fallback: usar base64
+                                          const reader = new FileReader()
+                                          reader.onload = () => {
+                                            updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
+                                            toast.success("Screenshot cargado")
+                                          }
+                                          reader.readAsDataURL(file)
+                                        }
+                                        e.target.value = ""
+                                      }}
+                                    />
+                                    <label htmlFor={`flight-screenshot-${item.id}`}>
+                                      <Button type="button" variant="outline" size="sm" className="cursor-pointer" asChild>
+                                        <span>
+                                          <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                          Subir screenshot del vuelo
+                                        </span>
+                                      </Button>
+                                    </label>
+                                  </>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1213,6 +1409,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                     <Label className="text-xs">Escala {si + 1} — Ciudad</Label>
                                     <Input
                                       value={stop.city}
+                                      disabled={isLinkedFlightReadonly}
                                       onChange={(e) => updateStopover(option.id, item.id, si, "city", e.target.value)}
                                       placeholder="Ej: Panama City"
                                       className="text-sm"
@@ -1222,6 +1419,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                     <Label className="text-xs">Tiempo de espera</Label>
                                     <Input
                                       value={stop.wait_time}
+                                      disabled={isLinkedFlightReadonly}
                                       onChange={(e) => updateStopover(option.id, item.id, si, "wait_time", e.target.value)}
                                       placeholder="Ej: 2h 30m"
                                       className="text-sm"
@@ -1257,12 +1455,14 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 <div className="flex flex-wrap gap-1">
                   {ITEM_TYPES.map((t) => {
                     const Icon = t.icon
+                    const isDisabled = optIndex > 0 && t.value === "FLIGHT"
                     return (
                       <Button
                         key={t.value}
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs gap-1"
+                        disabled={isDisabled}
                         onClick={() => addItem(option.id, t.value)}
                       >
                         <Plus className="h-3 w-3" />
@@ -1272,6 +1472,11 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     )
                   })}
                 </div>
+                {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Los vuelos se administran desde la opcion 1 y se replican automaticamente en todas las opciones.
+                  </p>
+                )}
               </div>
             </div>
           ))}

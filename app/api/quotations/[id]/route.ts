@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
 
 export const dynamic = "force-dynamic"
 
@@ -20,6 +21,7 @@ export async function GET(
         *,
         lead:lead_id(id, contact_name, contact_phone, contact_email, destination, status, contact_instagram),
         seller:seller_id(id, name, email),
+        agency:agency_id(id, name),
         quotation_options(*),
         quotation_items(*)
       `)
@@ -75,13 +77,17 @@ export async function PATCH(
       "destination", "origin", "region", "departure_date", "return_date",
       "valid_until", "adults", "children", "infants", "currency",
       "notes", "terms_and_conditions", "status",
-      "subtotal", "total_amount",
+      "subtotal", "total_amount", "pricing_mode",
     ]
 
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
         updateData[field] = body[field]
       }
+    }
+
+    if (body.pricing_mode !== undefined) {
+      updateData.pricing_mode = normalizeQuotationPricingMode(body.pricing_mode)
     }
 
     // Lógica de cambio de estado
@@ -154,6 +160,7 @@ export async function PATCH(
             order_index: idx,
             notes: item.notes || null,
             // Hotel
+            destination_city: item.destination_city || null,
             hotel_name: item.hotel_name || null,
             hotel_stars: item.hotel_stars || null,
             hotel_address: item.hotel_address || null,
@@ -172,6 +179,7 @@ export async function PATCH(
             flight_return_date: item.flight_return_date || null,
             flight_stops: item.flight_stops != null ? Number(item.flight_stops) : 0,
             flight_class: item.flight_class || null,
+            flight_screenshot_url: item.flight_screenshot_url || null,
             // Transfer
             transfer_description: item.transfer_description || null,
           }))

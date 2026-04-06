@@ -44,10 +44,16 @@ interface FinancialAccount {
   is_active?: boolean
 }
 
+interface OperationOperator {
+  id: string
+  name: string
+}
+
 const paymentSchema = z.object({
   operation_id: z.string().min(1, "Debe seleccionar una operación"),
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
+  operator_id: z.string().optional(),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   method: z.string().min(1, "Debe seleccionar un método"),
@@ -82,6 +88,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const [isLoading, setIsLoading] = useState(false)
   const [operations, setOperations] = useState<Operation[]>([])
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  const [operationOperators, setOperationOperators] = useState<OperationOperator[]>([])
   const [loadingOps, setLoadingOps] = useState(false)
   const [searchOp, setSearchOp] = useState("")
 
@@ -93,6 +100,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       operation_id: "",
       payer_type: "OPERATOR",
       direction: "EXPENSE",
+      operator_id: "",
       amount: 0,
       currency: "USD",
       method: "Transferencia",
@@ -125,6 +133,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       form.reset()
       setOperations([])
       setFinancialAccounts([])
+      setOperationOperators([])
       setSearchOp("")
       return
     }
@@ -202,7 +211,70 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     form.setValue("financial_account_id", "")
   }, [watchCurrency, form])
 
+  useEffect(() => {
+    if (!open || !watchOperationId || watchDirection !== "EXPENSE") {
+      setOperationOperators([])
+      form.setValue("operator_id", "")
+      return
+    }
+
+    let cancelled = false
+
+    async function fetchOperationOperators() {
+      try {
+        const response = await fetch(`/api/operations/${watchOperationId}`)
+        if (!response.ok) {
+          throw new Error("Error al cargar operadores de la operación")
+        }
+
+        const data = await response.json()
+        const operation = data.operation
+        const operatorsMap = new Map<string, string>()
+
+        if (operation?.operators?.id) {
+          operatorsMap.set(operation.operators.id, operation.operators.name || "Operador")
+        }
+
+        for (const relation of operation?.operation_operators || []) {
+          const operator = relation?.operators
+          if (operator?.id) {
+            operatorsMap.set(operator.id, operator.name || "Operador")
+          }
+        }
+
+        if (cancelled) return
+
+        const operators = Array.from(operatorsMap.entries()).map(([id, name]) => ({ id, name }))
+        setOperationOperators(operators)
+
+        const currentOperatorId = form.getValues("operator_id")
+        if (operators.length === 1) {
+          form.setValue("operator_id", operators[0].id, { shouldValidate: true })
+        } else if (!operators.some((operator) => operator.id === currentOperatorId)) {
+          form.setValue("operator_id", "", { shouldValidate: true })
+        }
+      } catch (error) {
+        console.error("Error fetching operation operators:", error)
+        if (!cancelled) {
+          setOperationOperators([])
+          form.setValue("operator_id", "")
+        }
+      }
+    }
+
+    fetchOperationOperators()
+
+    return () => {
+      cancelled = true
+    }
+  }, [form, open, watchDirection, watchOperationId])
+
   const onSubmit = async (values: PaymentFormValues) => {
+    if (values.payer_type === "OPERATOR" && operationOperators.length > 0 && !values.operator_id) {
+      toast.error("Debe seleccionar el operador al que corresponde el pago")
+      return
+    }
+
     // Validar cuenta financiera si se marca como pagado
     if (values.mark_as_paid && !values.financial_account_id) {
       toast.error("Debe seleccionar una cuenta financiera para marcar como pagado")
@@ -219,6 +291,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           operation_id: values.operation_id,
           payer_type: values.payer_type,
           direction: values.direction,
+          operator_id: values.payer_type === "OPERATOR" ? values.operator_id || null : null,
           amount: values.amount,
           currency: values.currency,
           method: values.method,
@@ -356,6 +429,50 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                 <div className="text-xs text-muted-foreground bg-background rounded-lg p-2">
                   Operación: <span className="font-mono">{selectedOp.file_code || selectedOp.id.slice(0, 8)}</span> · {selectedOp.destination}
                 </div>
+              )}
+
+              {watchDirection === "EXPENSE" && (
+                <FormField
+                  control={form.control}
+                  name="operator_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Operador *</FormLabel>
+                      {operationOperators.length === 0 ? (
+                        <div className="text-xs text-muted-foreground bg-background rounded-lg p-2">
+                          No se encontraron operadores vinculados a la operación seleccionada.
+                        </div>
+                      ) : operationOperators.length === 1 ? (
+                        <Select value={operationOperators[0].id} disabled>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={operationOperators[0].id}>{operationOperators[0].name}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar operador" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {operationOperators.map((operator) => (
+                              <SelectItem key={operator.id} value={operator.id}>
+                                {operator.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
 
               <FormField

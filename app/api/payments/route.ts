@@ -5,16 +5,18 @@ import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
-  getOrCreateDefaultAccount,
   validateSufficientBalance,
   getMainPassengerName,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
 import {
-  getExchangeRate,
-  getLatestExchangeRate,
   getExchangeRateWithFallback,
 } from "@/lib/accounting/exchange-rates"
+import {
+  applyOperatorPaymentSettlement,
+  findMatchingOperatorPayment,
+  revertOperatorPaymentSettlement,
+} from "@/lib/accounting/operator-payment-settlement"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
 
@@ -40,6 +42,8 @@ export async function POST(request: Request) {
     const {
       operation_id,
       operation_service_id, // Vincular pago a un servicio adicional específico
+      operator_id,
+      operator_payment_id,
       payer_type,
       direction,
       method,
@@ -53,26 +57,28 @@ export async function POST(request: Request) {
       notes,
     } = body
 
+    const finalStatus = status || "PENDING"
+
     // operation_id ahora es opcional (para pagos manuales)
-    // financial_account_id es requerido siempre
-    if (!payer_type || !direction || !amount || !currency || !financial_account_id) {
-      return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
+    // financial_account_id es obligatorio solo si el pago se registra como PAID
+    if (!payer_type || !direction || !amount || !currency || (finalStatus === "PAID" && !financial_account_id)) {
+      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
-    // Validar que la cuenta financiera existe
-    const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
-      .select("id, currency")
-      .eq("id", financial_account_id)
-      .eq("is_active", true)
-      .single()
+    if (financial_account_id) {
+      const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
+        .select("id, currency")
+        .eq("id", financial_account_id)
+        .eq("is_active", true)
+        .single()
 
-    if (accountError || !financialAccount) {
-      return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
-    }
+      if (accountError || !account) {
+        return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
+      }
 
-    // Validar que la moneda de la cuenta coincide con la del pago
-    if (financialAccount.currency !== currency) {
-      return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      if (account.currency !== currency) {
+        return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      }
     }
 
     // Validaciones de montos
@@ -91,6 +97,27 @@ export async function POST(request: Request) {
       if (!operationOwnership) {
         return NextResponse.json({ error: "No tiene permiso para registrar pagos en esta operación" }, { status: 403 })
       }
+    }
+
+    let operationData: any = null
+    if (operation_id) {
+      const { data: operation, error: operationError } = await (supabase.from("operations") as any)
+        .select(`
+          seller_id,
+          operator_id,
+          agency_id,
+          operation_operators(
+            operator_id
+          )
+        `)
+        .eq("id", operation_id)
+        .single()
+
+      if (operationError || !operation) {
+        return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+      }
+
+      operationData = operation
     }
 
     // Validaciones de fechas
@@ -120,6 +147,54 @@ export async function POST(request: Request) {
       }
     }
 
+    let resolvedOperatorId: string | null = null
+    let resolvedOperatorPaymentId: string | null = null
+
+    if (payer_type === "OPERATOR") {
+      const operationOperatorIds = new Set<string>()
+
+      if (operationData?.operator_id) {
+        operationOperatorIds.add(operationData.operator_id)
+      }
+
+      for (const relation of operationData?.operation_operators || []) {
+        if (relation?.operator_id) {
+          operationOperatorIds.add(relation.operator_id)
+        }
+      }
+
+      if (operator_id) {
+        resolvedOperatorId = operator_id
+      }
+
+      if (operation_id && resolvedOperatorId && operationOperatorIds.size > 0 && !operationOperatorIds.has(resolvedOperatorId)) {
+        return NextResponse.json({ error: "El operador seleccionado no pertenece a esta operación" }, { status: 400 })
+      }
+
+      if (operation_id) {
+        const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+          operationId: operation_id,
+          operatorId: resolvedOperatorId,
+          operatorPaymentId: operator_payment_id || null,
+        })
+
+        if (!matchedOperatorPayment) {
+          if (resolvedOperatorId) {
+            return NextResponse.json({ error: "No hay deuda pendiente para el operador seleccionado en esta operación" }, { status: 400 })
+          }
+
+          return NextResponse.json({
+            error: operationOperatorIds.size > 1
+              ? "Debe seleccionar el operador al que corresponde el pago"
+              : "No hay deuda pendiente a operador para esta operación",
+          }, { status: 400 })
+        }
+
+        resolvedOperatorId = matchedOperatorPayment.operator_id
+        resolvedOperatorPaymentId = matchedOperatorPayment.id
+      }
+    }
+
     // Calcular amount_usd para el pago
     // Si es USD: amount_usd = amount
     // Si es ARS: amount_usd = amount / exchange_rate
@@ -134,18 +209,20 @@ export async function POST(request: Request) {
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
     const paymentData = {
-        operation_id,
-        operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
-        payer_type,
-        direction,
+      operation_id,
+      operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
+      operator_id: resolvedOperatorId,
+      operator_payment_id: resolvedOperatorPaymentId,
+      payer_type,
+      direction,
       method: method || "Otro",
       amount,
-        currency,
+      currency,
       exchange_rate: providedExchangeRate ? parseFloat(providedExchangeRate) : null,
       amount_usd: amountUsd,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
-      status: status || "PENDING", // Cambiar default a PENDING para evitar duplicados
+      status: finalStatus,
       reference: notes || null,
     }
 
@@ -172,22 +249,17 @@ export async function POST(request: Request) {
 
     // Solo crear movimientos contables si el pago está PAID explícitamente
     // Si status no se especifica, el default es PENDING, así que no crear movimientos
-    if (status === "PAID") {
+    if (finalStatus === "PAID") {
       try {
         // 2. Obtener datos de la operación para seller_id y operator_id (si existe operation_id)
         let sellerId: string | null = null
         let operatorId: string | null = null
         let agencyId: string | undefined = undefined
 
-        if (operation_id) {
-          const { data: operation } = await (supabase.from("operations") as any)
-            .select("seller_id, operator_id, agency_id")
-            .eq("id", operation_id)
-            .single()
-
-          sellerId = operation?.seller_id || null
-          operatorId = operation?.operator_id || null
-          agencyId = operation?.agency_id
+        if (operationData) {
+          sellerId = operationData.seller_id || null
+          operatorId = resolvedOperatorId || operationData.operator_id || null
+          agencyId = operationData.agency_id
         }
 
         // 3. Calcular tasa de cambio
@@ -361,23 +433,13 @@ export async function POST(request: Request) {
         }
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
-        if (payer_type === "OPERATOR") {
-          const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-            .select("id")
-            .eq("operation_id", operation_id)
-            .eq("status", "PENDING")
-            .limit(1)
-            .maybeSingle()
-
-          if (operatorPayment) {
-            await (supabase.from("operator_payments") as any)
-              .update({ 
-                status: "PAID",
-                ledger_movement_id: ledgerMovementId,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", operatorPayment.id)
-          }
+        if (payer_type === "OPERATOR" && resolvedOperatorPaymentId) {
+          await applyOperatorPaymentSettlement(
+            supabase,
+            resolvedOperatorPaymentId,
+            parseFloat(amount),
+            ledgerMovementId
+          )
         }
 
       } catch (accountingError) {
@@ -403,7 +465,7 @@ export async function POST(request: Request) {
     }
 
     // Generar alertas a 30 días si el pago está asociado a una operación
-    if (operation_id && status === "PENDING") {
+    if (operation_id && finalStatus === "PENDING") {
       try {
         // Obtener datos de la operación para generar alertas
         const { data: operation } = await (supabase.from("operations") as any)
@@ -486,6 +548,11 @@ export async function GET(request: Request) {
     // Query base con relación a operations y clientes
     let query = (supabase.from("payments") as any).select(`
       *,
+      operators:operator_id(
+        id,
+        name,
+        contact_email
+      ),
       operations:operation_id(
         id,
         destination,
@@ -696,14 +763,23 @@ export async function DELETE(request: Request) {
         .eq("id", ledgerMovementId)
         .single()
 
-      // Desmarcar operator_payment si existe
-      await (supabase.from("operator_payments") as any)
-        .update({
-          status: "PENDING",
-          ledger_movement_id: null,
-          updated_at: new Date().toISOString()
+      if (payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
+        await revertOperatorPaymentSettlement(supabase, {
+          operatorPaymentId: payment.operator_payment_id,
+          paymentAmount: parseFloat(payment.amount),
+          currentPaymentId: paymentId,
+          removedLedgerMovementId: ledgerMovementId,
         })
-        .eq("ledger_movement_id", ledgerMovementId)
+      } else {
+        // Desmarcar operator_payment legado si existe
+        await (supabase.from("operator_payments") as any)
+          .update({
+            status: "PENDING",
+            ledger_movement_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("ledger_movement_id", ledgerMovementId)
+      }
 
       // Eliminar el ledger movement
       const { error: ledgerError } = await (supabase.from("ledger_movements") as any)
@@ -717,6 +793,15 @@ export async function DELETE(request: Request) {
         // Invalidar cache de balance de la cuenta afectada
         invalidateBalanceCache(ledgerMovement.account_id)
       }
+    }
+
+    if (!ledgerMovementId && payment.status === "PAID" && payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
+      await revertOperatorPaymentSettlement(supabase, {
+        operatorPaymentId: payment.operator_payment_id,
+        paymentAmount: parseFloat(payment.amount),
+        currentPaymentId: paymentId,
+        removedLedgerMovementId: null,
+      })
     }
 
     // 3b. Eliminar movimiento contable COUNTERPART en CpC/CpP (creado por mark-paid)
@@ -835,6 +920,35 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
 
+    let linkedOperatorId: string | null = existingPayment.operator_id || null
+    let linkedOperatorPaymentId: string | null = existingPayment.operator_payment_id || null
+
+    if (existingPayment.payer_type === "OPERATOR") {
+      if (!linkedOperatorPaymentId && existingPayment.ledger_movement_id) {
+        const { data: linkedByLedger } = await (supabase.from("operator_payments") as any)
+          .select("id, operator_id")
+          .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+          .maybeSingle()
+
+        if (linkedByLedger) {
+          linkedOperatorPaymentId = linkedByLedger.id
+          linkedOperatorId = linkedOperatorId || linkedByLedger.operator_id || null
+        }
+      }
+
+      if (!linkedOperatorPaymentId && existingPayment.operation_id) {
+        const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+          operationId: existingPayment.operation_id,
+          operatorId: linkedOperatorId,
+        })
+
+        if (matchedOperatorPayment) {
+          linkedOperatorPaymentId = matchedOperatorPayment.id
+          linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
+        }
+      }
+    }
+
     // Determinar valores finales (usar nuevos si se proporcionan, o mantener existentes)
     const finalAmount = amount !== undefined ? parseFloat(amount) : parseFloat(existingPayment.amount)
     const finalCurrency = currency || existingPayment.currency
@@ -888,14 +1002,23 @@ export async function PATCH(request: Request) {
     const wasPaid = existingPayment.status === "PAID" && existingPayment.ledger_movement_id
 
     if (wasPaid) {
-      // 2a. Revertir operator_payment a PENDING si aplica
-      await (supabase.from("operator_payments") as any)
-        .update({
-          status: "PENDING",
-          ledger_movement_id: null,
-          updated_at: new Date().toISOString()
+      if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
+        await revertOperatorPaymentSettlement(supabase, {
+          operatorPaymentId: linkedOperatorPaymentId,
+          paymentAmount: parseFloat(existingPayment.amount),
+          currentPaymentId: paymentId,
+          removedLedgerMovementId: existingPayment.ledger_movement_id,
         })
-        .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+      } else {
+        // 2a. Revertir operator_payment legado si aplica
+        await (supabase.from("operator_payments") as any)
+          .update({
+            status: "PENDING",
+            ledger_movement_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+      }
 
       // 2b. Eliminar cash_movement vinculado
       await (supabase.from("cash_movements") as any)
@@ -918,6 +1041,10 @@ export async function PATCH(request: Request) {
       amount_usd: amountUsd,
       reference: finalNotes || null,
       updated_at: new Date().toISOString(),
+    }
+    if (existingPayment.payer_type === "OPERATOR") {
+      updateData.operator_id = linkedOperatorId
+      updateData.operator_payment_id = linkedOperatorPaymentId
     }
     // Marcar como PAID si se solicita
     if (markAsPaid) {
@@ -953,7 +1080,7 @@ export async function PATCH(request: Request) {
             .single()
 
           sellerId = operation?.seller_id || null
-          operatorId = operation?.operator_id || null
+          operatorId = linkedOperatorId || operation?.operator_id || null
           agencyId = operation?.agency_id || null
         }
 
@@ -1048,40 +1175,36 @@ export async function PATCH(request: Request) {
           .eq("id", paymentId)
 
         // Marcar operator_payment como PAID si aplica
-        if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
-          const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-            .select("id, paid_amount, amount")
-            .eq("operation_id", existingPayment.operation_id)
-            .in("status", ["PENDING", "OVERDUE"])
-            .limit(1)
-            .maybeSingle()
+        if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
+          await applyOperatorPaymentSettlement(
+            supabase,
+            linkedOperatorPaymentId,
+            finalAmount,
+            newLedgerMovementId
+          )
+        } else if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
+          const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+            operationId: existingPayment.operation_id,
+            operatorId: linkedOperatorId,
+          })
 
-          if (operatorPayment) {
-            if (markAsPaid) {
-              // Incrementar paid_amount con el monto del pago
-              const currentPaid = parseFloat(operatorPayment.paid_amount || "0")
-              const newPaid = currentPaid + finalAmount
-              const totalAmount = parseFloat(operatorPayment.amount)
-              const isFullyPaid = newPaid >= totalAmount
+          if (matchedOperatorPayment) {
+            linkedOperatorPaymentId = matchedOperatorPayment.id
+            linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
 
-              await (supabase.from("operator_payments") as any)
-                .update({
-                  paid_amount: newPaid,
-                  status: isFullyPaid ? "PAID" : "PENDING",
-                  ledger_movement_id: isFullyPaid ? newLedgerMovementId : null,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", operatorPayment.id)
-            } else {
-              // Caso existente: re-marcar como PAID (edición de pago ya pagado)
-              await (supabase.from("operator_payments") as any)
-                .update({
-                  status: "PAID",
-                  ledger_movement_id: newLedgerMovementId,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", operatorPayment.id)
-            }
+            await (supabase.from("payments") as any)
+              .update({
+                operator_id: linkedOperatorId,
+                operator_payment_id: linkedOperatorPaymentId,
+              })
+              .eq("id", paymentId)
+
+            await applyOperatorPaymentSettlement(
+              supabase,
+              linkedOperatorPaymentId,
+              finalAmount,
+              newLedgerMovementId
+            )
           }
         }
 

@@ -135,6 +135,19 @@ export async function PATCH(
     if (updateData.assigned_seller_id === "none" || updateData.assigned_seller_id === null) {
       updateData.assigned_seller_id = null
     }
+    if (updateData.deposit_account_id === "none" || updateData.deposit_account_id === null) {
+      updateData.deposit_account_id = null
+    }
+    if (updateData.deposit_currency === "none" || updateData.deposit_currency === null) {
+      updateData.deposit_currency = null
+    }
+    if (updateData.has_deposit === false) {
+      updateData.deposit_amount = null
+      updateData.deposit_currency = null
+      updateData.deposit_method = null
+      updateData.deposit_date = null
+      updateData.deposit_account_id = null
+    }
 
     // Usar admin client para bypassear RLS — cualquier usuario con permiso puede editar cualquier lead
     const adminClient = createAdminClient()

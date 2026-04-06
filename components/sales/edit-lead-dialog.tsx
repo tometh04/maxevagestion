@@ -268,10 +268,27 @@ export function EditLeadDialog({
 
     setLoading(true)
     try {
+      const assignedSellerId = values.assigned_seller_id === "none" ? null : values.assigned_seller_id
+      const depositCurrency = values.deposit_currency === "none" ? null : values.deposit_currency
+      const depositAccountId = values.deposit_account_id === "none" ? null : values.deposit_account_id
+
       // Preparar datos para enviar
       let updateData: any = {
         ...values,
-        assigned_seller_id: values.assigned_seller_id === "none" ? null : values.assigned_seller_id,
+        assigned_seller_id: assignedSellerId,
+        deposit_currency: depositCurrency,
+        deposit_account_id: depositAccountId,
+      }
+
+      if (!values.has_deposit) {
+        updateData = {
+          ...updateData,
+          deposit_amount: null,
+          deposit_currency: null,
+          deposit_method: null,
+          deposit_date: null,
+          deposit_account_id: null,
+        }
       }
 
       // Si está sincronizado con Trello, solo enviar campos permitidos

@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
 
 const regionColors: Record<string, string> = {
   ARGENTINA: "bg-warning/80",
@@ -228,6 +229,10 @@ export function LeadDetailDialog({
     status: string
     total_amount: number
     currency: string
+    pricing_mode?: "PER_PERSON" | "GROUP_TOTAL" | null
+    adults?: number
+    children?: number
+    infants?: number
     destination: string
     created_at: string
     valid_until: string | null
@@ -235,6 +240,28 @@ export function LeadDetailDialog({
     quotation_options?: Array<{ id: string; title: string; total_amount: number }>
   }>>([])
   const [loadingQuotations, setLoadingQuotations] = useState(false)
+
+  const getQuotationDisplayAmount = (quotation: {
+    total_amount: number
+    currency: string
+    pricing_mode?: "PER_PERSON" | "GROUP_TOTAL" | null
+    adults?: number
+    children?: number
+    infants?: number
+  }) => {
+    const pricing = getQuotationOptionPricing(
+      { total_amount: quotation.total_amount || 0 },
+      {
+        adults: Number(quotation.adults || 0),
+        children: Number(quotation.children || 0),
+        infants: Number(quotation.infants || 0),
+        pricing_mode: quotation.pricing_mode,
+      }
+    )
+    const prefix = quotation.currency === "USD" ? "US$" : "$"
+
+    return `${prefix} ${pricing.primaryAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+  }
 
   // Cargar cotizaciones del lead
   const loadQuotations = async () => {
@@ -676,7 +703,7 @@ export function LeadDetailDialog({
                           <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                             <span className="flex items-center gap-1">
                               <DollarSign className="h-3 w-3" />
-                              {q.currency === "USD" ? "US$" : "$"} {q.total_amount?.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              {getQuotationDisplayAmount(q)}
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
