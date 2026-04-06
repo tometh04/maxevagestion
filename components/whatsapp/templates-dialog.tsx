@@ -83,7 +83,7 @@ const availableVariables = [
   { name: "{monto}", description: "Monto del pago/cotización" },
   { name: "{moneda}", description: "Moneda (ARS, USD)" },
   { name: "{fecha_vencimiento}", description: "Fecha de vencimiento del pago" },
-  { name: "{fecha_validez}", description: "Fecha de validez de cotización" },
+  { name: "{nota_disponibilidad}", description: "Leyenda fija de disponibilidad de cotización" },
   { name: "{fecha_salida}", description: "Fecha de salida del viaje" },
   { name: "{mensaje_cuotas}", description: "Info de cuotas pendientes" },
 ]

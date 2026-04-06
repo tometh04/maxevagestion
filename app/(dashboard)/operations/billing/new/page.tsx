@@ -101,6 +101,17 @@ const getCustomerDocumentText = (customer: Customer) =>
     ? `${customer.document_type || 'Doc'} ${customer.document_number}`
     : ''
 
+const getCustomerAfipDocType = (customer: Pick<Customer, 'document_type' | 'document_number'>) => {
+  const docType = customer.document_type?.toUpperCase()
+  const hasDocument = Boolean(customer.document_number)
+
+  if (!hasDocument) return 99
+  if (docType === 'CUIT') return 80
+  if (docType === 'CUIL') return 86
+  if (docType === 'DNI') return 96
+  return 99
+}
+
 export default function NewInvoicePage() {
   const router = useRouter()
   const urlSearchParams = useSearchParams()
@@ -201,14 +212,17 @@ export default function NewInvoicePage() {
 
   /**
    * Calcula automáticamente el tipo de comprobante y condición IVA
-   * según si el receptor tiene CUIT (Responsable Inscripto) o no (Consumidor Final).
+   * según el documento fiscal disponible del cliente.
    * - CUIT presente → Factura A (RI), DocTipo 80, CondIVA 1
-   * - Sin CUIT       → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
+   * - CUIL presente → Factura B (CF), DocTipo 86, CondIVA 5
+   * - DNI presente  → Factura B (CF), DocTipo 96, CondIVA 5
+   * - Sin documento → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
    */
   const getReceptorDefaults = (customer: Customer) => {
     const docType = customer.document_type?.toUpperCase()
     const docNumber = customer.document_number || ''
     const cuit = docType === 'CUIT' ? docNumber : ''
+    const cuil = docType === 'CUIL' ? docNumber : ''
     const dni = docType === 'DNI' ? docNumber : ''
 
     if (cuit) {
@@ -217,6 +231,15 @@ export default function NewInvoicePage() {
         receptor_doc_tipo: 80,
         receptor_doc_nro: cuit,
         receptor_condicion_iva: 1,
+      }
+    }
+
+    if (cuil) {
+      return {
+        cbte_tipo: 6,
+        receptor_doc_tipo: 86,
+        receptor_doc_nro: cuil,
+        receptor_condicion_iva: 5,
       }
     }
 
@@ -1028,7 +1051,16 @@ export default function NewInvoicePage() {
                       const condicion = parseInt(v)
                       // Mapear condición IVA → tipo de comprobante automáticamente
                       const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
-                      const receptor_doc_tipo = condicion === 1 ? 80 : (formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? 96 : 99)
+                      const selectedCustomer = customers.find(customer => customer.id === formData.customer_id)
+                      const fallbackDocType = selectedCustomer
+                        ? getCustomerAfipDocType(selectedCustomer)
+                        : [80, 86, 96].includes(formData.receptor_doc_tipo)
+                          ? formData.receptor_doc_tipo
+                          : 96
+                      const receptor_doc_tipo =
+                        formData.receptor_doc_nro && formData.receptor_doc_nro !== '0'
+                          ? fallbackDocType
+                          : 99
                       setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
                     }}
                   >

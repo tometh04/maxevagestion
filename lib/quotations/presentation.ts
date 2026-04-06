@@ -108,6 +108,8 @@ export const QUOTATION_STATUS_LABELS: Record<string, string> = {
   DRAFT: "Borrador",
 }
 
+export const QUOTATION_AVAILABILITY_NOTE = "Cotización sujeta a disponibilidad al momento de reservar"
+
 export function formatQuotationCurrency(amount: number, currency: string) {
   const prefix = currency === "USD" ? "US$" : "$"
   return `${prefix} ${Number(amount).toLocaleString("es-AR", {

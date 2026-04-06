@@ -1,5 +1,6 @@
 import jsPDF from "jspdf"
 import {
+  QUOTATION_AVAILABILITY_NOTE,
   formatQuotationCurrency,
   formatQuotationDateLong,
   formatQuotationDateShort,
@@ -399,8 +400,6 @@ export async function generateQuotationPDF(
   doc.text(`Estado: ${statusLabel}`, pageWidth - margin, y, { align: "right" })
   y += 4
   doc.text(`Emitida: ${formatQuotationDateLong(data.created_at.split("T")[0])}`, pageWidth - margin, y, { align: "right" })
-  y += 4
-  doc.text(`Valida hasta: ${formatQuotationDateLong(data.valid_until)}`, pageWidth - margin, y, { align: "right" })
 
   const companyLines = [companyAddress, companyPhone, companyEmail].filter(Boolean)
   if (companyLines.length > 0) {
@@ -423,7 +422,6 @@ export async function generateQuotationPDF(
     ["Salida", formatQuotationDateLong(data.departure_date)],
     ["Regreso", data.return_date ? formatQuotationDateLong(data.return_date) : "-"],
     ["Pasajeros", getQuotationPassengersText(data)],
-    ["Validez", formatQuotationDateLong(data.valid_until)],
   ])
 
   if (data.notes) {
@@ -483,6 +481,9 @@ export async function generateQuotationPDF(
     drawSectionTitle("Terminos y condiciones")
     drawTextBlock("Condiciones", data.terms_and_conditions, [250, 250, 250], [120, 120, 120])
   }
+
+  drawSectionTitle("Disponibilidad")
+  drawTextBlock("Importante", QUOTATION_AVAILABILITY_NOTE, [255, 250, 245], [120, 120, 120])
 
   const footerHeight = 18
   ensureSpace(footerHeight)

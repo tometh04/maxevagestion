@@ -1,7 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
-import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
+import { getQuotationOptionPricing, QUOTATION_AVAILABILITY_NOTE } from "@/lib/quotations/presentation"
 
 /**
  * Servicio para crear mensajes WhatsApp automáticos
@@ -199,7 +197,8 @@ export async function createQuotationSentMessage(
       destino: quotation.destination,
       monto: pricing.primaryAmount.toLocaleString("es-AR"),
       moneda: quotation.currency,
-      fecha_validez: format(new Date(quotation.valid_until), "dd/MM/yyyy", { locale: es }),
+      fecha_validez: "",
+      nota_disponibilidad: QUOTATION_AVAILABILITY_NOTE,
     },
     quotationId: quotation.id,
   })

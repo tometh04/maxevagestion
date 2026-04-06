@@ -54,6 +54,7 @@ const documentTypes = [
   { value: "DNI", label: "DNI" },
   { value: "PASSPORT", label: "Pasaporte" },
   { value: "CUIT", label: "CUIT" },
+  { value: "CUIL", label: "CUIL" },
   { value: "OTHER", label: "Otro" },
 ]
 
@@ -360,17 +361,17 @@ export function NewCustomerDialog({
     setIsLookingUpCuil(true)
     try {
       const cuil = generateCUIL(cuilDni, cuilSex)
+      const cuilClean = cuil.replace(/\D/g, "")
       setGeneratedCuil(cuil)
 
       // Auto-completar campos básicos del formulario
       const dniClean = cuilDni.replace(/\D/g, "")
-      form.setValue("document_type", "DNI")
-      form.setValue("document_number", dniClean)
+      form.setValue("document_type", "CUIL")
+      form.setValue("document_number", cuilClean)
       form.setValue("nationality", "Argentina")
 
       // Intentar buscar datos del contribuyente por CUIL en AFIP
       try {
-        const cuilClean = cuil.replace(/-/g, "")
         const response = await fetch(`/api/customers/cuil-lookup?cuil=${cuilClean}`)
         if (response.ok) {
           const result = await response.json()
@@ -433,7 +434,7 @@ export function NewCustomerDialog({
         try {
           const docFormData = new FormData()
           docFormData.append("file", uploadedFile)
-          docFormData.append("type", values.document_type || "DNI")
+          docFormData.append("type", values.document_type === "CUIL" ? "DNI" : values.document_type || "DNI")
           docFormData.append("customerId", newCustomer.id)
 
           const docResponse = await fetch("/api/documents/upload-with-ocr", {

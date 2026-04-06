@@ -1754,6 +1754,32 @@ export function searchHotels(query: string, destination?: string, limit = 20): H
     .map(s => s.hotel)
 }
 
+export function searchHotelsByDestination(destination: string, limit = 20): HotelEntry[] {
+  if (!destination) return []
+
+  const destNorm = normalize(destination)
+
+  return HOTELS
+    .map(h => {
+      let score = 0
+
+      const cityNorm = normalize(h.city)
+      const countryNorm = normalize(h.country)
+      const zoneNorm = h.zone ? normalize(h.zone) : ""
+
+      if (cityNorm.includes(destNorm) || destNorm.includes(cityNorm)) score += 1000
+      if (zoneNorm && (zoneNorm.includes(destNorm) || destNorm.includes(zoneNorm))) score += 700
+      if (countryNorm.includes(destNorm)) score += 150
+      score += h.stars * 2
+
+      return { hotel: h, score }
+    })
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(s => s.hotel)
+}
+
 function normalize(str: string): string {
   return str
     .toLowerCase()

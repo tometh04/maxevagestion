@@ -15,6 +15,7 @@ import {
   getQuotationOptionPricing,
   getQuotationPassengerCount,
   getQuotationPassengersText,
+  QUOTATION_AVAILABILITY_NOTE,
   QUOTATION_FLIGHT_CLASS_LABELS,
   QUOTATION_MEAL_PLAN_LABELS,
   QUOTATION_STATUS_LABELS,
@@ -42,24 +43,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof
   REJECTED: { label: QUOTATION_STATUS_LABELS.REJECTED, color: "bg-red-100 text-red-700 border-red-200", icon: XCircle },
   EXPIRED: { label: QUOTATION_STATUS_LABELS.EXPIRED, color: "bg-gray-100 text-gray-600 border-gray-200", icon: AlertTriangle },
   CONVERTED: { label: QUOTATION_STATUS_LABELS.CONVERTED, color: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle2 },
-}
-
-function getRemainingTime(validUntil: string): { text: string; urgent: boolean; expired: boolean } {
-  const now = new Date()
-  const expiry = new Date(validUntil + "T23:59:59")
-  const diff = expiry.getTime() - now.getTime()
-
-  if (diff <= 0) return { text: "Vencida", urgent: false, expired: true }
-
-  const hours = Math.floor(diff / (1000 * 60 * 60))
-  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-
-  if (hours < 24) {
-    return { text: `Vence en ${hours}h ${minutes}m`, urgent: true, expired: false }
-  }
-
-  const days = Math.floor(hours / 24)
-  return { text: `Valida por ${days} dia${days > 1 ? "s" : ""} mas`, urgent: false, expired: false }
 }
 
 // --- Service card sub-components ---
@@ -450,10 +433,9 @@ export function PublicQuotationView() {
     )
   }
 
-  const remaining = getRemainingTime(data.valid_until)
   const statusConfig = STATUS_CONFIG[data.status] || STATUS_CONFIG.SENT
   const StatusIcon = statusConfig.icon
-  const canAccept = ["SENT", "PENDING_APPROVAL"].includes(data.status) && !remaining.expired
+  const canAccept = ["SENT", "PENDING_APPROVAL"].includes(data.status)
   const totalPassengers = getQuotationPassengerCount(data)
 
   const brandColor = branding.brand_color || "#f97316"
@@ -522,26 +504,11 @@ export function PublicQuotationView() {
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        {/* ===== VALIDITY WARNING ===== */}
-        {canAccept && (
-          <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-medium ${remaining.urgent ? "bg-red-50 text-red-700 border border-red-200" : "bg-blue-50 text-blue-700 border border-blue-200"}`}>
-            <Clock className="h-4 w-4 flex-shrink-0" />
-            <span>{remaining.text} — Los precios pueden variar despues del vencimiento</span>
-          </div>
-        )}
-
-        {remaining.expired && data.status !== "APPROVED" && data.status !== "CONVERTED" && (
-          <div className="flex items-center gap-2 p-3 rounded-xl text-sm bg-gray-50 text-gray-600 border border-gray-200">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            <span>Esta cotizacion ha vencido. Contacta a tu asesor para una nueva cotizacion.</span>
-          </div>
-        )}
-
         {/* ===== TRIP SUMMARY CARD ===== */}
         <Card className="overflow-hidden">
           <div className="h-1.5" style={{ backgroundColor: brandColor }} />
           <CardContent className="pt-5 pb-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Destination */}
               <div className="flex items-start gap-3">
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0" style={{ backgroundColor: `${brandColor}12` }}>
@@ -581,17 +548,6 @@ export function PublicQuotationView() {
                     {getQuotationPassengersText(data)}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">{totalPassengers} pasajero{totalPassengers > 1 ? "s" : ""} en total</p>
-                </div>
-              </div>
-
-              {/* Validity */}
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-lg flex items-center justify-center text-base flex-shrink-0" style={{ backgroundColor: `${brandColor}12` }}>
-                  ⏳
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Valida hasta</p>
-                  <p className="font-semibold text-gray-900 text-sm">{formatQuotationDateLong(data.valid_until)}</p>
                 </div>
               </div>
             </div>
@@ -760,6 +716,15 @@ export function PublicQuotationView() {
             <div className="text-center text-xs text-muted-foreground space-y-1">
               <p>Asesor: <span className="font-medium text-gray-600">{data.seller_name}</span></p>
               <p>Cotizacion generada el {formatQuotationDateLong(data.created_at.split("T")[0])}</p>
+            </div>
+
+            <div className="mt-4 max-w-lg mx-auto">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-1">
+                Disponibilidad
+              </p>
+              <p className="text-[10px] leading-relaxed text-muted-foreground text-center">
+                {QUOTATION_AVAILABILITY_NOTE}
+              </p>
             </div>
 
             {/* Terms & conditions */}

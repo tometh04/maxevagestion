@@ -111,7 +111,13 @@ export async function GET(
 
     text("RECEPTOR", mid + 8, y - 10, 8, bold, gray)
     text(invoice.receptor_nombre, mid + 8, y - 22, 9, bold)
-    const docLabel = invoice.receptor_doc_tipo === 99 ? "Doc" : invoice.receptor_doc_tipo === 80 ? "CUIT" : "DNI"
+    const docLabel = invoice.receptor_doc_tipo === 99
+      ? "Doc"
+      : invoice.receptor_doc_tipo === 80
+        ? "CUIT"
+        : invoice.receptor_doc_tipo === 86
+          ? "CUIL"
+          : "DNI"
     text(`${docLabel}: ${invoice.receptor_doc_nro}`, mid + 8, y - 34, 9, regular)
     const condStr = invoice.receptor_condicion_iva === 5 ? "Consumidor Final"
       : invoice.receptor_condicion_iva === 1 ? "Responsable Inscripto"

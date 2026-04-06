@@ -1,19 +1,52 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
-import { searchHotels } from "@/lib/hotels/data"
+import { searchHotels, searchHotelsByDestination, type HotelEntry } from "@/lib/hotels/data"
+import { searchGeoapifyHotels } from "@/lib/hotels/geoapify"
 
 export const dynamic = "force-dynamic"
 
-// GET — Buscar hoteles por nombre/destino (base local, sin API externa)
+function normalizeHotelKey(hotel: Pick<HotelEntry, "name" | "city" | "country">) {
+  const normalize = (value: string) =>
+    value
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+
+  return `${normalize(hotel.name)}::${normalize(hotel.city)}::${normalize(hotel.country)}`
+}
+
+function mergeHotelResults(localResults: HotelEntry[], externalResults: HotelEntry[], limit: number) {
+  const uniqueHotels = new Map<string, HotelEntry>()
+
+  for (const hotel of [...localResults, ...externalResults]) {
+    uniqueHotels.set(normalizeHotelKey(hotel), hotel)
+  }
+
+  return Array.from(uniqueHotels.values()).slice(0, limit)
+}
+
+// GET — Buscar hoteles por nombre/destino (base local + fallback externo)
 export async function GET(request: Request) {
   try {
     await getCurrentUser()
     const { searchParams } = new URL(request.url)
-    const q = searchParams.get("q") || ""
-    const destination = searchParams.get("destination") || ""
+    const q = (searchParams.get("q") || "").trim()
+    const destination = (searchParams.get("destination") || "").trim()
     const limit = parseInt(searchParams.get("limit") || "20")
 
-    const results = searchHotels(q, destination, limit)
+    const localResults = q.length >= 2
+      ? searchHotels(q, destination, limit)
+      : destination
+        ? searchHotelsByDestination(destination, limit)
+        : []
+
+    const externalResults =
+      destination && localResults.length === 0
+        ? await searchGeoapifyHotels(destination, q, limit)
+        : []
+
+    const results = mergeHotelResults(localResults, externalResults, limit)
 
     return NextResponse.json(
       results.map(h => ({

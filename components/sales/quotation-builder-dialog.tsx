@@ -402,6 +402,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   // Cache hotel data so we can auto-fill stars/address/photo when selected
   const hotelDataCache = useRef<Record<string, { stars: number; address: string | null; photo_url: string | null; google_rating: number | null }>>({})
 
+  const buildHotelCacheKey = useCallback((hotelName: string, hotelDestination?: string | null) => {
+    const normalize = (value: string) =>
+      value
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+
+    return `${normalize(hotelName)}::${normalize(hotelDestination || "")}`
+  }, [])
+
   const searchHotels = useCallback(async (query: string, hotelDestination?: string): Promise<ComboboxOption[]> => {
     const opts: ComboboxOption[] = []
     if (query && query.length >= 1) {
@@ -418,12 +429,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         const hotels: Array<{ name: string; stars: number; city: string; country: string; zone: string | null; address: string | null; photo_url: string | null; google_rating: number | null }> = await res.json()
         for (const hotel of hotels) {
           const stars = hotel.stars ? "★".repeat(hotel.stars) : ""
-          // Cache for auto-fill on selection
-          hotelDataCache.current[hotel.name] = {
+          const cityContext = hotel.city || selectedDestination || ""
+          const cacheEntry = {
             stars: hotel.stars,
             address: hotel.address,
             photo_url: hotel.photo_url,
             google_rating: hotel.google_rating,
+          }
+          // Cache for auto-fill on selection by hotel + destination to avoid collisions between cities
+          hotelDataCache.current[buildHotelCacheKey(hotel.name, cityContext)] = cacheEntry
+          if (selectedDestination) {
+            hotelDataCache.current[buildHotelCacheKey(hotel.name, selectedDestination)] = cacheEntry
           }
           opts.push({
             value: hotel.name,
@@ -436,7 +452,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       // silencioso
     }
     return opts
-  }, [destination])
+  }, [buildHotelCacheKey, destination])
 
   // --- Option management ---
   function addOption() {
@@ -553,11 +569,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   updated.generates_commission = COMMISSION_TYPES.has(value)
                 }
                 // Auto-fill hotel data when hotel is selected from search
-                if (field === "hotel_name" && value && hotelDataCache.current[value]) {
-                  const cached = hotelDataCache.current[value]
-                  if (cached.stars) updated.hotel_stars = cached.stars
-                  if (cached.address) updated.hotel_address = cached.address
-                  if (cached.photo_url) updated.hotel_photo_url = cached.photo_url
+                if (field === "hotel_name" && value) {
+                  const cacheKey = buildHotelCacheKey(value, updated.destination_city || destination)
+                  const cached = hotelDataCache.current[cacheKey]
+                  if (cached?.stars) updated.hotel_stars = cached.stars
+                  if (cached?.address) updated.hotel_address = cached.address
+                  if (cached?.photo_url) updated.hotel_photo_url = cached.photo_url
                 }
                 // Auto-calc nights when dates change
                 if ((field === "checkin_date" || field === "checkout_date") && updated.checkin_date && updated.checkout_date) {

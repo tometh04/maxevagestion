@@ -13,7 +13,7 @@ const defaultTemplates = [
 Te enviamos la cotización para tu viaje a *{destino}*.
 
 💰 Total: {moneda} {monto}
-📅 Válida hasta: {fecha_validez}
+ℹ️ {nota_disponibilidad}
 
 ¿Tenés alguna duda? Estamos para ayudarte! 📲`,
     emoji_prefix: "📄",

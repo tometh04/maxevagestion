@@ -58,6 +58,7 @@ const documentTypes = [
   { value: "DNI", label: "DNI" },
   { value: "PASSPORT", label: "Pasaporte" },
   { value: "CUIT", label: "CUIT" },
+  { value: "CUIL", label: "CUIL" },
   { value: "OTHER", label: "Otro" },
 ]
 
