@@ -213,6 +213,7 @@ export async function POST(request: Request) {
       operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
       operator_id: resolvedOperatorId,
       operator_payment_id: resolvedOperatorPaymentId,
+      source: "MANUAL",
       payer_type,
       direction,
       method: method || "Otro",
@@ -582,6 +583,7 @@ export async function GET(request: Request) {
         financial_accounts:account_id(name)
       )
     `, { count: "exact" })
+      .neq("source", "OPERATOR_BULK")
 
     if (operationId) {
       query = query.eq("operation_id", operationId)
@@ -704,6 +706,13 @@ export async function DELETE(request: Request) {
 
     if (fetchError || !payment) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+    }
+
+    if (payment.source === "OPERATOR_BULK") {
+      return NextResponse.json(
+        { error: "Los pagos generados desde Pago Masivo no se pueden eliminar desde esta pantalla." },
+        { status: 400 }
+      )
     }
 
     // 2. Eliminar movimiento de caja relacionado
@@ -918,6 +927,13 @@ export async function PATCH(request: Request) {
 
     if (fetchError || !existingPayment) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+    }
+
+    if (existingPayment.source === "OPERATOR_BULK") {
+      return NextResponse.json(
+        { error: "Los pagos generados desde Pago Masivo no se pueden editar desde esta pantalla." },
+        { status: 400 }
+      )
     }
 
     let linkedOperatorId: string | null = existingPayment.operator_id || null

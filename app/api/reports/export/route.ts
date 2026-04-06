@@ -123,6 +123,7 @@ export async function GET(request: Request) {
             *,
             operations:operation_id (destination, agencies:agency_id (name))
           `)
+          .neq("source", "OPERATOR_BULK")
           .order("date_due", { ascending: false })
 
         if (dateFrom) query = query.gte("date_due", dateFrom)

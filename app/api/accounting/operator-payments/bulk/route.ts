@@ -99,12 +99,15 @@ export async function POST(request: Request) {
     }
 
     let exchangeRateValue: number | null = null
+    const rateDate = payment_date ? new Date(payment_date) : new Date()
     if (payment_currency === "USD") {
-      const rateDate = payment_date ? new Date(payment_date) : new Date()
       const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "bulk-operator-payments")
       exchangeRateValue = rateResult.rate
     } else if (exchange_rate != null) {
       exchangeRateValue = parseFloat(String(exchange_rate))
+    } else {
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "bulk-operator-payments-ars")
+      exchangeRateValue = rateResult.rate
     }
 
     const errors: string[] = []
@@ -257,9 +260,16 @@ export async function POST(request: Request) {
     for (const item of toProcess) {
       try {
         const { operator_payment_id, operation_id, amount_to_pay } = item.paymentItem
-        const paymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
+        const operatorPaymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
         const sellerId = item.operation?.seller_id ?? null
-        const operatorId = item.operation?.operator_id ?? null
+        const operatorId = item.operatorPayment?.operator_id ?? item.operation?.operator_id ?? null
+        const paymentEquivalentAmount = roundMoney(item.amountInPaymentCurrency)
+        const paymentEquivalentUsd =
+          payment_currency === "USD"
+            ? paymentEquivalentAmount
+            : (exchangeRateValue && exchangeRateValue > 0
+              ? roundMoney(paymentEquivalentAmount / exchangeRateValue)
+              : null)
 
         // Calcular el monto real que sale de caja (descontando bonificación proporcional)
         let expenseAmount = item.amountInPaymentCurrency
@@ -311,7 +321,7 @@ export async function POST(request: Request) {
         )
 
         const costAmount = parseFloat(String(amount_to_pay))
-        const costARS = paymentCurrency === "USD"
+        const costARS = operatorPaymentCurrency === "USD"
           ? roundMoney(costAmount * exchangeRateValue!)
           : costAmount
 
@@ -321,9 +331,9 @@ export async function POST(request: Request) {
             lead_id: null,
             type: "OPERATOR_PAYMENT",
             concept: `Costo operador - Operación ${operation_id.slice(0, 8)}`,
-            currency: paymentCurrency,
+            currency: operatorPaymentCurrency,
             amount_original: roundMoney(costAmount),
-            exchange_rate: paymentCurrency === "USD" ? exchangeRateValue! : null,
+            exchange_rate: operatorPaymentCurrency === "USD" ? exchangeRateValue! : null,
             amount_ars_equivalent: roundMoney(costARS),
             method: ledgerMethod,
             account_id: costAccountId,
@@ -352,6 +362,35 @@ export async function POST(request: Request) {
         if (updateError) {
           errors.push(`Error actualizando ${operator_payment_id}: ${updateError.message}`)
           continue
+        }
+
+        const paymentReference = [receipt_number, notes].filter(Boolean).join(" - ") || receipt_number
+        const paymentData = {
+          operation_id,
+          operator_id: operatorId,
+          operator_payment_id,
+          source: "OPERATOR_BULK",
+          payer_type: "OPERATOR" as const,
+          direction: "EXPENSE" as const,
+          method: "Pago Masivo",
+          amount: paymentEquivalentAmount,
+          currency: payment_currency,
+          exchange_rate: exchangeRateValue,
+          amount_usd: paymentEquivalentUsd,
+          date_paid: payment_date,
+          date_due: payment_date,
+          status: "PAID" as const,
+          reference: paymentReference || null,
+          ledger_movement_id: ledgerMovementResult.id,
+        }
+
+        const { data: paymentRecord, error: paymentInsertError } = await (supabase.from("payments") as any)
+          .insert(paymentData)
+          .select("id")
+          .single()
+
+        if (paymentInsertError || !paymentRecord?.id) {
+          errors.push(`Pago aplicado sin reflejo en operación ${operation_id.slice(0, 8)}: ${paymentInsertError?.message || "No se pudo registrar el payment"}`)
         }
 
         // Si se pagó más que el monto original (hasta 10% extra), actualizar operator_cost y monto de la deuda
@@ -400,7 +439,7 @@ export async function POST(request: Request) {
         const taxPeriod = (payment_date || new Date().toISOString()).substring(0, 7)
 
         // Get operator info for counterpart data
-        const operatorName = item.operation?.operators?.name || item.operatorPayment?.operators?.name || null
+        const operatorName = item.operatorPayment?.operators?.name || item.operation?.operators?.name || null
         const operatorCuit = null // TODO: add cuit to operators table
 
         if (retentionGananciasRate > 0 && paymentAmount > 0) {

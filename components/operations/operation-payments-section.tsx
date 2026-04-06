@@ -184,14 +184,19 @@ export function OperationPaymentsSection({
     }
   }
 
-  const handleDeletePayment = async (paymentId: string) => {
+  const handleDeletePayment = async (payment: any) => {
+    if (payment?.source === "OPERATOR_BULK") {
+      toast.error("Los pagos generados desde Pago Masivo no se pueden eliminar desde esta pantalla")
+      return
+    }
+
     if (!confirm("¿Eliminar este pago? También se eliminarán los movimientos contables asociados (libro mayor y caja).")) {
       return
     }
     
-    setDeletingPaymentId(paymentId)
+    setDeletingPaymentId(payment.id)
     try {
-      const response = await fetch(`/api/payments?paymentId=${paymentId}`, {
+      const response = await fetch(`/api/payments?paymentId=${payment.id}`, {
         method: "DELETE",
       })
 
@@ -629,6 +634,11 @@ export function OperationPaymentsSection({
   const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
 
   const handleOpenEditDialog = (payment: any) => {
+    if (payment?.source === "OPERATOR_BULK") {
+      toast.error("Los pagos generados desde Pago Masivo no se pueden editar desde esta pantalla")
+      return
+    }
+
     setEditingPayment(payment)
     setMarkAsPaid(false)
     editForm.reset({
@@ -955,6 +965,11 @@ export function OperationPaymentsSection({
                           <span className="text-xs text-muted-foreground">
                             {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
                           </span>
+                          {payment.source === "OPERATOR_BULK" && (
+                            <Badge variant="secondary" className="w-fit text-[10px]">
+                              Pago Masivo
+                            </Badge>
+                          )}
                           {payment.payer_type === "OPERATOR" && payment.operator_id && (
                             <span className="text-xs font-medium">
                               {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
@@ -1036,7 +1051,8 @@ export function OperationPaymentsSection({
                             size="icon"
                             className="h-8 w-8 text-warning hover:text-warning/80 hover:bg-warning/10"
                             onClick={() => handleOpenEditDialog(payment)}
-                            title="Editar pago"
+                            disabled={payment.source === "OPERATOR_BULK"}
+                            title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Editar pago"}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -1046,9 +1062,9 @@ export function OperationPaymentsSection({
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                          onClick={() => handleDeletePayment(payment.id)}
-                          disabled={deletingPaymentId === payment.id}
-                          title="Eliminar pago"
+                          onClick={() => handleDeletePayment(payment)}
+                          disabled={payment.source === "OPERATOR_BULK" || deletingPaymentId === payment.id}
+                          title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Eliminar pago"}
                         >
                           {deletingPaymentId === payment.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

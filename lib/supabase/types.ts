@@ -336,6 +336,7 @@ export interface Database {
           operation_id: string
           operator_id: string | null
           operator_payment_id: string | null
+          source: 'MANUAL' | 'OPERATOR_BULK'
           payer_type: 'CUSTOMER' | 'OPERATOR'
           direction: 'INCOME' | 'EXPENSE'
           method: string
@@ -353,6 +354,7 @@ export interface Database {
           operation_id: string
           operator_id?: string | null
           operator_payment_id?: string | null
+          source?: 'MANUAL' | 'OPERATOR_BULK'
           payer_type: 'CUSTOMER' | 'OPERATOR'
           direction: 'INCOME' | 'EXPENSE'
           method: string
@@ -370,6 +372,7 @@ export interface Database {
           operation_id?: string
           operator_id?: string | null
           operator_payment_id?: string | null
+          source?: 'MANUAL' | 'OPERATOR_BULK'
           payer_type?: 'CUSTOMER' | 'OPERATOR'
           direction?: 'INCOME' | 'EXPENSE'
           method?: string

@@ -39,6 +39,7 @@ export async function POST(request: Request) {
         )
       `)
       .eq("status", "PAID")
+      .neq("source", "OPERATOR_BULK")
       .not("date_paid", "is", null)
 
     if (paymentsError) {
