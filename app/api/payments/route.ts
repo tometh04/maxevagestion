@@ -17,6 +17,11 @@ import {
   findMatchingOperatorPayment,
   revertOperatorPaymentSettlement,
 } from "@/lib/accounting/operator-payment-settlement"
+import {
+  createPaymentCounterpartMovement,
+  mapPaymentMethodToLedgerMethod,
+  removePaymentCounterpartMovement,
+} from "@/lib/accounting/payment-counterparts"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
 import {
@@ -348,16 +353,7 @@ export async function POST(request: Request) {
         }
 
         // 5. Mapear método de pago a método de ledger
-        const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
-          "Transferencia": "BANK",
-          "Efectivo": "CASH",
-          "Tarjeta Crédito": "OTHER",
-          "Tarjeta Débito": "OTHER",
-          "MercadoPago": "MP",
-          "PayPal": "OTHER",
-          "Otro": "OTHER",
-        }
-        const ledgerMethod = methodMap[method || "Otro"] || "OTHER"
+        const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
         const ledgerType = direction === "INCOME" 
@@ -445,6 +441,7 @@ export async function POST(request: Request) {
             operation_id: operation_id || null,
             payment_id: payment.id,
             cash_box_id: (defaultCashBox as any)?.id || null,
+            financial_account_id: accountId,
             user_id: user.id,
             type: direction === "INCOME" ? "INCOME" : "EXPENSE",
             category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
@@ -468,6 +465,24 @@ export async function POST(request: Request) {
             ledgerMovementId
           )
         }
+
+        await createPaymentCounterpartMovement({
+          supabase,
+          paymentId: payment.id,
+          operationId: operation_id || null,
+          direction,
+          payerType: payer_type,
+          currency,
+          amount: parseFloat(amount),
+          method,
+          reference: notes || null,
+          datePaid: date_paid || new Date().toISOString().split("T")[0],
+          exchangeRate,
+          selectedFinancialAccountId: accountId,
+          sellerId,
+          operatorId: payer_type === "OPERATOR" ? operatorId : null,
+          userId: user.id,
+        })
 
       } catch (accountingError) {
         const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
@@ -839,53 +854,22 @@ export async function DELETE(request: Request) {
       })
     }
 
-    // 3b. Eliminar movimiento contable COUNTERPART en CpC/CpP (creado por mark-paid)
-    // Cuando mark-paid crea 2 entries (CpC/CpP + cuenta principal), solo el principal
-    // se guarda en payment.ledger_movement_id. Hay que buscar y eliminar el counterpart.
     if (payment.operation_id && payment.status === "PAID") {
-      // Buscar cuentas CpC (1.1.03) y CpP (2.1.01)
-      const { data: cpcChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "1.1.03")
-        .eq("is_active", true)
-        .maybeSingle()
-
-      const { data: cppChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "2.1.01")
-        .eq("is_active", true)
-        .maybeSingle()
-
-      const chartIds = [cpcChart?.id, cppChart?.id].filter(Boolean)
-
-      if (chartIds.length > 0) {
-        // Buscar financial_accounts que son CpC/CpP
-        const { data: accountingAccounts } = await (supabase.from("financial_accounts") as any)
-          .select("id")
-          .in("chart_account_id", chartIds)
-          .eq("is_active", true)
-
-        const accountingAccountIds = (accountingAccounts || []).map((a: any) => a.id)
-
-        if (accountingAccountIds.length > 0) {
-          // Buscar y eliminar ledger_movements huérfanos en CpC/CpP para esta operación + monto
-          const { data: counterpartMovements, error: counterpartError } = await (supabase.from("ledger_movements") as any)
-            .delete()
-            .eq("operation_id", payment.operation_id)
-            .in("account_id", accountingAccountIds)
-            .eq("amount_original", payment.amount)
-            .eq("currency", payment.currency)
-            .select("id, account_id")
-
-          if (counterpartError) {
-            console.warn("Warning: Could not delete counterpart CpC/CpP ledger movements:", counterpartError)
-          } else if (counterpartMovements?.length > 0) {
-            // Invalidar cache de las cuentas CpC/CpP afectadas
-            counterpartMovements.forEach((m: any) => {
-              if (m.account_id) invalidateBalanceCache(m.account_id)
-            })
-          }
-        }
+      try {
+        await removePaymentCounterpartMovement({
+          supabase,
+          paymentId,
+          operationId: payment.operation_id,
+          direction: payment.direction,
+          payerType: payment.payer_type,
+          currency: payment.currency,
+          amount: parseFloat(payment.amount),
+          reference: payment.reference || null,
+          datePaid: payment.date_paid || null,
+          excludeLedgerMovementId: ledgerMovementId || null,
+        })
+      } catch (counterpartError) {
+        console.warn("Warning: Could not delete counterpart CpC/CpP ledger movement:", counterpartError)
       }
     }
 
@@ -1100,6 +1084,19 @@ export async function PATCH(request: Request) {
       await (supabase.from("ledger_movements") as any)
         .delete()
         .eq("id", existingPayment.ledger_movement_id)
+
+      await removePaymentCounterpartMovement({
+        supabase,
+        paymentId,
+        operationId: existingPayment.operation_id,
+        direction: existingPayment.direction,
+        payerType: existingPayment.payer_type,
+        currency: existingPayment.currency,
+        amount: parseFloat(existingPayment.amount),
+        reference: existingPayment.reference || null,
+        datePaid: existingPayment.date_paid || null,
+        excludeLedgerMovementId: existingPayment.ledger_movement_id,
+      })
     }
 
     // 3. Actualizar registro del pago
@@ -1189,16 +1186,7 @@ export async function PATCH(request: Request) {
           .single()
 
         // Mapear método
-        const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
-          "Transferencia": "BANK",
-          "Efectivo": "CASH",
-          "Tarjeta Crédito": "OTHER",
-          "Tarjeta Débito": "OTHER",
-          "MercadoPago": "MP",
-          "PayPal": "OTHER",
-          "Otro": "OTHER",
-        }
-        const ledgerMethod = methodMap[finalMethod || "Otro"] || "OTHER"
+        const ledgerMethod = mapPaymentMethodToLedgerMethod(finalMethod)
 
         const ledgerType = existingPayment.direction === "INCOME"
           ? "INCOME"
@@ -1290,6 +1278,7 @@ export async function PATCH(request: Request) {
             operation_id: existingPayment.operation_id,
             payment_id: paymentId,
             cash_box_id: (defaultCashBox as any)?.id || null,
+            financial_account_id: finalAccountId,
             user_id: user.id,
             type: existingPayment.direction === "INCOME" ? "INCOME" : "EXPENSE",
             category: existingPayment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
@@ -1303,6 +1292,24 @@ export async function PATCH(request: Request) {
         if (cashInsertError) {
           console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
         }
+
+        await createPaymentCounterpartMovement({
+          supabase,
+          paymentId,
+          operationId: existingPayment.operation_id,
+          direction: existingPayment.direction,
+          payerType: existingPayment.payer_type,
+          currency: finalCurrency,
+          amount: finalAmount,
+          method: finalMethod,
+          reference: finalNotes || null,
+          datePaid: finalDatePaid,
+          exchangeRate,
+          selectedFinancialAccountId: finalAccountId,
+          sellerId,
+          operatorId: existingPayment.payer_type === "OPERATOR" ? operatorId : null,
+          userId: user.id,
+        })
 
       } catch (accountingError) {
         console.error("Error recreating accounting movements:", accountingError)
