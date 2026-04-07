@@ -50,16 +50,6 @@ const MovementsPageClient = dynamic(
   }
 )
 
-const GastosPageClient = dynamic(
-  () =>
-    import("@/components/expenses/gastos-page-client").then((m) => ({
-      default: m.GastosPageClient,
-    })),
-  {
-    loading: () => <Skeleton className="h-[300px] w-full" />,
-  }
-)
-
 function getDefaultDateRange() {
   const today = new Date()
   const from = new Date(today.getFullYear(), today.getMonth(), 1)
@@ -133,9 +123,6 @@ export default async function CashSummaryPage() {
       }
       movementsContent={
         <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />
-      }
-      expensesContent={
-        <GastosPageClient agencies={agencies} />
       }
     />
   )

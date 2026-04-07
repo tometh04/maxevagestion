@@ -108,6 +108,7 @@ const allNavigation: NavItem[] = [
     module: "cash",
     items: [
       { title: "Caja y Bancos", url: "/cash/summary" },
+      { title: "Gastos", url: "/expenses" },
       { title: "Contabilidad", url: "/accounting/ledger" },
       { title: "Impuestos", url: "/accounting/iva" },
       { title: "Comisiones", url: "/commissions", module: "commissions" as const },
