@@ -95,7 +95,7 @@ function HotelCard({ item, brandColor }: { item: QuotationPresentationItem; bran
   const mealLabel = item.meal_plan ? (QUOTATION_MEAL_PLAN_LABELS[item.meal_plan] || item.meal_plan) : null
 
   return (
-    <div className="bg-white border rounded-xl overflow-hidden space-y-0">
+    <div className="quotation-print-service bg-white border rounded-xl overflow-hidden space-y-0">
       {item.hotel_photo_url && (
         <div className="relative w-full h-36 overflow-hidden">
           <img src={item.hotel_photo_url} alt={item.hotel_name || "Hotel"} className="w-full h-full object-cover" />
@@ -196,7 +196,7 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
     : null
 
   return (
-    <div className="bg-white border rounded-xl p-4 space-y-3">
+    <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-lg flex-shrink-0">
@@ -274,7 +274,7 @@ function FlightCard({ item, brandColor }: { item: QuotationPresentationItem; bra
 
 function TransferCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   return (
-    <div className="bg-white border rounded-xl p-4 space-y-2">
+    <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">
           🚐
@@ -298,7 +298,7 @@ function TransferCard({ item, brandColor }: { item: QuotationPresentationItem; b
 
 function InsuranceCard({ item, brandColor }: { item: QuotationPresentationItem; brandColor: string }) {
   return (
-    <div className="bg-white border rounded-xl p-4 space-y-2">
+    <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center text-lg flex-shrink-0">
           🛡️
@@ -319,7 +319,7 @@ function ActivityCard({ item, brandColor }: { item: QuotationPresentationItem; b
   const config = ITEM_TYPE_CONFIG[item.item_type] || ITEM_TYPE_CONFIG.OTHER
 
   return (
-    <div className="bg-white border rounded-xl p-4 space-y-2">
+    <div className="quotation-print-service bg-white border rounded-xl p-4 space-y-2">
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-lg ${config.bgColor} flex items-center justify-center text-lg flex-shrink-0`}>
           {config.emoji}
@@ -405,17 +405,17 @@ export function PublicQuotationDocument({
   const brandColor = branding.brand_color || "#f97316"
   const companyName = branding.company_name || data.agency_name
   const logoUrl = branding.brand_logo || null
-  const companyLegajo = branding.company_legajo || branding.legajo || null
-  const companyTaxId = branding.company_tax_id || branding.tax_id || null
-  const companyAddress = branding.company_address || branding.address || null
-  const companyPhone = branding.company_phone || branding.phone || null
-  const companyEmail = branding.company_email || branding.email || null
-  const companyWebsite = branding.company_website || branding.website || null
-  const companyInstagram = branding.company_instagram || branding.instagram || null
+  const companyLegajo = branding.legajo || branding.company_legajo || null
+  const companyTaxId = branding.tax_id || branding.company_tax_id || null
+  const companyAddress = branding.address || branding.company_address || null
+  const companyPhone = branding.phone || branding.company_phone || null
+  const companyEmail = branding.email || branding.company_email || null
+  const companyWebsite = branding.website || branding.company_website || null
+  const companyInstagram = branding.instagram || branding.company_instagram || null
 
   return (
-    <div className={`min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-gray-50 to-white"}`}>
-      <div className={mode === "print" ? "bg-white" : "bg-white shadow-sm sticky top-0 z-10"}>
+    <div className={`quotation-print-shell min-h-screen ${mode === "print" ? "bg-white" : "bg-gradient-to-b from-gray-50 to-white"}`}>
+      <div className={mode === "print" ? "quotation-print-header bg-white" : "quotation-print-header bg-white shadow-sm sticky top-0 z-10"}>
         <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
@@ -468,7 +468,7 @@ export function PublicQuotationDocument({
       </div>
 
       <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        <Card className="overflow-hidden">
+        <Card className="quotation-print-section overflow-hidden">
           <div className="h-1.5" style={{ backgroundColor: brandColor }} />
           <CardContent className="pt-5 pb-5">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -515,7 +515,7 @@ export function PublicQuotationDocument({
         </Card>
 
         {data.notes && (
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
+          <div className="quotation-print-note bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
             <p className="font-semibold text-xs uppercase tracking-wide mb-1 text-blue-600">Notas del asesor</p>
             <p className="whitespace-pre-line">{data.notes}</p>
           </div>
@@ -531,7 +531,7 @@ export function PublicQuotationDocument({
             return (
               <Card
                 key={option.id}
-                className={`overflow-hidden transition-all ${isSelected ? "border-green-400 ring-2 ring-green-100 shadow-lg" : "shadow-sm hover:shadow-md"}`}
+                className={`quotation-print-option overflow-hidden transition-all ${isSelected ? "border-green-400 ring-2 ring-green-100 shadow-lg" : "shadow-sm hover:shadow-md"}`}
               >
                 <CardHeader className="pb-0">
                   <div className="flex items-center justify-between">
@@ -543,7 +543,7 @@ export function PublicQuotationDocument({
                 </CardHeader>
 
                 <CardContent className="space-y-3 pt-4">
-                  <div className="space-y-3">
+                  <div className="quotation-print-option-items space-y-3">
                     {option.items.map((item, idx) => (
                       <ServiceCard key={idx} item={item} brandColor={brandColor} />
                     ))}
@@ -595,7 +595,7 @@ export function PublicQuotationDocument({
           })}
 
         {accepted && (
-          <Card className="border-green-200 bg-green-50 overflow-hidden">
+          <Card className="quotation-print-section border-green-200 bg-green-50 overflow-hidden">
             <div className="h-1" style={{ backgroundColor: "#22c55e" }} />
             <CardContent className="pt-6 pb-6 text-center">
               <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto mb-3" />
@@ -607,7 +607,7 @@ export function PublicQuotationDocument({
           </Card>
         )}
 
-        <footer className="border-t mt-10 pt-8 pb-10">
+        <footer className="quotation-print-footer border-t mt-10 pt-8 pb-10">
           <div className="flex flex-col items-center gap-4">
             {logoUrl ? (
               <img src={logoUrl} alt={companyName} className="h-10 w-auto opacity-70" />

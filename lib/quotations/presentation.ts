@@ -1,3 +1,5 @@
+import { getEffectiveQuotationOptionTotal, normalizeManualQuotationTotal } from "@/lib/quotations/totals"
+
 export interface QuotationPresentationItem {
   id?: string
   item_type: string
@@ -33,6 +35,8 @@ export interface QuotationPresentationOption {
   option_number: number
   title: string
   total_amount: number
+  calculated_total_amount?: number | null
+  manual_total_amount?: number | null
   is_selected: boolean
   items: QuotationPresentationItem[]
 }
@@ -253,7 +257,11 @@ function normalizeQuotationOptions(
         id: option.id,
         option_number: Number(option.option_number ?? index + 1),
         title: option.title || `Opcion ${index + 1}`,
-        total_amount: Number(option.total_amount || 0),
+        total_amount: getEffectiveQuotationOptionTotal(option),
+        calculated_total_amount: option.calculated_total_amount != null
+          ? Number(option.calculated_total_amount)
+          : null,
+        manual_total_amount: normalizeManualQuotationTotal(option.manual_total_amount),
         is_selected: Boolean(option.is_selected),
         items: optionItems
           .slice()

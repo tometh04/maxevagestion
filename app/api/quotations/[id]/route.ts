@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
+import { prepareQuotationOptionsForPersistence } from "@/lib/quotations/persistence"
 
 export const dynamic = "force-dynamic"
 
@@ -59,7 +60,7 @@ export async function PATCH(
     // Verificar que existe y que el usuario tiene acceso
     const { data: existing } = await supabase
       .from("quotations")
-      .select("id, seller_id, status")
+      .select("id, seller_id, status, currency")
       .eq("id", id)
       .single()
 
@@ -88,6 +89,22 @@ export async function PATCH(
 
     if (body.pricing_mode !== undefined) {
       updateData.pricing_mode = normalizeQuotationPricingMode(body.pricing_mode)
+    }
+
+    let preparedOptions: ReturnType<typeof prepareQuotationOptionsForPersistence> | null = null
+    if (body.options && Array.isArray(body.options)) {
+      try {
+        preparedOptions = prepareQuotationOptionsForPersistence(body.options, body.currency || existing.currency || "USD")
+      } catch (error: any) {
+        return NextResponse.json({ error: error.message || "Opciones inválidas" }, { status: 400 })
+      }
+
+      if (preparedOptions.length === 0) {
+        return NextResponse.json({ error: "Se requiere al menos una opción válida" }, { status: 400 })
+      }
+
+      updateData.subtotal = preparedOptions[0].total_amount
+      updateData.total_amount = preparedOptions[0].total_amount
     }
 
     // Lógica de cambio de estado
@@ -120,14 +137,14 @@ export async function PATCH(
     }
 
     // Si se enviaron opciones nuevas, reemplazarlas
-    if (body.options && Array.isArray(body.options)) {
+    if (preparedOptions) {
       // Borrar opciones e items anteriores (cascade borra los items vinculados)
       await supabase.from("quotation_options").delete().eq("quotation_id", id)
       // Borrar items sin opción
       await supabase.from("quotation_items").delete().eq("quotation_id", id)
 
-      for (let i = 0; i < body.options.length; i++) {
-        const opt = body.options[i]
+      for (let i = 0; i < preparedOptions.length; i++) {
+        const opt = preparedOptions[i]
 
         const { data: option, error: optError } = await supabase
           .from("quotation_options")
@@ -136,6 +153,8 @@ export async function PATCH(
             option_number: i + 1,
             title: opt.title || `Opción ${i + 1}`,
             total_amount: opt.total_amount,
+            calculated_total_amount: opt.calculated_total_amount,
+            manual_total_amount: opt.manual_total_amount,
           })
           .select()
           .single()
@@ -149,11 +168,11 @@ export async function PATCH(
             item_type: item.item_type || "OTHER",
             description: item.description || "",
             quantity: item.quantity || 1,
-            unit_price: item.sale_amount || item.unit_price || 0,
+            unit_price: item.unit_price || item.sale_amount || 0,
             sale_amount: item.sale_amount || item.unit_price || 0,
             cost_amount: item.cost_amount || 0,
             cost_currency: item.cost_currency || updated.currency || "USD",
-            subtotal: item.sale_amount || item.subtotal || item.unit_price || 0,
+            subtotal: item.subtotal || 0,
             currency: updated.currency || "USD",
             operator_id: item.operator_id || null,
             generates_commission: item.generates_commission || false,

@@ -20,6 +20,12 @@ import {
   normalizeQuotationPricingMode,
   type QuotationPricingMode,
 } from "@/lib/quotations/presentation"
+import {
+  getQuotationOptionCalculatedTotal,
+  getQuotationOptionCostTotal,
+  normalizeManualQuotationTotal,
+  roundQuotationMoney,
+} from "@/lib/quotations/totals"
 
 interface QuotationBuilderProps {
   open: boolean
@@ -85,6 +91,8 @@ interface QuotationOption {
   id: string
   title: string
   total_amount: number
+  calculated_total_amount: number
+  manual_total_amount: number | null
   items: QuotationItem[]
 }
 
@@ -139,6 +147,23 @@ function createEmptyItem(type: string = "FLIGHT"): QuotationItem {
   }
 }
 
+function getOptionCalculatedTotal(option: Pick<QuotationOption, "items">) {
+  return getQuotationOptionCalculatedTotal(option.items)
+}
+
+function getOptionCostTotal(option: Pick<QuotationOption, "items">) {
+  return getQuotationOptionCostTotal(option.items)
+}
+
+function getEffectiveOptionTotal(option: Pick<QuotationOption, "calculated_total_amount" | "manual_total_amount" | "total_amount">) {
+  const manualTotal = normalizeManualQuotationTotal(option.manual_total_amount)
+  if (manualTotal != null) {
+    return manualTotal
+  }
+
+  return roundQuotationMoney(option.calculated_total_amount || option.total_amount || 0)
+}
+
 function cloneStopovers(stopovers?: StopoverInfo[]) {
   return (stopovers || []).map((stop) => ({ ...stop }))
 }
@@ -152,11 +177,16 @@ function cloneQuotationItem(item: QuotationItem, idOverride?: string): Quotation
 }
 
 function createEmptyOption(number: number, items?: QuotationItem[]): QuotationOption {
+  const nextItems = items ?? [createEmptyItem("FLIGHT")]
+  const calculatedTotal = getQuotationOptionCalculatedTotal(nextItems)
+
   return {
     id: generateId(),
     title: `Opcion ${number}`,
-    total_amount: 0,
-    items: items ?? [createEmptyItem("FLIGHT")],
+    total_amount: calculatedTotal,
+    calculated_total_amount: calculatedTotal,
+    manual_total_amount: null,
+    items: nextItems,
   }
 }
 
@@ -290,11 +320,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         // Reconstruct options from quotation_options + quotation_items
         const opts = (data.quotation_options || [])
           .sort((a: any, b: any) => a.option_number - b.option_number)
-          .map((opt: any) => ({
-            id: opt.id,
-            title: opt.title || `Opcion ${opt.option_number}`,
-            total_amount: opt.total_amount || 0,
-            items: (data.quotation_items || [])
+          .map((opt: any) => {
+            const items = (data.quotation_items || [])
               .filter((item: any) => item.option_id === opt.id)
               .sort((a: any, b: any) => a.order_index - b.order_index)
               .map((item: any) => ({
@@ -329,8 +356,22 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 flight_screenshot_url: item.flight_screenshot_url || undefined,
                 transfer_description: item.transfer_description || undefined,
                 stopovers: [],
-              })),
-          }))
+              }))
+            const calculatedTotal = opt.calculated_total_amount != null
+              ? Number(opt.calculated_total_amount)
+              : getQuotationOptionCalculatedTotal(items)
+            const manualTotal = normalizeManualQuotationTotal(opt.manual_total_amount)
+            const effectiveTotal = manualTotal ?? Number(opt.total_amount || calculatedTotal || 0)
+
+            return {
+              id: opt.id,
+              title: opt.title || `Opcion ${opt.option_number}`,
+              total_amount: roundQuotationMoney(effectiveTotal),
+              calculated_total_amount: roundQuotationMoney(calculatedTotal),
+              manual_total_amount: manualTotal,
+              items,
+            }
+          })
         if (opts.length > 0) setOptions(syncLinkedFlights(opts))
       })
       .catch(err => console.error("Error loading quotation:", err))
@@ -385,16 +426,35 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     })))
   }, [departureDate, returnDate, applyOptionsUpdate])
 
-  // --- Auto-calculate total_amount for each option (always syncs from item prices) ---
-  const priceKey = options.map(o => o.items.map(i => `${i.unit_price}:${i.quantity}`).join(",")).join("|")
+  // --- Auto-calculate totals for each option without pisar el override manual ---
+  const priceKey = options.map(o => o.items.map(i => `${i.unit_price}:${i.quantity}:${i.cost_amount}`).join(",")).join("|")
   useEffect(() => {
-    setOptions(prev => prev.map(opt => {
-      const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
-      if (Math.abs(opt.total_amount - saleTotal) > 0.001) {
-        return { ...opt, total_amount: saleTotal }
-      }
-      return opt
-    }))
+    setOptions(prev => {
+      let changed = false
+
+      const next = prev.map((opt) => {
+        const calculatedTotal = getOptionCalculatedTotal(opt)
+        const effectiveTotal = opt.manual_total_amount != null
+          ? normalizeManualQuotationTotal(opt.manual_total_amount) ?? calculatedTotal
+          : calculatedTotal
+
+        if (
+          Math.abs((opt.calculated_total_amount || 0) - calculatedTotal) > 0.001 ||
+          Math.abs((opt.total_amount || 0) - effectiveTotal) > 0.001
+        ) {
+          changed = true
+          return {
+            ...opt,
+            calculated_total_amount: calculatedTotal,
+            total_amount: effectiveTotal,
+          }
+        }
+
+        return opt
+      })
+
+      return changed ? next : prev
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceKey])
 
@@ -487,6 +547,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       id: generateId(),
       title: `${source.title} (copia)`,
       total_amount: source.total_amount,
+      calculated_total_amount: source.calculated_total_amount,
+      manual_total_amount: source.manual_total_amount,
       items: source.items.map((item) => cloneQuotationItem(item)),
     }
     applyOptionsUpdate((current) => [...current, newOption])
@@ -494,6 +556,45 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   function updateOption(optionId: string, field: string, value: any) {
     applyOptionsUpdate((current) => current.map((o) => (o.id === optionId ? { ...o, [field]: value } : o)))
+  }
+
+  function updateOptionManualTotal(optionId: string, rawValue: string) {
+    applyOptionsUpdate((current) =>
+      current.map((option) => {
+        if (option.id !== optionId) {
+          return option
+        }
+
+        const manualTotal = normalizeManualQuotationTotal(rawValue)
+        if (manualTotal == null) {
+          return {
+            ...option,
+            manual_total_amount: null,
+            total_amount: option.calculated_total_amount,
+          }
+        }
+
+        return {
+          ...option,
+          manual_total_amount: manualTotal,
+          total_amount: manualTotal,
+        }
+      })
+    )
+  }
+
+  function resetOptionManualTotal(optionId: string) {
+    applyOptionsUpdate((current) =>
+      current.map((option) =>
+        option.id === optionId
+          ? {
+              ...option,
+              manual_total_amount: null,
+              total_amount: option.calculated_total_amount,
+            }
+          : option
+      )
+    )
   }
 
   // --- Item management ---
@@ -641,7 +742,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     }
     const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
     const totalCost = Object.values(byType).reduce((s, v) => s + v.cost, 0)
-    const totalClient = options.reduce((s, o) => s + (o.total_amount || 0), 0)
+    const totalClient = options.reduce((s, o) => s + getEffectiveOptionTotal(o), 0)
     const totalMargin = totalClient - totalCost
     return { byType, totalSale, totalCost, totalClient, totalMargin }
   }, [options])
@@ -669,18 +770,29 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           return
         }
       }
+
+      const optionCostTotal = getOptionCostTotal(opt)
+      const effectiveTotal = getEffectiveOptionTotal(opt)
+      if (effectiveTotal < optionCostTotal) {
+        toast.error(`"${opt.title}" no puede quedar por debajo del costo total`)
+        return
+      }
     }
 
     setSaving(true)
     if (andSend) setSending(true)
 
     try {
-      // Auto-calc totals if not set
       const finalOptions = syncedOptions.map(opt => {
-        const saleTotal = opt.items.reduce((sum, i) => sum + (i.unit_price || 0) * (i.quantity || 1), 0)
+        const calculatedTotal = getOptionCalculatedTotal(opt)
+        const manualTotal = normalizeManualQuotationTotal(opt.manual_total_amount)
+        const effectiveTotal = manualTotal ?? calculatedTotal
+
         return {
           ...opt,
-          total_amount: opt.total_amount || saleTotal,
+          calculated_total_amount: calculatedTotal,
+          manual_total_amount: manualTotal,
+          total_amount: effectiveTotal,
         }
       })
 
@@ -701,6 +813,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         options: finalOptions.map((opt) => ({
           title: opt.title,
           total_amount: opt.total_amount,
+          calculated_total_amount: opt.calculated_total_amount,
+          manual_total_amount: opt.manual_total_amount,
           items: opt.items.map((item) => ({
             item_type: item.item_type,
             description: item.description,
@@ -924,7 +1038,13 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
           </div>
 
           {/* Options */}
-          {options.map((option, optIndex) => (
+          {options.map((option, optIndex) => {
+            const optionCostTotal = getOptionCostTotal(option)
+            const effectiveOptionTotal = getEffectiveOptionTotal(option)
+            const hasManualTotal = option.manual_total_amount != null
+            const totalBelowCost = effectiveOptionTotal < optionCostTotal
+
+            return (
             <div key={option.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               {(() => {
                 const pricing = getQuotationOptionPricing(option, {
@@ -953,6 +1073,72 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                   </div>
                 )
               })()}
+
+              <div className={`rounded-lg border px-3 py-3 space-y-3 ${totalBelowCost ? "border-red-300 bg-red-50/80" : "border-slate-200 bg-white/70"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Precio final de la opción</p>
+                    <p className="text-xs text-muted-foreground">
+                      Podés redondear el total final sin tocar los precios de los servicios.
+                    </p>
+                  </div>
+                  <Badge variant="secondary" className={hasManualTotal ? "border-blue-200 bg-blue-50 text-blue-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
+                    {hasManualTotal ? "Manual" : "Automatico"}
+                  </Badge>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Suma servicios</Label>
+                    <div className="h-10 rounded-md border bg-muted/30 px-3 flex items-center text-sm font-mono">
+                      {formatQuotationCurrency(option.calculated_total_amount, currency)}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Costo total</Label>
+                    <div className="h-10 rounded-md border bg-muted/30 px-3 flex items-center text-sm font-mono">
+                      {formatQuotationCurrency(optionCostTotal, currency)}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-blue-700">Precio final a mostrar</Label>
+                    <Input
+                      type="number"
+                      min={optionCostTotal}
+                      step={0.01}
+                      value={option.manual_total_amount ?? ""}
+                      onChange={(e) => updateOptionManualTotal(option.id, e.target.value)}
+                      placeholder={option.calculated_total_amount.toFixed(2)}
+                      className="text-sm font-mono"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={!hasManualTotal}
+                      onClick={() => resetOptionManualTotal(option.id)}
+                    >
+                      Volver a automatico
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+                  <span>Total efectivo: <span className="font-medium text-foreground">{formatQuotationCurrency(effectiveOptionTotal, currency)}</span></span>
+                  {hasManualTotal && (
+                    <span>Diferencia vs suma servicios: <span className="font-medium text-foreground">{formatQuotationCurrency(effectiveOptionTotal - option.calculated_total_amount, currency)}</span></span>
+                  )}
+                </div>
+
+                {totalBelowCost && (
+                  <p className="text-xs text-red-700">
+                    El precio final no puede quedar por debajo del costo total de la opción.
+                  </p>
+                )}
+              </div>
 
               {optIndex > 0 && options[0]?.items.some((item) => item.item_type === "FLIGHT") && (
                 <div className="rounded-lg border border-blue-200 bg-blue-50/70 px-3 py-2 text-xs text-blue-900">
@@ -1496,7 +1682,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 )}
               </div>
             </div>
-          ))}
+          )})}
 
           {/* Add option button */}
           {options.length < 4 && (
@@ -1547,8 +1733,12 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
               {/* Right: totals */}
               <div className="flex items-center gap-4 shrink-0">
                 <div className="text-right">
-                  <p className="text-[10px] text-muted-foreground">Venta</p>
+                  <p className="text-[10px] text-muted-foreground">Servicios</p>
                   <p className="text-sm font-mono font-semibold">{currency} {globalTotals.totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground">Cliente</p>
+                  <p className="text-sm font-mono font-semibold">{currency} {globalTotals.totalClient.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                 </div>
                 {globalTotals.totalCost > 0 && (
                   <div className="text-right">

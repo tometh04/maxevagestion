@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
+import { prepareQuotationOptionsForPersistence } from "@/lib/quotations/persistence"
 
 export const dynamic = "force-dynamic"
 
@@ -93,7 +94,7 @@ export async function POST(request: Request) {
       pricing_mode,
       notes,
       terms_and_conditions,
-      options, // Array de opciones: [{ title, total_amount, items: [...] }]
+      options, // Array de opciones: [{ title, total_amount, manual_total_amount?, items: [...] }]
     } = body
 
     // Validaciones básicas
@@ -104,6 +105,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Se requiere al menos una opción" }, { status: 400 })
     }
 
+    let preparedOptions
+    try {
+      preparedOptions = prepareQuotationOptionsForPersistence(options, currency || "USD")
+    } catch (error: any) {
+      return NextResponse.json({ error: error.message || "Opciones inválidas" }, { status: 400 })
+    }
+    if (preparedOptions.length === 0) {
+      return NextResponse.json({ error: "Se requiere al menos una opción válida" }, { status: 400 })
+    }
+
     // Generar número de cotización
     const { data: quotationNumber } = await supabase.rpc("generate_quotation_number")
 
@@ -112,7 +123,7 @@ export async function POST(request: Request) {
     validUntil.setHours(validUntil.getHours() + 24)
 
     // El total de la cotización es el de la primera opción (referencial)
-    const firstOption = options[0]
+    const firstOption = preparedOptions[0]
 
     // Crear cotización
     const { data: quotation, error: quotationError } = await supabase
@@ -149,8 +160,8 @@ export async function POST(request: Request) {
     }
 
     // Crear opciones con sus items
-    for (let i = 0; i < options.length; i++) {
-      const opt = options[i]
+    for (let i = 0; i < preparedOptions.length; i++) {
+      const opt = preparedOptions[i]
 
       // Crear opción
       const { data: option, error: optionError } = await supabase
@@ -160,6 +171,8 @@ export async function POST(request: Request) {
           option_number: i + 1,
           title: opt.title || `Opción ${i + 1}`,
           total_amount: opt.total_amount,
+          calculated_total_amount: opt.calculated_total_amount,
+          manual_total_amount: opt.manual_total_amount,
         })
         .select()
         .single()
@@ -177,11 +190,11 @@ export async function POST(request: Request) {
           item_type: item.item_type || "OTHER",
           description: item.description || "",
           quantity: item.quantity || 1,
-          unit_price: item.sale_amount || item.unit_price || 0,
+          unit_price: item.unit_price || item.sale_amount || 0,
           sale_amount: item.sale_amount || item.unit_price || 0,
           cost_amount: item.cost_amount || 0,
           cost_currency: item.cost_currency || currency || "USD",
-          subtotal: item.sale_amount || item.subtotal || item.unit_price || 0,
+          subtotal: item.subtotal || 0,
           currency: currency || "USD",
           operator_id: item.operator_id || null,
           generates_commission: item.generates_commission || false,

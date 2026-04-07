@@ -107,3 +107,42 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .quotation-print-shell {
+    min-height: auto !important;
+    background: #fff !important;
+  }
+
+  .quotation-print-header {
+    position: static !important;
+    box-shadow: none !important;
+  }
+
+  .quotation-print-section,
+  .quotation-print-note,
+  .quotation-print-option,
+  .quotation-print-option-items,
+  .quotation-print-service,
+  .quotation-print-footer,
+  .quotation-print-option img,
+  .quotation-print-service img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

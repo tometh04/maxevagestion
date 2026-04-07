@@ -179,13 +179,13 @@ export function InterfaceSettings() {
       setCompanyData((prev) => ({
         ...prev,
         company_name: settings.company_name || "",
-        tax_id: settings.tax_id || "",
-        legajo: settings.legajo || "",
-        address: settings.address || "",
-        phone: settings.phone || "",
-        email: settings.email || "",
-        website: settings.website || "",
-        instagram: settings.instagram || "",
+        tax_id: settings.tax_id || settings.company_tax_id || "",
+        legajo: settings.legajo || settings.company_legajo || "",
+        address: settings.address || settings.company_address || "",
+        phone: settings.phone || settings.company_phone || "",
+        email: settings.email || settings.company_email || "",
+        website: settings.website || settings.company_website || "",
+        instagram: settings.instagram || settings.company_instagram || "",
       }))
     })
   }, [])

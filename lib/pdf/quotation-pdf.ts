@@ -211,13 +211,13 @@ export async function generateQuotationPDF(
   const brandSoft = tintColor(brandColor, 0.9)
   const borderSoft = tintColor(brandColor, 0.75)
   const companyName = getBrandingValue(branding, "company_name") || data.agency_name || "Agencia"
-  const companyAddress = getBrandingValue(branding, "company_address", "address")
-  const companyPhone = getBrandingValue(branding, "company_phone", "phone")
-  const companyEmail = getBrandingValue(branding, "company_email", "email")
-  const companyWebsite = getBrandingValue(branding, "company_website", "website")
-  const companyInstagram = getBrandingValue(branding, "company_instagram", "instagram")
-  const companyLegajo = getBrandingValue(branding, "company_legajo", "legajo")
-  const companyTaxId = getBrandingValue(branding, "company_tax_id", "tax_id")
+  const companyAddress = getBrandingValue(branding, "address", "company_address")
+  const companyPhone = getBrandingValue(branding, "phone", "company_phone")
+  const companyEmail = getBrandingValue(branding, "email", "company_email")
+  const companyWebsite = getBrandingValue(branding, "website", "company_website")
+  const companyInstagram = getBrandingValue(branding, "instagram", "company_instagram")
+  const companyLegajo = getBrandingValue(branding, "legajo", "company_legajo")
+  const companyTaxId = getBrandingValue(branding, "tax_id", "company_tax_id")
   const statusLabel = QUOTATION_STATUS_LABELS[data.status] || data.status
   let y = 14
 
