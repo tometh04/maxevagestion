@@ -261,6 +261,14 @@ export function OperationServicesSection({
     },
   })
 
+  const selectedServiceId = paymentForm.watch("operation_service_id")
+  const selectedPayerType = paymentForm.watch("payer_type")
+  const selectedPaymentCurrency = paymentForm.watch("currency")
+  const selectedService = services.find((service) => service.id === selectedServiceId)
+  const isOperatorServicePayment = selectedPayerType === "OPERATOR"
+  const selectedServiceHasProvider = !!selectedService?.operator_id
+  const selectedServiceProviderName = selectedService?.operators?.name || "Proveedor vinculado"
+
   // ── Cargar cuentas financieras cuando se abre el dialog de pago ──────────
   useEffect(() => {
     if (paymentDialogOpen) {
@@ -528,6 +536,16 @@ export function OperationServicesSection({
   }
 
   const onSubmitServicePayment = async (values: ServicePaymentFormValues) => {
+    const service = services.find((item) => item.id === values.operation_service_id)
+
+    if (values.payer_type === "OPERATOR" && !service?.operator_id) {
+      paymentForm.setError("operation_service_id", {
+        message: "El servicio seleccionado no tiene proveedor asociado",
+      })
+      toast.error("El servicio seleccionado no tiene proveedor asociado. Editalo y asignale un proveedor antes de registrar el pago.")
+      return
+    }
+
     if (values.currency === "ARS" && !values.exchange_rate) {
       paymentForm.setError("exchange_rate", { message: "Ingresá el tipo de cambio para ARS" })
       return
@@ -1247,6 +1265,28 @@ export function OperationServicesSection({
                 )}
               />
 
+              {isOperatorServicePayment && selectedService && (
+                <div
+                  className={cn(
+                    "flex gap-2 rounded-lg border p-3 text-sm",
+                    selectedServiceHasProvider
+                      ? "border-border/50 bg-muted/30 text-foreground"
+                      : "border-destructive/30 bg-destructive/5 text-destructive"
+                  )}
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    {selectedServiceHasProvider ? (
+                      <span>
+                        Proveedor vinculado: <strong>{selectedServiceProviderName}</strong>
+                      </span>
+                    ) : (
+                      <span>El servicio seleccionado no tiene proveedor asociado. Editá el servicio antes de registrar el pago.</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Tipo de pago */}
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -1423,7 +1463,7 @@ export function OperationServicesSection({
                       </FormControl>
                       <SelectContent>
                         {financialAccounts
-                          .filter((acc) => acc.currency === paymentForm.watch("currency"))
+                          .filter((acc) => acc.currency === selectedPaymentCurrency)
                           .map((acc) => (
                             <SelectItem key={acc.id} value={acc.id}>
                               {acc.name} ({acc.currency})

@@ -29,6 +29,7 @@ import {
   getOperationSaleCurrency,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
+import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
 
 async function getOperationOperatorIdsForPayments(
   supabase: any,
@@ -237,12 +238,38 @@ export async function POST(request: Request) {
     let resolvedOperatorId: string | null = null
     let resolvedOperatorPaymentId: string | null = null
 
+    if (payer_type === "OPERATOR" && operation_service_id) {
+      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
+        .select("id, operation_id, operator_id, operator_payment_id")
+        .eq("id", operation_service_id)
+        .maybeSingle()
+
+      if (operationServiceError) {
+        console.error("Error loading operation service for payment:", operationServiceError)
+        return NextResponse.json({ error: "Error al obtener el servicio seleccionado" }, { status: 500 })
+      }
+
+      const serviceLinkResolution = resolveServicePaymentLink({
+        operationId: operation_id || null,
+        operationServiceId: operation_service_id,
+        explicitOperatorId: operator_id || null,
+        service: operationService || null,
+      })
+
+      if (!serviceLinkResolution.ok) {
+        return NextResponse.json({ error: serviceLinkResolution.error }, { status: serviceLinkResolution.status })
+      }
+
+      resolvedOperatorId = serviceLinkResolution.operatorId
+      resolvedOperatorPaymentId = serviceLinkResolution.operatorPaymentId
+    }
+
     if (payer_type === "OPERATOR") {
       const operationOperatorIds = operation_id
         ? await getOperationOperatorIdsForPayments(supabase, operation_id, operationData)
         : new Set<string>()
 
-      if (operator_id) {
+      if (!resolvedOperatorId && operator_id) {
         resolvedOperatorId = operator_id
       }
 
@@ -251,13 +278,27 @@ export async function POST(request: Request) {
       }
 
       if (operation_id) {
-        const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
-          operationId: operation_id,
-          operatorId: resolvedOperatorId,
-          operatorPaymentId: operator_payment_id || null,
-        })
+        let matchedOperatorPayment = null
+
+        try {
+          matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+            operationId: operation_id,
+            operatorId: resolvedOperatorId,
+            operatorPaymentId: resolvedOperatorPaymentId || operator_payment_id || null,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
+          const status = message.startsWith("Error obteniendo deuda de operador") ? 500 : 400
+          return NextResponse.json({ error: message }, { status })
+        }
 
         if (!matchedOperatorPayment) {
+          if (operation_service_id) {
+            return NextResponse.json({
+              error: "No hay deuda pendiente para el proveedor vinculado a este servicio",
+            }, { status: 400 })
+          }
+
           if (resolvedOperatorId) {
             return NextResponse.json({ error: "No hay deuda pendiente para el operador seleccionado en esta operación" }, { status: 400 })
           }
