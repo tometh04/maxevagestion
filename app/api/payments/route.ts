@@ -30,6 +30,55 @@ import {
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 
+async function getOperationOperatorIdsForPayments(
+  supabase: any,
+  operationId: string,
+  operationData?: {
+    operator_id?: string | null
+    operation_operators?: Array<{ operator_id?: string | null }> | null
+  } | null
+) {
+  const operatorIds = new Set<string>()
+
+  if (operationData?.operator_id) {
+    operatorIds.add(operationData.operator_id)
+  }
+
+  for (const relation of operationData?.operation_operators || []) {
+    if (relation?.operator_id) {
+      operatorIds.add(relation.operator_id)
+    }
+  }
+
+  const [servicesResult, operatorPaymentsResult] = await Promise.all([
+    (supabase.from("operation_services") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId)
+      .not("operator_id", "is", null),
+    (supabase.from("operator_payments") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId),
+  ])
+
+  if (!servicesResult.error) {
+    for (const service of servicesResult.data || []) {
+      if (service?.operator_id) {
+        operatorIds.add(service.operator_id)
+      }
+    }
+  }
+
+  if (!operatorPaymentsResult.error) {
+    for (const operatorPayment of operatorPaymentsResult.data || []) {
+      if (operatorPayment?.operator_id) {
+        operatorIds.add(operatorPayment.operator_id)
+      }
+    }
+  }
+
+  return operatorIds
+}
+
 /**
  * POST /api/payments
  * Crear un pago y generar movimientos contables asociados:
@@ -178,17 +227,9 @@ export async function POST(request: Request) {
     let resolvedOperatorPaymentId: string | null = null
 
     if (payer_type === "OPERATOR") {
-      const operationOperatorIds = new Set<string>()
-
-      if (operationData?.operator_id) {
-        operationOperatorIds.add(operationData.operator_id)
-      }
-
-      for (const relation of operationData?.operation_operators || []) {
-        if (relation?.operator_id) {
-          operationOperatorIds.add(relation.operator_id)
-        }
-      }
+      const operationOperatorIds = operation_id
+        ? await getOperationOperatorIdsForPayments(supabase, operation_id, operationData)
+        : new Set<string>()
 
       if (operator_id) {
         resolvedOperatorId = operator_id

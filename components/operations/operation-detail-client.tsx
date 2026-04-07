@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -43,6 +43,7 @@ import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
 import { ItinerarySection } from "./itinerary-section"
 import { useRouter } from "next/navigation"
+import { buildOperationPaymentOperators } from "@/lib/operations/payment-operators"
 
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
@@ -75,11 +76,18 @@ interface OperationService {
   id: string
   service_type: string
   description?: string | null
+  operator_id?: string | null
+  operators?: { id?: string | null; name?: string | null } | null
   sale_amount: number
   cost_amount: number
   sale_currency: "ARS" | "USD"
   cost_currency: "ARS" | "USD"
   generates_commission: boolean
+}
+
+interface OperationOperatorPayment {
+  operator_id?: string | null
+  operators?: { id?: string | null; name?: string | null } | null
 }
 
 interface OperationDetailClientProps {
@@ -94,6 +102,7 @@ interface OperationDetailClientProps {
   userRole: string
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   operationServices?: OperationService[]
+  operatorPayments?: OperationOperatorPayment[]
 }
 
 export function OperationDetailClient({
@@ -108,11 +117,16 @@ export function OperationDetailClient({
   userRole,
   commissionRecords = [],
   operationServices = [],
+  operatorPayments = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
+  const operatorNameMap = useMemo(
+    () => new Map(operators.map((operator) => [operator.id, operator.name])),
+    [operators]
+  )
 
   const handleEditSuccess = () => {
     router.refresh()
@@ -157,6 +171,17 @@ export function OperationDetailClient({
   // Separar pagos de la operación base de pagos de servicios adicionales
   const operationBasePayments = (payments || []).filter((p: any) => !p.operation_service_id)
   const servicePayments = (payments || []).filter((p: any) => p.operation_service_id)
+  const paymentOperators = useMemo(
+    () =>
+      buildOperationPaymentOperators({
+        primaryOperator: operation.operators || null,
+        operationOperators: operation.operation_operators || [],
+        serviceOperators: operationServices || [],
+        operatorPayments: operatorPayments || [],
+        fallbackNamesById: operatorNameMap,
+      }),
+    [operation.operators, operation.operation_operators, operationServices, operatorPayments, operatorNameMap]
+  )
 
   return (
     <div className="space-y-6">
@@ -529,23 +554,7 @@ export function OperationDetailClient({
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}
-            operators={(() => {
-              // Incluir operador principal + operadores múltiples (operation_operators)
-              const ops: Array<{ id: string; name: string }> = []
-              if (operation.operators) {
-                ops.push({ id: operation.operators.id, name: operation.operators.name })
-              }
-              // Agregar operadores múltiples si existen
-              if (operation.operation_operators && Array.isArray(operation.operation_operators)) {
-                for (const oo of operation.operation_operators) {
-                  const op = oo.operators || oo
-                  if (op?.id && !ops.some(o => o.id === op.id)) {
-                    ops.push({ id: op.id, name: op.name || "Operador" })
-                  }
-                }
-              }
-              return ops
-            })()}
+            operators={paymentOperators}
           />
           <PassengerBalancesSection
             operationId={operation.id}

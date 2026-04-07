@@ -26,6 +26,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
+import { buildOperationPaymentOperators } from "@/lib/operations/payment-operators"
 
 interface Operation {
   id: string
@@ -33,6 +34,10 @@ interface Operation {
   destination: string
   sale_currency?: string
   operator_cost_currency?: string
+  operators?: { id?: string | null; name?: string | null } | null
+  operation_operators?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
+  operation_services?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
+  operator_payments?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
 }
 
 interface FinancialAccount {
@@ -228,23 +233,17 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         }
 
         const data = await response.json()
-        const operation = data.operation
-        const operatorsMap = new Map<string, string>()
+        const operation = data.operation as Operation
 
-        if (operation?.operators?.id) {
-          operatorsMap.set(operation.operators.id, operation.operators.name || "Operador")
-        }
-
-        for (const relation of operation?.operation_operators || []) {
-          const operator = relation?.operators
-          if (operator?.id) {
-            operatorsMap.set(operator.id, operator.name || "Operador")
-          }
-        }
+        const operators = buildOperationPaymentOperators({
+          primaryOperator: operation?.operators || null,
+          operationOperators: operation?.operation_operators || [],
+          serviceOperators: operation?.operation_services || [],
+          operatorPayments: operation?.operator_payments || [],
+        })
 
         if (cancelled) return
 
-        const operators = Array.from(operatorsMap.entries()).map(([id, name]) => ({ id, name }))
         setOperationOperators(operators)
 
         const currentOperatorId = form.getValues("operator_id")

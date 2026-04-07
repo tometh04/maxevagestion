@@ -30,6 +30,14 @@ export async function GET(
         operation_operators(
           *,
           operators:operator_id(id, name)
+        ),
+        operation_services(
+          operator_id,
+          operators:operator_id(id, name)
+        ),
+        operator_payments(
+          operator_id,
+          operators:operator_id(id, name)
         )
       `)
       .eq("id", operationId)
