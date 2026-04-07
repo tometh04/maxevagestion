@@ -161,7 +161,7 @@ export function TaskDialog({
       setCustomerLabel("")
     }
 
-    fetch(`/api/settings/users?limit=100`)
+    fetch(`/api/tasks/users`)
       .then((r) => r.json())
       .then((data) => {
         const usersList = (data.users || data || []).map((u: any) => ({
