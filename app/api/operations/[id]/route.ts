@@ -1,9 +1,38 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA } from "@/lib/accounting/iva"
+import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
+import { logAudit, getClientIP } from "@/lib/audit"
+
+type IncomingOperatorPayload = {
+  operator_id: string
+  cost: number
+  cost_currency: "ARS" | "USD"
+  product_type?: string | null
+  notes?: string | null
+}
+
+function normalizeIncomingOperators(
+  incomingOperators: any,
+  fallbackCurrency: string
+): IncomingOperatorPayload[] | null {
+  if (!Array.isArray(incomingOperators)) {
+    return null
+  }
+
+  return incomingOperators
+    .filter((operatorData: any) => operatorData?.operator_id)
+    .map((operatorData: any) => ({
+      operator_id: String(operatorData.operator_id),
+      cost: Number(operatorData.cost || 0),
+      cost_currency: ((operatorData.cost_currency || fallbackCurrency || "USD").toUpperCase() === "ARS" ? "ARS" : "USD") as "ARS" | "USD",
+      product_type: operatorData.product_type || null,
+      notes: operatorData.notes || null,
+    }))
+}
 
 export async function GET(
   request: Request,
@@ -179,9 +208,37 @@ export async function PATCH(
 
     // Extraer operators del body para no enviarlo a la tabla operations
     const { operators: incomingOperators, ...bodyWithoutOperators } = body
+    const normalizedIncomingOperators = normalizeIncomingOperators(
+      incomingOperators,
+      currentOp.operator_cost_currency || currentOp.currency || "USD"
+    )
+    const synchronizedOperators = normalizedIncomingOperators || []
+    const usesIncomingOperators = Array.isArray(normalizedIncomingOperators)
+    const totalIncomingOperatorCost = usesIncomingOperators
+      ? synchronizedOperators.reduce((sum, operatorData) => sum + Number(operatorData.cost || 0), 0)
+      : null
+    const primaryIncomingOperator = usesIncomingOperators && synchronizedOperators.length > 0
+      ? synchronizedOperators[0]
+      : null
+    const auditWarnings: string[] = []
+
+    if (usesIncomingOperators) {
+      const hasInvalidOperatorCost = synchronizedOperators.some((operatorData) => Number.isNaN(operatorData.cost) || operatorData.cost < 0)
+      if (hasInvalidOperatorCost) {
+        return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
+      }
+    }
 
     // Calculate margin if amounts changed
     let updateData: any = { ...bodyWithoutOperators }
+
+    if (usesIncomingOperators) {
+      updateData.operator_id = primaryIncomingOperator?.operator_id || null
+      updateData.operator_cost = totalIncomingOperatorCost || 0
+      if (primaryIncomingOperator?.cost_currency) {
+        updateData.operator_cost_currency = primaryIncomingOperator.cost_currency
+      }
+    }
 
     // Si se actualiza currency pero no sale_currency, sincronizarlos para evitar inconsistencias
     // (el edit-operation-dialog solo tiene el campo "currency" en su formulario)
@@ -191,10 +248,12 @@ export async function PATCH(
 
     const oldSaleAmount = currentOp.sale_amount_total
     const oldOperatorCost = currentOp.operator_cost
-    const newSaleAmount = body.sale_amount_total ?? oldSaleAmount
-    const newOperatorCost = body.operator_cost ?? oldOperatorCost
+    const newSaleAmount = updateData.sale_amount_total ?? oldSaleAmount
+    const newOperatorCost = updateData.operator_cost ?? oldOperatorCost
+    const saleChanged = newSaleAmount !== oldSaleAmount
+    const costChanged = newOperatorCost !== oldOperatorCost
 
-    if (body.sale_amount_total !== undefined || body.operator_cost !== undefined) {
+    if (saleChanged || costChanged) {
       updateData.margin_amount = newSaleAmount - newOperatorCost
       updateData.margin_percentage = newSaleAmount > 0 ? (updateData.margin_amount / newSaleAmount) * 100 : 0
     }
@@ -231,22 +290,20 @@ export async function PATCH(
     // ============================================
     // ACTUALIZAR OPERATION_OPERATORS SI SE ENVIARON
     // ============================================
-    if (incomingOperators && Array.isArray(incomingOperators)) {
+    if (usesIncomingOperators) {
       try {
-        // Eliminar operadores existentes
         await (supabase.from("operation_operators") as any)
           .delete()
           .eq("operation_id", operationId)
 
-        // Insertar nuevos operadores
-        if (incomingOperators.length > 0) {
-          const operationOperatorsData = incomingOperators.map((opData: any) => ({
+        if (synchronizedOperators.length > 0) {
+          const operationOperatorsData = synchronizedOperators.map((operatorData) => ({
             operation_id: operationId,
-            operator_id: opData.operator_id,
-            cost: opData.cost || 0,
-            cost_currency: opData.cost_currency || "USD",
-            product_type: opData.product_type || null,
-            notes: opData.notes || null,
+            operator_id: operatorData.operator_id,
+            cost: operatorData.cost || 0,
+            cost_currency: operatorData.cost_currency || "USD",
+            product_type: operatorData.product_type || null,
+            notes: operatorData.notes || null,
           }))
 
           const { error: opOpError } = await (supabase.from("operation_operators") as any)
@@ -254,20 +311,33 @@ export async function PATCH(
 
           if (opOpError) {
             console.error("Error inserting operation operators:", opOpError)
-          } else {
+            auditWarnings.push("No se pudo sincronizar operation_operators")
           }
         }
       } catch (error) {
         console.error("Error updating operation operators:", error)
+        auditWarnings.push("Fallo inesperado sincronizando operation_operators")
       }
     }
+
+    const operatorArtifactsChanged = usesIncomingOperators
+    const { data: purchaseInvoices } = operatorArtifactsChanged
+      ? await (supabase.from("purchase_invoices") as any)
+          .select("id")
+          .eq("operation_id", operationId)
+          .limit(1)
+      : { data: [] }
+    const { data: existingOperatorPayments } = operatorArtifactsChanged
+      ? await (supabase.from("operator_payments") as any)
+          .select("id, status, paid_amount")
+          .eq("operation_id", operationId)
+      : { data: [] }
 
     // ============================================
     // ACTUALIZAR IVA SI CAMBIARON LOS MONTOS
     // ============================================
     // Si cambió el monto de venta o el costo del operador, actualizar IVA de venta (calculado sobre ganancia)
-    if ((body.sale_amount_total !== undefined && body.sale_amount_total !== oldSaleAmount) ||
-        (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost)) {
+    if (saleChanged || costChanged) {
       try {
         // Obtener monedas de la operación actualizada
         const saleCurrency = op.sale_currency || op.currency || "USD"
@@ -299,19 +369,90 @@ export async function PATCH(
     }
 
     // IVA de compra se calcula sobre el costo del operador (sin cambios)
-    if (body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost) {
+    if (operatorArtifactsChanged) {
       try {
-        await updatePurchaseIVA(supabase, operationId, newOperatorCost, currency)
+        if ((purchaseInvoices || []).length > 0) {
+          auditWarnings.push("Se conservaron iva_purchases existentes porque la operación tiene purchase_invoices")
+        } else {
+          await deletePurchaseIVA(supabase, operationId)
+
+          for (const operatorData of synchronizedOperators) {
+            if (operatorData.cost > 0) {
+              await createPurchaseIVA(
+                supabase,
+                operationId,
+                operatorData.operator_id,
+                operatorData.cost,
+                operatorData.cost_currency,
+                op.departure_date || currentOp.departure_date || new Date().toISOString().split("T")[0]
+              )
+            }
+          }
+        }
       } catch (error) {
         console.error("Error updating purchase IVA:", error)
+        auditWarnings.push("No se pudo sincronizar iva_purchases")
+      }
+    } else if (costChanged) {
+      try {
+        const { data: existingPurchaseIvaRows } = await (supabase.from("iva_purchases") as any)
+          .select("id")
+          .eq("operation_id", operationId)
+
+        if ((existingPurchaseIvaRows || []).length <= 1) {
+          await updatePurchaseIVA(supabase, operationId, newOperatorCost, currency)
+        } else {
+          auditWarnings.push("Se omitió updatePurchaseIVA porque la operación tiene múltiples iva_purchases")
+        }
+      } catch (error) {
+        console.error("Error updating purchase IVA:", error)
+        auditWarnings.push("No se pudo actualizar iva_purchases")
       }
     }
 
     // ============================================
     // ACTUALIZAR OPERATOR_PAYMENT SI CAMBIÓ EL COSTO O LA MONEDA
     // ============================================
-    const costChanged = body.operator_cost !== undefined && body.operator_cost !== oldOperatorCost
-    if (costChanged || currencyChanged) {
+    if (operatorArtifactsChanged) {
+      try {
+        const hasPaidOperatorPayments = (existingOperatorPayments || []).some((payment: any) => {
+          const paidAmount = Number(payment.paid_amount || 0)
+          return payment.status === "PAID" || paidAmount > 0
+        })
+
+        if (hasPaidOperatorPayments) {
+          auditWarnings.push("Se conservaron operator_payments existentes porque hay pagos aplicados")
+        } else {
+          await (supabase.from("operator_payments") as any)
+            .delete()
+            .eq("operation_id", operationId)
+
+          for (const operatorData of synchronizedOperators) {
+            if (operatorData.cost > 0) {
+              const dueDate = calculateDueDate(
+                (operatorData.product_type || op.product_type || currentOp.product_type || null) as any,
+                op.operation_date || currentOp.operation_date || op.created_at?.split("T")[0],
+                op.checkin_date || currentOp.checkin_date || undefined,
+                op.departure_date || currentOp.departure_date || undefined
+              )
+
+              await createOperatorPayment(
+                supabase,
+                operatorData.operator_id,
+                operatorData.cost,
+                operatorData.cost_currency,
+                dueDate,
+                operationId,
+                `Pago automático actualizado para operación ${op.file_code || operationId.slice(0, 8)}`
+              )
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error syncing operator payments:", error)
+        auditWarnings.push("No se pudieron sincronizar operator_payments")
+      }
+    } else if (costChanged || currencyChanged) {
       try {
         // Buscar operator_payments pendientes
         const { data: operatorPayments } = await (supabase.from("operator_payments") as any)
@@ -394,6 +535,33 @@ export async function PATCH(
 
     // Invalidar caché del dashboard (los KPIs cambian al editar una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "UPDATE",
+      entity_type: "operation",
+      entity_id: operationId,
+      details: {
+        changed_fields: {
+          sale_amount_total: saleChanged ? { from: oldSaleAmount, to: newSaleAmount } : null,
+          operator_cost: costChanged ? { from: oldOperatorCost, to: newOperatorCost } : null,
+          operator_id: updateData.operator_id !== undefined && updateData.operator_id !== currentOp.operator_id
+            ? { from: currentOp.operator_id, to: updateData.operator_id }
+            : null,
+          currency: currencyChanged ? { from: oldCurrency, to: newCurrency } : null,
+        },
+        multi_operator_sync: usesIncomingOperators
+          ? synchronizedOperators.map((operatorData) => ({
+              operator_id: operatorData.operator_id,
+              cost: operatorData.cost,
+              cost_currency: operatorData.cost_currency,
+            }))
+          : null,
+        warnings: auditWarnings,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     return NextResponse.json({ success: true, operation })
   } catch (error) {
