@@ -113,6 +113,12 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
+  const { data: purchaseIvaOperators } = await (supabase
+    .from("iva_purchases") as any)
+    .select("operator_id, operators:operator_id(id, name)")
+    .eq("operation_id", id)
+    .order("created_at", { ascending: true })
+
   // Get commission records for this operation
   const { data: commissionRecords } = await (supabase
     .from("commission_records") as any)
@@ -164,6 +170,7 @@ export default async function OperationDetailPage({
       commissionRecords={commissionRecords || []}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
+      purchaseIvaOperators={purchaseIvaOperators || []}
     />
   )
 }

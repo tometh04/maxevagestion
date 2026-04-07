@@ -90,6 +90,11 @@ interface OperationOperatorPayment {
   operators?: { id?: string | null; name?: string | null } | null
 }
 
+interface OperationPurchaseIVA {
+  operator_id?: string | null
+  operators?: { id?: string | null; name?: string | null } | null
+}
+
 interface OperationDetailClientProps {
   operation: any
   customers: any[]
@@ -103,6 +108,7 @@ interface OperationDetailClientProps {
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   operationServices?: OperationService[]
   operatorPayments?: OperationOperatorPayment[]
+  purchaseIvaOperators?: OperationPurchaseIVA[]
 }
 
 export function OperationDetailClient({
@@ -118,6 +124,7 @@ export function OperationDetailClient({
   commissionRecords = [],
   operationServices = [],
   operatorPayments = [],
+  purchaseIvaOperators = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -178,9 +185,10 @@ export function OperationDetailClient({
         operationOperators: operation.operation_operators || [],
         serviceOperators: operationServices || [],
         operatorPayments: operatorPayments || [],
+        purchaseIvaOperators: purchaseIvaOperators || [],
         fallbackNamesById: operatorNameMap,
       }),
-    [operation.operators, operation.operation_operators, operationServices, operatorPayments, operatorNameMap]
+    [operation.operators, operation.operation_operators, operationServices, operatorPayments, purchaseIvaOperators, operatorNameMap]
   )
 
   return (

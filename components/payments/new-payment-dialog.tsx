@@ -38,6 +38,7 @@ interface Operation {
   operation_operators?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
   operation_services?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
   operator_payments?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
+  iva_purchases?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
 }
 
 interface FinancialAccount {
@@ -240,6 +241,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
           operationOperators: operation?.operation_operators || [],
           serviceOperators: operation?.operation_services || [],
           operatorPayments: operation?.operator_payments || [],
+          purchaseIvaOperators: operation?.iva_purchases || [],
         })
 
         if (cancelled) return

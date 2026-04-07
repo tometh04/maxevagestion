@@ -13,6 +13,7 @@ export interface OperationPaymentOperatorSource {
   operationOperators?: OperationOperatorRelationLike[] | null
   serviceOperators?: OperationOperatorRelationLike[] | null
   operatorPayments?: OperationOperatorRelationLike[] | null
+  purchaseIvaOperators?: OperationOperatorRelationLike[] | null
   fallbackNamesById?: Map<string, string>
 }
 
@@ -26,12 +27,14 @@ export function buildOperationPaymentOperators({
   operationOperators = [],
   serviceOperators = [],
   operatorPayments = [],
+  purchaseIvaOperators = [],
   fallbackNamesById,
 }: OperationPaymentOperatorSource): OperatorOption[] {
   const operatorMap = new Map<string, string>()
   const normalizedOperationOperators = operationOperators ?? []
   const normalizedServiceOperators = serviceOperators ?? []
   const normalizedOperatorPayments = operatorPayments ?? []
+  const normalizedPurchaseIvaOperators = purchaseIvaOperators ?? []
 
   const addOperator = (id?: string | null, explicitName?: string | null) => {
     if (!id) return
@@ -56,6 +59,10 @@ export function buildOperationPaymentOperators({
 
   for (const operatorPayment of normalizedOperatorPayments) {
     addOperator(operatorPayment?.operators?.id || operatorPayment?.operator_id, operatorPayment?.operators?.name)
+  }
+
+  for (const purchaseIva of normalizedPurchaseIvaOperators) {
+    addOperator(purchaseIva?.operators?.id || purchaseIva?.operator_id, purchaseIva?.operators?.name)
   }
 
   return Array.from(operatorMap.entries()).map(([id, name]) => ({ id, name }))

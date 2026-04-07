@@ -14,6 +14,9 @@ describe("buildOperationPaymentOperators", () => {
       operatorPayments: [
         { operator_id: "euro", operators: { id: "euro", name: "Eurovips" } },
       ],
+      purchaseIvaOperators: [
+        { operator_id: "loz", operators: { id: "loz", name: "Lozada" } },
+      ],
     })
 
     expect(operators).toEqual([

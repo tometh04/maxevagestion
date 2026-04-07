@@ -50,12 +50,15 @@ async function getOperationOperatorIdsForPayments(
     }
   }
 
-  const [servicesResult, operatorPaymentsResult] = await Promise.all([
+  const [servicesResult, operatorPaymentsResult, ivaPurchasesResult] = await Promise.all([
     (supabase.from("operation_services") as any)
       .select("operator_id")
       .eq("operation_id", operationId)
       .not("operator_id", "is", null),
     (supabase.from("operator_payments") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId),
+    (supabase.from("iva_purchases") as any)
       .select("operator_id")
       .eq("operation_id", operationId),
   ])
@@ -72,6 +75,14 @@ async function getOperationOperatorIdsForPayments(
     for (const operatorPayment of operatorPaymentsResult.data || []) {
       if (operatorPayment?.operator_id) {
         operatorIds.add(operatorPayment.operator_id)
+      }
+    }
+  }
+
+  if (!ivaPurchasesResult.error) {
+    for (const purchaseIva of ivaPurchasesResult.data || []) {
+      if (purchaseIva?.operator_id) {
+        operatorIds.add(purchaseIva.operator_id)
       }
     }
   }

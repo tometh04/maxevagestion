@@ -38,6 +38,10 @@ export async function GET(
         operator_payments(
           operator_id,
           operators:operator_id(id, name)
+        ),
+        iva_purchases(
+          operator_id,
+          operators:operator_id(id, name)
         )
       `)
       .eq("id", operationId)
