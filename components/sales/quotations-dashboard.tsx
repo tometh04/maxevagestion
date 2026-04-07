@@ -25,6 +25,7 @@ import {
   getQuotationOptionPricing,
   normalizeQuotationForPresentation,
 } from "@/lib/quotations/presentation"
+import { getPublicQuotationPdfPath } from "@/lib/quotations/public-links"
 
 interface QuotationsDashboardProps {
   sellers: Array<{ id: string; name: string }>
@@ -174,6 +175,15 @@ export function QuotationsDashboard({ sellers, agencies, currentUserRole, curren
   const handleDownloadPDF = async (quotation: any) => {
     setDownloadingId(quotation.id)
     try {
+      if (quotation.public_token) {
+        const pdfPath = getPublicQuotationPdfPath(quotation.public_token)
+        const openedWindow = window.open(pdfPath, "_blank", "noopener,noreferrer")
+        if (!openedWindow) {
+          window.location.assign(pdfPath)
+        }
+        return
+      }
+
       // Fetch full quotation data for PDF
       const res = await fetch(`/api/quotations/${quotation.id}`)
       if (!res.ok) throw new Error("Error fetching quotation")
