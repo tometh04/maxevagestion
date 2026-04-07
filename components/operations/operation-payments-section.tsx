@@ -47,6 +47,11 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import {
+  calculateAmountInSaleCurrency,
+  normalizeSupportedCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
 import { toast } from "sonner"
 
 interface FinancialAccount {
@@ -66,7 +71,7 @@ const paymentSchema = z.object({
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
-  exchange_rate: z.coerce.number().optional(), // Tipo de cambio para ARS
+  exchange_rate: z.coerce.number().optional(), // Tipo de cambio cuando la cobranza requiere conversion
   date_paid: z.date({
     required_error: "Fecha de pago es requerida",
   }),
@@ -105,6 +110,7 @@ interface OperationPaymentsSectionProps {
   operationId: string
   payments: any[]
   currency: string
+  saleCurrency: string
   saleAmount: number
   operatorCost: number
   userRole: string
@@ -115,6 +121,7 @@ export function OperationPaymentsSection({
   operationId,
   payments,
   currency,
+  saleCurrency,
   saleAmount,
   operatorCost,
   userRole,
@@ -133,6 +140,7 @@ export function OperationPaymentsSection({
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
+  const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
@@ -632,6 +640,42 @@ export function OperationPaymentsSection({
   })
 
   const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
+  const incomePaymentCurrency = incomeForm.watch("currency")
+  const incomeNeedsExchangeRate = requiresCustomerIncomeExchangeRate({
+    payerType: "CUSTOMER",
+    direction: "INCOME",
+    paymentCurrency: incomePaymentCurrency,
+    saleCurrency: customerSaleCurrency,
+  })
+  const editPaymentCurrency = editForm.watch("currency")
+  const isEditingCustomerIncome =
+    editingPayment?.payer_type === "CUSTOMER" && editingPayment?.direction === "INCOME"
+  const editNeedsExchangeRate = isEditingCustomerIncome
+    ? requiresCustomerIncomeExchangeRate({
+        payerType: editingPayment?.payer_type,
+        direction: editingPayment?.direction,
+        paymentCurrency: editPaymentCurrency,
+        saleCurrency: customerSaleCurrency,
+      })
+    : editPaymentCurrency === "ARS"
+
+  const formatSaleCurrencyPreview = (amount: number, paymentCurrency: string, exchangeRate?: number | null) => {
+    const equivalent = calculateAmountInSaleCurrency({
+      amount,
+      paymentCurrency,
+      saleCurrency: customerSaleCurrency,
+      exchangeRate: exchangeRate ?? null,
+    })
+
+    if (equivalent == null) {
+      return `La operación está en ${customerSaleCurrency}, el cobro en ${paymentCurrency}. Ingrese el tipo de cambio.`
+    }
+
+    return `Equivale a ${customerSaleCurrency} ${equivalent.toLocaleString("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`
+  }
 
   const handleOpenEditDialog = (payment: any) => {
     if (payment?.source === "OPERATOR_BULK") {
@@ -664,8 +708,12 @@ export function OperationPaymentsSection({
       return
     }
 
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+    if (editNeedsExchangeRate && !values.exchange_rate) {
+      alert(
+        isEditingCustomerIncome
+          ? "Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación"
+          : "Debe ingresar el tipo de cambio para pagos en ARS"
+      )
       return
     }
 
@@ -680,7 +728,7 @@ export function OperationPaymentsSection({
           currency: values.currency,
           method: values.method,
           date_paid: values.date_paid.toISOString().split("T")[0],
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          exchange_rate: editNeedsExchangeRate ? values.exchange_rate : null,
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
           markAsPaid: markAsPaid || undefined,
@@ -750,9 +798,8 @@ export function OperationPaymentsSection({
       return
     }
 
-    // Validar tipo de cambio si es ARS
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+    if (incomeNeedsExchangeRate && !values.exchange_rate) {
+      alert("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
       return
     }
     
@@ -768,7 +815,7 @@ export function OperationPaymentsSection({
           direction: "INCOME",
           ...restValues,
           financial_account_id: values.financial_account_id,
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -983,7 +1030,7 @@ export function OperationPaymentsSection({
                       {payment.currency} {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell className="text-center">
-                      {payment.currency === "ARS" && payment.exchange_rate 
+                      {payment.exchange_rate
                         ? Number(payment.exchange_rate).toLocaleString("es-AR", { minimumFractionDigits: 2 })
                         : "-"
                       }
@@ -1164,8 +1211,7 @@ export function OperationPaymentsSection({
                 </div>
               </div>
 
-              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-              {incomeForm.watch("currency") === "ARS" && (
+              {incomeNeedsExchangeRate && (
                 <FormField
                   control={incomeForm.control}
                   name="exchange_rate"
@@ -1183,8 +1229,12 @@ export function OperationPaymentsSection({
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
                         {field.value && incomeForm.watch("amount")
-                          ? `Equivale a USD ${(incomeForm.watch("amount") / field.value).toFixed(2)}`
-                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                          ? formatSaleCurrencyPreview(
+                              Number(incomeForm.watch("amount") || 0),
+                              incomePaymentCurrency,
+                              Number(field.value)
+                            )
+                          : `La operación está en ${customerSaleCurrency}, el cobro en ${incomePaymentCurrency}. Ingrese el tipo de cambio.`
                         }
                       </p>
                       <FormMessage />
@@ -1400,7 +1450,7 @@ export function OperationPaymentsSection({
                   </div>
                 </div>
 
-                {editForm.watch("currency") === "ARS" && (
+                {editNeedsExchangeRate && (
                   <FormField
                     control={editForm.control}
                     name="exchange_rate"
@@ -1418,8 +1468,16 @@ export function OperationPaymentsSection({
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
                           {field.value && editForm.watch("amount")
-                            ? `Equivale a USD ${(editForm.watch("amount") / field.value).toFixed(2)}`
-                            : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                            ? isEditingCustomerIncome
+                              ? formatSaleCurrencyPreview(
+                                  Number(editForm.watch("amount") || 0),
+                                  editPaymentCurrency,
+                                  Number(field.value)
+                                )
+                              : `Equivale a USD ${(Number(editForm.watch("amount") || 0) / Number(field.value)).toFixed(2)}`
+                            : isEditingCustomerIncome
+                              ? `La operación está en ${customerSaleCurrency}, el cobro en ${editPaymentCurrency}. Ingrese el tipo de cambio.`
+                              : "Ingrese el tipo de cambio para calcular el equivalente en USD"
                           }
                         </p>
                         <FormMessage />

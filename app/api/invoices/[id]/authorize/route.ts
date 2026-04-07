@@ -8,7 +8,8 @@ import {
   formatDate,
 } from "@/lib/afip/afip-client"
 import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
-import { TipoComprobante, TipoDocumento, TipoIVA, IVA_PORCENTAJES } from "@/lib/afip/types"
+import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
+import { TipoComprobante, TipoDocumento, TipoIVA } from "@/lib/afip/types"
 
 export const dynamic = 'force-dynamic'
 // Aumentar timeout para llamadas a AFIP (puede tomar varios segundos)
@@ -82,12 +83,16 @@ export async function POST(
     // Factura C (11), Nota Débito C (12), Nota Crédito C (13) → monotributistas: sin IVA discriminado
     const isFacturaC = [11, 12, 13].includes(cbteType)
 
-    // Agrupar IVA por alícuota (solo para facturas A y B)
+    // Agrupar IVA solo sobre conceptos gravados
     let ivaArray: Array<{ Id: TipoIVA; BaseImp: number; Importe: number }> = []
 
     if (!isFacturaC) {
       const ivaGrouped: Record<number, { BaseImp: number; Importe: number }> = {}
       for (const item of items) {
+        if (normalizeTaxTreatment(item.tax_treatment, item.iva_porcentaje) !== "GRAVADO") {
+          continue
+        }
+
         const ivaId = item.iva_id as TipoIVA
         if (!ivaGrouped[ivaId]) {
           ivaGrouped[ivaId] = { BaseImp: 0, Importe: 0 }
@@ -102,8 +107,16 @@ export async function POST(
       }))
     }
 
-    // Para Factura C: ImpNeto = ImpTotal, ImpIVA = 0 (monotributistas no discriminan IVA)
-    const impNeto = isFacturaC ? invoice.imp_total : invoice.imp_neto
+    // Para Factura C: sin IVA discriminado, pero respetando exento/no gravado si existen
+    const impNeto = isFacturaC
+      ? Math.max(
+          0,
+          Number(invoice.imp_total || 0) -
+            Number(invoice.imp_tot_conc || 0) -
+            Number(invoice.imp_op_ex || 0) -
+            Number(invoice.imp_trib || 0)
+        )
+      : invoice.imp_neto
     const impIva = isFacturaC ? 0 : invoice.imp_iva
 
     // Crear request para AFIP

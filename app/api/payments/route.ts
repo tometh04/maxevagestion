@@ -19,6 +19,11 @@ import {
 } from "@/lib/accounting/operator-payment-settlement"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
+import {
+  coercePositiveNumber,
+  getOperationSaleCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
 
 /**
  * POST /api/payments
@@ -58,6 +63,7 @@ export async function POST(request: Request) {
     } = body
 
     const finalStatus = status || "PENDING"
+    const providedExchangeRateNumber = coercePositiveNumber(providedExchangeRate)
 
     // operation_id ahora es opcional (para pagos manuales)
     // financial_account_id es obligatorio solo si el pago se registra como PAID
@@ -106,6 +112,8 @@ export async function POST(request: Request) {
           seller_id,
           operator_id,
           agency_id,
+          sale_currency,
+          currency,
           operation_operators(
             operator_id
           )
@@ -118,6 +126,20 @@ export async function POST(request: Request) {
       }
 
       operationData = operation
+    }
+
+    const requiresCustomerIncomeManualExchangeRate = requiresCustomerIncomeExchangeRate({
+      payerType: payer_type,
+      direction,
+      paymentCurrency: currency,
+      saleCurrency: getOperationSaleCurrency(operationData),
+    })
+
+    if (requiresCustomerIncomeManualExchangeRate && !providedExchangeRateNumber) {
+      return NextResponse.json(
+        { error: "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la de la operación" },
+        { status: 400 }
+      )
     }
 
     // Validaciones de fechas
@@ -201,8 +223,8 @@ export async function POST(request: Request) {
     let amountUsd: number | null = null
     if (currency === "USD") {
       amountUsd = parseFloat(amount)
-    } else if (currency === "ARS" && providedExchangeRate) {
-      amountUsd = parseFloat(amount) / parseFloat(providedExchangeRate)
+    } else if (currency === "ARS" && providedExchangeRateNumber) {
+      amountUsd = parseFloat(amount) / providedExchangeRateNumber
     }
 
     // 1. Crear el pago en tabla payments
@@ -219,7 +241,7 @@ export async function POST(request: Request) {
       method: method || "Otro",
       amount,
       currency,
-      exchange_rate: providedExchangeRate ? parseFloat(providedExchangeRate) : null,
+      exchange_rate: providedExchangeRateNumber,
       amount_usd: amountUsd,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
@@ -269,13 +291,17 @@ export async function POST(request: Request) {
         let exchangeRate: number | null = null
         
         if (currency === "USD") {
-          // Para USD, buscar tasa de cambio
-          const rateDate = date_paid ? new Date(date_paid) : new Date()
-          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create")
-          exchangeRate = rateResult.rate
-        } else if (currency === "ARS" && providedExchangeRate) {
+          if (requiresCustomerIncomeManualExchangeRate) {
+            exchangeRate = providedExchangeRateNumber
+          } else {
+            // Para USD, buscar tasa de cambio
+            const rateDate = date_paid ? new Date(date_paid) : new Date()
+            const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create")
+            exchangeRate = rateResult.rate
+          }
+        } else if (currency === "ARS" && providedExchangeRateNumber) {
           // Para ARS, usar la tasa proporcionada
-          exchangeRate = parseFloat(providedExchangeRate)
+          exchangeRate = providedExchangeRateNumber
         }
 
         // Calcular equivalente en ARS
@@ -938,6 +964,20 @@ export async function PATCH(request: Request) {
 
     let linkedOperatorId: string | null = existingPayment.operator_id || null
     let linkedOperatorPaymentId: string | null = existingPayment.operator_payment_id || null
+    let existingOperationData: any = null
+
+    if (existingPayment.operation_id) {
+      const { data: operation, error: operationError } = await (supabase.from("operations") as any)
+        .select("seller_id, operator_id, agency_id, sale_currency, currency")
+        .eq("id", existingPayment.operation_id)
+        .single()
+
+      if (operationError || !operation) {
+        return NextResponse.json({ error: "Operación asociada al pago no encontrada" }, { status: 404 })
+      }
+
+      existingOperationData = operation
+    }
 
     if (existingPayment.payer_type === "OPERATOR") {
       if (!linkedOperatorPaymentId && existingPayment.ledger_movement_id) {
@@ -970,13 +1010,28 @@ export async function PATCH(request: Request) {
     const finalCurrency = currency || existingPayment.currency
     const finalMethod = method || existingPayment.method
     const finalDatePaid = date_paid || existingPayment.date_paid
-    const finalExchangeRate = providedExchangeRate !== undefined ? (providedExchangeRate ? parseFloat(providedExchangeRate) : null) : (existingPayment.exchange_rate ? parseFloat(existingPayment.exchange_rate) : null)
+    const finalExchangeRate = providedExchangeRate !== undefined
+      ? coercePositiveNumber(providedExchangeRate)
+      : coercePositiveNumber(existingPayment.exchange_rate)
     const finalAccountId = financial_account_id || null
     const finalNotes = notes !== undefined ? notes : existingPayment.reference
+    const requiresCustomerIncomeManualExchangeRate = requiresCustomerIncomeExchangeRate({
+      payerType: existingPayment.payer_type,
+      direction: existingPayment.direction,
+      paymentCurrency: finalCurrency,
+      saleCurrency: getOperationSaleCurrency(existingOperationData),
+    })
 
     // Validaciones
     if (finalAmount <= 0) {
       return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
+    }
+
+    if (requiresCustomerIncomeManualExchangeRate && !finalExchangeRate) {
+      return NextResponse.json(
+        { error: "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la de la operación" },
+        { status: 400 }
+      )
     }
 
     if (finalDatePaid) {
@@ -1089,23 +1144,20 @@ export async function PATCH(request: Request) {
 
         let agencyId: string | null = null
 
-        if (existingPayment.operation_id) {
-          const { data: operation } = await (supabase.from("operations") as any)
-            .select("seller_id, operator_id, agency_id")
-            .eq("id", existingPayment.operation_id)
-            .single()
-
-          sellerId = operation?.seller_id || null
-          operatorId = linkedOperatorId || operation?.operator_id || null
-          agencyId = operation?.agency_id || null
-        }
+        sellerId = existingOperationData?.seller_id || null
+        operatorId = linkedOperatorId || existingOperationData?.operator_id || null
+        agencyId = existingOperationData?.agency_id || null
 
         // Calcular tasa de cambio para ARS equivalent
         let exchangeRate: number | null = null
         if (finalCurrency === "USD") {
-          const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
-          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create-CpC")
-          exchangeRate = rateResult.rate
+          if (requiresCustomerIncomeManualExchangeRate) {
+            exchangeRate = finalExchangeRate
+          } else {
+            const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
+            const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create-CpC")
+            exchangeRate = rateResult.rate
+          }
         } else if (finalCurrency === "ARS" && finalExchangeRate) {
           exchangeRate = finalExchangeRate
         }

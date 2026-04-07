@@ -25,6 +25,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import {
+  calculateInvoice,
+  formatInvoiceMoney,
+  getRecommendedAmountEntryMode,
+  ITEM_TAX_TREATMENT_LABELS,
+  shouldHideInvoiceTaxBreakdown,
+} from "@/lib/invoices/calculation"
+import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
 
 interface Customer {
@@ -70,18 +78,11 @@ interface InvoiceItem {
   cantidad: number
   precio_unitario: number
   iva_porcentaje: number
-}
-
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 2,
-  }).format(value)
+  tax_treatment: ItemTaxTreatment
 }
 
 const createEmptyItems = (): InvoiceItem[] => [
-  { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
+  { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21, tax_treatment: 'GRAVADO' }
 ]
 
 const normalizeCustomer = (customer: Partial<Customer> & { id: string }): Customer => ({
@@ -161,6 +162,26 @@ export default function NewInvoicePage() {
   const [invoiceCurrency, setInvoiceCurrency] = useState<'PES' | 'DOL'>('PES')
   const [exchangeRate, setExchangeRate] = useState<number>(1)
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
+  const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
+  const calculatedInvoice = calculateInvoice(items, amountEntryMode)
+  const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
+    amountEntryMode,
+    cbteTipo: formData.cbte_tipo,
+    receptorCondicionIva: formData.receptor_condicion_iva,
+  })
+  const activeCurrency = invoiceCurrency === 'DOL' ? 'DOL' : 'PES'
+  const formatMoney = (value: number) => formatInvoiceMoney(value, activeCurrency)
+  const getDefaultTaxTreatment = (cbteTipo: number): ItemTaxTreatment => cbteTipo === 19 ? 'EXENTO' : 'GRAVADO'
+  const createDefaultItem = (cbteTipo: number): InvoiceItem => {
+    const taxTreatment = getDefaultTaxTreatment(cbteTipo)
+    return {
+      descripcion: '',
+      cantidad: 1,
+      precio_unitario: 0,
+      iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
+      tax_treatment: taxTreatment,
+    }
+  }
 
   useEffect(() => {
     loadData()
@@ -346,7 +367,7 @@ export default function NewInvoicePage() {
     }))
 
     if (options?.resetItems !== false) {
-      setItems(createEmptyItems())
+      setItems([createDefaultItem(receptorDefaults.cbte_tipo)])
     }
 
     if (!options?.preserveOperationId) {
@@ -365,7 +386,7 @@ export default function NewInvoicePage() {
         operation_id: '',
       }))
       setSelectedOperation(null)
-      setItems(createEmptyItems())
+      setItems([createDefaultItem(formData.cbte_tipo)])
       return
     }
 
@@ -467,13 +488,15 @@ export default function NewInvoicePage() {
             costoEnARS = costoTotal
           }
           const montoCosto = nextInvoiceCurrency === 'PES' ? costoEnARS : costoTotal
+          const taxTreatment = getDefaultTaxTreatment(formData.cbte_tipo)
           
           const newItems: InvoiceItem[] = [
             {
               descripcion: `Servicios turísticos - ${fullOperation.destination} (${fullOperation.file_code})`,
               cantidad: 1,
               precio_unitario: montoVenta,
-              iva_porcentaje: 21,
+              iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
+              tax_treatment: taxTreatment,
             }
           ]
           
@@ -482,7 +505,8 @@ export default function NewInvoicePage() {
               descripcion: `Costo de operador - ${fullOperation.file_code}`,
               cantidad: 1,
               precio_unitario: montoCosto,
-              iva_porcentaje: 21,
+              iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
+              tax_treatment: taxTreatment,
             })
           }
           
@@ -619,7 +643,7 @@ export default function NewInvoicePage() {
   const addItem = () => {
     setItems([
       ...items,
-      { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
+      createDefaultItem(formData.cbte_tipo)
     ])
   }
 
@@ -635,21 +659,20 @@ export default function NewInvoicePage() {
     setItems(newItems)
   }
 
-  // Calcular totales
-  const calculateItemTotal = (item: InvoiceItem) => {
-    const subtotal = item.cantidad * item.precio_unitario
-    const ivaImporte = subtotal * (item.iva_porcentaje / 100)
-    return { subtotal, ivaImporte, total: subtotal + ivaImporte }
-  }
-
-  const totals = items.reduce((acc, item) => {
-    const itemTotals = calculateItemTotal(item)
-    return {
-      subtotal: acc.subtotal + itemTotals.subtotal,
-      iva: acc.iva + itemTotals.ivaImporte,
-      total: acc.total + itemTotals.total,
+  const updateItemTaxTreatment = (index: number, taxTreatment: ItemTaxTreatment) => {
+    const newItems = [...items]
+    newItems[index] = {
+      ...newItems[index],
+      tax_treatment: taxTreatment,
+      iva_porcentaje:
+        taxTreatment === 'GRAVADO'
+          ? newItems[index].iva_porcentaje > 0
+            ? newItems[index].iva_porcentaje
+            : 21
+          : 0,
     }
-  }, { subtotal: 0, iva: 0, total: 0 })
+    setItems(newItems)
+  }
 
   const handleSubmit = async () => {
     try {
@@ -690,6 +713,7 @@ export default function NewInvoicePage() {
           description: "El tipo de cambio debe ser mayor a 1 para convertir USD a ARS",
           variant: "destructive",
         })
+        setSaving(false)
         return
       }
       
@@ -713,22 +737,14 @@ export default function NewInvoicePage() {
           customer_id: formData.customer_id || null, // Puede ser null
           agency_id: formData.agency_id, // Requerido: viene del punto de venta
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
+          amount_entry_mode: amountEntryMode,
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
           cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
             ? exchangeRate
             : 1,
-          items: items.map(item => {
-            const itemTotals = calculateItemTotal(item)
-            return {
-              ...item,
-              subtotal: itemTotals.subtotal,
-              iva_importe: itemTotals.ivaImporte,
-              total: itemTotals.total,
-            }
-          }),
-          imp_neto: totals.subtotal,
-          imp_iva: totals.iva,
-          imp_total: totals.total,
+          fch_serv_desde: formData.fecha_servicio_desde,
+          fch_serv_hasta: formData.fecha_servicio_hasta,
+          items,
         }),
       })
 
@@ -1192,7 +1208,7 @@ export default function NewInvoicePage() {
               </Button>
             </div>
               {items.map((item, index) => {
-                const itemTotals = calculateItemTotal(item)
+                const itemTotals = calculatedInvoice.items[index]
                 return (
                   <div key={index} className="p-4 border rounded-lg space-y-3 bg-muted/30">
                     <div className="flex items-center justify-between">
@@ -1217,7 +1233,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
                     
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid gap-3 md:grid-cols-5">
                       <div>
                         <Label>Cantidad</Label>
                         <Input
@@ -1228,7 +1244,7 @@ export default function NewInvoicePage() {
                         />
                       </div>
                       <div>
-                        <Label>Precio Unit.</Label>
+                        <Label>{amountEntryMode === 'FINAL' ? 'Precio Final' : 'Precio Unit.'}</Label>
                         <Input
                           type="number"
                           value={item.precio_unitario}
@@ -1238,10 +1254,27 @@ export default function NewInvoicePage() {
                         />
                       </div>
                       <div>
+                        <Label>Tratamiento</Label>
+                        <Select
+                          value={item.tax_treatment}
+                          onValueChange={(value) => updateItemTaxTreatment(index, value as ItemTaxTreatment)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="GRAVADO">{ITEM_TAX_TREATMENT_LABELS.GRAVADO}</SelectItem>
+                            <SelectItem value="EXENTO">{ITEM_TAX_TREATMENT_LABELS.EXENTO}</SelectItem>
+                            <SelectItem value="NO_GRAVADO">{ITEM_TAX_TREATMENT_LABELS.NO_GRAVADO}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
                         <Label>IVA %</Label>
                         <Select 
-                          value={item.iva_porcentaje.toString()}
+                          value={item.tax_treatment === 'GRAVADO' ? item.iva_porcentaje.toString() : '0'}
                           onValueChange={(v) => updateItem(index, 'iva_porcentaje', parseFloat(v))}
+                          disabled={item.tax_treatment !== 'GRAVADO'}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -1255,14 +1288,23 @@ export default function NewInvoicePage() {
                         </Select>
                       </div>
                       <div>
-                        <Label>Total c/IVA</Label>
+                        <Label>{amountEntryMode === 'FINAL' ? 'Total Final' : 'Total c/IVA'}</Label>
                         <Input
-                          value={formatCurrency(itemTotals.total)}
+                          value={formatMoney(itemTotals?.total || 0)}
                           disabled
                           className="bg-muted text-right font-medium"
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {item.tax_treatment === 'GRAVADO'
+                        ? amountEntryMode === 'FINAL'
+                          ? 'El importe ingresado se interpreta como total final; el neto e IVA se calculan internamente.'
+                          : 'El importe ingresado se interpreta como neto; el total suma IVA.'
+                        : item.tax_treatment === 'EXENTO'
+                          ? 'Este concepto no calcula IVA y se informa como operación exenta en AFIP.'
+                          : 'Este concepto no calcula IVA y se informa como no gravado en AFIP.'}
+                    </p>
                   </div>
                 )
               })}
@@ -1277,21 +1319,42 @@ export default function NewInvoicePage() {
               Resumen
             </h3>
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">IVA</span>
-                  <span>{formatCurrency(totals.iva)}</span>
-                </div>
+                {!shouldHideTaxBreakdown && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Neto gravado</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_neto)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_tot_conc > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No gravado</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_tot_conc)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_op_ex > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Exento</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_op_ex)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_iva > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">IVA</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_iva)}</span>
+                  </div>
+                )}
                 <div className="border-t pt-2">
                   <div className="flex justify-between items-baseline">
-                    <span className="font-semibold">Total</span>
-                    <span className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totals.total)}</span>
+                    <span className="font-semibold">{shouldHideTaxBreakdown ? 'Total final' : 'Total'}</span>
+                    <span className="text-2xl font-semibold tabular-nums tracking-tight">{formatMoney(calculatedInvoice.totals.imp_total)}</span>
                   </div>
                 </div>
               </div>
+              {shouldHideTaxBreakdown && (
+                <p className="text-xs text-muted-foreground">
+                  Factura B a consumidor final: el importe cargado se toma como monto final y el IVA no se discrimina visualmente.
+                </p>
+              )}
 
               <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">

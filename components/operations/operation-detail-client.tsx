@@ -525,6 +525,7 @@ export function OperationDetailClient({
             operationId={operation.id}
             payments={operationBasePayments}
             currency={operation.currency}
+            saleCurrency={operation.sale_currency || operation.currency}
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}

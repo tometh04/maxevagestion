@@ -4,12 +4,12 @@ import { useState, useEffect, useCallback } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Loader2, FileText, ExternalLink, Eye } from "lucide-react"
+import { Loader2, FileText, Eye } from "lucide-react"
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "@/components/ui/table"
-import { format } from "date-fns"
 import Link from "next/link"
+import { formatInvoiceMoney, shouldHideInvoiceTaxBreakdown } from "@/lib/invoices/calculation"
 
 interface SaleInvoice {
   id: string
@@ -19,6 +19,8 @@ interface SaleInvoice {
   cae: string | null
   receptor_nombre: string
   receptor_doc_nro: string
+  receptor_condicion_iva?: number | null
+  amount_entry_mode?: "NET" | "FINAL" | null
   imp_neto: number
   imp_iva: number
   imp_total: number
@@ -63,10 +65,7 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
 
   useEffect(() => { fetchInvoices() }, [fetchInvoices])
 
-  const formatMoney = (amount: number, currency: string = "ARS") => {
-    const prefix = currency === "DOL" || currency === "USD" ? "US$" : "$"
-    return `${prefix} ${Number(amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
+  const formatMoney = (amount: number, currency: string = "ARS") => formatInvoiceMoney(amount, currency)
 
   const statusBadge = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -124,36 +123,48 @@ export function OperationSaleInvoicesSection({ operationId }: Props) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {invoices.map(inv => (
-                <TableRow key={inv.id}>
-                  <TableCell>
-                    <Badge variant="outline" className="text-xs">
-                      {cbteTipoLabels[inv.cbte_tipo] || `Tipo ${inv.cbte_tipo}`}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">
-                    {inv.pto_vta ? `${String(inv.pto_vta).padStart(4, "0")}-${String(inv.cbte_nro || 0).padStart(8, "0")}` : "-"}
-                  </TableCell>
-                  <TableCell className="text-sm">
-                    <div>{inv.receptor_nombre}</div>
-                    <div className="text-xs text-muted-foreground">{inv.receptor_doc_nro}</div>
-                  </TableCell>
-                  <TableCell className="text-right text-sm">{formatMoney(inv.imp_neto, inv.moneda)}</TableCell>
-                  <TableCell className="text-right text-sm text-orange-600">{formatMoney(inv.imp_iva, inv.moneda)}</TableCell>
-                  <TableCell className="text-right text-sm font-medium">{formatMoney(inv.imp_total, inv.moneda)}</TableCell>
-                  <TableCell className="text-xs font-mono text-muted-foreground">
-                    {inv.cae ? inv.cae.substring(0, 10) + "..." : "-"}
-                  </TableCell>
-                  <TableCell>{statusBadge(inv.status)}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
-                      <Link href={`/operations/billing/${inv.id}`}>
-                        <Eye className="h-3.5 w-3.5" />
-                      </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {invoices.map(inv => {
+                const hideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
+                  amountEntryMode: inv.amount_entry_mode,
+                  cbteTipo: inv.cbte_tipo,
+                  receptorCondicionIva: inv.receptor_condicion_iva,
+                })
+
+                return (
+                  <TableRow key={inv.id}>
+                    <TableCell>
+                      <Badge variant="outline" className="text-xs">
+                        {cbteTipoLabels[inv.cbte_tipo] || `Tipo ${inv.cbte_tipo}`}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-sm">
+                      {inv.pto_vta ? `${String(inv.pto_vta).padStart(4, "0")}-${String(inv.cbte_nro || 0).padStart(8, "0")}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      <div>{inv.receptor_nombre}</div>
+                      <div className="text-xs text-muted-foreground">{inv.receptor_doc_nro}</div>
+                    </TableCell>
+                    <TableCell className="text-right text-sm">
+                      {hideTaxBreakdown ? "No discrimina" : formatMoney(inv.imp_neto, inv.moneda)}
+                    </TableCell>
+                    <TableCell className="text-right text-sm text-orange-600">
+                      {hideTaxBreakdown ? "-" : formatMoney(inv.imp_iva, inv.moneda)}
+                    </TableCell>
+                    <TableCell className="text-right text-sm font-medium">{formatMoney(inv.imp_total, inv.moneda)}</TableCell>
+                    <TableCell className="text-xs font-mono text-muted-foreground">
+                      {inv.cae ? inv.cae.substring(0, 10) + "..." : "-"}
+                    </TableCell>
+                    <TableCell>{statusBadge(inv.status)}</TableCell>
+                    <TableCell>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" asChild>
+                        <Link href={`/operations/billing/${inv.id}`}>
+                          <Eye className="h-3.5 w-3.5" />
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
           </div>

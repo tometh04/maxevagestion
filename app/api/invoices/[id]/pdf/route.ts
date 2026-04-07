@@ -6,6 +6,11 @@ import { canAccessModule } from "@/lib/permissions"
 import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
 import { PDFDocument, StandardFonts, rgb, PageSizes } from "pdf-lib"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import {
+  formatInvoiceMoney,
+  ITEM_TAX_TREATMENT_LABELS,
+  shouldHideInvoiceTaxBreakdown,
+} from "@/lib/invoices/calculation"
 
 export const dynamic = "force-dynamic"
 
@@ -81,6 +86,12 @@ export async function GET(
     const text = (t: string, x: number, ty: number, size = 9, font = regular, color = black) => {
       page.drawText(t, { x, y: ty, size, font, color })
     }
+    const hideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
+      amountEntryMode: invoice.amount_entry_mode,
+      cbteTipo: invoice.cbte_tipo,
+      receptorCondicionIva: invoice.receptor_condicion_iva,
+    })
+    const fmtMoney = (value: number) => formatInvoiceMoney(value, invoice.moneda)
 
     // ── HEADER ────────────────────────────────────────────────────────────
     rect(L, y - 54, W, 56, orange)
@@ -146,7 +157,7 @@ export async function GET(
     text("DESCRIPCIÓN",       colDesc  + 4, y - rowH + 4, 8, bold, rgb(1,1,1))
     text("CANT.",             colQty   + 2, y - rowH + 4, 8, bold, rgb(1,1,1))
     text("P. UNIT.",          colPrice + 2, y - rowH + 4, 8, bold, rgb(1,1,1))
-    text("IVA%",              colIva   + 2, y - rowH + 4, 8, bold, rgb(1,1,1))
+    text(hideTaxBreakdown ? "TRAT." : "IVA%", colIva + 2, y - rowH + 4, 8, bold, rgb(1,1,1))
     text("TOTAL",             colTotal + 2, y - rowH + 4, 8, bold, rgb(1,1,1))
     y -= rowH + 4
 
@@ -154,6 +165,7 @@ export async function GET(
     items.forEach((item, i) => {
       const rowColor = i % 2 === 0 ? rgb(1,1,1) : light
       rect(L, y - rowH, W, rowH + 1, rowColor)
+      const taxTreatment = (item.tax_treatment || (item.iva_porcentaje === 0 ? "EXENTO" : "GRAVADO")) as keyof typeof ITEM_TAX_TREATMENT_LABELS
 
       // Truncar descripción larga
       const maxDescChars = 42
@@ -163,9 +175,17 @@ export async function GET(
 
       text(desc,                            colDesc  + 4, y - rowH + 3, 8, regular)
       text(String(item.cantidad),           colQty   + 2, y - rowH + 3, 8, regular)
-      text(`$${fmt(item.precio_unitario)}`, colPrice + 2, y - rowH + 3, 8, regular)
-      text(`${item.iva_porcentaje}%`,       colIva   + 2, y - rowH + 3, 8, regular)
-      text(`$${fmt(item.total)}`,           colTotal + 2, y - rowH + 3, 8, regular)
+      text(fmtMoney(item.precio_unitario),  colPrice + 2, y - rowH + 3, 8, regular)
+      text(
+        hideTaxBreakdown
+          ? ITEM_TAX_TREATMENT_LABELS[taxTreatment]
+          : `${item.iva_porcentaje}%`,
+        colIva + 2,
+        y - rowH + 3,
+        8,
+        regular
+      )
+      text(fmtMoney(item.total),            colTotal + 2, y - rowH + 3, 8, regular)
       y -= rowH + 2
     })
 
@@ -178,13 +198,29 @@ export async function GET(
 
     const addTotalRow = (label: string, value: number, isBold = false) => {
       text(label, totX, y, 9, isBold ? bold : regular, isBold ? black : gray)
-      text(`$${fmt(value)}`, R - 4 - regular.widthOfTextAtSize(`$${fmt(value)}`, 9), y, 9, isBold ? bold : regular)
+      const valueLabel = fmtMoney(value)
+      text(valueLabel, R - 4 - regular.widthOfTextAtSize(valueLabel, 9), y, 9, isBold ? bold : regular)
       y -= 14
     }
 
-    addTotalRow("Subtotal (neto):", invoice.imp_neto ?? 0)
-    addTotalRow("IVA:",             invoice.imp_iva ?? 0)
-    addTotalRow("TOTAL:",           invoice.imp_total, true)
+    if (!hideTaxBreakdown && Number(invoice.imp_neto || 0) > 0) {
+      addTotalRow("Neto gravado:", invoice.imp_neto ?? 0)
+    }
+    if (!hideTaxBreakdown && Number(invoice.imp_tot_conc || 0) > 0) {
+      addTotalRow("No gravado:", invoice.imp_tot_conc ?? 0)
+    }
+    if (!hideTaxBreakdown && Number(invoice.imp_op_ex || 0) > 0) {
+      addTotalRow("Exento:", invoice.imp_op_ex ?? 0)
+    }
+    if (!hideTaxBreakdown && Number(invoice.imp_iva || 0) > 0) {
+      addTotalRow("IVA:", invoice.imp_iva ?? 0)
+    }
+    addTotalRow(hideTaxBreakdown ? "TOTAL FINAL:" : "TOTAL:", invoice.imp_total, true)
+    if (hideTaxBreakdown) {
+      y -= 2
+      text("IVA no discriminado en la presentacion al cliente.", totX, y, 7, regular, gray)
+      y -= 12
+    }
     if (invoice.moneda === "DOL") {
       y -= 2
       text(`(USD × ${fmt(invoice.cotizacion ?? 1)} ARS/USD)`, totX, y, 7, regular, gray)

@@ -3,19 +3,10 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
+import { calculateInvoice } from "@/lib/invoices/calculation"
 import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
-
-// Mapa de porcentaje IVA → ID AFIP
-const IVA_PORCENTAJE_TO_ID: Record<number, number> = {
-  0: 3,
-  2.5: 9,
-  5: 8,
-  10.5: 4,
-  21: 5,
-  27: 6,
-}
 
 // Schema de validación para crear factura
 const createInvoiceSchema = z.object({
@@ -30,12 +21,14 @@ const createInvoiceSchema = z.object({
   receptor_nombre: z.string(),
   receptor_domicilio: z.string().optional(),
   receptor_condicion_iva: z.number().optional(),
+  amount_entry_mode: z.enum(["NET", "FINAL"]).optional(),
   items: z.array(z.object({
     descripcion: z.string(),
     cantidad: z.number().default(1),
     precio_unitario: z.number(),
     iva_id: z.number().default(5),
     iva_porcentaje: z.number().default(21),
+    tax_treatment: z.enum(["GRAVADO", "EXENTO", "NO_GRAVADO"]).optional(),
   })),
   moneda: z.string().default('PES'),
   cotizacion: z.number().default(1),
@@ -150,32 +143,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // Calcular totales
-    let impNeto = 0
-    let impIva = 0
-    let impTotal = 0
-
-    const itemsWithTotals = validatedData.items.map((item, index) => {
-      const subtotal = item.cantidad * item.precio_unitario
-      const ivaImporte = subtotal * (item.iva_porcentaje / 100)
-      const total = subtotal + ivaImporte
-
-      impNeto += subtotal
-      impIva += ivaImporte
-      impTotal += total
-
-      // Derivar iva_id desde iva_porcentaje si no se envió correctamente
-      const derivedIvaId = IVA_PORCENTAJE_TO_ID[item.iva_porcentaje] ?? item.iva_id ?? 5
-
-      return {
-        ...item,
-        iva_id: derivedIvaId,
-        subtotal,
-        iva_importe: ivaImporte,
-        total,
-        orden: index,
-      }
-    })
+    const calculatedInvoice = calculateInvoice(validatedData.items, validatedData.amount_entry_mode)
+    const itemsWithTotals = calculatedInvoice.items.map((item, index) => ({
+      ...item,
+      orden: index,
+    }))
 
     // Crear factura
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
@@ -191,9 +163,13 @@ export async function POST(request: Request) {
         receptor_nombre: validatedData.receptor_nombre,
         receptor_domicilio: validatedData.receptor_domicilio,
         receptor_condicion_iva: validatedData.receptor_condicion_iva,
-        imp_neto: impNeto,
-        imp_iva: impIva,
-        imp_total: impTotal,
+        amount_entry_mode: calculatedInvoice.amount_entry_mode,
+        imp_neto: calculatedInvoice.totals.imp_neto,
+        imp_iva: calculatedInvoice.totals.imp_iva,
+        imp_total: calculatedInvoice.totals.imp_total,
+        imp_tot_conc: calculatedInvoice.totals.imp_tot_conc,
+        imp_op_ex: calculatedInvoice.totals.imp_op_ex,
+        imp_trib: calculatedInvoice.totals.imp_trib,
         moneda: validatedData.moneda,
         cotizacion: validatedData.cotizacion,
         fch_serv_desde: validatedData.fch_serv_desde,
@@ -223,6 +199,7 @@ export async function POST(request: Request) {
       subtotal: item.subtotal,
       iva_id: item.iva_id,
       iva_porcentaje: item.iva_porcentaje,
+      tax_treatment: item.tax_treatment,
       iva_importe: item.iva_importe,
       total: item.total,
       orden: item.orden,

@@ -5,8 +5,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter, FileText, User, DollarSign, ShieldCheck, AlertCircle, Hash, Calendar } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -42,6 +41,11 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import {
+  formatInvoiceMoney,
+  ITEM_TAX_TREATMENT_LABELS,
+  shouldHideInvoiceTaxBreakdown,
+} from "@/lib/invoices/calculation"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 
 interface Invoice {
@@ -55,9 +59,12 @@ interface Invoice {
   receptor_nombre: string
   receptor_doc_nro: string
   receptor_condicion_iva?: number
+  amount_entry_mode?: "NET" | "FINAL"
   imp_neto?: number
   imp_iva?: number
   imp_total: number
+  imp_tot_conc?: number
+  imp_op_ex?: number
   moneda?: string
   cotizacion?: number
   status: string
@@ -72,6 +79,7 @@ interface Invoice {
     precio_unitario: number
     subtotal: number
     iva_porcentaje: number
+    tax_treatment?: "GRAVADO" | "EXENTO" | "NO_GRAVADO"
     iva_importe: number
     total: number
   }>
@@ -86,13 +94,7 @@ const statusLabels: Record<string, { label: string; variant: "default" | "second
   cancelled: { label: "Anulada", variant: "destructive" },
 }
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 0,
-  }).format(value)
-}
+const formatCurrency = (value: number, currency?: string) => formatInvoiceMoney(value, currency)
 
 export function InvoicesPageClient() {
   const { toast } = useToast()
@@ -102,6 +104,13 @@ export function InvoicesPageClient() {
   const [search, setSearch] = useState("")
   const [authorizing, setAuthorizing] = useState<string | null>(null)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const selectedInvoiceHideTaxBreakdown = selectedInvoice
+    ? shouldHideInvoiceTaxBreakdown({
+        amountEntryMode: selectedInvoice.amount_entry_mode,
+        cbteTipo: selectedInvoice.cbte_tipo,
+        receptorCondicionIva: selectedInvoice.receptor_condicion_iva,
+      })
+    : false
 
   useEffect(() => {
     loadInvoices()
@@ -278,7 +287,7 @@ export function InvoicesPageClient() {
                   <TableCell>{invoice.receptor_nombre}</TableCell>
                   <TableCell className="font-mono text-sm">{invoice.receptor_doc_nro}</TableCell>
                   <TableCell className="text-right font-medium">
-                    {formatCurrency(invoice.imp_total)}
+                    {formatCurrency(invoice.imp_total, invoice.moneda)}
                   </TableCell>
                   <TableCell>
                     {invoice.cae ? (
@@ -465,20 +474,30 @@ export function InvoicesPageClient() {
                         <TableHead className="text-xs">Descripción</TableHead>
                         <TableHead className="text-xs text-right w-[60px]">Cant.</TableHead>
                         <TableHead className="text-xs text-right w-[100px]">P. Unit.</TableHead>
-                        <TableHead className="text-xs text-right w-[60px]">IVA</TableHead>
+                        <TableHead className="text-xs w-[110px]">Tratamiento</TableHead>
+                        {!selectedInvoiceHideTaxBreakdown && <TableHead className="text-xs text-right w-[60px]">IVA</TableHead>}
                         <TableHead className="text-xs text-right w-[100px]">Total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {selectedInvoice.invoice_items?.map((item) => (
-                        <TableRow key={item.id}>
-                          <TableCell className="text-sm">{item.descripcion}</TableCell>
-                          <TableCell className="text-sm text-right tabular-nums">{item.cantidad}</TableCell>
-                          <TableCell className="text-sm text-right tabular-nums">{formatCurrency(item.precio_unitario)}</TableCell>
-                          <TableCell className="text-sm text-right">{item.iva_porcentaje}%</TableCell>
-                          <TableCell className="text-sm text-right font-medium tabular-nums">{formatCurrency(item.total)}</TableCell>
-                        </TableRow>
-                      ))}
+                      {selectedInvoice.invoice_items?.map((item) => {
+                        const taxTreatment = (item.tax_treatment || (item.iva_porcentaje === 0 ? "EXENTO" : "GRAVADO")) as keyof typeof ITEM_TAX_TREATMENT_LABELS
+
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell className="text-sm">{item.descripcion}</TableCell>
+                            <TableCell className="text-sm text-right tabular-nums">{item.cantidad}</TableCell>
+                            <TableCell className="text-sm text-right tabular-nums">{formatCurrency(item.precio_unitario, selectedInvoice.moneda)}</TableCell>
+                            <TableCell className="text-sm">
+                              <Badge variant="outline" className="text-[11px]">
+                                {ITEM_TAX_TREATMENT_LABELS[taxTreatment]}
+                              </Badge>
+                            </TableCell>
+                            {!selectedInvoiceHideTaxBreakdown && <TableCell className="text-sm text-right">{item.iva_porcentaje}%</TableCell>}
+                            <TableCell className="text-sm text-right font-medium tabular-nums">{formatCurrency(item.total, selectedInvoice.moneda)}</TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
@@ -486,22 +505,39 @@ export function InvoicesPageClient() {
                 {/* Totals */}
                 <div className="flex justify-end">
                   <div className="w-[240px] space-y-1.5 pt-2">
-                    {(selectedInvoice.imp_neto != null && selectedInvoice.imp_neto !== selectedInvoice.imp_total) && (
+                    {!selectedInvoiceHideTaxBreakdown && (selectedInvoice.imp_neto != null && selectedInvoice.imp_neto > 0) && (
                       <div className="flex justify-between text-sm text-muted-foreground">
-                        <span>Subtotal</span>
-                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_neto)}</span>
+                        <span>Neto gravado</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_neto, selectedInvoice.moneda)}</span>
                       </div>
                     )}
-                    {(selectedInvoice.imp_iva != null && selectedInvoice.imp_iva > 0) && (
+                    {!selectedInvoiceHideTaxBreakdown && (selectedInvoice.imp_tot_conc != null && selectedInvoice.imp_tot_conc > 0) && (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>No gravado</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_tot_conc, selectedInvoice.moneda)}</span>
+                      </div>
+                    )}
+                    {!selectedInvoiceHideTaxBreakdown && (selectedInvoice.imp_op_ex != null && selectedInvoice.imp_op_ex > 0) && (
+                      <div className="flex justify-between text-sm text-muted-foreground">
+                        <span>Exento</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_op_ex, selectedInvoice.moneda)}</span>
+                      </div>
+                    )}
+                    {!selectedInvoiceHideTaxBreakdown && (selectedInvoice.imp_iva != null && selectedInvoice.imp_iva > 0) && (
                       <div className="flex justify-between text-sm text-muted-foreground">
                         <span>IVA</span>
-                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_iva)}</span>
+                        <span className="tabular-nums">{formatCurrency(selectedInvoice.imp_iva, selectedInvoice.moneda)}</span>
                       </div>
                     )}
                     <div className="flex justify-between items-baseline pt-1.5 border-t border-border/40">
-                      <span className="text-sm font-medium">Total</span>
-                      <span className="text-xl font-semibold tabular-nums tracking-tight">{formatCurrency(selectedInvoice.imp_total)}</span>
+                      <span className="text-sm font-medium">{selectedInvoiceHideTaxBreakdown ? "Total final" : "Total"}</span>
+                      <span className="text-xl font-semibold tabular-nums tracking-tight">{formatCurrency(selectedInvoice.imp_total, selectedInvoice.moneda)}</span>
                     </div>
+                    {selectedInvoiceHideTaxBreakdown && (
+                      <p className="text-xs text-muted-foreground">
+                        El IVA no se discrimina visualmente para esta factura.
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
