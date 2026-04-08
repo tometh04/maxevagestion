@@ -56,17 +56,29 @@ jest.mock("@/components/ui/button", () => {
   }
 })
 
-jest.mock("@/components/ui/input", () => ({
-  Input: React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>((props, ref) => (
-    <input ref={ref} {...props} />
-  )),
-}))
+jest.mock("@/components/ui/input", () => {
+  const React = require("react")
+  const MockInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function MockInput(
+    props,
+    ref
+  ) {
+    return <input ref={ref} {...props} />
+  })
 
-jest.mock("@/components/ui/textarea", () => ({
-  Textarea: React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>((props, ref) => (
-    <textarea ref={ref} {...props} />
-  )),
-}))
+  return { Input: MockInput }
+})
+
+jest.mock("@/components/ui/textarea", () => {
+  const React = require("react")
+  const MockTextarea = React.forwardRef<
+    HTMLTextAreaElement,
+    React.TextareaHTMLAttributes<HTMLTextAreaElement>
+  >(function MockTextarea(props, ref) {
+    return <textarea ref={ref} {...props} />
+  })
+
+  return { Textarea: MockTextarea }
+})
 
 jest.mock("@/components/ui/label", () => ({
   Label: ({ children, ...props }: any) => <label {...props}>{children}</label>,
