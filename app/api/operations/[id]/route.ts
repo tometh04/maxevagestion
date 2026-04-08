@@ -62,10 +62,15 @@ export async function GET(
         ),
         operation_services(
           operator_id,
+          operator_payment_id,
           operators:operator_id(id, name)
         ),
         operator_payments(
+          id,
           operator_id,
+          amount,
+          paid_amount,
+          status,
           operators:operator_id(id, name)
         ),
         iva_purchases(

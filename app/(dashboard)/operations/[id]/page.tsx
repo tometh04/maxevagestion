@@ -102,20 +102,14 @@ export default async function OperationDetailPage({
   // Get operation services (servicios adicionales: asiento, transfer, visa, etc.)
   const { data: operationServices } = await (supabase
     .from("operation_services") as any)
-    .select("id, service_type, description, operator_id, sale_amount, cost_amount, sale_currency, cost_currency, generates_commission, operators:operator_id(id, name)")
+    .select("id, service_type, description, operator_id, operator_payment_id, sale_amount, cost_amount, sale_currency, cost_currency, generates_commission, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
   // Get linked operator debts to keep operator selector aligned with payable breakdown
   const { data: operatorPayments } = await (supabase
     .from("operator_payments") as any)
-    .select("operator_id, operators:operator_id(id, name)")
-    .eq("operation_id", id)
-    .order("created_at", { ascending: true })
-
-  const { data: purchaseIvaOperators } = await (supabase
-    .from("iva_purchases") as any)
-    .select("operator_id, operators:operator_id(id, name)")
+    .select("id, operator_id, amount, paid_amount, status, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
@@ -170,7 +164,6 @@ export default async function OperationDetailPage({
       commissionRecords={commissionRecords || []}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
-      purchaseIvaOperators={purchaseIvaOperators || []}
     />
   )
 }

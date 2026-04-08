@@ -43,7 +43,11 @@ import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"
 import { ItinerarySection } from "./itinerary-section"
 import { useRouter } from "next/navigation"
-import { buildOperationPaymentOperators } from "@/lib/operations/payment-operators"
+import {
+  buildOpenOperationBasePayableOperators,
+  type OperationOperatorPaymentLike,
+  type OperationServicePaymentRelationLike,
+} from "@/lib/operations/payment-operators"
 
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
@@ -77,22 +81,13 @@ interface OperationService {
   service_type: string
   description?: string | null
   operator_id?: string | null
+  operator_payment_id?: string | null
   operators?: { id?: string | null; name?: string | null } | null
   sale_amount: number
   cost_amount: number
   sale_currency: "ARS" | "USD"
   cost_currency: "ARS" | "USD"
   generates_commission: boolean
-}
-
-interface OperationOperatorPayment {
-  operator_id?: string | null
-  operators?: { id?: string | null; name?: string | null } | null
-}
-
-interface OperationPurchaseIVA {
-  operator_id?: string | null
-  operators?: { id?: string | null; name?: string | null } | null
 }
 
 interface OperationDetailClientProps {
@@ -107,8 +102,7 @@ interface OperationDetailClientProps {
   userRole: string
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   operationServices?: OperationService[]
-  operatorPayments?: OperationOperatorPayment[]
-  purchaseIvaOperators?: OperationPurchaseIVA[]
+  operatorPayments?: OperationOperatorPaymentLike[]
 }
 
 export function OperationDetailClient({
@@ -124,7 +118,6 @@ export function OperationDetailClient({
   commissionRecords = [],
   operationServices = [],
   operatorPayments = [],
-  purchaseIvaOperators = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -178,17 +171,14 @@ export function OperationDetailClient({
   // Separar pagos de la operación base de pagos de servicios adicionales
   const operationBasePayments = (payments || []).filter((p: any) => !p.operation_service_id)
   const servicePayments = (payments || []).filter((p: any) => p.operation_service_id)
-  const paymentOperators = useMemo(
+  const payableOperators = useMemo(
     () =>
-      buildOperationPaymentOperators({
-        primaryOperator: operation.operators || null,
-        operationOperators: operation.operation_operators || [],
-        serviceOperators: operationServices || [],
+      buildOpenOperationBasePayableOperators({
         operatorPayments: operatorPayments || [],
-        purchaseIvaOperators: purchaseIvaOperators || [],
+        operationServices: operationServices as OperationServicePaymentRelationLike[],
         fallbackNamesById: operatorNameMap,
       }),
-    [operation.operators, operation.operation_operators, operationServices, operatorPayments, purchaseIvaOperators, operatorNameMap]
+    [operationServices, operatorPayments, operatorNameMap]
   )
 
   return (
@@ -562,7 +552,7 @@ export function OperationDetailClient({
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}
-            operators={paymentOperators}
+            operators={payableOperators}
           />
           <PassengerBalancesSection
             operationId={operation.id}

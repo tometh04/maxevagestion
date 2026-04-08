@@ -26,7 +26,11 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle } from "lucide-react"
 import { toast } from "sonner"
-import { buildOperationPaymentOperators } from "@/lib/operations/payment-operators"
+import {
+  buildOpenOperationBasePayableOperators,
+  type OperationOperatorPaymentLike,
+  type OperationServicePaymentRelationLike,
+} from "@/lib/operations/payment-operators"
 
 interface Operation {
   id: string
@@ -36,9 +40,8 @@ interface Operation {
   operator_cost_currency?: string
   operators?: { id?: string | null; name?: string | null } | null
   operation_operators?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
-  operation_services?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
-  operator_payments?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
-  iva_purchases?: Array<{ operator_id?: string | null; operators?: { id?: string | null; name?: string | null } | null }>
+  operation_services?: OperationServicePaymentRelationLike[]
+  operator_payments?: OperationOperatorPaymentLike[]
 }
 
 interface FinancialAccount {
@@ -54,6 +57,9 @@ interface OperationOperator {
   id: string
   name: string
 }
+
+const NO_BASE_OPERATOR_DEBT_MESSAGE =
+  "No hay deudas pendientes de la operación base. Si necesitás pagar un servicio, hacelo desde la pestaña Servicios de la operación."
 
 const paymentSchema = z.object({
   operation_id: z.string().min(1, "Debe seleccionar una operación"),
@@ -236,12 +242,9 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         const data = await response.json()
         const operation = data.operation as Operation
 
-        const operators = buildOperationPaymentOperators({
-          primaryOperator: operation?.operators || null,
-          operationOperators: operation?.operation_operators || [],
-          serviceOperators: operation?.operation_services || [],
+        const operators = buildOpenOperationBasePayableOperators({
           operatorPayments: operation?.operator_payments || [],
-          purchaseIvaOperators: operation?.iva_purchases || [],
+          operationServices: operation?.operation_services || [],
         })
 
         if (cancelled) return
@@ -271,7 +274,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   }, [form, open, watchDirection, watchOperationId])
 
   const onSubmit = async (values: PaymentFormValues) => {
-    if (values.payer_type === "OPERATOR" && operationOperators.length > 0 && !values.operator_id) {
+    if (values.payer_type === "OPERATOR" && operationOperators.length === 0) {
+      toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
+      return
+    }
+
+    if (values.payer_type === "OPERATOR" && !values.operator_id) {
       toast.error("Debe seleccionar el operador al que corresponde el pago")
       return
     }
@@ -441,7 +449,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                       <FormLabel>Operador *</FormLabel>
                       {operationOperators.length === 0 ? (
                         <div className="text-xs text-muted-foreground bg-background rounded-lg p-2">
-                          No se encontraron operadores vinculados a la operación seleccionada.
+                          {NO_BASE_OPERATOR_DEBT_MESSAGE}
                         </div>
                       ) : operationOperators.length === 1 ? (
                         <Select value={operationOperators[0].id} disabled>
@@ -694,7 +702,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isLoading}>
+              <Button type="submit" disabled={isLoading || (watchDirection === "EXPENSE" && Boolean(watchOperationId) && operationOperators.length === 0)}>
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {watchMarkAsPaid ? "Crear y Pagar" : "Crear Pago Pendiente"}
               </Button>

@@ -107,6 +107,9 @@ const paymentMethods = [
   { value: "Otro", label: "Otro" },
 ]
 
+const NO_BASE_OPERATOR_DEBT_MESSAGE =
+  "No hay deudas pendientes de la operación base. Si necesitás pagar un servicio, hacelo desde la pestaña Servicios."
+
 interface OperationPaymentsSectionProps {
   operationId: string
   payments: any[]
@@ -525,7 +528,12 @@ export function OperationPaymentsSection({
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
-    if (operators.length > 0 && !values.operator_id) {
+    if (operators.length === 0) {
+      toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
+      return
+    }
+
+    if (!values.operator_id) {
       expenseForm.setError("operator_id", { message: "Debe seleccionar un operador" })
       return
     }
@@ -1333,7 +1341,7 @@ export function OperationPaymentsSection({
                     <FormItem>
                       <FormLabel>Operador</FormLabel>
                       {operators.length === 0 ? (
-                        <p className="text-sm text-muted-foreground">No hay operadores asignados a esta operación</p>
+                        <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
                       ) : operators.length === 1 ? (
                         <Select value={operators[0].id} disabled>
                           <FormControl>
@@ -1561,10 +1569,10 @@ export function OperationPaymentsSection({
               />
 
               <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || operators.length === 0}>
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
