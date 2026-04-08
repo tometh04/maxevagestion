@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     let query = adminSupabase
       .from("ledger_movements")
       .select(
-        `id, type, concept, currency, amount_original, movement_date, created_at, seller_id, operation_id,
+        `id, type, concept, currency, amount_original, movement_date, created_at, seller_id, operation_id, affects_balance,
          operations:operation_id (id, file_code, agency_id, destination, operation_customers(customers:customer_id(first_name, last_name))),
          users:created_by (name)`,
         { count: "exact" }

@@ -39,6 +39,7 @@ export interface CashMovement {
   currency: string
   movement_date: string
   notes: string | null
+  affects_balance?: boolean
   operations?: MovementOperation | null
   users?: MovementUser | null
 }
@@ -180,9 +181,16 @@ export function MovementsTable({
                 <TableCell>
                   <div className="space-y-1">
                     <p className="font-medium">{movement.category}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {movement.operations?.agencies?.name || "Sin agencia"}
-                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-muted-foreground">
+                        {movement.operations?.agencies?.name || "Sin agencia"}
+                      </p>
+                      {movement.affects_balance === false && (
+                        <Badge variant="outline" className="text-[10px]">
+                          No afecta saldo
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </TableCell>
                 <TableCell>

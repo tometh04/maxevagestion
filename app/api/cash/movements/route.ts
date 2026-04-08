@@ -28,6 +28,7 @@ export async function POST(request: Request) {
       notes,
       is_touristic,
       movement_category,
+      affects_balance,
     } = body
 
     // Validate required fields
@@ -178,6 +179,7 @@ export async function POST(request: Request) {
         receipt_number: null,
         notes: notes || null,
         created_by: user.id,
+        affects_balance: affects_balance !== false,
         // Pasar la fecha efectiva del movimiento para que el filtro de Caja funcione
         // con fechas retroactivas (ej. egreso cargado hoy pero con fecha 13/02)
         movement_date: movement_date || new Date().toISOString(),
@@ -228,6 +230,7 @@ export async function GET(request: Request) {
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
         operations:operation_id (
           id,
@@ -280,25 +283,30 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
     }
 
-    let movements = (rawMovements || []).map((m: any) => ({
-      id: m.id,
-      type: m.type as "INCOME" | "EXPENSE",
-      category: m.category,
-      amount: m.amount,
-      currency: m.currency,
-      movement_date: m.movement_date,
-      notes: m.notes ?? null,
-      operations: m.operations
-        ? {
-            id: m.operations.id,
-            destination: m.operations.destination ?? null,
-            file_code: m.operations.file_code ?? null,
-            agency_id: m.operations.agency_id ?? null,
-            agencies: null,
-          }
-        : null,
-      users: m.users ? { name: m.users.name } : null,
-    }))
+    let movements = (rawMovements || []).map((m: any) => {
+      const linkedLedger = Array.isArray(m.ledger_movements) ? m.ledger_movements[0] : m.ledger_movements
+
+      return {
+        id: m.id,
+        type: m.type as "INCOME" | "EXPENSE",
+        category: m.category,
+        amount: m.amount,
+        currency: m.currency,
+        movement_date: m.movement_date,
+        notes: m.notes ?? null,
+        affects_balance: linkedLedger?.affects_balance ?? true,
+        operations: m.operations
+          ? {
+              id: m.operations.id,
+              destination: m.operations.destination ?? null,
+              file_code: m.operations.file_code ?? null,
+              agency_id: m.operations.agency_id ?? null,
+              agencies: null,
+            }
+          : null,
+        users: m.users ? { name: m.users.name } : null,
+      }
+    })
 
     // Filtro de agencia (solo si viene el parámetro)
     if (agencyId && agencyId !== "ALL") {

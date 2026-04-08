@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
 import { formatCurrency } from "@/lib/currency"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid } from "recharts"
 import {
@@ -33,6 +34,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpCircle, ArrowDownCircle, Wallet, HelpCircle, DollarSign, Search } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import type { UserRole } from "@/lib/permissions"
 import { toast } from "sonner"
 import {
   Tooltip,
@@ -45,6 +47,7 @@ interface CashSummaryClientProps {
   agencies: Array<{ id: string; name: string }>
   defaultDateFrom: string
   defaultDateTo: string
+  currentUserRole: UserRole
 }
 
 interface AccountBalance {
@@ -69,6 +72,7 @@ interface LedgerMovement {
   currency: "ARS" | "USD"
   amount_original: number
   amount_ars_equivalent: number
+  affects_balance?: boolean
   created_at: string
   movement_date?: string
   financial_accounts?: {
@@ -101,7 +105,7 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: CashSummaryClientProps) {
+export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, currentUserRole }: CashSummaryClientProps) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(() => {
     try {
       return defaultDateFrom ? parseISO(defaultDateFrom) : undefined
@@ -127,11 +131,15 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
   const [loadingChart, setLoadingChart] = useState(false)
   const [loadingMovements, setLoadingMovements] = useState<Record<string, boolean>>({})
   const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({})
+  const [togglingMovements, setTogglingMovements] = useState<Record<string, boolean>>({})
   const [searchQuery, setSearchQuery] = useState("")
+  const canManageBalanceImpact = currentUserRole === "ADMIN" || currentUserRole === "SUPER_ADMIN" || currentUserRole === "CONTABLE"
 
   // Cargar cuentas financieras (rápido, no depende de fechas)
-  const fetchAccounts = useCallback(async () => {
-    setLoading(true)
+  const fetchAccounts = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true)
+    }
     try {
       const accountsResponse = await fetch("/api/accounting/financial-accounts")
       if (accountsResponse.ok) {
@@ -142,7 +150,9 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
       console.error("Error fetching accounts:", error)
       toast.error("Error al cargar cuentas financieras")
     } finally {
-      setLoading(false)
+      if (!options?.silent) {
+        setLoading(false)
+      }
     }
   }, [])
 
@@ -333,6 +343,46 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
     }
     return { income: 0, expenses: 0 }
   }, [accountMovements, accountStats])
+
+  const refreshAccountData = useCallback(async (accountId: string) => {
+    const refreshes: Promise<unknown>[] = [
+      fetchAccounts({ silent: true }),
+      fetchAllStats([accountId]),
+      fetchDailyBalance(),
+    ]
+
+    if (accountMovements[accountId]) {
+      refreshes.push(fetchAccountMovements(accountId))
+    }
+
+    await Promise.all(refreshes)
+  }, [accountMovements, fetchAccountMovements, fetchAccounts, fetchAllStats, fetchDailyBalance])
+
+  const handleToggleBalanceImpact = useCallback(async (accountId: string, movement: LedgerMovement) => {
+    const nextAffectsBalance = movement.affects_balance === false
+
+    setTogglingMovements((prev) => ({ ...prev, [movement.id]: true }))
+    try {
+      const response = await fetch(`/api/accounting/ledger/${movement.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ affects_balance: nextAffectsBalance }),
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.error || "No se pudo actualizar el movimiento")
+      }
+
+      toast.success(data.message || "Movimiento actualizado")
+      await refreshAccountData(accountId)
+    } catch (error) {
+      console.error("Error updating ledger movement:", error)
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el movimiento")
+    } finally {
+      setTogglingMovements((prev) => ({ ...prev, [movement.id]: false }))
+    }
+  }, [refreshAccountData])
 
   // Preparar datos para el gráfico
   const chartData = useMemo(() => {
@@ -579,6 +629,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                     <TableHead>Tipo</TableHead>
                                     <TableHead>Concepto</TableHead>
                                     <TableHead className="text-right">Monto</TableHead>
+                                    {canManageBalanceImpact && <TableHead className="text-right">Accion</TableHead>}
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -602,7 +653,14 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         </Badge>
                                       </TableCell>
                                       <TableCell className="text-sm">
-                                        {movement.concept}
+                                        <div className="space-y-1">
+                                          <div>{movement.concept}</div>
+                                          {movement.affects_balance === false && (
+                                            <Badge variant="outline" className="text-[10px]">
+                                              No afecta saldo
+                                            </Badge>
+                                          )}
+                                        </div>
                                         {movement.operations && (
                                           <span className="text-muted-foreground ml-1">
                                             {(() => {
@@ -620,6 +678,23 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {movement.type === "INCOME" ? "+" : "-"}
                                         {formatCurrency(movement.amount_original, movement.currency)}
                                       </TableCell>
+                                      {canManageBalanceImpact && (
+                                        <TableCell className="text-right">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={togglingMovements[movement.id]}
+                                            onClick={() => handleToggleBalanceImpact(account.id, movement)}
+                                          >
+                                            {togglingMovements[movement.id]
+                                              ? "Guardando..."
+                                              : movement.affects_balance === false
+                                                ? "Incluir saldo"
+                                                : "Excluir saldo"}
+                                          </Button>
+                                        </TableCell>
+                                      )}
                                     </TableRow>
                                   ))}
                                 </TableBody>
@@ -730,6 +805,7 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                     <TableHead>Tipo</TableHead>
                                     <TableHead>Concepto</TableHead>
                                     <TableHead className="text-right">Monto</TableHead>
+                                    {canManageBalanceImpact && <TableHead className="text-right">Accion</TableHead>}
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -753,7 +829,14 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         </Badge>
                                       </TableCell>
                                       <TableCell className="text-sm">
-                                        {movement.concept}
+                                        <div className="space-y-1">
+                                          <div>{movement.concept}</div>
+                                          {movement.affects_balance === false && (
+                                            <Badge variant="outline" className="text-[10px]">
+                                              No afecta saldo
+                                            </Badge>
+                                          )}
+                                        </div>
                                         {movement.operations && (
                                           <span className="text-muted-foreground ml-1">
                                             {(() => {
@@ -771,6 +854,23 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo }: 
                                         {movement.type === "INCOME" ? "+" : "-"}
                                         {formatCurrency(movement.amount_original, movement.currency)}
                                       </TableCell>
+                                      {canManageBalanceImpact && (
+                                        <TableCell className="text-right">
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={togglingMovements[movement.id]}
+                                            onClick={() => handleToggleBalanceImpact(account.id, movement)}
+                                          >
+                                            {togglingMovements[movement.id]
+                                              ? "Guardando..."
+                                              : movement.affects_balance === false
+                                                ? "Incluir saldo"
+                                                : "Excluir saldo"}
+                                          </Button>
+                                        </TableCell>
+                                      )}
                                     </TableRow>
                                   ))}
                                 </TableBody>

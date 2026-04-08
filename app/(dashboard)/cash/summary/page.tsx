@@ -113,7 +113,12 @@ export default async function CashSummaryPage() {
   return (
     <CashSummaryTabs
       summaryContent={
-        <CashSummaryClient agencies={agencies} defaultDateFrom={dates.dateFrom} defaultDateTo={dates.dateTo} />
+        <CashSummaryClient
+          agencies={agencies}
+          defaultDateFrom={dates.dateFrom}
+          defaultDateTo={dates.dateTo}
+          currentUserRole={user.role as any}
+        />
       }
       accountsContent={
         <FinancialAccountsPageClient agencies={agencies} />

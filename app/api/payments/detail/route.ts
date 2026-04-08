@@ -30,7 +30,7 @@ export async function GET(request: Request) {
     }
 
     const movementSelect = `
-      id, created_at, type, amount_original, amount_ars_equivalent,
+      id, created_at, type, amount_original, amount_ars_equivalent, affects_balance,
       currency, method, receipt_number, notes, account_id,
       financial_accounts:account_id(id, name, currency, type, initial_balance, chart_account_id)
     `
@@ -135,7 +135,7 @@ export async function GET(request: Request) {
     // 4. Obtener TODOS los movimientos de esta cuenta para calcular balance
     const { data: allMovements, error: allMovError } = await (supabase
       .from("ledger_movements") as any)
-      .select("id, type, amount_original, amount_ars_equivalent, created_at")
+      .select("id, type, amount_original, amount_ars_equivalent, created_at, affects_balance")
       .eq("account_id", account.id)
       .order("created_at", { ascending: true })
 
@@ -145,6 +145,8 @@ export async function GET(request: Request) {
 
     // Helper para calcular delta
     const calcDelta = (m: any) => {
+      if (m.affects_balance === false) return 0
+
       const amount = parseFloat(
         accountCurrency === "USD"
           ? (m.amount_original || "0")

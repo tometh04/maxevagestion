@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import {
   Select,
   SelectContent,
@@ -41,6 +42,7 @@ const cashMovementSchema = z.object({
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
+  affects_balance: z.boolean(),
   movement_date: z.string().min(1, "La fecha es requerida"),
   notes: z.string().optional(),
 })
@@ -95,6 +97,7 @@ export function NewCashMovementDialog({
       amount: 0,
       currency: "ARS",
       financial_account_id: "",
+      affects_balance: true,
       movement_date: getDefaultDateTimeLocal(),
       notes: "",
     },
@@ -142,6 +145,7 @@ export function NewCashMovementDialog({
           ...values,
           operation_id: values.operation_id || null,
           financial_account_id: values.financial_account_id,
+          affects_balance: values.affects_balance,
           movement_date: movementDate,
           notes: values.notes || null,
         }),
@@ -339,6 +343,24 @@ export function NewCashMovementDialog({
                       </SelectContent>
                     </Select>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="affects_balance"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-xl border border-border/40 bg-background/60 p-3">
+                    <div className="space-y-1 pr-3">
+                      <FormLabel className="m-0">Afecta saldo</FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Si lo desactivas, el movimiento queda visible pero no modifica el balance.
+                      </p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
                   </FormItem>
                 )}
               />

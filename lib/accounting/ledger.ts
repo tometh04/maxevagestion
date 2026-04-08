@@ -117,6 +117,7 @@ export interface CreateLedgerMovementParams {
   receipt_number?: string | null
   notes?: string | null
   created_by?: string | null
+  affects_balance?: boolean
   /** Fecha efectiva del movimiento (puede ser retroactiva). Si no se provee, usa NOW(). */
   movement_date?: string | Date | null
 }
@@ -171,6 +172,7 @@ export async function createLedgerMovement(
       receipt_number: params.receipt_number || null,
       notes: params.notes || null,
       created_by: params.created_by || null,
+      affects_balance: params.affects_balance ?? true,
       // Fecha efectiva del movimiento: puede ser retroactiva (ej. 13/02).
       // Si no se provee, usa la fecha actual como fallback.
       movement_date: params.movement_date
@@ -260,6 +262,7 @@ export async function getAccountBalance(
     .from("ledger_movements") as any)
     .select("type, amount_original, amount_ars_equivalent")
     .eq("account_id", accountId)
+    .eq("affects_balance", true)
 
   if (movementsError) {
     throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
