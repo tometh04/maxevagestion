@@ -41,13 +41,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon, Pencil } from "lucide-react"
+import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon, Pencil, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
@@ -243,6 +244,7 @@ export function OperationServicesSection({
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
   const paymentForm = useForm<ServicePaymentFormValues>({
@@ -614,6 +616,17 @@ export function OperationServicesSection({
     }
   }
 
+  const handleDownloadReceipt = async (paymentId: string) => {
+    setDownloadingReceiptId(paymentId)
+    try {
+      await downloadReceiptPdf(paymentId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al descargar el recibo")
+    } finally {
+      setDownloadingReceiptId(null)
+    }
+  }
+
   // ── Helper: obtener nombre del servicio por ID ────────────────────────────
 
   const getServiceLabel = (serviceId: string) => {
@@ -838,7 +851,7 @@ export function OperationServicesSection({
                       <TableHead className="text-right">Monto</TableHead>
                       <TableHead className="text-center">T/C</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead className="w-10" />
+                      <TableHead className="w-[84px] text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -875,21 +888,39 @@ export function OperationServicesSection({
                             {p.status === "PAID" ? "Pagado" : "Pendiente"}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDeletePayment(p.id)}
-                            disabled={deletingPaymentId === p.id}
-                            title="Eliminar pago"
-                          >
-                            {deletingPaymentId === p.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {p.status === "PAID" && p.direction === "INCOME" && p.payer_type === "CUSTOMER" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-info hover:text-info/80 hover:bg-info/10"
+                                onClick={() => handleDownloadReceipt(p.id)}
+                                disabled={downloadingReceiptId === p.id}
+                                title="Descargar recibo PDF"
+                              >
+                                {downloadingReceiptId === p.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileText className="h-4 w-4" />
+                                )}
+                              </Button>
                             )}
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDeletePayment(p.id)}
+                              disabled={deletingPaymentId === p.id}
+                              title="Eliminar pago"
+                            >
+                              {deletingPaymentId === p.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
