@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useForm } from "react-hook-form"
+import { useForm, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import {
@@ -29,23 +29,77 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { DatePicker } from "@/components/ui/date-picker"
 import { SearchableCombobox } from "@/components/ui/searchable-combobox"
 import { Loader2, ClipboardList, Users, Calendar, Link2 } from "lucide-react"
+import {
+  buildTaskDueDateValue,
+  DEFAULT_TASK_ALERT_TIME,
+  DEFAULT_TASK_REMINDER_MINUTES,
+  extractTaskDatePart,
+  getTaskAlertTimeValue,
+  normalizeReminderMinutes,
+  taskHasReminder,
+} from "@/lib/tasks/due-date"
 import { toast } from "sonner"
 
-const taskSchema = z.object({
+type TaskFormValues = {
+  title: string
+  description?: string
+  priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"
+  assigned_to: string
+  due_date?: string
+  has_alert: boolean
+  due_time?: string
+  reminder_minutes?: string
+  operation_id?: string
+  customer_id?: string
+}
+
+const taskSchema: z.ZodType<TaskFormValues> = z.object({
   title: z.string().min(1, "El título es requerido"),
   description: z.string().optional(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "URGENT"]),
   assigned_to: z.string().min(1, "Debe asignar la tarea"),
   due_date: z.string().optional(),
+  has_alert: z.boolean(),
+  due_time: z.string().optional(),
   reminder_minutes: z.string().optional(),
   operation_id: z.string().optional(),
   customer_id: z.string().optional(),
+}).superRefine((values, ctx) => {
+  if (!values.has_alert) return
+
+  if (!values.due_date) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Elegí una fecha límite antes de activar la alerta",
+      path: ["due_date"],
+    })
+  }
+
+  if (!values.due_time) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La hora es obligatoria si activás una alerta",
+      path: ["due_time"],
+    })
+  }
+
+  if (!values.reminder_minutes) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Elegí cuándo avisar",
+      path: ["reminder_minutes"],
+    })
+  }
 })
 
-type TaskFormValues = z.infer<typeof taskSchema>
+type TaskDialogSeed = Partial<Omit<TaskFormValues, "has_alert" | "due_time" | "reminder_minutes">> & {
+  due_date?: string | null
+  reminder_minutes?: string | number | null
+}
 
 interface TaskDialogProps {
   open: boolean
@@ -54,7 +108,7 @@ interface TaskDialogProps {
   currentUserId: string
   agencyId: string
   editTask?: any | null
-  prefill?: Partial<TaskFormValues>
+  prefill?: TaskDialogSeed
 }
 
 const PRIORITY_OPTIONS = [
@@ -65,7 +119,6 @@ const PRIORITY_OPTIONS = [
 ]
 
 const REMINDER_OPTIONS = [
-  { value: "", label: "Sin recordatorio" },
   { value: "15", label: "15 minutos antes" },
   { value: "30", label: "30 minutos antes" },
   { value: "60", label: "1 hora antes" },
@@ -73,6 +126,32 @@ const REMINDER_OPTIONS = [
   { value: "1440", label: "1 día antes" },
   { value: "2880", label: "2 días antes" },
 ]
+
+function getInitialFormValues(
+  source: TaskDialogSeed | null | undefined,
+  currentUserId: string
+): TaskFormValues {
+  const hasAlert = taskHasReminder({
+    due_date: source?.due_date ?? null,
+    reminder_minutes: source?.reminder_minutes ?? null,
+  })
+  const reminderMinutes = normalizeReminderMinutes(source?.reminder_minutes)
+
+  return {
+    title: source?.title || "",
+    description: source?.description || "",
+    priority: source?.priority || "MEDIUM",
+    assigned_to: source?.assigned_to || currentUserId,
+    due_date: extractTaskDatePart(source?.due_date),
+    has_alert: hasAlert,
+    due_time: hasAlert ? getTaskAlertTimeValue(source?.due_date) : "",
+    reminder_minutes: hasAlert
+      ? String(reminderMinutes ?? DEFAULT_TASK_REMINDER_MINUTES)
+      : "",
+    operation_id: source?.operation_id || "",
+    customer_id: source?.customer_id || "",
+  }
+}
 
 export function TaskDialog({
   open,
@@ -89,17 +168,8 @@ export function TaskDialog({
   const [customerLabel, setCustomerLabel] = useState("")
 
   const form = useForm<TaskFormValues>({
-    resolver: zodResolver(taskSchema),
-    defaultValues: {
-      title: "",
-      description: "",
-      priority: "MEDIUM",
-      assigned_to: currentUserId,
-      due_date: "",
-      reminder_minutes: "",
-      operation_id: "",
-      customer_id: "",
-    },
+    resolver: zodResolver(taskSchema as any) as Resolver<TaskFormValues>,
+    defaultValues: getInitialFormValues(null, currentUserId),
   })
 
   // Load users when dialog opens
@@ -107,16 +177,7 @@ export function TaskDialog({
     if (!open) return
 
     if (editTask) {
-      form.reset({
-        title: editTask.title || "",
-        description: editTask.description || "",
-        priority: editTask.priority || "MEDIUM",
-        assigned_to: editTask.assigned_to || currentUserId,
-        due_date: editTask.due_date ? editTask.due_date.split("T")[0] : "",
-        reminder_minutes: editTask.reminder_minutes?.toString() || "",
-        operation_id: editTask.operation_id || "",
-        customer_id: editTask.customer_id || "",
-      })
+      form.reset(getInitialFormValues(editTask, currentUserId))
       if (editTask.operations) {
         const op = editTask.operations
         setOperationLabel(
@@ -134,29 +195,11 @@ export function TaskDialog({
         setCustomerLabel("")
       }
     } else if (prefill) {
-      form.reset({
-        title: prefill.title || "",
-        description: prefill.description || "",
-        priority: prefill.priority || "MEDIUM",
-        assigned_to: prefill.assigned_to || currentUserId,
-        due_date: prefill.due_date || "",
-        reminder_minutes: prefill.reminder_minutes || "",
-        operation_id: prefill.operation_id || "",
-        customer_id: prefill.customer_id || "",
-      })
+      form.reset(getInitialFormValues(prefill, currentUserId))
       setOperationLabel("")
       setCustomerLabel("")
     } else {
-      form.reset({
-        title: "",
-        description: "",
-        priority: "MEDIUM",
-        assigned_to: currentUserId,
-        due_date: "",
-        reminder_minutes: "",
-        operation_id: "",
-        customer_id: "",
-      })
+      form.reset(getInitialFormValues(null, currentUserId))
       setOperationLabel("")
       setCustomerLabel("")
     }
@@ -174,6 +217,37 @@ export function TaskDialog({
   }, [open, editTask, prefill, currentUserId, form])
 
   const dueDate = form.watch("due_date")
+  const hasAlert = form.watch("has_alert")
+
+  useEffect(() => {
+    if (!hasAlert) {
+      if (form.getValues("due_time")) {
+        form.setValue("due_time", "", { shouldDirty: false, shouldValidate: false })
+      }
+      if (form.getValues("reminder_minutes")) {
+        form.setValue("reminder_minutes", "", { shouldDirty: false, shouldValidate: false })
+      }
+      return
+    }
+
+    if (!form.getValues("due_time")) {
+      form.setValue("due_time", DEFAULT_TASK_ALERT_TIME, { shouldDirty: false, shouldValidate: false })
+    }
+    if (!form.getValues("reminder_minutes")) {
+      form.setValue("reminder_minutes", String(DEFAULT_TASK_REMINDER_MINUTES), {
+        shouldDirty: false,
+        shouldValidate: false,
+      })
+    }
+  }, [hasAlert, form])
+
+  useEffect(() => {
+    if (dueDate) return
+
+    if (form.getValues("has_alert")) {
+      form.setValue("has_alert", false, { shouldDirty: false, shouldValidate: false })
+    }
+  }, [dueDate, form])
 
   const searchOperations = useCallback(async (q: string) => {
     try {
@@ -241,16 +315,21 @@ export function TaskDialog({
   async function onSubmit(values: TaskFormValues) {
     setIsLoading(true)
     try {
+      const dueDateValue = buildTaskDueDateValue(
+        values.due_date,
+        values.has_alert,
+        values.due_time
+      )
+
       const payload = {
         title: values.title,
         description: values.description || null,
         priority: values.priority,
         assigned_to: values.assigned_to,
-        due_date: values.due_date || null,
-        reminder_minutes:
-          values.due_date && values.reminder_minutes
-            ? parseInt(values.reminder_minutes)
-            : null,
+        due_date: dueDateValue,
+        reminder_minutes: values.has_alert
+          ? normalizeReminderMinutes(values.reminder_minutes)
+          : null,
         operation_id: values.operation_id || null,
         customer_id: values.customer_id || null,
         agency_id: agencyId,
@@ -423,7 +502,49 @@ export function TaskDialog({
                   )}
                 />
 
-                {dueDate && (
+                <FormField
+                  control={form.control}
+                  name="has_alert"
+                  render={({ field }) => (
+                    <FormItem className="rounded-lg border border-border/50 bg-background/40 px-4 py-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <FormLabel className="text-sm">Con alerta</FormLabel>
+                          <p className="text-xs text-muted-foreground">
+                            {dueDate
+                              ? "Si la activás, la tarea pasa a tener hora y recordatorio."
+                              : "Elegí una fecha para habilitar la alerta."}
+                          </p>
+                        </div>
+                        <FormControl>
+                          <Switch
+                            checked={field.value}
+                            onCheckedChange={field.onChange}
+                            disabled={!dueDate}
+                          />
+                        </FormControl>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {hasAlert && dueDate && (
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="due_time"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Hora</FormLabel>
+                        <FormControl>
+                          <Input type="time" step="60" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <FormField
                     control={form.control}
                     name="reminder_minutes"
@@ -436,15 +557,12 @@ export function TaskDialog({
                         >
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Sin recordatorio" />
+                              <SelectValue placeholder="Elegir recordatorio" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
                             {REMINDER_OPTIONS.map((r) => (
-                              <SelectItem
-                                key={r.value || "none"}
-                                value={r.value || "none"}
-                              >
+                              <SelectItem key={r.value} value={r.value}>
                                 {r.label}
                               </SelectItem>
                             ))}
@@ -454,8 +572,8 @@ export function TaskDialog({
                       </FormItem>
                     )}
                   />
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Vincular */}

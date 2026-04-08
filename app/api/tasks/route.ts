@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { sendPushToUser } from "@/lib/push"
+import { dueDateSupportsReminder, normalizeReminderMinutes } from "@/lib/tasks/due-date"
 
 const TASK_SELECT = `
   *,
@@ -254,6 +255,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "La agencia es requerida" }, { status: 400 })
     }
 
+    const normalizedReminderMinutes = normalizeReminderMinutes(reminder_minutes)
+    if (normalizedReminderMinutes !== null && !dueDateSupportsReminder(due_date)) {
+      return NextResponse.json(
+        { error: "La alerta requiere una fecha límite con hora" },
+        { status: 400 }
+      )
+    }
+
     const taskData = {
       title: title.trim(),
       description: description?.trim() || null,
@@ -262,7 +271,7 @@ export async function POST(request: Request) {
       created_by: user.id,
       assigned_to,
       due_date: due_date || null,
-      reminder_minutes: due_date && reminder_minutes ? reminder_minutes : null,
+      reminder_minutes: normalizedReminderMinutes,
       reminder_sent: false,
       operation_id: operation_id || null,
       customer_id: customer_id || null,

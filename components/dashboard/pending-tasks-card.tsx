@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { format, isPast, isToday } from "date-fns"
+import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import {
-  CheckCircle2,
   Circle,
   Clock,
   ChevronRight,
@@ -15,6 +14,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  getTaskDueDateMoment,
+  isTaskDueToday,
+  isTaskOverdue,
+  taskHasTimedAlert,
+} from "@/lib/tasks/due-date"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -54,7 +59,11 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
         const pa = order[a.priority as keyof typeof order] ?? 2
         const pb = order[b.priority as keyof typeof order] ?? 2
         if (pa !== pb) return pa - pb
-        if (a.due_date && b.due_date) return new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
+        const dueDateA = getTaskDueDateMoment(a)
+        const dueDateB = getTaskDueDateMoment(b)
+        if (dueDateA && dueDateB) return dueDateA.getTime() - dueDateB.getTime()
+        if (dueDateA) return -1
+        if (dueDateB) return 1
         return 0
       })
 
@@ -114,8 +123,10 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
         ) : (
           <div className="space-y-3">
             {tasks.map((task) => {
-              const isOverdue = task.due_date && isPast(new Date(task.due_date)) && !isToday(new Date(task.due_date))
-              const isDueToday = task.due_date && isToday(new Date(task.due_date))
+              const dueDate = getTaskDueDateMoment(task)
+              const showsDueTime = taskHasTimedAlert(task)
+              const isOverdue = Boolean(dueDate && isTaskOverdue(task))
+              const isDueToday = Boolean(dueDate && !isOverdue && isTaskDueToday(task))
               const priorityColor = PRIORITY_COLORS[task.priority as keyof typeof PRIORITY_COLORS] || PRIORITY_COLORS.MEDIUM
 
               return (
@@ -133,7 +144,7 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
                         {task.priority === "URGENT" ? "!" : task.priority === "HIGH" ? "H" : ""}
                       </Badge>
                     </div>
-                    {task.due_date && (
+                    {dueDate && (
                       <span
                         className={cn(
                           "text-xs flex items-center gap-1 mt-0.5",
@@ -143,7 +154,7 @@ export function PendingTasksCard({ className }: PendingTasksCardProps) {
                         <Clock className="h-3 w-3" />
                         {isOverdue && "Vencida · "}
                         {isDueToday && "Hoy · "}
-                        {format(new Date(task.due_date), "dd MMM", { locale: es })}
+                        {format(dueDate, showsDueTime ? "dd MMM HH:mm" : "dd MMM", { locale: es })}
                       </span>
                     )}
                   </div>

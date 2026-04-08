@@ -17,7 +17,6 @@ import {
   ChevronRight,
   Plus,
   CalendarDays,
-  Loader2,
   Inbox,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -33,21 +32,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { getTaskDueDateMoment } from "@/lib/tasks/due-date"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { TaskCard } from "./task-card"
 import { TaskDialog } from "./task-dialog"
-
-/**
- * Parsea una fecha ISO (ej: "2026-02-17" o "2026-02-17T00:00:00Z")
- * como fecha LOCAL para evitar el desfase de timezone.
- * new Date("2026-02-17") crea UTC medianoche, que en UTC-3 es el día anterior.
- */
-function parseLocalDate(dateStr: string): Date {
-  const d = dateStr.split("T")[0] // tomar solo "YYYY-MM-DD"
-  const [year, month, day] = d.split("-").map(Number)
-  return new Date(year, month - 1, day)
-}
 
 interface TaskWeekViewProps {
   currentUserId: string
@@ -141,7 +130,10 @@ export function TaskWeekView({
   const tasksByDay = days.map((day) => ({
     date: day,
     tasks: tasks.filter(
-      (t) => t.due_date && isSameDay(parseLocalDate(t.due_date), day)
+      (t) => {
+        const dueDate = getTaskDueDateMoment(t)
+        return dueDate ? isSameDay(dueDate, day) : false
+      }
     ),
   }))
 
