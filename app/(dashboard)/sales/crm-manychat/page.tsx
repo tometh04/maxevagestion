@@ -3,6 +3,8 @@ import { createServerClient } from "@/lib/supabase/server"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
 
+export const dynamic = "force-dynamic"
+
 export default async function CRMManychatPage() {
   const { user } = await getCurrentUser()
   
