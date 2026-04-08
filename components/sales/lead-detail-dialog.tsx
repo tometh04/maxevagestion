@@ -1063,6 +1063,7 @@ export function LeadDetailDialog({
       {/* Dialog de cotización */}
       {lead && (
         <QuotationBuilderDialog
+          key={`${lead.id}:${editingQuotationId || "new"}`}
           open={quotationDialogOpen}
           onOpenChange={(isOpen) => {
             setQuotationDialogOpen(isOpen)

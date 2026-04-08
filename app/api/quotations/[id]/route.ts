@@ -114,6 +114,13 @@ export async function PATCH(
       return NextResponse.json({ error: "No tiene acceso" }, { status: 403 })
     }
 
+    if (body.lead_id !== undefined && body.lead_id !== existing.lead_id) {
+      return NextResponse.json(
+        { error: "La cotización no pertenece al lead indicado" },
+        { status: 409 }
+      )
+    }
+
     // Campos actualizables
     const updateData: Record<string, any> = {}
     const allowedFields = [

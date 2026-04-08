@@ -190,6 +190,24 @@ function createEmptyOption(number: number, items?: QuotationItem[]): QuotationOp
   }
 }
 
+function createNewQuotationDraft(lead: QuotationBuilderProps["lead"]) {
+  return {
+    quotationTitle: lead.contact_name,
+    destination: lead.destination || "",
+    origin: "",
+    region: lead.region || "OTROS",
+    departureDate: "",
+    returnDate: "",
+    adults: 1,
+    children: 0,
+    infants: 0,
+    currency: "USD",
+    pricingMode: "PER_PERSON" as QuotationPricingMode,
+    notes: "",
+    options: [createEmptyOption(1)],
+  }
+}
+
 // Helpers for date conversion
 function toDate(s: string | undefined): Date | undefined {
   if (!s) return undefined
@@ -246,16 +264,18 @@ async function searchAirports(query: string): Promise<ComboboxOption[]> {
 }
 
 export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [], onSuccess, existingQuotationId }: QuotationBuilderProps) {
+  const initialDraft = createNewQuotationDraft(lead)
   const [saving, setSaving] = useState(false)
   const [sending, setSending] = useState(false)
+  const [activeQuotationId, setActiveQuotationId] = useState<string | null>(existingQuotationId ?? null)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [loadingExisting, setLoadingExisting] = useState(false)
 
   // General data
-  const [quotationTitle, setQuotationTitle] = useState(lead.contact_name)
-  const [destination, setDestination] = useState(lead.destination || "")
+  const [quotationTitle, setQuotationTitle] = useState(initialDraft.quotationTitle)
+  const [destination, setDestination] = useState(initialDraft.destination)
   const [origin, setOrigin] = useState("")
-  const [region, setRegion] = useState(lead.region || "OTROS")
+  const [region, setRegion] = useState(initialDraft.region)
   const [departureDate, setDepartureDate] = useState("")
   const [returnDate, setReturnDate] = useState("")
   const [adults, setAdults] = useState(1)
@@ -266,7 +286,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [notes, setNotes] = useState("")
 
   // Options
-  const [options, setOptions] = useState<QuotationOption[]>([createEmptyOption(1)])
+  const [options, setOptions] = useState<QuotationOption[]>(initialDraft.options)
 
   const syncLinkedFlights = useCallback((nextOptions: QuotationOption[]) => {
     if (nextOptions.length === 0) return nextOptions
@@ -295,15 +315,48 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     setOptions((current) => syncLinkedFlights(updater(current)))
   }, [syncLinkedFlights])
 
+  const resetFormForNewQuotation = useCallback((nextLead: QuotationBuilderProps["lead"]) => {
+    const draft = createNewQuotationDraft(nextLead)
+    setActiveQuotationId(null)
+    setSavedQuotation(null)
+    setLoadingExisting(false)
+    setQuotationTitle(draft.quotationTitle)
+    setDestination(draft.destination)
+    setOrigin(draft.origin)
+    setRegion(draft.region)
+    setDepartureDate(draft.departureDate)
+    setReturnDate(draft.returnDate)
+    setAdults(draft.adults)
+    setChildren(draft.children)
+    setInfants(draft.infants)
+    setCurrency(draft.currency)
+    setPricingMode(draft.pricingMode)
+    setNotes(draft.notes)
+    setOptions(draft.options)
+  }, [])
+
+  useEffect(() => {
+    if (!open) {
+      resetFormForNewQuotation(lead)
+      return
+    }
+
+    if (!existingQuotationId) {
+      resetFormForNewQuotation(lead)
+    }
+  }, [open, existingQuotationId, lead.id, lead.contact_name, lead.destination, lead.region, resetFormForNewQuotation])
+
   // Load existing quotation for editing
   useEffect(() => {
     if (!open || !existingQuotationId) return
     let cancelled = false
+    setActiveQuotationId(existingQuotationId)
     setLoadingExisting(true)
     fetch(`/api/quotations/${existingQuotationId}`)
       .then(r => r.json())
       .then(({ data }) => {
         if (cancelled || !data) return
+        setActiveQuotationId(data.id || existingQuotationId)
         setSavedQuotation(data)
         setQuotationTitle(lead.contact_name)
         setDestination(data.destination || "")
@@ -852,8 +905,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       }
 
       // If editing existing, use PATCH; otherwise POST to create new
-      const isEditing = !!(savedQuotation?.id || existingQuotationId)
-      const quotationId = savedQuotation?.id || existingQuotationId
+      const isEditing = !!activeQuotationId
+      const quotationId = activeQuotationId
 
       let res: Response
       if (isEditing && quotationId) {
@@ -876,6 +929,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
       }
 
       const { data: quotation } = await res.json()
+      setActiveQuotationId(quotation.id)
       setSavedQuotation(quotation)
 
       if (andSend && quotation) {
@@ -916,6 +970,8 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     }
   }
 
+  const hasActiveQuotation = !!activeQuotationId
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col p-0">
@@ -923,7 +979,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         <div className="px-6 pt-5 pb-2 shrink-0">
           <div className="flex items-center gap-2">
             <FileIcon className="h-5 w-5 shrink-0 text-muted-foreground" />
-            <span className="text-lg font-semibold text-muted-foreground">{existingQuotationId || savedQuotation ? "Editar" : "Nueva"} Cotizacion —</span>
+            <span className="text-lg font-semibold text-muted-foreground">{hasActiveQuotation ? "Editar" : "Nueva"} Cotizacion —</span>
             <input
               value={quotationTitle}
               onChange={(e) => setQuotationTitle(e.target.value)}
@@ -1762,7 +1818,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             </Button>
             <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving}>
               {saving && !sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
-              {savedQuotation || existingQuotationId ? "Actualizar borrador" : "Guardar borrador"}
+              {hasActiveQuotation ? "Actualizar borrador" : "Guardar borrador"}
             </Button>
             {savedQuotation?.public_token && (
               <Button variant="secondary" size="sm" onClick={handleViewQuotation}>
