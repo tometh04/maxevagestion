@@ -1,11 +1,26 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
-import { prepareQuotationOptionsForPersistence } from "@/lib/quotations/persistence"
+import {
+  insertQuotationOptionsOrThrow,
+  prepareQuotationOptionsForPersistence,
+  QuotationStructurePersistenceError,
+} from "@/lib/quotations/persistence"
 
 export const dynamic = "force-dynamic"
+
+function getQuotationPersistenceLogContext(error: unknown) {
+  if (error instanceof QuotationStructurePersistenceError) {
+    return error.context
+  }
+
+  if (error instanceof Error) {
+    return { cause: error.message }
+  }
+
+  return {}
+}
 
 // GET — Listar cotizaciones con filtros
 export async function GET(request: Request) {
@@ -159,80 +174,36 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: quotationError.message }, { status: 500 })
     }
 
-    // Crear opciones con sus items
-    for (let i = 0; i < preparedOptions.length; i++) {
-      const opt = preparedOptions[i]
+    try {
+      await insertQuotationOptionsOrThrow({
+        supabase,
+        quotationId: quotation.id,
+        currency: currency || "USD",
+        preparedOptions,
+      })
+    } catch (error) {
+      console.error("Error persisting quotation structure during POST:", {
+        quotationId: quotation.id,
+        quotationNumber: quotation.quotation_number,
+        ...getQuotationPersistenceLogContext(error),
+      })
 
-      // Crear opción
-      const { data: option, error: optionError } = await supabase
-        .from("quotation_options")
-        .insert({
-          quotation_id: quotation.id,
-          option_number: i + 1,
-          title: opt.title || `Opción ${i + 1}`,
-          total_amount: opt.total_amount,
-          calculated_total_amount: opt.calculated_total_amount,
-          manual_total_amount: opt.manual_total_amount,
+      const { error: rollbackError } = await supabase
+        .from("quotations")
+        .delete()
+        .eq("id", quotation.id)
+
+      if (rollbackError) {
+        console.error("Error rolling back quotation after POST failure:", {
+          quotationId: quotation.id,
+          cause: rollbackError.message,
         })
-        .select()
-        .single()
-
-      if (optionError) {
-        console.error("Error creating option:", optionError)
-        continue
       }
 
-      // Crear items de la opción
-      if (opt.items && Array.isArray(opt.items)) {
-        const itemsToInsert = opt.items.map((item: any, idx: number) => ({
-          quotation_id: quotation.id,
-          option_id: option.id,
-          item_type: item.item_type || "OTHER",
-          description: item.description || "",
-          quantity: item.quantity || 1,
-          unit_price: item.unit_price || item.sale_amount || 0,
-          sale_amount: item.sale_amount || item.unit_price || 0,
-          cost_amount: item.cost_amount || 0,
-          cost_currency: item.cost_currency || currency || "USD",
-          subtotal: item.subtotal || 0,
-          currency: currency || "USD",
-          operator_id: item.operator_id || null,
-          generates_commission: item.generates_commission || false,
-          order_index: idx,
-          notes: item.notes || null,
-          // Hotel
-          destination_city: item.destination_city || null,
-          hotel_name: item.hotel_name || null,
-          hotel_stars: item.hotel_stars || null,
-          hotel_address: item.hotel_address || null,
-          hotel_phone: item.hotel_phone || null,
-          hotel_photo_url: item.hotel_photo_url || null,
-          room_type: item.room_type || null,
-          meal_plan: item.meal_plan || null,
-          checkin_date: item.checkin_date || null,
-          checkout_date: item.checkout_date || null,
-          nights: item.nights || null,
-          rooms: item.rooms || 1,
-          // Flight
-          airline: item.airline || null,
-          flight_route: item.flight_route || null,
-          flight_date: item.flight_date || null,
-          flight_return_date: item.flight_return_date || null,
-          flight_stops: item.flight_stops != null ? Number(item.flight_stops) : 0,
-          flight_class: item.flight_class || null,
-          flight_screenshot_url: item.flight_screenshot_url || null,
-          // Transfer
-          transfer_description: item.transfer_description || null,
-        }))
-
-        const { error: itemsError } = await supabase
-          .from("quotation_items")
-          .insert(itemsToInsert)
-
-        if (itemsError) {
-          console.error("Error creating items:", itemsError)
-        }
-      }
+      return NextResponse.json(
+        { error: "No se pudo guardar la cotización completa. No se realizaron cambios." },
+        { status: 500 }
+      )
     }
 
     // Devolver cotización completa con opciones e items

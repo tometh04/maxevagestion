@@ -1,10 +1,52 @@
 import { NextResponse } from "next/server"
+import { randomUUID } from "node:crypto"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeQuotationPricingMode } from "@/lib/quotations/presentation"
-import { prepareQuotationOptionsForPersistence } from "@/lib/quotations/persistence"
+import {
+  cleanupInsertedQuotationOptions,
+  insertQuotationOptionsOrThrow,
+  prepareQuotationOptionsForPersistence,
+  QuotationStructurePersistenceError,
+} from "@/lib/quotations/persistence"
 
 export const dynamic = "force-dynamic"
+
+function buildQuotationRestorePayload(quotation: any) {
+  return {
+    destination: quotation.destination,
+    origin: quotation.origin,
+    region: quotation.region,
+    departure_date: quotation.departure_date,
+    return_date: quotation.return_date,
+    valid_until: quotation.valid_until,
+    adults: quotation.adults,
+    children: quotation.children,
+    infants: quotation.infants,
+    currency: quotation.currency,
+    notes: quotation.notes,
+    terms_and_conditions: quotation.terms_and_conditions,
+    status: quotation.status,
+    subtotal: quotation.subtotal,
+    total_amount: quotation.total_amount,
+    pricing_mode: quotation.pricing_mode,
+    approved_by: quotation.approved_by,
+    approved_at: quotation.approved_at,
+    rejection_reason: quotation.rejection_reason,
+  }
+}
+
+function getQuotationPersistenceLogContext(error: unknown) {
+  if (error instanceof QuotationStructurePersistenceError) {
+    return error.context
+  }
+
+  if (error instanceof Error) {
+    return { cause: error.message }
+  }
+
+  return {}
+}
 
 // GET — Detalle de cotización con opciones e items
 export async function GET(
@@ -60,7 +102,7 @@ export async function PATCH(
     // Verificar que existe y que el usuario tiene acceso
     const { data: existing } = await supabase
       .from("quotations")
-      .select("id, seller_id, status, currency")
+      .select("*")
       .eq("id", id)
       .single()
 
@@ -92,6 +134,7 @@ export async function PATCH(
     }
 
     let preparedOptions: ReturnType<typeof prepareQuotationOptionsForPersistence> | null = null
+    let existingOptionIds: string[] = []
     if (body.options && Array.isArray(body.options)) {
       try {
         preparedOptions = prepareQuotationOptionsForPersistence(body.options, body.currency || existing.currency || "USD")
@@ -105,6 +148,20 @@ export async function PATCH(
 
       updateData.subtotal = preparedOptions[0].total_amount
       updateData.total_amount = preparedOptions[0].total_amount
+
+      const { data: currentOptions, error: currentOptionsError } = await supabase
+        .from("quotation_options")
+        .select("id")
+        .eq("quotation_id", id)
+
+      if (currentOptionsError) {
+        console.error("Error loading existing quotation options before PATCH:", currentOptionsError)
+        return NextResponse.json({ error: "No se pudo preparar la actualización de la cotización" }, { status: 500 })
+      }
+
+      existingOptionIds = Array.isArray(currentOptions)
+        ? currentOptions.map((option: { id: string }) => option.id)
+        : []
     }
 
     // Lógica de cambio de estado
@@ -123,6 +180,10 @@ export async function PATCH(
       updateData.rejection_reason = body.rejection_reason || null
     }
 
+    if (!existing.public_token && (preparedOptions || Object.keys(updateData).length > 0)) {
+      updateData.public_token = randomUUID()
+    }
+
     // Actualizar cotización
     const { data: updated, error } = await supabase
       .from("quotations")
@@ -136,75 +197,89 @@ export async function PATCH(
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Si se enviaron opciones nuevas, reemplazarlas
+    // Si se enviaron opciones nuevas, reemplazarlas sin descartar la estructura anterior hasta el final
     if (preparedOptions) {
-      // Borrar opciones e items anteriores (cascade borra los items vinculados)
-      await supabase.from("quotation_options").delete().eq("quotation_id", id)
-      // Borrar items sin opción
-      await supabase.from("quotation_items").delete().eq("quotation_id", id)
+      let insertedOptionIds: string[] = []
 
-      for (let i = 0; i < preparedOptions.length; i++) {
-        const opt = preparedOptions[i]
+      try {
+        const insertResult = await insertQuotationOptionsOrThrow({
+          supabase,
+          quotationId: id,
+          currency: updated.currency || "USD",
+          preparedOptions,
+        })
+        insertedOptionIds = insertResult.optionIds
 
-        const { data: option, error: optError } = await supabase
-          .from("quotation_options")
-          .insert({
-            quotation_id: id,
-            option_number: i + 1,
-            title: opt.title || `Opción ${i + 1}`,
-            total_amount: opt.total_amount,
-            calculated_total_amount: opt.calculated_total_amount,
-            manual_total_amount: opt.manual_total_amount,
-          })
-          .select()
-          .single()
+        if (existingOptionIds.length > 0) {
+          const { error: deleteOldOptionsError } = await supabase
+            .from("quotation_options")
+            .delete()
+            .in("id", existingOptionIds)
+            .eq("quotation_id", id)
 
-        if (optError || !option) continue
-
-        if (opt.items && Array.isArray(opt.items)) {
-          const itemsToInsert = opt.items.map((item: any, idx: number) => ({
-            quotation_id: id,
-            option_id: option.id,
-            item_type: item.item_type || "OTHER",
-            description: item.description || "",
-            quantity: item.quantity || 1,
-            unit_price: item.unit_price || item.sale_amount || 0,
-            sale_amount: item.sale_amount || item.unit_price || 0,
-            cost_amount: item.cost_amount || 0,
-            cost_currency: item.cost_currency || updated.currency || "USD",
-            subtotal: item.subtotal || 0,
-            currency: updated.currency || "USD",
-            operator_id: item.operator_id || null,
-            generates_commission: item.generates_commission || false,
-            order_index: idx,
-            notes: item.notes || null,
-            // Hotel
-            destination_city: item.destination_city || null,
-            hotel_name: item.hotel_name || null,
-            hotel_stars: item.hotel_stars || null,
-            hotel_address: item.hotel_address || null,
-            hotel_phone: item.hotel_phone || null,
-            hotel_photo_url: item.hotel_photo_url || null,
-            room_type: item.room_type || null,
-            meal_plan: item.meal_plan || null,
-            checkin_date: item.checkin_date || null,
-            checkout_date: item.checkout_date || null,
-            nights: item.nights || null,
-            rooms: item.rooms || 1,
-            // Flight
-            airline: item.airline || null,
-            flight_route: item.flight_route || null,
-            flight_date: item.flight_date || null,
-            flight_return_date: item.flight_return_date || null,
-            flight_stops: item.flight_stops != null ? Number(item.flight_stops) : 0,
-            flight_class: item.flight_class || null,
-            flight_screenshot_url: item.flight_screenshot_url || null,
-            // Transfer
-            transfer_description: item.transfer_description || null,
-          }))
-
-          await supabase.from("quotation_items").insert(itemsToInsert)
+          if (deleteOldOptionsError) {
+            throw new QuotationStructurePersistenceError(
+              "No se pudo reemplazar la estructura anterior de la cotización.",
+              "old_options_delete_failed",
+              {
+                quotationId: id,
+                oldOptionIds: existingOptionIds,
+                cause: deleteOldOptionsError.message,
+              }
+            )
+          }
         }
+
+        const { error: orphanItemsError } = await supabase
+          .from("quotation_items")
+          .delete()
+          .eq("quotation_id", id)
+          .is("option_id", null)
+
+        if (orphanItemsError) {
+          throw new QuotationStructurePersistenceError(
+            "No se pudieron limpiar ítems legacy de la cotización.",
+            "orphan_items_delete_failed",
+            {
+              quotationId: id,
+              cause: orphanItemsError.message,
+            }
+          )
+        }
+      } catch (error) {
+        console.error("Error persisting quotation structure during PATCH:", {
+          quotationId: id,
+          quotationNumber: existing.quotation_number,
+          ...getQuotationPersistenceLogContext(error),
+        })
+
+        if (insertedOptionIds.length > 0) {
+          try {
+            await cleanupInsertedQuotationOptions(supabase, insertedOptionIds, id)
+          } catch (cleanupError) {
+            console.error("Error cleaning up new quotation options after PATCH failure:", {
+              quotationId: id,
+              ...getQuotationPersistenceLogContext(cleanupError),
+            })
+          }
+        }
+
+        const { error: restoreError } = await supabase
+          .from("quotations")
+          .update(buildQuotationRestorePayload(existing))
+          .eq("id", id)
+
+        if (restoreError) {
+          console.error("Error restoring quotation header after PATCH failure:", {
+            quotationId: id,
+            cause: restoreError.message,
+          })
+        }
+
+        return NextResponse.json(
+          { error: "No se pudo guardar la estructura completa de la cotización. Se conservaron los datos anteriores." },
+          { status: 500 }
+        )
       }
     }
 
