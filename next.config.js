@@ -1,8 +1,11 @@
+const path = require('path')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Prevent Next.js from bundling @afipsdk/afip.js (CJS module)
   // so Vercel's file tracer picks it up and includes it in the serverless deployment
   serverExternalPackages: ['@afipsdk/afip.js'],
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     remotePatterns: [
       {
