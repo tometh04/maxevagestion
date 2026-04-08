@@ -1,6 +1,7 @@
 import {
   calculateAmountInSaleCurrency,
   coercePositiveNumber,
+  getCustomerIncomeReferenceCurrency,
   getOperationSaleCurrency,
   normalizeSupportedCurrency,
   requiresCustomerIncomeExchangeRate,
@@ -24,6 +25,26 @@ describe("customer-income-fx helpers", () => {
 
     it("falls back to legacy currency", () => {
       expect(getOperationSaleCurrency({ currency: "ARS" })).toBe("ARS")
+    })
+  })
+
+  describe("getCustomerIncomeReferenceCurrency", () => {
+    it("prioritizes the service sale currency over the operation currency", () => {
+      expect(
+        getCustomerIncomeReferenceCurrency({
+          operation: { sale_currency: "USD" },
+          service: { sale_currency: "ARS" },
+        })
+      ).toBe("ARS")
+    })
+
+    it("falls back to the operation sale currency when there is no service", () => {
+      expect(
+        getCustomerIncomeReferenceCurrency({
+          operation: { sale_currency: "ARS" },
+          service: null,
+        })
+      ).toBe("ARS")
     })
   })
 
@@ -77,6 +98,22 @@ describe("customer-income-fx helpers", () => {
           saleCurrency: "ARS",
         })
       ).toBe(false)
+    })
+
+    it("requires exchange rate when a service in ARS is charged in USD even inside a USD operation", () => {
+      const saleCurrency = getCustomerIncomeReferenceCurrency({
+        operation: { sale_currency: "USD" },
+        service: { sale_currency: "ARS" },
+      })
+
+      expect(
+        requiresCustomerIncomeExchangeRate({
+          payerType: "CUSTOMER",
+          direction: "INCOME",
+          paymentCurrency: "USD",
+          saleCurrency,
+        })
+      ).toBe(true)
     })
   })
 

@@ -50,6 +50,12 @@ import * as z from "zod"
 import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import {
+  calculateAmountInSaleCurrency,
+  coercePositiveNumber,
+  getCustomerIncomeReferenceCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -263,11 +269,38 @@ export function OperationServicesSection({
 
   const selectedServiceId = paymentForm.watch("operation_service_id")
   const selectedPayerType = paymentForm.watch("payer_type")
+  const selectedDirection = paymentForm.watch("direction")
   const selectedPaymentCurrency = paymentForm.watch("currency")
+  const selectedPaymentAmount = paymentForm.watch("amount")
+  const selectedExchangeRate = paymentForm.watch("exchange_rate")
   const selectedService = services.find((service) => service.id === selectedServiceId)
   const isOperatorServicePayment = selectedPayerType === "OPERATOR"
   const selectedServiceHasProvider = !!selectedService?.operator_id
   const selectedServiceProviderName = selectedService?.operators?.name || "Proveedor vinculado"
+  const customerIncomeReferenceCurrency = selectedService
+    ? getCustomerIncomeReferenceCurrency({ service: selectedService })
+    : null
+  const needsCustomerIncomeManualExchangeRate = selectedService
+    ? requiresCustomerIncomeExchangeRate({
+        payerType: selectedPayerType,
+        direction: selectedDirection,
+        paymentCurrency: selectedPaymentCurrency,
+        saleCurrency: customerIncomeReferenceCurrency,
+      })
+    : false
+  const showExchangeRateField = selectedPayerType === "CUSTOMER"
+    ? needsCustomerIncomeManualExchangeRate
+    : selectedPaymentCurrency === "ARS"
+  const paymentAmountValue = Number(selectedPaymentAmount) || 0
+  const selectedExchangeRateNumber = coercePositiveNumber(selectedExchangeRate)
+  const exchangeRatePreview = selectedService && selectedExchangeRateNumber && paymentAmountValue > 0
+    ? calculateAmountInSaleCurrency({
+        paymentCurrency: selectedPaymentCurrency,
+        saleCurrency: selectedService.sale_currency,
+        amount: paymentAmountValue,
+        exchangeRate: selectedExchangeRateNumber,
+      })
+    : null
 
   // ── Cargar cuentas financieras cuando se abre el dialog de pago ──────────
   useEffect(() => {
@@ -286,6 +319,20 @@ export function OperationServicesSection({
       fetchAccounts()
     }
   }, [paymentDialogOpen])
+
+  useEffect(() => {
+    if (!paymentDialogOpen) return
+
+    paymentForm.setValue("financial_account_id", "")
+    paymentForm.clearErrors("financial_account_id")
+  }, [paymentDialogOpen, paymentForm, selectedPaymentCurrency])
+
+  useEffect(() => {
+    if (!paymentDialogOpen) return
+
+    paymentForm.setValue("exchange_rate", undefined)
+    paymentForm.clearErrors("exchange_rate")
+  }, [paymentDialogOpen, paymentForm, selectedPaymentCurrency, selectedPayerType, selectedServiceId])
 
   // ── Cargar servicios ──────────────────────────────────────────────────────
 
@@ -538,6 +585,11 @@ export function OperationServicesSection({
   const onSubmitServicePayment = async (values: ServicePaymentFormValues) => {
     const service = services.find((item) => item.id === values.operation_service_id)
 
+    if (!service) {
+      paymentForm.setError("operation_service_id", { message: "Seleccioná un servicio válido" })
+      return
+    }
+
     if (values.payer_type === "OPERATOR" && !service?.operator_id) {
       paymentForm.setError("operation_service_id", {
         message: "El servicio seleccionado no tiene proveedor asociado",
@@ -546,8 +598,21 @@ export function OperationServicesSection({
       return
     }
 
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      paymentForm.setError("exchange_rate", { message: "Ingresá el tipo de cambio para ARS" })
+    const requiresManualExchangeRate = values.payer_type === "CUSTOMER"
+      ? requiresCustomerIncomeExchangeRate({
+          payerType: values.payer_type,
+          direction: values.direction,
+          paymentCurrency: values.currency,
+          saleCurrency: getCustomerIncomeReferenceCurrency({ service }),
+        })
+      : values.currency === "ARS"
+
+    if (requiresManualExchangeRate && !values.exchange_rate) {
+      paymentForm.setError("exchange_rate", {
+        message: values.payer_type === "CUSTOMER"
+          ? "Ingresá el tipo de cambio para convertir el cobro a la moneda del servicio"
+          : "Ingresá el tipo de cambio para ARS",
+      })
       return
     }
 
@@ -565,7 +630,7 @@ export function OperationServicesSection({
           amount: values.amount,
           currency: values.currency,
           financial_account_id: values.financial_account_id,
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -1380,8 +1445,8 @@ export function OperationServicesSection({
                 />
               </div>
 
-              {/* Tipo de cambio - solo cuando moneda es ARS */}
-              {paymentForm.watch("currency") === "ARS" && (
+              {/* Tipo de cambio */}
+              {showExchangeRateField && (
                 <FormField
                   control={paymentForm.control}
                   name="exchange_rate"
@@ -1398,9 +1463,13 @@ export function OperationServicesSection({
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        {field.value && paymentForm.watch("amount")
-                          ? `Equivale a USD ${(paymentForm.watch("amount") / Number(field.value)).toFixed(2)}`
-                          : "Ingresá el tipo de cambio para calcular el equivalente en USD"
+                        {selectedPayerType === "CUSTOMER" && selectedService
+                          ? exchangeRatePreview !== null
+                            ? `Equivale a ${formatCurrency(exchangeRatePreview, selectedService.sale_currency)} en la moneda del servicio`
+                            : `Ingresá el tipo de cambio para convertir el cobro a ${selectedService.sale_currency}`
+                          : field.value && paymentForm.watch("amount")
+                            ? `Equivale a USD ${(paymentForm.watch("amount") / Number(field.value)).toFixed(2)}`
+                            : "Ingresá el tipo de cambio para calcular el equivalente en USD"
                         }
                       </p>
                       <FormMessage />

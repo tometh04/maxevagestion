@@ -26,10 +26,13 @@ import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { logAudit, getClientIP } from "@/lib/audit"
 import {
   coercePositiveNumber,
-  getOperationSaleCurrency,
+  getCustomerIncomeReferenceCurrency,
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
+
+const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
+  "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
 
 async function getOperationOperatorIdsForPayments(
   supabase: any,
@@ -194,16 +197,42 @@ export async function POST(request: Request) {
       operationData = operation
     }
 
+    let operationServiceData: any = null
+    if (operation_service_id) {
+      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
+        .select("id, operation_id, operator_id, operator_payment_id, sale_currency")
+        .eq("id", operation_service_id)
+        .maybeSingle()
+
+      if (operationServiceError) {
+        console.error("Error loading operation service for payment:", operationServiceError)
+        return NextResponse.json({ error: "Error al obtener el servicio seleccionado" }, { status: 500 })
+      }
+
+      if (!operationService) {
+        return NextResponse.json({ error: "El servicio seleccionado no existe o ya no está disponible" }, { status: 404 })
+      }
+
+      if (operation_id && operationService.operation_id !== operation_id) {
+        return NextResponse.json({ error: "El servicio seleccionado no pertenece a esta operación" }, { status: 400 })
+      }
+
+      operationServiceData = operationService
+    }
+
     const requiresCustomerIncomeManualExchangeRate = requiresCustomerIncomeExchangeRate({
       payerType: payer_type,
       direction,
       paymentCurrency: currency,
-      saleCurrency: getOperationSaleCurrency(operationData),
+      saleCurrency: getCustomerIncomeReferenceCurrency({
+        operation: operationData,
+        service: operationServiceData,
+      }),
     })
 
     if (requiresCustomerIncomeManualExchangeRate && !providedExchangeRateNumber) {
       return NextResponse.json(
-        { error: "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la de la operación" },
+        { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
         { status: 400 }
       )
     }
@@ -239,21 +268,11 @@ export async function POST(request: Request) {
     let resolvedOperatorPaymentId: string | null = null
 
     if (payer_type === "OPERATOR" && operation_service_id) {
-      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
-        .select("id, operation_id, operator_id, operator_payment_id")
-        .eq("id", operation_service_id)
-        .maybeSingle()
-
-      if (operationServiceError) {
-        console.error("Error loading operation service for payment:", operationServiceError)
-        return NextResponse.json({ error: "Error al obtener el servicio seleccionado" }, { status: 500 })
-      }
-
       const serviceLinkResolution = resolveServicePaymentLink({
         operationId: operation_id || null,
         operationServiceId: operation_service_id,
         explicitOperatorId: operator_id || null,
-        service: operationService || null,
+        service: operationServiceData || null,
       })
 
       if (!serviceLinkResolution.ok) {
@@ -1042,6 +1061,7 @@ export async function PATCH(request: Request) {
     let linkedOperatorId: string | null = existingPayment.operator_id || null
     let linkedOperatorPaymentId: string | null = existingPayment.operator_payment_id || null
     let existingOperationData: any = null
+    let existingOperationServiceData: any = null
 
     if (existingPayment.operation_id) {
       const { data: operation, error: operationError } = await (supabase.from("operations") as any)
@@ -1054,6 +1074,20 @@ export async function PATCH(request: Request) {
       }
 
       existingOperationData = operation
+    }
+
+    if (existingPayment.operation_service_id) {
+      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
+        .select("id, operation_id, sale_currency")
+        .eq("id", existingPayment.operation_service_id)
+        .maybeSingle()
+
+      if (operationServiceError) {
+        console.error("Error loading operation service for payment edit:", operationServiceError)
+        return NextResponse.json({ error: "Error al obtener el servicio asociado al pago" }, { status: 500 })
+      }
+
+      existingOperationServiceData = operationService || null
     }
 
     if (existingPayment.payer_type === "OPERATOR") {
@@ -1096,7 +1130,10 @@ export async function PATCH(request: Request) {
       payerType: existingPayment.payer_type,
       direction: existingPayment.direction,
       paymentCurrency: finalCurrency,
-      saleCurrency: getOperationSaleCurrency(existingOperationData),
+      saleCurrency: getCustomerIncomeReferenceCurrency({
+        operation: existingOperationData,
+        service: existingOperationServiceData,
+      }),
     })
 
     // Validaciones
@@ -1106,7 +1143,7 @@ export async function PATCH(request: Request) {
 
     if (requiresCustomerIncomeManualExchangeRate && !finalExchangeRate) {
       return NextResponse.json(
-        { error: "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la de la operación" },
+        { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
         { status: 400 }
       )
     }

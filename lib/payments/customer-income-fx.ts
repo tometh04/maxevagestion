@@ -5,6 +5,10 @@ interface OperationSaleCurrencyLike {
   currency?: string | null
 }
 
+interface ServiceSaleCurrencyLike {
+  sale_currency?: string | null
+}
+
 interface CustomerIncomeExchangeRateParams {
   payerType?: string | null
   direction?: string | null
@@ -25,6 +29,17 @@ export function normalizeSupportedCurrency(value: string | null | undefined): Su
 
 export function getOperationSaleCurrency(operation?: OperationSaleCurrencyLike | null): SupportedCurrency {
   return normalizeSupportedCurrency(operation?.sale_currency ?? operation?.currency)
+}
+
+export function getCustomerIncomeReferenceCurrency(params?: {
+  operation?: OperationSaleCurrencyLike | null
+  service?: ServiceSaleCurrencyLike | null
+}): SupportedCurrency {
+  if (params?.service?.sale_currency) {
+    return normalizeSupportedCurrency(params.service.sale_currency)
+  }
+
+  return getOperationSaleCurrency(params?.operation)
 }
 
 export function coercePositiveNumber(value: unknown): number | null {
