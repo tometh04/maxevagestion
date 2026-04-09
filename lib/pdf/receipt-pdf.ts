@@ -720,9 +720,8 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     `Emitido en ${[data.agencyCity, data.fechaFormateada].filter(Boolean).join(", ")}`
   )
   drawInfoCard(
-    "Cliente",
+    normalizeText(data.customerName),
     [
-      { label: "Cliente", value: normalizeText(data.customerName) },
       { label: "Domicilio", value: normalizeText(data.customerAddress) },
       { label: "Localidad", value: normalizeText(data.customerCity) },
     ],
@@ -733,33 +732,10 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     }
   )
 
-  drawSectionHeading("Detalle del cobro", `RECIBO X · ${data.receiptNumber}`)
-  drawInfoCard(
-    "Recibo",
-    [
-      { label: "Concepto", value: normalizeText(data.concepto) },
-      {
-        label: "Cobrado en este recibo",
-        value: formatCurrencyValue(receiptCurrency, receivedNow),
-        note:
-          data.currency === receiptCurrency
-            ? `Moneda recibida: ${data.currencyName}`
-            : `Recibido: ${formatCurrencyValue(data.currency, data.amount)} · Aplicado en ${receiptCurrency}`,
-      },
-      { label: "Sucursal", value: normalizeText(branchLabel, companyName) },
-    ],
-    {
-      fillColor: brandPale,
-      borderColor: brandBorder,
-      titleColor: brandColor,
-    }
-  )
-
   if (data.receiptScope === "SERVICE") {
     contextItems.push(
       { label: "Servicio", value: normalizeText(data.serviceLabel) },
       { label: "Detalle", value: normalizeText(data.serviceDescription, "") },
-      { label: "Proveedor", value: normalizeText(data.serviceOperatorName, "") },
       { label: "Operación", value: normalizeText(data.fileCode, "") },
       { label: "Destino", value: normalizeText(data.destination, "") },
       {
@@ -780,8 +756,7 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
           .filter((entry) => entry !== "-")
           .join(" · "),
       },
-      { label: "Pasajeros", value: buildPassengersText(data) },
-      { label: "Operador", value: normalizeText(data.operatorName, "") }
+      { label: "Pasajeros", value: buildPassengersText(data) }
     )
   }
 
