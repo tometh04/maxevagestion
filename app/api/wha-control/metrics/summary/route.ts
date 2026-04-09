@@ -50,8 +50,8 @@ export async function GET(request: Request) {
     if (deviceIds) {
       chatQuery = chatQuery.in("device_id", deviceIds)
     }
-    const { data: individualChats } = await chatQuery
-    allowedChatIds = new Set((individualChats || []).map((c: any) => c.id))
+    const individualChats = await fetchAllRows(chatQuery)
+    allowedChatIds = new Set(individualChats.map((c: any) => c.id))
   }
 
   // Query all messages in range directly (real-time, no pre-aggregation)
@@ -65,10 +65,12 @@ export async function GET(request: Request) {
   if (fromDate) msgQuery = msgQuery.gte("sent_at", fromDate)
   if (toDate) msgQuery = msgQuery.lte("sent_at", toDate)
 
-  const { data: messages, error } = await msgQuery
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  let messages: any[]
+  try {
+    messages = await fetchAllRows(msgQuery)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 
   const msgs = (messages || []).filter((m: any) => {
@@ -113,16 +115,16 @@ export async function GET(request: Request) {
   let newChatsForInitiatedQuery = supabase
     .from("wa_chats")
     .select("id")
-  if (deviceId && deviceId !== "all") {
-    newChatsForInitiatedQuery = newChatsForInitiatedQuery.eq("device_id", deviceId)
+  if (deviceIds) {
+    newChatsForInitiatedQuery = newChatsForInitiatedQuery.in("device_id", deviceIds)
   }
   if (!includeGroups) {
     newChatsForInitiatedQuery = newChatsForInitiatedQuery.eq("is_group", false)
   }
   if (fromDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.gte("created_at", fromDate)
   if (toDate) newChatsForInitiatedQuery = newChatsForInitiatedQuery.lte("created_at", toDate)
-  const { data: newChatsForInitiated } = await newChatsForInitiatedQuery
-  const newChatIds = new Set((newChatsForInitiated || []).map((c: any) => c.id))
+  const newChatsForInitiated = await fetchAllRows(newChatsForInitiatedQuery)
+  const newChatIds = new Set(newChatsForInitiated.map((c: any) => c.id))
 
   // Initiated = NEW chats where the first message was outbound (device started conversation with new contact)
   let initiated_count = 0
@@ -262,7 +264,25 @@ export async function GET(request: Request) {
 
 /** Check if a document is a PDF based on mime type */
 function isPdfDocument(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return true // If no mime type, assume it could be a PDF (backwards compat)
+  if (!mimeType) return false // No mime type = don't assume PDF
   const mime = mimeType.toLowerCase()
   return mime === "application/pdf" || mime.includes("pdf")
+}
+
+/**
+ * Fetch all rows from a Supabase query, paginating past the 1000-row default limit.
+ */
+async function fetchAllRows<T = any>(queryBuilder: any): Promise<T[]> {
+  const PAGE_SIZE = 1000
+  const allData: T[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await queryBuilder.range(offset, offset + PAGE_SIZE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    allData.push(...data)
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return allData
 }

@@ -7,9 +7,27 @@ const EXCLUDED_MESSAGE_TYPES = new Set(["reaction", "sticker", "unknown"])
 
 /** Check if a document is a PDF based on mime type */
 function isPdfDocument(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return true // If no mime type, assume it could be a PDF (backwards compat)
+  if (!mimeType) return false // No mime type = don't assume PDF
   const mime = mimeType.toLowerCase()
   return mime === "application/pdf" || mime.includes("pdf")
+}
+
+/**
+ * Fetch all rows from a Supabase query, paginating past the 1000-row default limit.
+ */
+async function fetchAllRows<T = any>(queryBuilder: any): Promise<T[]> {
+  const PAGE_SIZE = 1000
+  const allData: T[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await queryBuilder.range(offset, offset + PAGE_SIZE - 1)
+    if (error) throw error
+    if (!data || data.length === 0) break
+    allData.push(...data)
+    if (data.length < PAGE_SIZE) break
+    offset += PAGE_SIZE
+  }
+  return allData
 }
 
 export async function GET(request: Request) {
@@ -56,8 +74,8 @@ export async function GET(request: Request) {
     if (deviceIds) {
       chatQuery = chatQuery.in("device_id", deviceIds)
     }
-    const { data: individualChats } = await chatQuery
-    allowedChatIds = new Set((individualChats || []).map((c: any) => c.id))
+    const individualChats = await fetchAllRows(chatQuery)
+    allowedChatIds = new Set(individualChats.map((c: any) => c.id))
   }
 
   // Query messages directly (real-time)
@@ -72,10 +90,12 @@ export async function GET(request: Request) {
   if (fromDate) query = query.gte("sent_at", fromDate)
   if (toDate) query = query.lte("sent_at", toDate)
 
-  const { data: messages, error } = await query
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  let messages: any[]
+  try {
+    messages = await fetchAllRows(query)
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 
   // Filter messages: exclude groups (unless toggled) and non-real message types
@@ -87,16 +107,16 @@ export async function GET(request: Request) {
 
   // Get chats created in range (new contacts only) for "initiated" metric
   let newChatsQuery = supabase.from("wa_chats").select("id, created_at")
-  if (deviceId && deviceId !== "all") {
-    newChatsQuery = newChatsQuery.eq("device_id", deviceId)
+  if (deviceIds) {
+    newChatsQuery = newChatsQuery.in("device_id", deviceIds)
   }
   if (!includeGroups) {
     newChatsQuery = newChatsQuery.eq("is_group", false)
   }
   if (fromDate) newChatsQuery = newChatsQuery.gte("created_at", fromDate)
   if (toDate) newChatsQuery = newChatsQuery.lte("created_at", toDate)
-  const { data: newChats } = await newChatsQuery
-  const newChatIds = new Set((newChats || []).map((c: any) => c.id))
+  const newChats = await fetchAllRows(newChatsQuery)
+  const newChatIds = new Set(newChats.map((c: any) => c.id))
 
   // Group by date
   const byDate = new Map<string, {
