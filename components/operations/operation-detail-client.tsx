@@ -48,6 +48,7 @@ import {
   type OperationOperatorPaymentLike,
   type OperationServicePaymentRelationLike,
 } from "@/lib/operations/payment-operators"
+import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary"
 
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
@@ -74,6 +75,13 @@ const alertTypeLabels: Record<string, string> = {
   MISSING_DOC: "Documento Faltante",
   PASSPORT_EXPIRY: "Documento Vencido",
   GENERIC: "Genérico",
+}
+
+function formatMoney(amount: number, currency: string) {
+  return `${currency} ${amount.toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
 }
 
 interface OperationService {
@@ -179,6 +187,14 @@ export function OperationDetailClient({
         fallbackNamesById: operatorNameMap,
       }),
     [operationServices, operatorPayments, operatorNameMap]
+  )
+  const purchaseSummary = useMemo(
+    () =>
+      buildOperationPurchaseSummary({
+        operation,
+        operationServices,
+      }),
+    [operation, operationServices]
   )
 
   return (
@@ -394,6 +410,80 @@ export function OperationDetailClient({
               </CardContent>
             </Card>
           </div>
+
+          <Card className="rounded-xl border border-border/40">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                🛒 Resumen de Compra
+              </CardTitle>
+              <CardDescription>
+                Control rapido de compras a operadores y proveedores dentro de la operacion
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {purchaseSummary.lines.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/60 py-8 text-center text-sm text-muted-foreground">
+                  Sin compras registradas.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-border/40 overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Concepto</TableHead>
+                          <TableHead>Operador</TableHead>
+                          <TableHead>Reserva</TableHead>
+                          <TableHead className="text-right">Costo</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {purchaseSummary.lines.map((line) => (
+                          <TableRow key={line.id}>
+                            <TableCell>
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium">{line.label}</span>
+                                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                    {line.source === "base" ? "Base" : "Servicio"}
+                                  </Badge>
+                                </div>
+                                {line.secondaryText && (
+                                  <p className="text-xs text-muted-foreground">{line.secondaryText}</p>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-medium">{line.operatorName}</TableCell>
+                            <TableCell>
+                              {line.reservationCode ? (
+                                <span className="font-mono text-xs uppercase tracking-wide">
+                                  {line.reservationCode}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatMoney(line.amount, line.currency)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-6 text-sm">
+                    {purchaseSummary.totals.map((total) => (
+                      <div key={total.currency} className="text-right">
+                        <p className="text-xs text-muted-foreground">Subtotal {total.currency}</p>
+                        <p className="font-semibold">{formatMoney(total.amount, total.currency)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* ── Row 2: Financiero (full width) ── */}
           {userRole !== "SELLER" && (() => {
