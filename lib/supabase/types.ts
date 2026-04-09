@@ -15,8 +15,10 @@ export interface Database {
           auth_id: string
           name: string
           email: string
-          role: 'SUPER_ADMIN' | 'ADMIN' | 'SELLER' | 'VIEWER'
+          role: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
           is_active: boolean
+          can_view_agency_operations_support: boolean
+          can_add_services_on_agency_operations: boolean
           created_at: string
           updated_at: string
         }
@@ -25,8 +27,10 @@ export interface Database {
           auth_id: string
           name: string
           email: string
-          role: 'SUPER_ADMIN' | 'ADMIN' | 'SELLER' | 'VIEWER'
+          role: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
           is_active?: boolean
+          can_view_agency_operations_support?: boolean
+          can_add_services_on_agency_operations?: boolean
           created_at?: string
           updated_at?: string
         }
@@ -35,8 +39,10 @@ export interface Database {
           auth_id?: string
           name?: string
           email?: string
-          role?: 'SUPER_ADMIN' | 'ADMIN' | 'SELLER' | 'VIEWER'
+          role?: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
           is_active?: boolean
+          can_view_agency_operations_support?: boolean
+          can_add_services_on_agency_operations?: boolean
           created_at?: string
           updated_at?: string
         }

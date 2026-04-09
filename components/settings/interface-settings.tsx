@@ -27,6 +27,10 @@ const COLOR_OPTIONS = [
 async function saveSetting(key: string, value: string) {
   // Always save to localStorage for immediate access
   localStorage.setItem(key, value)
+  if (key === "address" || key === "company_address") {
+    localStorage.setItem("address", value)
+    localStorage.setItem("company_address", value)
+  }
 
   try {
     const res = await fetch("/api/settings/organization", {
@@ -82,6 +86,7 @@ async function loadAllSettings(): Promise<Record<string, string>> {
     "brand_logo",
     "company_name",
     "address",
+    "company_address",
     "phone",
     "email",
     "website",

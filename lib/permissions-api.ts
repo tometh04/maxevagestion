@@ -8,6 +8,20 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import { isOwnDataOnly, hasPermission, type UserRole, type Module, type Permission } from "./permissions"
 
+type SupportOperationsUser = {
+  role: string
+  id: string
+  can_view_agency_operations_support?: boolean | null
+  can_add_services_on_agency_operations?: boolean | null
+}
+
+type ScopedOperationResource = {
+  agency_id: string | null
+  seller_id: string | null
+}
+
+export type OperationAccessScope = "full" | "own" | "agency-support"
+
 /**
  * Aplica filtros de permisos a una query de Supabase según el rol del usuario
  */
@@ -63,6 +77,47 @@ export function canPerformAction(
   return hasPermission(user.role as UserRole, module, permission)
 }
 
+export function hasAgencyOperationsSupportView(user: SupportOperationsUser): boolean {
+  return user.role === "SELLER" && user.can_view_agency_operations_support === true
+}
+
+export function canAddAgencyOperationServices(user: SupportOperationsUser): boolean {
+  return hasAgencyOperationsSupportView(user) && user.can_add_services_on_agency_operations === true
+}
+
+export function resolveOperationAccessScope(
+  user: SupportOperationsUser,
+  operation: ScopedOperationResource,
+  agencyIds: string[]
+): OperationAccessScope | null {
+  if (user.role === "SUPER_ADMIN") {
+    return "full"
+  }
+
+  const isWithinAssignedAgencies =
+    !operation.agency_id ||
+    agencyIds.length === 0 ||
+    agencyIds.includes(operation.agency_id)
+
+  if (!isWithinAssignedAgencies) {
+    return null
+  }
+
+  if (user.role === "SELLER") {
+    if (operation.seller_id === user.id) {
+      return "own"
+    }
+
+    if (hasAgencyOperationsSupportView(user)) {
+      return "agency-support"
+    }
+
+    return null
+  }
+
+  return "full"
+}
+
 /**
  * Aplica filtros de leads según el rol del usuario
  */
@@ -100,13 +155,21 @@ export function applyLeadsFilters(
  */
 export function applyOperationsFilters(
   query: any,
-  user: { role: string; id: string },
+  user: SupportOperationsUser,
   agencyIds: string[]
 ): any {
   const userRole = user.role as UserRole
 
-  // SELLER solo ve sus operaciones
+  // SELLER con permiso especial puede ver todas las operaciones de sus agencias
   if (userRole === "SELLER") {
+    if (hasAgencyOperationsSupportView(user)) {
+      if (agencyIds.length > 0) {
+        return query.in("agency_id", agencyIds)
+      }
+
+      return query.eq("seller_id", user.id)
+    }
+
     return query.eq("seller_id", user.id)
   }
 
@@ -205,6 +268,88 @@ export function canAccessResource(
   }
 
   return false
+}
+
+async function getCustomerOperationAccessScopes(
+  supabase: SupabaseClient<Database>,
+  user: SupportOperationsUser,
+  customerId: string
+): Promise<OperationAccessScope[]> {
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+
+  const { data: operationCustomers } = await supabase
+    .from("operation_customers")
+    .select("operations:operation_id(agency_id, seller_id)")
+    .eq("customer_id", customerId)
+
+  const scopes = new Set<OperationAccessScope>()
+
+  for (const relation of (operationCustomers || []) as Array<{ operations?: ScopedOperationResource | null }>) {
+    if (!relation.operations) {
+      continue
+    }
+
+    const scope = resolveOperationAccessScope(user, relation.operations, agencyIds)
+    if (scope) {
+      scopes.add(scope)
+    }
+  }
+
+  return Array.from(scopes)
+}
+
+export async function canAccessDocumentResource(
+  supabase: SupabaseClient<Database>,
+  user: SupportOperationsUser,
+  resource: {
+    operationId?: string | null
+    customerId?: string | null
+  },
+  options?: {
+    write?: boolean
+  }
+): Promise<boolean> {
+  const write = options?.write === true
+
+  if (write && !canPerformAction(user, "documents", "write")) {
+    return false
+  }
+
+  if (resource.operationId) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+    const { data: operation } = await (supabase.from("operations") as any)
+      .select("agency_id, seller_id")
+      .eq("id", resource.operationId)
+      .maybeSingle()
+
+    if (!operation) {
+      return false
+    }
+
+    const scope = resolveOperationAccessScope(user, operation, agencyIds)
+    if (!scope) {
+      return false
+    }
+
+    return !write || scope !== "agency-support"
+  }
+
+  if (resource.customerId) {
+    const scopes = await getCustomerOperationAccessScopes(supabase, user, resource.customerId)
+    if (scopes.length === 0) {
+      return user.role !== "SELLER" && (
+        write
+          ? canPerformAction(user, "documents", "write")
+          : canPerformAction(user, "documents", "read")
+      )
+    }
+
+    return !write || scopes.some((scope) => scope !== "agency-support")
+  }
+
+  return write
+    ? canPerformAction(user, "documents", "write")
+    : canPerformAction(user, "documents", "read")
 }
 
 /**

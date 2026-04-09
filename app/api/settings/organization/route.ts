@@ -41,11 +41,19 @@ export async function POST(req: NextRequest) {
     const { key, value } = body
 
     const supabase = await createServerClient()
+    const updatedAt = new Date().toISOString()
+    const syncAddressKeys = key === "address" || key === "company_address"
+    const settingsToUpsert = syncAddressKeys
+      ? [
+          { key: "address", value, updated_at: updatedAt },
+          { key: "company_address", value, updated_at: updatedAt },
+        ]
+      : [{ key, value, updated_at: updatedAt }]
 
     // Upsert: insert or update
     const { data, error } = await supabase
       .from('organization_settings')
-      .upsert({ key, value, updated_at: new Date().toISOString() } as any, { onConflict: 'key' })
+      .upsert(settingsToUpsert as any, { onConflict: 'key' })
       .select()
 
     if (error) {

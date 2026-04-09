@@ -48,9 +48,14 @@ export default async function OperationsPage() {
       operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
       userRole={user.role}
       userId={user.id}
+      canViewAgencyOperationsSupport={Boolean(user.can_view_agency_operations_support)}
       userAgencyIds={agencies.map((a) => a.id)}
       defaultAgencyId={agencies[0]?.id}
-      defaultSellerId={user.role === "SELLER" ? user.id : undefined}
+      defaultSellerId={
+        user.role === "SELLER" && !user.can_view_agency_operations_support
+          ? user.id
+          : undefined
+      }
     />
   )
 }

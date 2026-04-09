@@ -50,6 +50,8 @@ import {
 } from "@/lib/operations/payment-operators"
 import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary"
 
+type OperationAccessScope = "full" | "own" | "agency-support"
+
 const statusLabels: Record<string, string> = {
   RESERVED: "Reservado",
   CONFIRMED: "Confirmado",
@@ -108,6 +110,8 @@ interface OperationDetailClientProps {
   sellers: Array<{ id: string; name: string }>
   operators: Array<{ id: string; name: string }>
   userRole: string
+  operationAccessScope: OperationAccessScope
+  canAddServicesOnAgencyOperations?: boolean
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   operationServices?: OperationService[]
   operatorPayments?: OperationOperatorPaymentLike[]
@@ -123,6 +127,8 @@ export function OperationDetailClient({
   sellers,
   operators,
   userRole,
+  operationAccessScope,
+  canAddServicesOnAgencyOperations = false,
   commissionRecords = [],
   operationServices = [],
   operatorPayments = [],
@@ -131,6 +137,17 @@ export function OperationDetailClient({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [isDeletingAlerts, setIsDeletingAlerts] = useState(false)
   const [isGeneratingAlerts, setIsGeneratingAlerts] = useState(false)
+  const isSupportMode = operationAccessScope === "agency-support"
+  const canEditOperation = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManagePassengers = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageDocuments = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canAddServices = isSupportMode
+    ? canAddServicesOnAgencyOperations
+    : !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageExistingServices = !isSupportMode && !["VIEWER", "CONTABLE"].includes(userRole)
+  const canManageServicePayments = !isSupportMode && !["SELLER", "VIEWER"].includes(userRole)
+  const canViewFinancialTabs = !isSupportMode && userRole !== "SELLER"
+  const canManageAlerts = !isSupportMode && userRole !== "VIEWER"
   const operatorNameMap = useMemo(
     () => new Map(operators.map((operator) => [operator.id, operator.name])),
     [operators]
@@ -233,17 +250,26 @@ export function OperationDetailClient({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {isSupportMode && (
+            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700">
+              Postventa
+            </Badge>
+          )}
           <Badge variant="secondary" className="bg-secondary/60 text-secondary-foreground">{statusLabels[operation.status] || operation.status}</Badge>
-          <Button variant="outline" size="sm" asChild>
-            <Link href={`/operations/billing/new?operationId=${operation.id}`}>
-              <Receipt className="mr-2 h-4 w-4" />
-              Facturar
-            </Link>
-          </Button>
-          <Button onClick={() => setEditDialogOpen(true)}>
-            <Pencil className="mr-2 h-4 w-4" />
-            Editar
-          </Button>
+          {canEditOperation && (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/operations/billing/new?operationId=${operation.id}`}>
+                <Receipt className="mr-2 h-4 w-4" />
+                Facturar
+              </Link>
+            </Button>
+          )}
+          {canEditOperation && (
+            <Button onClick={() => setEditDialogOpen(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
+          )}
         </div>
       </div>
 
@@ -261,7 +287,7 @@ export function OperationDetailClient({
             <FileText className="h-3.5 w-3.5" />
             Documentos ({documents?.length || 0})
           </TabsTrigger>
-          {userRole !== "SELLER" && (
+          {canViewFinancialTabs && (
             <TabsTrigger value="payments" className="gap-1.5">
               <CreditCard className="h-3.5 w-3.5" />
               Pagos Operación ({operationBasePayments.length})
@@ -271,17 +297,19 @@ export function OperationDetailClient({
             <Wrench className="h-3.5 w-3.5" />
             Servicios
           </TabsTrigger>
-          <TabsTrigger value="itinerary" className="gap-1.5">
-            <ShoppingBag className="h-3.5 w-3.5" />
-            Detalle de Compra
-          </TabsTrigger>
-          {userRole !== "SELLER" && (
+          {!isSupportMode && (
+            <TabsTrigger value="itinerary" className="gap-1.5">
+              <ShoppingBag className="h-3.5 w-3.5" />
+              Detalle de Compra
+            </TabsTrigger>
+          )}
+          {canViewFinancialTabs && (
             <TabsTrigger value="accounting" className="gap-1.5">
               <Calculator className="h-3.5 w-3.5" />
               Contabilidad
             </TabsTrigger>
           )}
-          {userRole !== "SELLER" && (
+          {canViewFinancialTabs && (
             <TabsTrigger value="metrics" className="gap-1.5">
               <BarChart3 className="h-3.5 w-3.5" />
               Métricas
@@ -320,6 +348,18 @@ export function OperationDetailClient({
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Destino</p>
                     <p className="text-sm font-medium mt-0.5">{operation.destination}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Legajo</p>
+                    <p className="text-sm font-medium mt-0.5">{operation.file_code || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Aérea</p>
+                    <p className="text-sm font-medium mt-0.5">{operation.reservation_code_air || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Hotel</p>
+                    <p className="text-sm font-medium mt-0.5">{operation.reservation_code_hotel || "-"}</p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -411,82 +451,84 @@ export function OperationDetailClient({
             </Card>
           </div>
 
-          <Card className="rounded-xl border border-border/40">
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-base">
-                🛒 Resumen de Compra
-              </CardTitle>
-              <CardDescription>
-                Control rapido de compras a operadores y proveedores dentro de la operacion
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {purchaseSummary.lines.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border/60 py-8 text-center text-sm text-muted-foreground">
-                  Sin compras registradas.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-border/40 overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Concepto</TableHead>
-                          <TableHead>Operador</TableHead>
-                          <TableHead>Reserva</TableHead>
-                          <TableHead className="text-right">Costo</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {purchaseSummary.lines.map((line) => (
-                          <TableRow key={line.id}>
-                            <TableCell>
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="font-medium">{line.label}</span>
-                                  <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                                    {line.source === "base" ? "Base" : "Servicio"}
-                                  </Badge>
-                                </div>
-                                {line.secondaryText && (
-                                  <p className="text-xs text-muted-foreground">{line.secondaryText}</p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="font-medium">{line.operatorName}</TableCell>
-                            <TableCell>
-                              {line.reservationCode ? (
-                                <span className="font-mono text-xs uppercase tracking-wide">
-                                  {line.reservationCode}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatMoney(line.amount, line.currency)}
-                            </TableCell>
+          {!isSupportMode && (
+            <Card className="rounded-xl border border-border/40">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  🛒 Resumen de Compra
+                </CardTitle>
+                <CardDescription>
+                  Control rapido de compras a operadores y proveedores dentro de la operacion
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {purchaseSummary.lines.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/60 py-8 text-center text-sm text-muted-foreground">
+                    Sin compras registradas.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-border/40 overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Concepto</TableHead>
+                            <TableHead>Operador</TableHead>
+                            <TableHead>Reserva</TableHead>
+                            <TableHead className="text-right">Costo</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                        </TableHeader>
+                        <TableBody>
+                          {purchaseSummary.lines.map((line) => (
+                            <TableRow key={line.id}>
+                              <TableCell>
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-medium">{line.label}</span>
+                                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                      {line.source === "base" ? "Base" : "Servicio"}
+                                    </Badge>
+                                  </div>
+                                  {line.secondaryText && (
+                                    <p className="text-xs text-muted-foreground">{line.secondaryText}</p>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium">{line.operatorName}</TableCell>
+                              <TableCell>
+                                {line.reservationCode ? (
+                                  <span className="font-mono text-xs uppercase tracking-wide">
+                                    {line.reservationCode}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground">-</span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatMoney(line.amount, line.currency)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
 
-                  <div className="flex flex-wrap justify-end gap-6 text-sm">
-                    {purchaseSummary.totals.map((total) => (
-                      <div key={total.currency} className="text-right">
-                        <p className="text-xs text-muted-foreground">Subtotal {total.currency}</p>
-                        <p className="font-semibold">{formatMoney(total.amount, total.currency)}</p>
-                      </div>
-                    ))}
+                    <div className="flex flex-wrap justify-end gap-6 text-sm">
+                      {purchaseSummary.totals.map((total) => (
+                        <div key={total.currency} className="text-right">
+                          <p className="text-xs text-muted-foreground">Subtotal {total.currency}</p>
+                          <p className="font-semibold">{formatMoney(total.amount, total.currency)}</p>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* ── Row 2: Financiero (full width) ── */}
-          {userRole !== "SELLER" && (() => {
+          {canViewFinancialTabs && (() => {
             const serviceSaleTotal = operationServices
               .filter(s => s.sale_currency === operation.currency)
               .reduce((sum, s) => sum + (s.sale_amount || 0), 0)
@@ -621,6 +663,7 @@ export function OperationDetailClient({
           <PassengersSection
             operationId={operation.id}
             initialCustomers={customers}
+            readOnly={!canManagePassengers}
             onUpdate={() => router.refresh()}
           />
         </TabsContent>
@@ -630,6 +673,8 @@ export function OperationDetailClient({
             documents={documents || []} 
             operationId={operation.id} 
             departureDate={operation.departure_date || undefined}
+            allowUpload={canManageDocuments}
+            allowDelete={canManageDocuments}
           />
         </TabsContent>
 
@@ -655,8 +700,8 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
-        {userRole !== "SELLER" && (
-          <TabsContent value="accounting" className="space-y-4">
+          {canViewFinancialTabs && (
+            <TabsContent value="accounting" className="space-y-4">
             <PurchaseInvoicesSection
               operationId={operation.id}
               operators={operators}
@@ -666,7 +711,7 @@ export function OperationDetailClient({
           </TabsContent>
         )}
 
-        {userRole !== "SELLER" && (
+        {canViewFinancialTabs && (
           <TabsContent value="metrics" className="space-y-4">
             <OperationAccountingSection
               operationId={operation.id}
@@ -692,37 +737,39 @@ export function OperationDetailClient({
                   Check-in, vencimientos de documentos, pagos pendientes
                 </p>
               </div>
-              <div className="flex gap-2">
-                {alerts && alerts.length > 0 && (
+              {canManageAlerts && (
+                <div className="flex gap-2">
+                  {alerts && alerts.length > 0 && (
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="text-red-600 hover:text-red-700"
+                      onClick={handleDeleteAlerts}
+                      disabled={isDeletingAlerts}
+                    >
+                      {isDeletingAlerts ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="mr-2 h-4 w-4" />
+                      )}
+                      Limpiar
+                    </Button>
+                  )}
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="text-red-600 hover:text-red-700"
-                    onClick={handleDeleteAlerts}
-                    disabled={isDeletingAlerts}
+                    onClick={handleGenerateAlerts}
+                    disabled={isGeneratingAlerts}
                   >
-                    {isDeletingAlerts ? (
+                    {isGeneratingAlerts ? (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
+                      <RefreshCw className="mr-2 h-4 w-4" />
                     )}
-                    Limpiar
+                    Regenerar alertas
                   </Button>
-                )}
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={handleGenerateAlerts}
-                  disabled={isGeneratingAlerts}
-                >
-                  {isGeneratingAlerts ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  )}
-                  Regenerar alertas
-                </Button>
-              </div>
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               {!alerts || alerts.length === 0 ? (
@@ -771,6 +818,11 @@ export function OperationDetailClient({
             operationStatus={operation.status}
             operators={operators}
             userRole={userRole}
+            canAddServices={canAddServices}
+            canEditServices={canManageExistingServices}
+            canDeleteServices={canManageExistingServices}
+            canManagePayments={canManageServicePayments}
+            showFinancialColumns={!isSupportMode && userRole !== "SELLER"}
             servicePayments={servicePayments}
             operationCurrency={operation.currency}
             operationData={{
@@ -785,21 +837,25 @@ export function OperationDetailClient({
           />
         </TabsContent>
 
-        <TabsContent value="itinerary" className="space-y-4">
-          <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
-        </TabsContent>
+        {!isSupportMode && (
+          <TabsContent value="itinerary" className="space-y-4">
+            <ItinerarySection operationId={operation.id} operation={{ ...operation, operation_customers: customers }} />
+          </TabsContent>
+        )}
       </Tabs>
 
-      <EditOperationDialog
-        operation={operation}
-        open={editDialogOpen}
-        onOpenChange={setEditDialogOpen}
-        onSuccess={handleEditSuccess}
-        agencies={agencies}
-        sellers={sellers}
-        operators={operators}
-        userRole={userRole}
-      />
+      {canEditOperation && (
+        <EditOperationDialog
+          operation={operation}
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          onSuccess={handleEditSuccess}
+          agencies={agencies}
+          sellers={sellers}
+          operators={operators}
+          userRole={userRole}
+        />
+      )}
     </div>
   )
 }

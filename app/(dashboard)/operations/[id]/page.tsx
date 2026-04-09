@@ -1,5 +1,6 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 
@@ -40,7 +41,10 @@ export default async function OperationDetailPage({
 
   // Check permissions
   const userRole = user.role as string
-  if (userRole === "SELLER" && op.seller_id !== user.id) {
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  const operationAccessScope = resolveOperationAccessScope(user, op, agencyIds)
+
+  if (!operationAccessScope) {
     notFound()
   }
 
@@ -161,6 +165,8 @@ export default async function OperationDetailPage({
       sellers={sellers}
       operators={operators}
       userRole={userRole}
+      operationAccessScope={operationAccessScope}
+      canAddServicesOnAgencyOperations={Boolean(user.can_add_services_on_agency_operations)}
       commissionRecords={commissionRecords || []}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}

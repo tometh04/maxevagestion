@@ -73,6 +73,8 @@ interface User {
   email: string
   role: string
   is_active: boolean
+  can_view_agency_operations_support?: boolean
+  can_add_services_on_agency_operations?: boolean
   created_at: string
   user_agencies?: Array<{ agency_id: string; agencies: { name: string } }>
 }
@@ -113,11 +115,16 @@ export function UsersSettings() {
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [changePasswordDialogOpen, setChangePasswordDialogOpen] = useState(false)
+  const [permissionsDialogOpen, setPermissionsDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
+  const [specialPermissions, setSpecialPermissions] = useState({
+    can_view_agency_operations_support: false,
+    can_add_services_on_agency_operations: false,
+  })
 
   // Form state
   const [newUser, setNewUser] = useState({
@@ -268,6 +275,45 @@ export function UsersSettings() {
     } catch (error) {
       console.error("Error resending invite:", error)
       toast.error("Error al reenviar invitación")
+    }
+  }
+
+  const handleOpenPermissions = (user: User) => {
+    setSelectedUser(user)
+    setSpecialPermissions({
+      can_view_agency_operations_support: Boolean(user.can_view_agency_operations_support),
+      can_add_services_on_agency_operations: Boolean(user.can_add_services_on_agency_operations),
+    })
+    setPermissionsDialogOpen(true)
+  }
+
+  const handleSavePermissions = async () => {
+    if (!selectedUser) return
+
+    setSubmitting(true)
+    try {
+      const response = await fetch(`/api/settings/users/${selectedUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(specialPermissions),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Error al guardar permisos especiales")
+        return
+      }
+
+      toast.success("Permisos especiales actualizados")
+      setPermissionsDialogOpen(false)
+      setSelectedUser(null)
+      loadData()
+    } catch (error) {
+      console.error("Error saving special permissions:", error)
+      toast.error("Error al guardar permisos especiales")
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -544,9 +590,25 @@ export function UsersSettings() {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge className={`${roleColors[user.role]} text-white`}>
-                      {roleLabels[user.role] || user.role}
-                    </Badge>
+                    <div className="space-y-1">
+                      <Badge className={`${roleColors[user.role]} text-white`}>
+                        {roleLabels[user.role] || user.role}
+                      </Badge>
+                      {user.role === "SELLER" && (user.can_view_agency_operations_support || user.can_add_services_on_agency_operations) && (
+                        <div className="flex flex-wrap gap-1">
+                          {user.can_view_agency_operations_support && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Postventa
+                            </Badge>
+                          )}
+                          {user.can_add_services_on_agency_operations && (
+                            <Badge variant="outline" className="text-[10px]">
+                              Alta servicios
+                            </Badge>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
@@ -600,6 +662,12 @@ export function UsersSettings() {
                           <Mail className="mr-2 h-4 w-4" />
                           Reenviar invitación
                         </DropdownMenuItem>
+                        {user.role === "SELLER" && (
+                          <DropdownMenuItem onClick={() => handleOpenPermissions(user)}>
+                            <Shield className="mr-2 h-4 w-4" />
+                            Permisos especiales
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={() => {
                             setSelectedUser(user)
@@ -703,6 +771,84 @@ export function UsersSettings() {
           ))}
         </div>
       </div>
+
+      <Dialog open={permissionsDialogOpen} onOpenChange={setPermissionsDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Permisos especiales</DialogTitle>
+            <DialogDescription>
+              Ajustes puntuales para <strong>{selectedUser?.name}</strong> sin cambiar su rol base.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="rounded-xl border border-border/40 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Ver postventa de la agencia</p>
+                  <p className="text-xs text-muted-foreground">
+                    Permite consultar pasajeros, documentos y servicios de todas las operaciones de sus agencias.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_view_agency_operations_support}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_view_agency_operations_support: checked,
+                      can_add_services_on_agency_operations: checked
+                        ? prev.can_add_services_on_agency_operations
+                        : false,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Agregar servicios en postventa</p>
+                  <p className="text-xs text-muted-foreground">
+                    Mantiene la vista en modo operativo y solo habilita el alta de servicios en operaciones ajenas.
+                  </p>
+                </div>
+                <Switch
+                  checked={specialPermissions.can_add_services_on_agency_operations}
+                  disabled={!specialPermissions.can_view_agency_operations_support}
+                  onCheckedChange={(checked) =>
+                    setSpecialPermissions((prev) => ({
+                      ...prev,
+                      can_add_services_on_agency_operations: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPermissionsDialogOpen(false)
+                setSelectedUser(null)
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button size="sm" onClick={handleSavePermissions} disabled={submitting}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                "Guardar permisos"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dialog de cambiar contraseña */}
       <Dialog open={changePasswordDialogOpen} onOpenChange={setChangePasswordDialogOpen}>

@@ -27,7 +27,14 @@ export async function PATCH(
     const supabase = await createServerClient()
 
     // Campos permitidos para actualizar
-    const allowedFields = ["is_active", "role", "name", "default_commission_percentage"]
+    const allowedFields = [
+      "is_active",
+      "role",
+      "name",
+      "default_commission_percentage",
+      "can_view_agency_operations_support",
+      "can_add_services_on_agency_operations",
+    ]
     const updateData: Record<string, any> = {}
 
     for (const field of allowedFields) {

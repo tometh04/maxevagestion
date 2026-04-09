@@ -127,6 +127,11 @@ interface OperationServicesSectionProps {
   operationStatus: string
   operators: Operator[]
   userRole: string
+  canAddServices?: boolean
+  canEditServices?: boolean
+  canDeleteServices?: boolean
+  canManagePayments?: boolean
+  showFinancialColumns?: boolean
   servicePayments?: ServicePayment[]
   operationCurrency?: string
   operationData?: OperationData
@@ -228,12 +233,16 @@ export function OperationServicesSection({
   operationStatus,
   operators,
   userRole,
+  canAddServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canEditServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canDeleteServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canManagePayments = !["SELLER", "VIEWER"].includes(userRole),
+  showFinancialColumns = userRole !== "SELLER",
   servicePayments = [],
   operationCurrency = "USD",
   operationData,
 }: OperationServicesSectionProps) {
   const router = useRouter()
-  const isSeller = userRole === "SELLER"
   const isCancelled = operationStatus === "CANCELLED"
 
   // ── Estado servicios ──────────────────────────────────────────────────────
@@ -363,7 +372,7 @@ export function OperationServicesSection({
       if (!acc.sale[s.sale_currency]) acc.sale[s.sale_currency] = 0
       acc.sale[s.sale_currency] += s.sale_amount
 
-      if (!isSeller) {
+      if (showFinancialColumns) {
         if (!acc.cost[s.cost_currency]) acc.cost[s.cost_currency] = 0
         acc.cost[s.cost_currency] += s.cost_amount
 
@@ -713,7 +722,7 @@ export function OperationServicesSection({
                 Asiento, equipaje, visa, transfer, asistencia — cargados en esta operación
               </CardDescription>
             </div>
-            {!isCancelled && (
+            {!isCancelled && canAddServices && (
               <Button size="sm" onClick={openDialog}>
                 <Plus className="mr-2 h-4 w-4" />
                 Agregar servicio
@@ -730,7 +739,7 @@ export function OperationServicesSection({
           ) : services.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
               <p className="text-sm">No hay servicios cargados todavía.</p>
-              {!isCancelled && (
+              {!isCancelled && canAddServices && (
                 <Button variant="outline" size="sm" className="mt-3" onClick={openDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Agregar primer servicio
@@ -746,7 +755,7 @@ export function OperationServicesSection({
                     <TableHead>Tipo</TableHead>
                     <TableHead>Proveedor</TableHead>
                     <TableHead className="text-right">Precio cliente</TableHead>
-                    {!isSeller && (
+                    {showFinancialColumns && (
                       <>
                         <TableHead className="text-right">Costo</TableHead>
                         <TableHead className="text-right">Margen</TableHead>
@@ -773,7 +782,7 @@ export function OperationServicesSection({
                       <TableCell className="text-right font-medium">
                         {formatCurrency(s.sale_amount, s.sale_currency)}
                       </TableCell>
-                      {!isSeller && (
+                      {showFinancialColumns && (
                         <>
                           <TableCell className="text-right text-muted-foreground">
                             {formatCurrency(s.cost_amount, s.cost_currency)}
@@ -797,30 +806,34 @@ export function OperationServicesSection({
                         )}
                       </TableCell>
                       <TableCell>
-                        {!isCancelled && (
+                        {!isCancelled && (canEditServices || canDeleteServices) && (
                           <div className="flex gap-1">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              onClick={() => openEditDialog(s)}
-                              title="Editar servicio"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteService(s.id)}
-                              disabled={deletingId === s.id}
-                            >
-                              {deletingId === s.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </Button>
+                            {canEditServices && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => openEditDialog(s)}
+                                title="Editar servicio"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {canDeleteServices && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteService(s.id)}
+                                disabled={deletingId === s.id}
+                              >
+                                {deletingId === s.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
                           </div>
                         )}
                       </TableCell>
@@ -842,7 +855,7 @@ export function OperationServicesSection({
                   ))}
                 </div>
 
-                {!isSeller && Object.keys(serviceTotals.cost).length > 0 && (
+                {showFinancialColumns && Object.keys(serviceTotals.cost).length > 0 && (
                   <div className="text-right">
                     <p className="text-muted-foreground text-xs mb-1">Total costo (proveedores)</p>
                     {Object.entries(serviceTotals.cost).map(([currency, amount]) => (
@@ -853,7 +866,7 @@ export function OperationServicesSection({
                   </div>
                 )}
 
-                {!isSeller && Object.keys(serviceTotals.margin).length > 0 && (
+                {showFinancialColumns && Object.keys(serviceTotals.margin).length > 0 && (
                   <div className="text-right">
                     <p className="text-muted-foreground text-xs mb-1">Margen servicios</p>
                     {Object.entries(serviceTotals.margin).map(([currency, amount]) => (
@@ -873,7 +886,7 @@ export function OperationServicesSection({
       </Card>
 
       {/* ──────────────────── SECCIÓN 2: Pagos de servicios ──────────────── */}
-      {services.length > 0 && (
+      {canManagePayments && services.length > 0 && (
         <Card className="rounded-xl border border-border/40">
           <CardHeader>
             <div className="flex items-center justify-between">

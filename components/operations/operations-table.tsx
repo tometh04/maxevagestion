@@ -44,6 +44,7 @@ const statusLabels: Record<string, string> = {
 
 interface Operation {
   id: string
+  seller_id: string
   destination: string
   operation_date: string | null
   departure_date: string
@@ -90,6 +91,7 @@ interface OperationsTableProps {
   }
   userRole: string
   userId: string
+  canViewAgencyOperationsSupport: boolean
   userAgencyIds: string[]
 }
 
@@ -97,6 +99,7 @@ export function OperationsTable({
   initialFilters,
   userRole,
   userId,
+  canViewAgencyOperationsSupport,
   userAgencyIds,
 }: OperationsTableProps) {
   const [operations, setOperations] = useState<Operation[]>([])
@@ -124,6 +127,7 @@ export function OperationsTable({
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
   const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
   const [allOperators, setAllOperators] = useState<Array<{ id: string; name: string }>>([])
+  const hideFinancialColumns = userRole === "SELLER" && canViewAgencyOperationsSupport
   
   // Cargar datos auxiliares para el diálogo
   const loadDialogData = useCallback(async () => {
@@ -276,14 +280,18 @@ export function OperationsTable({
     }
   }, [fetchOperations])
 
-  const columns: ColumnDef<Operation>[] = useMemo(
-    () => [
+  const columns: ColumnDef<Operation>[] = useMemo(() => {
+    const cols: ColumnDef<Operation>[] = [
       {
         id: "actions",
         header: "Acciones",
         enableHiding: false,
         cell: ({ row }) => {
           const operation = row.original
+          const canEditOperation =
+            userRole === "SELLER"
+              ? operation.seller_id === userId
+              : !["VIEWER", "CONTABLE"].includes(userRole)
 
           return (
             <DropdownMenu>
@@ -301,15 +309,19 @@ export function OperationsTable({
                     Ver detalles
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleEditClick(operation)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Editar
-                </DropdownMenuItem>
+                {canEditOperation && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleEditClick(operation)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {["ADMIN", "SUPER_ADMIN"].includes(userRole) && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => handleDeleteClick(operation)}
                       className="text-destructive focus:text-destructive"
                     >
@@ -332,7 +344,7 @@ export function OperationsTable({
           const opDate = row.original.operation_date || row.original.created_at
           if (!opDate) return <div className="text-xs">-</div>
           try {
-            const dateStr = typeof opDate === 'string' && opDate.includes('T') ? opDate : `${opDate}T12:00:00`
+            const dateStr = typeof opDate === "string" && opDate.includes("T") ? opDate : `${opDate}T12:00:00`
             return (
               <div className="text-xs font-medium">
                 {format(new Date(dateStr), "dd/MM/yy", { locale: es })}
@@ -360,11 +372,7 @@ export function OperationsTable({
           }
           const type = row.original.type
           if (!type) return <div className="text-xs">-</div>
-          return (
-            <div className="text-xs font-medium">
-              {typeLabels[type] || type}
-            </div>
-          )
+          return <div className="text-xs font-medium">{typeLabels[type] || type}</div>
         },
       },
       {
@@ -386,14 +394,13 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Destino" />
         ),
-        enableHiding: false, // No permitir ocultar esta columna importante
+        enableHiding: false,
         cell: ({ row }) => {
-          // Priorizar destino de la operación, si no existe usar el destino del lead
           const destination = row.original.destination || row.original.leads?.destination || "-"
           return (
             <div className="max-w-[120px] truncate text-xs font-medium" title={destination}>
               {destination}
-          </div>
+            </div>
           )
         },
       },
@@ -451,7 +458,6 @@ export function OperationsTable({
         ),
         cell: ({ row }) => {
           const operation = row.original as any
-          // Si hay operation_operators, mostrar todos; si no, mostrar el operador principal
           if (operation.operation_operators && operation.operation_operators.length > 0) {
             const operatorsList = operation.operation_operators
               .map((oo: any) => oo.operators?.name || "Sin nombre")
@@ -461,13 +467,16 @@ export function OperationsTable({
                 {operatorsList}
               </div>
             )
-          } else if (operation.operators?.name) {
+          }
+
+          if (operation.operators?.name) {
             return (
               <div className="text-xs max-w-[80px] truncate" title={operation.operators.name}>
                 {operation.operators.name}
               </div>
             )
           }
+
           return <div className="text-xs">-</div>
         },
       },
@@ -501,107 +510,114 @@ export function OperationsTable({
           )
         },
       },
-      {
-        accessorKey: "sale_amount_total",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Venta" className="justify-end" />
-        ),
-        cell: ({ row }) => (
-          <div className="text-xs font-medium text-right">
-            {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
-          </div>
-        ),
-      },
-      {
-        accessorKey: "paid_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const paid = row.original.paid_amount || 0
-          return (
-            <div className="text-xs text-success font-medium text-right">
-              {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+    ]
+
+    if (!hideFinancialColumns) {
+      cols.push(
+        {
+          accessorKey: "sale_amount_total",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Venta" className="justify-end" />
+          ),
+          cell: ({ row }) => (
+            <div className="text-xs font-medium text-right">
+              {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
             </div>
-          )
+          ),
         },
-      },
-      {
-        accessorKey: "pending_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const pending = row.original.pending_amount || 0
-          const total = row.original.sale_amount_total || 0
-          const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
-          return (
-            <div className="text-xs text-warning font-medium text-right">
-              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+        {
+          accessorKey: "paid_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const paid = row.original.paid_amount || 0
+            return (
+              <div className="text-xs text-success font-medium text-right">
+                {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "pending_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const pending = row.original.pending_amount || 0
+            const total = row.original.sale_amount_total || 0
+            const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
+            return (
+              <div className="text-xs text-warning font-medium text-right">
+                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "operator_paid_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const operatorPaid = row.original.operator_paid_amount || 0
+            return (
+              <div className="text-xs text-info font-medium text-right">
+                {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "operator_pending_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const operatorPending = row.original.operator_pending_amount || 0
+            const operatorCost = row.original.operator_cost || 0
+            const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
+            return (
+              <div className="text-xs text-destructive font-medium text-right">
+                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "margin_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Margen" className="justify-end" />
+          ),
+          cell: ({ row }) => (
+            <div className="text-xs text-right">
+              <span className="font-medium">
+                {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
+              </span>
+              <span className="text-muted-foreground ml-1">
+                {Math.round(row.original.margin_percentage)}%
+              </span>
             </div>
-          )
-        },
-      },
-      {
-        accessorKey: "operator_paid_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const operatorPaid = row.original.operator_paid_amount || 0
-          return (
-            <div className="text-xs text-info font-medium text-right">
-              {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
-            </div>
-          )
-        },
-      },
-      {
-        accessorKey: "operator_pending_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const operatorPending = row.original.operator_pending_amount || 0
-          const operatorCost = row.original.operator_cost || 0
-          const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
-          return (
-            <div className="text-xs text-destructive font-medium text-right">
-              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
-            </div>
-          )
-        },
-      },
-      {
-        accessorKey: "margin_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Margen" className="justify-end" />
-        ),
-        cell: ({ row }) => (
-          <div className="text-xs text-right">
-            <span className="font-medium">
-              {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
-            </span>
-            <span className="text-muted-foreground ml-1">
-              {Math.round(row.original.margin_percentage)}%
-            </span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Estado" />
-        ),
-        cell: ({ row }) => (
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {statusLabels[row.original.status] || row.original.status}
-          </Badge>
-        ),
-      },
-    ],
-    [handleEditClick, handleDeleteClick, userRole]
-  )
+          ),
+        }
+      )
+    }
+
+    cols.push({
+      accessorKey: "status",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Estado" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          {statusLabels[row.original.status] || row.original.status}
+        </Badge>
+      ),
+    })
+
+    return cols
+  }, [handleDeleteClick, handleEditClick, hideFinancialColumns, userId, userRole])
 
   if (loading) {
     return (
@@ -631,7 +647,7 @@ export function OperationsTable({
           />
         </div>
         {/* Totales de la página actual */}
-        {operations.length > 0 && (() => {
+        {!hideFinancialColumns && operations.length > 0 && (() => {
           const totals = operations.reduce((acc, op) => {
             const currency = op.currency || "USD"
             if (!acc[currency]) {

@@ -61,12 +61,14 @@ interface OperationCustomer {
 interface PassengersSectionProps {
   operationId: string
   initialCustomers?: OperationCustomer[]
+  readOnly?: boolean
   onUpdate?: () => void
 }
 
 export function PassengersSection({ 
   operationId, 
   initialCustomers = [],
+  readOnly = false,
   onUpdate 
 }: PassengersSectionProps) {
   const [customers, setCustomers] = useState<OperationCustomer[]>(initialCustomers)
@@ -203,18 +205,24 @@ export function PassengersSection({
             {customers.length} pasajero{customers.length !== 1 ? "s" : ""} en esta operación
           </CardDescription>
         </div>
-        <Button onClick={() => setAddDialogOpen(true)} size="sm">
-          <UserPlus className="h-4 w-4 mr-2" />
-          Agregar
-        </Button>
+        {!readOnly && (
+          <Button onClick={() => setAddDialogOpen(true)} size="sm">
+            <UserPlus className="h-4 w-4 mr-2" />
+            Agregar
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         {customers.length === 0 ? (
           <EmptyState
             icon={Users}
             title="Sin pasajeros"
-            description="Agrega pasajeros a esta operación para llevar un registro completo."
-            action={{
+            description={
+              readOnly
+                ? "No hay pasajeros asociados a esta operación."
+                : "Agrega pasajeros a esta operación para llevar un registro completo."
+            }
+            action={readOnly ? undefined : {
               label: "Agregar Pasajero",
               onClick: () => setAddDialogOpen(true)
             }}
@@ -253,17 +261,19 @@ export function PassengersSection({
                       </div>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleRemovePassenger(
-                      mainPassenger.id, 
-                      `${mainPassenger.customers.first_name} ${mainPassenger.customers.last_name}`
-                    )}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleRemovePassenger(
+                        mainPassenger.id, 
+                        `${mainPassenger.customers.first_name} ${mainPassenger.customers.last_name}`
+                      )}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -299,17 +309,19 @@ export function PassengersSection({
                       </div>
                     </div>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => handleRemovePassenger(
-                      companion.id, 
-                      `${companion.customers.first_name} ${companion.customers.last_name}`
-                    )}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => handleRemovePassenger(
+                        companion.id, 
+                        `${companion.customers.first_name} ${companion.customers.last_name}`
+                      )}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             ))}
@@ -318,6 +330,7 @@ export function PassengersSection({
       </CardContent>
 
       {/* Dialog para agregar pasajero */}
+      {!readOnly && (
       <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -427,60 +440,63 @@ export function PassengersSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      )}
 
       {/* Dialog para crear cliente nuevo con OCR */}
-      <NewCustomerDialog
-        open={showNewCustomerDialog}
-        onOpenChange={setShowNewCustomerDialog}
-        onSuccess={(newCustomer) => {
-          if (newCustomer) {
-            // Agregar el nuevo cliente automáticamente como acompañante
-            const addNewCustomer = async () => {
-              try {
-                const response = await fetch(`/api/operations/${operationId}/customers`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    customer_id: newCustomer.id,
-                    role: selectedRole,
-                  }),
-                })
+      {!readOnly && (
+        <NewCustomerDialog
+          open={showNewCustomerDialog}
+          onOpenChange={setShowNewCustomerDialog}
+          onSuccess={(newCustomer) => {
+            if (newCustomer) {
+              // Agregar el nuevo cliente automáticamente como acompañante
+              const addNewCustomer = async () => {
+                try {
+                  const response = await fetch(`/api/operations/${operationId}/customers`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      customer_id: newCustomer.id,
+                      role: selectedRole,
+                    }),
+                  })
 
-                if (!response.ok) {
-                  throw new Error("Error al agregar cliente")
-                }
-
-                const data = await response.json()
-                
-                // Agregar al estado local
-                setCustomers(prev => [...prev, {
-                  ...data.operationCustomer,
-                  customers: {
-                    id: newCustomer.id,
-                    first_name: newCustomer.first_name,
-                    last_name: newCustomer.last_name,
-                    email: newCustomer.email || "",
-                    phone: newCustomer.phone || "",
+                  if (!response.ok) {
+                    throw new Error("Error al agregar cliente")
                   }
-                }])
 
-                toast.success(`${newCustomer.first_name} ${newCustomer.last_name} creado y agregado como pasajero`)
-                setAddDialogOpen(false)
-                setSelectedCustomer(null)
-                setSearchQuery("")
-                setSearchResults([])
-                onUpdate?.()
-              } catch (error) {
-                console.error("Error adding new customer:", error)
-                toast.error("Cliente creado pero error al agregarlo a la operación")
+                  const data = await response.json()
+                  
+                  // Agregar al estado local
+                  setCustomers(prev => [...prev, {
+                    ...data.operationCustomer,
+                    customers: {
+                      id: newCustomer.id,
+                      first_name: newCustomer.first_name,
+                      last_name: newCustomer.last_name,
+                      email: newCustomer.email || "",
+                      phone: newCustomer.phone || "",
+                    }
+                  }])
+
+                  toast.success(`${newCustomer.first_name} ${newCustomer.last_name} creado y agregado como pasajero`)
+                  setAddDialogOpen(false)
+                  setSelectedCustomer(null)
+                  setSearchQuery("")
+                  setSearchResults([])
+                  onUpdate?.()
+                } catch (error) {
+                  console.error("Error adding new customer:", error)
+                  toast.error("Cliente creado pero error al agregarlo a la operación")
+                }
               }
-            }
 
-            addNewCustomer()
-            setShowNewCustomerDialog(false)
-          }
-        }}
-      />
+              addNewCustomer()
+              setShowNewCustomerDialog(false)
+            }
+          }}
+        />
+      )}
     </Card>
   )
 }

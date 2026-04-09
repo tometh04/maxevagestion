@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
+import { canAccessDocumentResource } from "@/lib/permissions-api"
 import OpenAI from "openai"
 
 export async function POST(request: Request) {
@@ -32,6 +33,17 @@ export async function POST(request: Request) {
 
     if (!file || !type) {
       return NextResponse.json({ error: "Falta archivo o tipo de documento" }, { status: 400 })
+    }
+
+    const canWriteDocuments = await canAccessDocumentResource(
+      supabase as any,
+      user,
+      { operationId, customerId },
+      { write: true }
+    )
+
+    if (!canWriteDocuments) {
+      return NextResponse.json({ error: "No tiene permiso para subir documentos en este recurso" }, { status: 403 })
     }
 
     // Validate file type

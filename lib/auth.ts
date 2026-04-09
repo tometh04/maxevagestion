@@ -15,6 +15,8 @@ export async function getCurrentUser(): Promise<{ user: User; session: { user: a
       email: 'tomas.sanchez04@gmail.com',
       role: 'SUPER_ADMIN',
       is_active: true,
+      can_view_agency_operations_support: false,
+      can_add_services_on_agency_operations: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }

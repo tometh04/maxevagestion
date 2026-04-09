@@ -34,6 +34,7 @@ interface OperationsPageClientProps {
   operators: Array<{ id: string; name: string }>
   userRole: string
   userId: string
+  canViewAgencyOperationsSupport: boolean
   userAgencyIds: string[]
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -45,6 +46,7 @@ export function OperationsPageClient({
   operators,
   userRole,
   userId,
+  canViewAgencyOperationsSupport,
   userAgencyIds,
   defaultAgencyId,
   defaultSellerId,
@@ -125,7 +127,11 @@ export function OperationsPageClient({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <p className="text-muted-foreground">Gestiona todas las operaciones de viajes</p>
+          <p className="text-muted-foreground">
+            {canViewAgencyOperationsSupport && userRole === "SELLER"
+              ? "Vista operativa de postventa para todas las operaciones de tus agencias"
+              : "Gestiona todas las operaciones de viajes"}
+          </p>
         </div>
         <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
@@ -144,6 +150,7 @@ export function OperationsPageClient({
         initialFilters={filters}
         userRole={userRole}
         userId={userId}
+        canViewAgencyOperationsSupport={canViewAgencyOperationsSupport}
         userAgencyIds={userAgencyIds}
       />
 

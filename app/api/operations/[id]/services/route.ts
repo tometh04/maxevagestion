@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import {
+  canAddAgencyOperationServices,
+  canPerformAction,
+  getUserAgencyIds,
+  resolveOperationAccessScope,
+} from "@/lib/permissions-api"
 import { createLedgerMovement, calculateARSEquivalent } from "@/lib/accounting/ledger"
 import { createOperatorPayment } from "@/lib/accounting/operator-payments"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
@@ -43,8 +48,10 @@ export async function GET(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
-    // SELLER solo puede ver sus propias operaciones
-    if (user.role === "SELLER" && operation.seller_id !== user.id) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
+
+    if (!accessScope) {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
@@ -95,12 +102,19 @@ export async function POST(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
-    if (user.role === "SELLER" && operation.seller_id !== user.id) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
+
+    if (!accessScope) {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
     if (operation.status === "CANCELLED") {
       return NextResponse.json({ error: "No se pueden agregar servicios a una operación cancelada" }, { status: 400 })
+    }
+
+    if (accessScope === "agency-support" && !canAddAgencyOperationServices(user)) {
+      return NextResponse.json({ error: "No tiene permiso para agregar servicios en esta operación" }, { status: 403 })
     }
 
     const body = await request.json()

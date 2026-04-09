@@ -162,6 +162,31 @@ describe("Permissions API", () => {
       expect(query.eq).toHaveBeenCalledWith("seller_id", "seller-1")
     })
 
+    it("should filter SELLER with support permission by agency_id", () => {
+      const query = createMockQuery()
+      const user = {
+        role: "SELLER",
+        id: "seller-1",
+        can_view_agency_operations_support: true,
+      }
+      applyOperationsFilters(query, user, ["agency-1", "agency-2"])
+
+      expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1", "agency-2"])
+      expect(query.eq).not.toHaveBeenCalledWith("seller_id", "seller-1")
+    })
+
+    it("should fall back to seller_id when support SELLER has no agencies", () => {
+      const query = createMockQuery()
+      const user = {
+        role: "SELLER",
+        id: "seller-1",
+        can_view_agency_operations_support: true,
+      }
+      applyOperationsFilters(query, user, [])
+
+      expect(query.eq).toHaveBeenCalledWith("seller_id", "seller-1")
+    })
+
     it("should filter ADMIN by agency_id", () => {
       const query = createMockQuery()
       const user = { role: "ADMIN", id: "admin-1" }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { calculateCommission, createOrUpdateCommissionRecords } from "@/lib/commissions/calculate"
 
 /**
@@ -96,7 +96,10 @@ export async function PATCH(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
-    if (user.role === "SELLER" && operation.seller_id !== user.id) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
+
+    if (!accessScope || accessScope === "agency-support") {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
@@ -253,7 +256,10 @@ export async function DELETE(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
-    if (user.role === "SELLER" && operation.seller_id !== user.id) {
+    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    const accessScope = resolveOperationAccessScope(user, operation, agencyIds)
+
+    if (!accessScope || accessScope === "agency-support") {
       return NextResponse.json({ error: "No tiene acceso a esta operación" }, { status: 403 })
     }
 
