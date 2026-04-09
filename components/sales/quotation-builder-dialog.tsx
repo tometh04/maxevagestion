@@ -270,6 +270,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [activeQuotationId, setActiveQuotationId] = useState<string | null>(existingQuotationId ?? null)
   const [savedQuotation, setSavedQuotation] = useState<any>(null)
   const [loadingExisting, setLoadingExisting] = useState(false)
+  const [uploadingFlightScreenshotIds, setUploadingFlightScreenshotIds] = useState<Record<string, boolean>>({})
 
   // General data
   const [quotationTitle, setQuotationTitle] = useState(initialDraft.quotationTitle)
@@ -287,6 +288,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>(initialDraft.options)
+  const hasPendingFlightScreenshotUploads = Object.keys(uploadingFlightScreenshotIds).length > 0
 
   const syncLinkedFlights = useCallback((nextOptions: QuotationOption[]) => {
     if (nextOptions.length === 0) return nextOptions
@@ -352,7 +354,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     let cancelled = false
     setActiveQuotationId(existingQuotationId)
     setLoadingExisting(true)
-    fetch(`/api/quotations/${existingQuotationId}`)
+    fetch(`/api/quotations/${existingQuotationId}`, { cache: "no-store" })
       .then(r => r.json())
       .then(({ data }) => {
         if (cancelled || !data) return
@@ -796,12 +798,89 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
     const totalCost = Object.values(byType).reduce((s, v) => s + v.cost, 0)
     const totalClient = options.reduce((s, o) => s + getEffectiveOptionTotal(o), 0)
-    const totalMargin = totalClient - totalCost
-    return { byType, totalSale, totalCost, totalClient, totalMargin }
+  const totalMargin = totalClient - totalCost
+  return { byType, totalSale, totalCost, totalClient, totalMargin }
   }, [options])
+
+  function setFlightScreenshotUploading(itemId: string, uploading: boolean) {
+    setUploadingFlightScreenshotIds((current) => {
+      if (uploading) {
+        return { ...current, [itemId]: true }
+      }
+
+      if (!current[itemId]) {
+        return current
+      }
+
+      const next = { ...current }
+      delete next[itemId]
+      return next
+    })
+  }
+
+  function readFileAsDataUrl(file: File) {
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result || ""))
+      reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen"))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  async function handleFlightScreenshotUpload(optionId: string, itemId: string, file: File) {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("La imagen no puede superar 10MB")
+      return
+    }
+
+    setFlightScreenshotUploading(itemId, true)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", file)
+
+      if (activeQuotationId) {
+        formData.append("quotationId", activeQuotationId)
+      }
+
+      const res = await fetch("/api/quotations/upload-flight-screenshot", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!res.ok) {
+        throw new Error("quotation_screenshot_upload_failed")
+      }
+
+      const data = await res.json()
+      const uploadedUrl = data.url || data.publicUrl
+
+      if (!uploadedUrl) {
+        throw new Error("quotation_screenshot_missing_url")
+      }
+
+      updateItem(optionId, itemId, "flight_screenshot_url", uploadedUrl)
+      toast.success("Screenshot subido correctamente")
+    } catch {
+      try {
+        const dataUrl = await readFileAsDataUrl(file)
+        updateItem(optionId, itemId, "flight_screenshot_url", dataUrl)
+        toast.success("Screenshot cargado")
+      } catch {
+        toast.error("No se pudo cargar el screenshot")
+      }
+    } finally {
+      setFlightScreenshotUploading(itemId, false)
+    }
+  }
 
   // --- Save ---
   async function handleSave(andSend: boolean = false) {
+    if (hasPendingFlightScreenshotUploads) {
+      toast.error("Espera a que termine la carga del screenshot antes de guardar")
+      return
+    }
+
     const syncedOptions = syncLinkedFlights(options)
 
     if (!destination.trim()) {
@@ -1567,23 +1646,67 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                           {/* Screenshot de vuelo */}
                           <div className="space-y-2 pt-1">
                             <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Screenshot del vuelo</p>
+                            {!isLinkedFlightReadonly && (
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                id={`flight-screenshot-${option.id}-${item.id}`}
+                                disabled={Boolean(uploadingFlightScreenshotIds[item.id])}
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0]
+                                  if (!file) return
+                                  await handleFlightScreenshotUpload(option.id, item.id, file)
+                                  e.target.value = ""
+                                }}
+                              />
+                            )}
                             {item.flight_screenshot_url ? (
-                              <div className="relative group">
-                                <img
-                                  src={item.flight_screenshot_url}
-                                  alt="Screenshot del vuelo"
-                                  className="w-full max-h-48 object-contain rounded-md border"
-                                />
+                              <div className="space-y-2">
+                                <div className="relative group">
+                                  <img
+                                    src={item.flight_screenshot_url}
+                                    alt="Screenshot del vuelo"
+                                    className="w-full max-h-48 object-contain rounded-md border"
+                                  />
+                                  {!isLinkedFlightReadonly && (
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="icon"
+                                      className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      onClick={() => updateItem(option.id, item.id, "flight_screenshot_url", "")}
+                                      disabled={Boolean(uploadingFlightScreenshotIds[item.id])}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </div>
                                 {!isLinkedFlightReadonly && (
-                                  <Button
-                                    type="button"
-                                    variant="destructive"
-                                    size="icon"
-                                    className="absolute top-2 right-2 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => updateItem(option.id, item.id, "flight_screenshot_url", "")}
-                                  >
-                                    <X className="h-3.5 w-3.5" />
-                                  </Button>
+                                  <div className="flex items-center gap-2">
+                                    <label htmlFor={`flight-screenshot-${option.id}-${item.id}`}>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="cursor-pointer"
+                                        asChild
+                                        disabled={Boolean(uploadingFlightScreenshotIds[item.id])}
+                                      >
+                                        <span>
+                                          {uploadingFlightScreenshotIds[item.id] ? (
+                                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                          ) : (
+                                            <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                          )}
+                                          Reemplazar screenshot
+                                        </span>
+                                      </Button>
+                                    </label>
+                                    {uploadingFlightScreenshotIds[item.id] ? (
+                                      <p className="text-xs text-muted-foreground">Subiendo imagen...</p>
+                                    ) : null}
+                                  </div>
                                 )}
                               </div>
                             ) : (
@@ -1595,64 +1718,28 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                                   </Button>
                                 ) : (
                                   <>
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="hidden"
-                                      id={`flight-screenshot-${item.id}`}
-                                      onChange={async (e) => {
-                                        const file = e.target.files?.[0]
-                                        if (!file) return
-                                        if (file.size > 10 * 1024 * 1024) {
-                                          toast.error("La imagen no puede superar 10MB")
-                                          return
-                                        }
-                                        try {
-                                          const formData = new FormData()
-                                          formData.append("file", file)
-                                          formData.append("type", "FLIGHT_SCREENSHOT")
-                                          const res = await fetch("/api/documents/upload", {
-                                            method: "POST",
-                                            body: formData,
-                                          })
-                                          if (res.ok) {
-                                            const data = await res.json()
-                                            const uploadedUrl = data.url || data.publicUrl || data.file_url || data.document?.file_url
-                                            if (uploadedUrl) {
-                                              updateItem(option.id, item.id, "flight_screenshot_url", uploadedUrl)
-                                              toast.success("Screenshot subido correctamente")
-                                            } else {
-                                              throw new Error("La subida no devolvió una URL pública")
-                                            }
-                                          } else {
-                                            // Fallback: usar base64 como URL temporal
-                                            const reader = new FileReader()
-                                            reader.onload = () => {
-                                              updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
-                                              toast.success("Screenshot cargado")
-                                            }
-                                            reader.readAsDataURL(file)
-                                          }
-                                        } catch {
-                                          // Fallback: usar base64
-                                          const reader = new FileReader()
-                                          reader.onload = () => {
-                                            updateItem(option.id, item.id, "flight_screenshot_url", reader.result as string)
-                                            toast.success("Screenshot cargado")
-                                          }
-                                          reader.readAsDataURL(file)
-                                        }
-                                        e.target.value = ""
-                                      }}
-                                    />
-                                    <label htmlFor={`flight-screenshot-${item.id}`}>
-                                      <Button type="button" variant="outline" size="sm" className="cursor-pointer" asChild>
+                                    <label htmlFor={`flight-screenshot-${option.id}-${item.id}`}>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="cursor-pointer"
+                                        asChild
+                                        disabled={Boolean(uploadingFlightScreenshotIds[item.id])}
+                                      >
                                         <span>
-                                          <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                          {uploadingFlightScreenshotIds[item.id] ? (
+                                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                          ) : (
+                                            <Upload className="h-3.5 w-3.5 mr-1.5" />
+                                          )}
                                           Subir screenshot del vuelo
                                         </span>
                                       </Button>
                                     </label>
+                                    {uploadingFlightScreenshotIds[item.id] ? (
+                                      <p className="text-xs text-muted-foreground mt-2">Subiendo imagen...</p>
+                                    ) : null}
                                   </>
                                 )}
                               </div>
@@ -1813,10 +1900,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 justify-end">
-            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving}>
+            <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={saving || hasPendingFlightScreenshotUploads}>
               Cancelar
             </Button>
-            <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving}>
+            <Button variant="outline" size="sm" onClick={() => handleSave(false)} disabled={saving || hasPendingFlightScreenshotUploads}>
               {saving && !sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
               {hasActiveQuotation ? "Actualizar borrador" : "Guardar borrador"}
             </Button>
@@ -1826,7 +1913,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 Ver cotizacion
               </Button>
             )}
-            <Button size="sm" onClick={() => handleSave(true)} disabled={saving} className="bg-green-600 hover:bg-green-700">
+            <Button size="sm" onClick={() => handleSave(true)} disabled={saving || hasPendingFlightScreenshotUploads} className="bg-green-600 hover:bg-green-700">
               {sending ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <Send className="h-4 w-4 mr-1.5" />}
               Guardar y enviar por WhatsApp
             </Button>

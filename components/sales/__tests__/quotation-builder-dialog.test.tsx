@@ -321,11 +321,212 @@ describe("QuotationBuilderDialog", () => {
     await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/quotations/quote-existing")
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/quotations/quote-existing",
+      expect.objectContaining({ cache: "no-store" })
+    )
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       "/api/quotations/quote-existing",
       expect.objectContaining({ method: "PATCH" })
     )
+  })
+
+  it("uploads a replacement flight screenshot and includes it in the PATCH payload", async () => {
+    const user = userEvent.setup()
+    const fetchMock = global.fetch as jest.Mock
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: "quote-existing",
+            destination: "Punta Cana",
+            origin: "Buenos Aires",
+            region: "CARIBE",
+            departure_date: "2026-08-01",
+            return_date: "2026-08-10",
+            adults: 2,
+            children: 0,
+            infants: 0,
+            currency: "USD",
+            pricing_mode: "PER_PERSON",
+            notes: "nota",
+            public_token: "existing-token",
+            quotation_options: [
+              {
+                id: "option-1",
+                option_number: 1,
+                title: "Opcion 1",
+                total_amount: 3200,
+                calculated_total_amount: 3200,
+                manual_total_amount: null,
+              },
+            ],
+            quotation_items: [
+              {
+                id: "item-1",
+                option_id: "option-1",
+                order_index: 0,
+                item_type: "FLIGHT",
+                description: "Vuelo existente",
+                quantity: 1,
+                sale_amount: 3200,
+                cost_amount: 2800,
+                cost_currency: "USD",
+                generates_commission: false,
+                flight_stops: 0,
+              },
+            ],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ url: "https://example.com/quotation-flight.png" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ data: { id: "quote-existing", public_token: "existing-token", status: "DRAFT" } }),
+      })
+
+    const { container } = render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-existing",
+          contact_name: "Agustina",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId="quote-existing"
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("Vuelo existente")
+    })
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["flight"], "flight.png", { type: "image/png" })
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        "/api/quotations/upload-flight-screenshot",
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    await user.click(screen.getByRole("button", { name: /actualizar borrador/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    const patchPayload = JSON.parse(fetchMock.mock.calls[2][1].body)
+    expect(patchPayload.options[0].items[0].flight_screenshot_url).toBe("https://example.com/quotation-flight.png")
+  })
+
+  it("disables saving while a flight screenshot upload is still in progress", async () => {
+    const fetchMock = global.fetch as jest.Mock
+    let resolveUpload: ((value: any) => void) | null = null
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          data: {
+            id: "quote-existing",
+            destination: "Punta Cana",
+            origin: "Buenos Aires",
+            region: "CARIBE",
+            departure_date: "2026-08-01",
+            return_date: "2026-08-10",
+            adults: 2,
+            children: 0,
+            infants: 0,
+            currency: "USD",
+            pricing_mode: "PER_PERSON",
+            notes: "nota",
+            public_token: "existing-token",
+            quotation_options: [
+              {
+                id: "option-1",
+                option_number: 1,
+                title: "Opcion 1",
+                total_amount: 3200,
+                calculated_total_amount: 3200,
+                manual_total_amount: null,
+              },
+            ],
+            quotation_items: [
+              {
+                id: "item-1",
+                option_id: "option-1",
+                order_index: 0,
+                item_type: "FLIGHT",
+                description: "Vuelo existente",
+                quantity: 1,
+                sale_amount: 3200,
+                cost_amount: 2800,
+                cost_currency: "USD",
+                generates_commission: false,
+                flight_stops: 0,
+              },
+            ],
+          },
+        }),
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveUpload = resolve
+          })
+      )
+
+    const { container } = render(
+      <QuotationBuilderDialog
+        open
+        onOpenChange={jest.fn()}
+        lead={{
+          ...baseLead,
+          id: "lead-existing",
+          contact_name: "Agustina",
+          destination: "Punta Cana",
+          region: "CARIBE",
+        }}
+        operators={[]}
+        existingQuotationId="quote-existing"
+      />
+    )
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Ej: Vuelo directo Buenos Aires - Miami")).toHaveValue("Vuelo existente")
+    })
+
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File(["flight"], "flight.png", { type: "image/png" })
+
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /actualizar borrador/i })).toBeDisabled()
+      expect(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i })).toBeDisabled()
+    })
+
+    resolveUpload?.({
+      ok: true,
+      json: async () => ({ url: "https://example.com/quotation-flight.png" }),
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /actualizar borrador/i })).not.toBeDisabled()
+      expect(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i })).not.toBeDisabled()
+    })
   })
 })
