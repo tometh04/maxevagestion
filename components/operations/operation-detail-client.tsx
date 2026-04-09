@@ -643,6 +643,8 @@ export function OperationDetailClient({
             operatorCost={operation.operator_cost}
             userRole={userRole}
             operators={payableOperators}
+            operatorPayments={operatorPayments}
+            operationServices={operationServices}
           />
           <PassengerBalancesSection
             operationId={operation.id}

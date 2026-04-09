@@ -2,6 +2,10 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getOverdueOperatorPayments, updateOverduePayments } from "@/lib/accounting/operator-payments"
+import {
+  getEffectiveOperatorPaymentStatus,
+  hasPendingBalance,
+} from "@/lib/accounting/operator-payment-settlement"
 
 export async function GET(request: Request) {
   try {
@@ -37,9 +41,7 @@ export async function GET(request: Request) {
       query = query.eq("operator_id", operatorId)
     }
 
-    if (status === "UNPAID") {
-      query = query.in("status", ["PENDING", "OVERDUE"])
-    } else if (status) {
+    if (status && status !== "UNPAID") {
       query = query.eq("status", status)
     }
 
@@ -62,7 +64,14 @@ export async function GET(request: Request) {
     }
 
     // Filtrar por agencia si se especifica
-    let filteredPayments = payments || []
+    let filteredPayments = (payments || []).map((payment: any) => ({
+      ...payment,
+      status: getEffectiveOperatorPaymentStatus(payment),
+    }))
+
+    if (status === "UNPAID") {
+      filteredPayments = filteredPayments.filter((payment: any) => hasPendingBalance(payment))
+    }
     if (agencyId && agencyId !== "ALL") {
       filteredPayments = filteredPayments.filter((p: any) => {
         const operation = p.operations

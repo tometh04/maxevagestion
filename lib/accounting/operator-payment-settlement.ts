@@ -61,6 +61,14 @@ export function hasPendingBalance(operatorPayment: Pick<OperatorPaymentRecord, "
   return toMoney(operatorPayment.paid_amount) + MONEY_EPSILON < toMoney(operatorPayment.amount)
 }
 
+export function getEffectiveOperatorPaymentStatus(
+  operatorPayment: Pick<OperatorPaymentRecord, "amount" | "paid_amount" | "due_date">
+): OperatorPaymentRecord["status"] {
+  return hasPendingBalance(operatorPayment)
+    ? getOpenOperatorPaymentStatus(operatorPayment.due_date)
+    : "PAID"
+}
+
 export function buildOperatorPaymentUpdate(
   operatorPayment: Pick<OperatorPaymentRecord, "amount" | "paid_amount" | "due_date">,
   paymentDelta: number,
@@ -118,7 +126,6 @@ export async function findMatchingOperatorPayment(
   let query = (supabase.from("operator_payments") as any)
     .select(baseSelect)
     .eq("operation_id", params.operationId)
-    .in("status", ["PENDING", "OVERDUE"])
     .order("due_date", { ascending: true })
     .order("created_at", { ascending: true })
 

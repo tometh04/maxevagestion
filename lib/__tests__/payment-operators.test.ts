@@ -1,5 +1,6 @@
 import {
   buildOpenOperationBasePayableOperators,
+  getOpenOperationBaseOperatorPayments,
   buildOperationPaymentOperators,
 } from "@/lib/operations/payment-operators"
 
@@ -76,14 +77,14 @@ describe("buildOpenOperationBasePayableOperators", () => {
     ])
   })
 
-  it("excluye deudas saldadas o cerradas aunque sigan relacionadas", () => {
+  it("excluye deudas completamente saldadas aunque el status historico sea inconsistente", () => {
     const operators = buildOpenOperationBasePayableOperators({
       operatorPayments: [
         {
           id: "debt-paid-status",
           operator_id: "euro",
           amount: 900,
-          paid_amount: 200,
+          paid_amount: 900,
           status: "PAID",
           operators: { id: "euro", name: "Eurovips" },
         },
@@ -127,5 +128,27 @@ describe("buildOpenOperationBasePayableOperators", () => {
     expect(operators).toEqual([
       { id: "euro", name: "Eurovips" },
     ])
+  })
+
+  it("considera abierta una deuda con saldo pendiente aunque el status haya quedado PAID", () => {
+    const openPayments = getOpenOperationBaseOperatorPayments({
+      operatorPayments: [
+        {
+          id: "legacy-bad-status",
+          operator_id: "delf",
+          amount: 2135,
+          paid_amount: 0,
+          status: "PAID",
+          operators: { id: "delf", name: "Delfos" },
+        },
+      ],
+    })
+
+    const operators = buildOpenOperationBasePayableOperators({
+      operatorPayments: openPayments,
+    })
+
+    expect(openPayments).toHaveLength(1)
+    expect(operators).toEqual([{ id: "delf", name: "Delfos" }])
   })
 })

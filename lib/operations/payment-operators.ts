@@ -65,6 +65,45 @@ function buildOperatorOptions(
   return Array.from(operatorMap.entries()).map(([id, name]) => ({ id, name }))
 }
 
+export function getOperationBaseOperatorPayments({
+  operatorPayments = [],
+  operationServices = [],
+}: {
+  operatorPayments?: OperationOperatorPaymentLike[] | null
+  operationServices?: OperationServicePaymentRelationLike[] | null
+}): OperationOperatorPaymentLike[] {
+  const normalizedOperatorPayments = operatorPayments ?? []
+  const normalizedOperationServices = operationServices ?? []
+  const serviceLinkedOperatorPaymentIds = new Set(
+    normalizedOperationServices
+      .map((service) => service?.operator_payment_id || null)
+      .filter((operatorPaymentId): operatorPaymentId is string => Boolean(operatorPaymentId))
+  )
+
+  return normalizedOperatorPayments.filter((operatorPayment) => {
+    const operatorPaymentId = operatorPayment?.id || null
+
+    if (!operatorPaymentId || serviceLinkedOperatorPaymentIds.has(operatorPaymentId)) {
+      return false
+    }
+
+    return true
+  })
+}
+
+export function getOpenOperationBaseOperatorPayments({
+  operatorPayments = [],
+  operationServices = [],
+}: {
+  operatorPayments?: OperationOperatorPaymentLike[] | null
+  operationServices?: OperationServicePaymentRelationLike[] | null
+}): OperationOperatorPaymentLike[] {
+  return getOperationBaseOperatorPayments({
+    operatorPayments,
+    operationServices,
+  }).filter(hasPendingBalance)
+}
+
 export function buildOperationPaymentOperators({
   primaryOperator,
   operationOperators = [],
@@ -109,27 +148,9 @@ export function buildOpenOperationBasePayableOperators({
   operationServices?: OperationServicePaymentRelationLike[] | null
   fallbackNamesById?: Map<string, string>
 }): OperatorOption[] {
-  const normalizedOperatorPayments = operatorPayments ?? []
-  const normalizedOperationServices = operationServices ?? []
-  const serviceLinkedOperatorPaymentIds = new Set(
-    normalizedOperationServices
-      .map((service) => service?.operator_payment_id || null)
-      .filter((operatorPaymentId): operatorPaymentId is string => Boolean(operatorPaymentId))
-  )
-
-  const openBasePayments = normalizedOperatorPayments.filter((operatorPayment) => {
-    const operatorPaymentId = operatorPayment?.id || null
-    const status = operatorPayment?.status || null
-
-    if (!operatorPaymentId || serviceLinkedOperatorPaymentIds.has(operatorPaymentId)) {
-      return false
-    }
-
-    if (status !== "PENDING" && status !== "OVERDUE") {
-      return false
-    }
-
-    return hasPendingBalance(operatorPayment)
+  const openBasePayments = getOpenOperationBaseOperatorPayments({
+    operatorPayments,
+    operationServices,
   })
 
   return buildOperatorOptions(

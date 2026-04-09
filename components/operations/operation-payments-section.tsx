@@ -54,6 +54,11 @@ import {
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 import { toast } from "sonner"
+import {
+  getOperationBaseOperatorPayments,
+  type OperationOperatorPaymentLike,
+  type OperationServicePaymentRelationLike,
+} from "@/lib/operations/payment-operators"
 
 interface FinancialAccount {
   id: string
@@ -119,6 +124,8 @@ interface OperationPaymentsSectionProps {
   operatorCost: number
   userRole: string
   operators: Array<{ id: string; name: string }>
+  operatorPayments?: OperationOperatorPaymentLike[]
+  operationServices?: OperationServicePaymentRelationLike[]
 }
 
 export function OperationPaymentsSection({
@@ -130,6 +137,8 @@ export function OperationPaymentsSection({
   operatorCost,
   userRole,
   operators,
+  operatorPayments = [],
+  operationServices = [],
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -447,7 +456,11 @@ export function OperationPaymentsSection({
   const currencySymbol = opCurrency === "ARS" ? "$" : "USD"
 
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
-  const operatorPayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
+  const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
+  const baseOperatorPayments = getOperationBaseOperatorPayments({
+    operatorPayments,
+    operationServices,
+  })
 
   // Convierte un pago a la moneda de la operación
   const calculateAmountInOpCurrency = (p: any): number => {
@@ -475,10 +488,30 @@ export function OperationPaymentsSection({
   }
 
   const totalPaidByCustomer = customerPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
-  const totalPaidToOperator = operatorPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalPaidToOperatorByPayments = operatorExpensePayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalRegisteredOperatorAmount = baseOperatorPayments.reduce((sum, payment) => {
+    return sum + (Number(payment.amount) || 0)
+  }, 0)
+  const totalRegisteredOperatorPaid = baseOperatorPayments.reduce((sum, payment) => {
+    return sum + (Number(payment.paid_amount) || 0)
+  }, 0)
+  const totalRegisteredOperatorPending = baseOperatorPayments.reduce((sum, payment) => {
+    const amount = Number(payment.amount) || 0
+    const paidAmount = Number(payment.paid_amount) || 0
+    return sum + Math.max(0, amount - paidAmount)
+  }, 0)
+  const hasRegisteredBaseOperatorDebt = baseOperatorPayments.length > 0
 
   const customerDebt = saleAmount - totalPaidByCustomer
-  const operatorDebt = operatorCost - totalPaidToOperator
+  const totalPaidToOperator = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorPaid
+    : totalPaidToOperatorByPayments
+  const displayedOperatorTotal = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorAmount
+    : operatorCost
+  const operatorDebt = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorPending
+    : operatorCost - totalPaidToOperatorByPayments
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar cuenta financiera
@@ -623,7 +656,7 @@ export function OperationPaymentsSection({
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Pagado: {currencySymbol} {totalPaidToOperator.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-              {" / "} Total: {currencySymbol} {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {" / "} Total: {currencySymbol} {displayedOperatorTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {operatorDebt <= 0 && (
               <Badge className="mt-2 bg-success">Pagado completo</Badge>

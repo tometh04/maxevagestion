@@ -196,15 +196,11 @@ export function BulkPaymentDialog({
           operator: p.operators?.name,
         })))
 
-        // Filtrar por status: PENDING o OVERDUE (son los que tienen deuda pendiente)
-        payments = payments.filter(p => p.status === "PENDING" || p.status === "OVERDUE")
-        console.log("[BulkPayment] Pagos PENDING/OVERDUE:", payments.length)
-
         // Filtrar por moneda
         payments = payments.filter(p => p.currency === selectedCurrency)
         console.log("[BulkPayment] Pagos en moneda", selectedCurrency, ":", payments.length)
 
-        // Solo pagos pendientes (con deuda real, no pagados completamente)
+        // Solo pagos con deuda real pendiente, aunque el status histórico haya quedado desalineado.
         payments = payments.filter(p => {
           const paidAmount = p.paid_amount || 0
           const remaining = p.amount - paidAmount
@@ -580,7 +576,7 @@ export function BulkPaymentDialog({
                         const remaining = payment.amount - paidAmount
                         const isSelected = selectedPayments.has(payment.id)
                         const amountToPay = paymentAmounts[payment.id] || (isSelected ? remaining : 0)
-                        const isOverdue = payment.status === "OVERDUE" || (new Date(payment.due_date) < new Date() && payment.status === "PENDING")
+                        const isOverdue = !!payment.due_date && new Date(payment.due_date) < new Date()
                         const isPartial = paidAmount > 0
 
                         return (
