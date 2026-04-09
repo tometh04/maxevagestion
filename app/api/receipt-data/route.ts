@@ -26,6 +26,10 @@ const SERVICE_LABELS: Record<string, string> = {
   VISA: "Visa",
 }
 
+function parseDateValue(value: string): Date {
+  return new Date(value.includes("T") ? value : `${value}T12:00:00`)
+}
+
 // API para obtener datos del recibo - genera PDF en el cliente
 export async function GET(request: NextRequest) {
   try {
@@ -191,12 +195,20 @@ export async function GET(request: NextRequest) {
     const getOrg = (key: string, fallback: string) =>
       orgSettingsData?.find((setting: any) => setting.key === key)?.value || fallback
 
+    const companyName = getOrg("company_name", agency?.name || "Mi Empresa")
+    const companyAddress = getOrg("address", getOrg("company_address", ""))
+    const companyPhone = getOrg("phone", getOrg("company_phone", ""))
+    const companyEmail = getOrg("email", getOrg("company_email", ""))
+    const companyLegajo = getOrg("legajo", getOrg("company_legajo", ""))
+    const companyTaxId = getOrg("tax_id", getOrg("company_tax_id", ""))
+    const brandColor = getOrg("brand_color", "#f97316")
+    const brandLogo = getOrg("brand_logo", "")
     const agencyCity = agency?.city || getOrg("city", "Rosario")
-    const agencyName = agency?.name || getOrg("company_name", "Mi Empresa")
+    const agencyName = agency?.name || companyName
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
 
     const fechaPago = payment.date_paid || payment.date_due || new Date().toISOString()
-    const fechaFormateada = format(new Date(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
+    const fechaFormateada = format(parseDateValue(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
 
     const paymentCurrency = normalizeSupportedCurrency(payment.currency)
     const currencyName = paymentCurrency === "USD" ? "Dolar" : "Pesos"
@@ -219,11 +231,20 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
+      currentPaymentId: payment.id,
       receiptNumber,
       receiptScope,
       fechaFormateada,
       agencyCity,
       agencyName,
+      companyName,
+      companyAddress,
+      companyPhone,
+      companyEmail,
+      companyLegajo,
+      companyTaxId,
+      brandColor,
+      brandLogo,
       customerName,
       customerAddress,
       customerCity,

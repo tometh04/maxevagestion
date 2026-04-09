@@ -2,11 +2,20 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
 export interface ReceiptPdfData {
+  currentPaymentId?: string
   receiptNumber: string
   receiptScope?: "OPERATION" | "SERVICE"
   fechaFormateada: string
   agencyCity: string
   agencyName: string
+  companyName?: string
+  companyAddress?: string
+  companyPhone?: string
+  companyEmail?: string
+  companyLegajo?: string
+  companyTaxId?: string
+  brandColor?: string
+  brandLogo?: string
   customerName: string
   customerAddress: string
   customerCity: string
@@ -43,11 +52,141 @@ export interface ReceiptPdfData {
   }>
 }
 
+interface InfoItem {
+  label: string
+  value: string
+  note?: string
+}
+
 function formatMoney(amount: number): string {
   return amount.toLocaleString("es-AR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+function formatCurrencyValue(currency: string, amount: number): string {
+  return `${currency} ${formatMoney(amount)}`
+}
+
+function normalizeText(value?: string | null, fallback = "-"): string {
+  const normalized = value?.trim()
+  return normalized ? normalized : fallback
+}
+
+function parseDateValue(value: string): Date {
+  return new Date(value.includes("T") ? value : `${value}T12:00:00`)
+}
+
+function formatDateLong(value?: string | null): string {
+  if (!value) return "-"
+
+  try {
+    return format(parseDateValue(value), "d 'de' MMMM 'de' yyyy", { locale: es })
+  } catch {
+    return "-"
+  }
+}
+
+function formatDateShort(value?: string | null): string {
+  if (!value) return "-"
+
+  try {
+    return format(parseDateValue(value), "dd/MM/yyyy", { locale: es })
+  } catch {
+    return "-"
+  }
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
+  if (!match) return [249, 115, 22]
+
+  return [
+    parseInt(match[1], 16),
+    parseInt(match[2], 16),
+    parseInt(match[3], 16),
+  ]
+}
+
+function tintColor([r, g, b]: [number, number, number], intensity: number): [number, number, number] {
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
+  return [
+    clamp(r + (255 - r) * intensity),
+    clamp(g + (255 - g) * intensity),
+    clamp(b + (255 - b) * intensity),
+  ]
+}
+
+function blobToDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(String(reader.result || ""))
+    reader.onerror = () => reject(reader.error || new Error("No se pudo leer la imagen"))
+    reader.readAsDataURL(blob)
+  })
+}
+
+function loadImageElement(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error("No se pudo cargar la imagen"))
+    image.src = src
+  })
+}
+
+async function loadPdfImageData(url: string) {
+  let source = url
+
+  if (!source.startsWith("data:")) {
+    const response = await fetch(source)
+    if (!response.ok) {
+      throw new Error(`No se pudo descargar la imagen (${response.status})`)
+    }
+    source = await blobToDataUrl(await response.blob())
+  }
+
+  const image = await loadImageElement(source)
+  const naturalWidth = image.naturalWidth || image.width
+  const naturalHeight = image.naturalHeight || image.height
+  const maxDimension = 1400
+  const scale = Math.min(1, maxDimension / Math.max(naturalWidth, naturalHeight))
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.max(1, Math.round(naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(naturalHeight * scale))
+
+  const context = canvas.getContext("2d")
+  if (!context) {
+    throw new Error("No se pudo preparar la imagen para PDF")
+  }
+
+  context.fillStyle = "#ffffff"
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+  return {
+    dataUrl: canvas.toDataURL("image/png", 0.95),
+    format: "PNG" as const,
+    width: canvas.width,
+    height: canvas.height,
+  }
+}
+
+function buildPassengersText(data: ReceiptPdfData): string {
+  const passengers: string[] = []
+
+  if ((data.adults || 0) > 0) {
+    passengers.push(`${data.adults} adulto${data.adults === 1 ? "" : "s"}`)
+  }
+  if ((data.children || 0) > 0) {
+    passengers.push(`${data.children} menor${data.children === 1 ? "" : "es"}`)
+  }
+  if ((data.infants || 0) > 0) {
+    passengers.push(`${data.infants} bebé${data.infants === 1 ? "" : "s"}`)
+  }
+
+  return passengers.length > 0 ? passengers.join(", ") : "-"
 }
 
 export async function fetchReceiptData(paymentId: string): Promise<ReceiptPdfData> {
@@ -78,352 +217,593 @@ export async function downloadReceiptPdf(paymentId: string): Promise<void> {
 
 export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   const { default: jsPDF } = await import("jspdf")
-  const doc = new jsPDF()
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
-  const margin = 15
+  const margin = 16
+  const contentWidth = pageWidth - margin * 2
+  const footerReserve = 22
+  const headerHeight = 33
   const receiptCurrency = data.receiptCurrency || data.currency
-  const totalContextLabel = data.receiptScope === "SERVICE" ? "Total servicio" : "Total operación"
+  const receivedNow = data.amountInReceiptCurrency ?? data.amount
+  const companyName = normalizeText(data.companyName || data.agencyName, "Mi Empresa")
+  const branchLabel =
+    data.agencyName && data.agencyName !== companyName
+      ? [data.agencyName, data.agencyCity].filter(Boolean).join(" | ")
+      : data.agencyCity || data.agencyName || ""
+  const companyAddress = normalizeText(data.companyAddress, "")
+  const companyPhone = normalizeText(data.companyPhone, "")
+  const companyEmail = normalizeText(data.companyEmail, "")
+  const companyLegajo = normalizeText(data.companyLegajo, "")
+  const companyTaxId = normalizeText(data.companyTaxId, "")
+  const totalContextLabel = data.receiptScope === "SERVICE" ? "Total del servicio" : "Total del paquete"
+  const historyContextLabel = data.receiptScope === "SERVICE" ? "servicio" : "paquete"
+  const brandColor = hexToRgb(data.brandColor || "#f97316")
+  const brandSoft = tintColor(brandColor, 0.92)
+  const brandPale = tintColor(brandColor, 0.97)
+  const brandBorder = tintColor(brandColor, 0.78)
+  const slateSoft: [number, number, number] = [248, 250, 252]
+  const slateBorder: [number, number, number] = [226, 232, 240]
+  const emeraldSoft: [number, number, number] = [236, 253, 245]
+  const emeraldBorder: [number, number, number] = [167, 243, 208]
+  const amberSoft: [number, number, number] = [255, 247, 237]
+  const amberBorder: [number, number, number] = [253, 230, 138]
+  const paymentHistory = data.paymentHistory || []
+  const contextItems: InfoItem[] = []
   let y = 0
+  let logoData:
+    | {
+        dataUrl: string
+        format: "PNG"
+        width: number
+        height: number
+      }
+    | null = null
 
-  doc.setFillColor(194, 156, 95)
-  doc.rect(0, 0, pageWidth * 0.55, 35, "F")
+  for (const logoCandidate of [data.brandLogo, "/lozada-logo.png"]) {
+    if (!logoCandidate) continue
 
-  doc.setFillColor(255, 255, 255)
-  doc.triangle(pageWidth * 0.45, 0, pageWidth * 0.55, 17.5, pageWidth * 0.45, 35, "F")
-
-  doc.setFillColor(184, 142, 74)
-  doc.rect(pageWidth * 0.55, 0, pageWidth * 0.45, 35, "F")
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(22)
-  doc.setFont("helvetica", "bold")
-  doc.text("LOZADA", 15, 18)
-  doc.setFontSize(16)
-  doc.setFont("helvetica", "italic")
-  doc.text("Viajes", 62, 22)
-
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(7)
-  doc.setFont("helvetica", "normal")
-  doc.setDrawColor(255, 255, 255)
-  doc.setLineWidth(0.3)
-  doc.rect(pageWidth - 45, 3, 40, 12)
-  doc.setFontSize(6)
-  doc.text("Documento no", pageWidth - 43, 7)
-  doc.text("valido como", pageWidth - 43, 10)
-  doc.text("factura", pageWidth - 43, 13)
-  doc.setFontSize(16)
-  doc.setFont("helvetica", "bold")
-  doc.text("X", pageWidth - 12, 12)
-
-  doc.setFontSize(7)
-  doc.setFont("helvetica", "normal")
-  doc.text("N° Legajo: 18181", pageWidth - 45, 20)
-  doc.text("+5493412753942", pageWidth - 45, 24)
-  doc.text("rosario.ventas@lozadaviajes.com", pageWidth - 45, 28)
-  doc.text("Corrientes 631 (Piso 1) Rosario, Santa Fe", pageWidth - 45, 32)
-
-  y = 45
-
-  doc.setTextColor(0, 0, 0)
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "normal")
-  doc.text(`${data.agencyCity} ${data.fechaFormateada}`, margin, y)
-
-  doc.setFontSize(11)
-  doc.setFont("helvetica", "bold")
-  doc.text(`RECIBO X: No ${data.receiptNumber}`, pageWidth - margin, y, { align: "right" })
-
-  y += 15
-
-  doc.setDrawColor(0, 0, 0)
-  doc.setLineWidth(0.5)
-  doc.line(margin, y, pageWidth - margin, y)
-
-  y += 12
-
-  doc.setFontSize(10)
-  doc.setFont("helvetica", "bold")
-  doc.text("Señor/a:", margin, y)
-  doc.setFont("helvetica", "normal")
-  doc.text(data.customerName, margin + 25, y)
-
-  y += 8
-
-  doc.setFont("helvetica", "bold")
-  doc.text("Domicilio:", margin, y)
-  doc.setFont("helvetica", "normal")
-  doc.text(data.customerAddress || "-", margin + 28, y)
-
-  y += 8
-
-  doc.setFont("helvetica", "bold")
-  doc.text("Localidad:", margin, y)
-  doc.setFont("helvetica", "normal")
-  doc.text(data.customerCity || "-", margin + 28, y)
-
-  y += 15
-
-  if (data.destination || data.fileCode) {
-    doc.setFillColor(240, 240, 240)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 10, "F")
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(194, 156, 95)
-    doc.text("INFORMACIÓN DEL VIAJE", margin + 5, y + 2)
-    doc.setTextColor(0, 0, 0)
-    y += 15
-
-    doc.setFontSize(9)
-    if (data.fileCode) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Código de Operación:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.fileCode, margin + 50, y)
-      y += 7
+    try {
+      logoData = await loadPdfImageData(logoCandidate)
+      break
+    } catch {
+      // Keep fallback chain simple; if none loads, we render text only.
     }
-    if (data.destination) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Destino:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.destination, margin + 25, y)
-      y += 7
-    }
-    if (data.origin) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Origen:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.origin, margin + 25, y)
-      y += 7
-    }
-    if (data.departureDate) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Fecha de Salida:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(
-        format(new Date(data.departureDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es }),
-        margin + 40,
-        y
-      )
-      y += 7
-    }
-    if (data.returnDate) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Fecha de Regreso:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(
-        format(new Date(data.returnDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es }),
-        margin + 45,
-        y
-      )
-      y += 7
-    }
-    if (data.adults || data.children || data.infants) {
-      const pasajeros = []
-      if ((data.adults || 0) > 0) pasajeros.push(`${data.adults} adulto${data.adults === 1 ? "" : "s"}`)
-      if ((data.children || 0) > 0) pasajeros.push(`${data.children} menor${data.children === 1 ? "" : "es"}`)
-      if ((data.infants || 0) > 0) pasajeros.push(`${data.infants} bebé${data.infants === 1 ? "" : "s"}`)
-
-      doc.setFont("helvetica", "bold")
-      doc.text("Pasajeros:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(pasajeros.join(", ") || "-", margin + 30, y)
-      y += 7
-    }
-    if (data.operatorName) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Operador:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.operatorName, margin + 28, y)
-      y += 7
-    }
-
-    y += 10
   }
 
-  if (data.receiptScope === "SERVICE" && (data.serviceLabel || data.serviceDescription || data.serviceOperatorName)) {
-    doc.setFillColor(245, 245, 245)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 10, "F")
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(194, 156, 95)
-    doc.text("SERVICIO COBRADO", margin + 5, y + 2)
-    doc.setTextColor(0, 0, 0)
-    y += 15
-
-    doc.setFontSize(9)
-    if (data.serviceLabel) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Servicio:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.serviceLabel, margin + 25, y)
-      y += 7
-    }
-    if (data.serviceDescription) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Detalle:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.serviceDescription, margin + 22, y)
-      y += 7
-    }
-    if (data.serviceOperatorName) {
-      doc.setFont("helvetica", "bold")
-      doc.text("Proveedor:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.serviceOperatorName, margin + 28, y)
-      y += 7
+  const ensureSpace = (requiredHeight: number) => {
+    if (y + requiredHeight <= pageHeight - footerReserve) {
+      return
     }
 
-    y += 10
+    doc.addPage()
+    addPageChrome(true)
   }
 
-  doc.setFont("helvetica", "bold")
-  doc.setFontSize(11)
-  doc.text(`Recibimos la suma de ${data.currency}: ${formatMoney(data.amount)}`, margin, y)
+  const addPageChrome = (repeatHeader = false) => {
+    doc.setFillColor(...brandColor)
+    doc.rect(0, 0, pageWidth, 24, "F")
 
-  y += 8
+    doc.setFillColor(...brandSoft)
+    doc.rect(0, 24, pageWidth, 4, "F")
 
-  if (data.currency !== receiptCurrency) {
+    let textStartX = margin
+    if (logoData) {
+      const logoHeight = 12
+      const logoWidth = (logoData.width / logoData.height) * logoHeight
+      doc.addImage(logoData.dataUrl, logoData.format, margin, 6, logoWidth, logoHeight)
+      textStartX += logoWidth + 4
+    }
+
+    doc.setTextColor(255, 255, 255)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(15)
+    doc.text(companyName, textStartX, 11)
+
+    const headerLines: string[] = doc.splitTextToSize(
+      [branchLabel, companyPhone, companyEmail].filter(Boolean).join(" | "),
+      pageWidth - textStartX - 62
+    ) as string[]
+
     doc.setFont("helvetica", "normal")
-    doc.setFontSize(9)
-    doc.text(
-      `Equivalente aplicado al saldo: ${receiptCurrency} ${formatMoney(data.amountInReceiptCurrency || 0)}`,
-      margin,
-      y
-    )
-    y += 8
+    doc.setFontSize(7.5)
+    headerLines.slice(0, 2).forEach((line, index) => {
+      doc.text(line, textStartX, 16 + index * 3.7)
+    })
+
+    doc.setFillColor(255, 255, 255)
+    doc.roundedRect(pageWidth - 58, 5.5, 42, 16.5, 3, 3, "F")
+
+    doc.setTextColor(...brandColor)
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9.5)
+    doc.text("Recibo de pago", pageWidth - 54, 12)
+
+    doc.setTextColor(75, 85, 99)
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(6.7)
+    doc.text(`RECIBO X · ${data.receiptNumber}`, pageWidth - 54, 16)
+    doc.text("Comprobante de pago", pageWidth - 54, 19.5)
+
+    y = repeatHeader ? headerHeight : 37
   }
 
-  doc.setFont("helvetica", "normal")
-  doc.setFontSize(10)
-  doc.text(data.concepto, margin, y)
-
-  y += 10
-
-  doc.setFont("helvetica", "bold")
-  doc.text("Moneda recibida:", margin, y)
-  doc.setFont("helvetica", "normal")
-  doc.text(data.currencyName, margin + 42, y)
-
-  y += 20
-
-  if (data.paymentHistory && data.paymentHistory.length > 1) {
-    doc.setFillColor(250, 250, 250)
-    doc.rect(margin, y - 5, pageWidth - 2 * margin, 12, "F")
-    doc.setFontSize(10)
+  const drawSectionHeading = (title: string, subtitle?: string) => {
+    ensureSpace(subtitle ? 11 : 8)
     doc.setFont("helvetica", "bold")
-    doc.text("HISTORIAL DE PAGOS", margin + 5, y + 2)
-    y += 15
+    doc.setFontSize(11)
+    doc.setTextColor(31, 41, 55)
+    doc.text(title, margin, y)
 
-    doc.setFontSize(8)
-    doc.setFont("helvetica", "bold")
-    doc.text("Fecha", margin, y)
-    doc.text("Monto", margin + 50, y)
-    doc.text("Referencia", margin + 100, y)
-    y += 6
+    if (subtitle) {
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8)
+      doc.setTextColor(107, 114, 128)
+      doc.text(subtitle, pageWidth - margin, y, { align: "right" })
+    }
 
-    doc.setDrawColor(200, 200, 200)
-    doc.setLineWidth(0.2)
+    y += 3
+    doc.setDrawColor(...brandBorder)
+    doc.setLineWidth(0.4)
     doc.line(margin, y, pageWidth - margin, y)
-    y += 4
+    y += 6
+  }
 
-    doc.setFont("helvetica", "normal")
-    for (const payment of data.paymentHistory) {
-      const paymentDate = payment.datePaid
-        ? format(new Date(payment.datePaid), "dd/MM/yyyy", { locale: es })
-        : "-"
-      const paymentAmount = `${payment.currency} ${formatMoney(payment.amount)}`
+  const measureInfoCardHeight = (items: InfoItem[]) => {
+    const innerWidth = contentWidth - 10
+    let height = 16
 
-      doc.text(paymentDate, margin, y)
-      doc.text(paymentAmount, margin + 50, y)
-      doc.text(payment.reference || "-", margin + 100, y)
-      y += 6
+    items.forEach((item) => {
+      const valueLines = doc.splitTextToSize(item.value, innerWidth)
+      const noteLines = item.note ? doc.splitTextToSize(item.note, innerWidth) : []
+      height += 4 + valueLines.length * 3.7 + noteLines.length * 3.2
+    })
+
+    return Math.max(height + 2, 26)
+  }
+
+  const drawInfoCard = (
+    title: string,
+    items: InfoItem[],
+    options?: {
+      fillColor?: [number, number, number]
+      borderColor?: [number, number, number]
+      titleColor?: [number, number, number]
     }
-    y += 5
+  ) => {
+    const filteredItems = items.filter((item) => item.value && item.value !== "-")
+    if (filteredItems.length === 0) {
+      return
+    }
+
+    const cardHeight = measureInfoCardHeight(filteredItems)
+    const fillColor = options?.fillColor || slateSoft
+    const borderColor = options?.borderColor || slateBorder
+    const titleColor = options?.titleColor || brandColor
+    const innerWidth = contentWidth - 10
+
+    ensureSpace(cardHeight + 4)
+
+    doc.setFillColor(...fillColor)
+    doc.setDrawColor(...borderColor)
+    doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD")
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9.5)
+    doc.setTextColor(...titleColor)
+    doc.text(title, margin + 5, y + 7)
+
+    let cursorY = y + 13
+
+    filteredItems.forEach((item, index) => {
+      const valueLines = doc.splitTextToSize(item.value, innerWidth)
+      const noteLines = item.note ? doc.splitTextToSize(item.note, innerWidth) : []
+
+      doc.setFont("helvetica", "bold")
+      doc.setFontSize(7.1)
+      doc.setTextColor(100, 116, 139)
+      doc.text(item.label.toUpperCase(), margin + 5, cursorY)
+      cursorY += 3.7
+
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(9)
+      doc.setTextColor(31, 41, 55)
+      doc.text(valueLines, margin + 5, cursorY)
+      cursorY += valueLines.length * 3.7
+
+      if (noteLines.length > 0) {
+        doc.setFont("helvetica", "normal")
+        doc.setFontSize(7.3)
+        doc.setTextColor(100, 116, 139)
+        doc.text(noteLines, margin + 5, cursorY)
+        cursorY += noteLines.length * 3.2
+      }
+
+      if (index < filteredItems.length - 1) {
+        doc.setDrawColor(226, 232, 240)
+        doc.setLineWidth(0.2)
+        doc.line(margin + 5, cursorY + 1.2, pageWidth - margin - 5, cursorY + 1.2)
+        cursorY += 4.5
+      }
+    })
+
+    y += cardHeight + 5
   }
 
-  doc.setLineWidth(0.3)
-  doc.line(pageWidth - 85, y, pageWidth - margin, y)
+  const drawMetricTile = (
+    x: number,
+    top: number,
+    width: number,
+    height: number,
+    title: string,
+    value: string,
+    subtitle: string,
+    options?: {
+      fillColor?: [number, number, number]
+      borderColor?: [number, number, number]
+      titleColor?: [number, number, number]
+      valueColor?: [number, number, number]
+      subtitleColor?: [number, number, number]
+    }
+  ) => {
+    doc.setFillColor(...(options?.fillColor || slateSoft))
+    doc.setDrawColor(...(options?.borderColor || slateBorder))
+    doc.roundedRect(x, top, width, height, 4, 4, "FD")
 
-  y += 8
-
-  doc.setFontSize(12)
-  doc.setFont("helvetica", "bold")
-  doc.text("TOTAL", pageWidth - 85, y)
-  doc.text(`${data.currency} ${formatMoney(data.amount)}`, pageWidth - margin, y, { align: "right" })
-
-  y += 4
-  doc.line(pageWidth - 85, y, pageWidth - margin, y)
-
-  if (data.saldoRestante > 0) {
-    y += 15
-    doc.setFillColor(255, 243, 205)
-    doc.rect(margin, y - 5, pageWidth - margin * 2, 18, "F")
-
-    doc.setFontSize(10)
     doc.setFont("helvetica", "bold")
-    doc.setTextColor(133, 100, 4)
-    doc.text("SALDO PENDIENTE DE PAGO:", margin + 5, y + 3)
+    doc.setFontSize(7)
+    doc.setTextColor(...(options?.titleColor || [100, 116, 139]))
+    doc.text(title.toUpperCase(), x + 4, top + 6)
 
-    doc.setFontSize(12)
-    doc.text(
-      `${receiptCurrency} ${formatMoney(data.saldoRestante)}`,
-      pageWidth - margin - 5,
-      y + 3,
-      { align: "right" }
-    )
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(12.5)
+    doc.setTextColor(...(options?.valueColor || [15, 23, 42]))
+    doc.text(value, x + 4, top + 13)
 
-    doc.setFontSize(8)
+    const subtitleLines = doc.splitTextToSize(subtitle, width - 8)
     doc.setFont("helvetica", "normal")
-    doc.text(
-      `(${totalContextLabel}: ${receiptCurrency} ${formatMoney(data.totalOperacion)} - Pagado: ${receiptCurrency} ${formatMoney(data.totalPagado)})`,
-      margin + 5,
-      y + 10
-    )
-
-    doc.setTextColor(0, 0, 0)
-    y += 20
-  } else if (data.totalOperacion > 0) {
-    y += 15
-    doc.setFillColor(209, 250, 229)
-    doc.rect(margin, y - 5, pageWidth - margin * 2, 12, "F")
-
-    doc.setFontSize(10)
-    doc.setFont("helvetica", "bold")
-    doc.setTextColor(22, 101, 52)
-    doc.text("PAGADO EN SU TOTALIDAD", pageWidth / 2, y + 3, { align: "center" })
-
-    doc.setTextColor(0, 0, 0)
-    y += 15
+    doc.setFontSize(7)
+    doc.setTextColor(...(options?.subtitleColor || [100, 116, 139]))
+    doc.text(subtitleLines.slice(0, 2), x + 4, top + 18)
   }
 
-  y += 15
+  const drawSummaryGrid = () => {
+    ensureSpace(56)
 
-  doc.setFontSize(9)
-  doc.setFont("helvetica", "normal")
-  doc.setTextColor(0, 0, 0)
-  doc.line(margin, y, margin + 65, y)
-  doc.text("Firma Cliente", margin + 18, y + 6)
-  doc.line(pageWidth - margin - 65, y, pageWidth - margin, y)
-  doc.text("Firma Agencia", pageWidth - margin - 48, y + 6)
+    const tileGap = 4
+    const tileWidth = (contentWidth - tileGap) / 2
+    const tileHeight = 23
+    const summaryTop = y
+    const sameCurrency = data.currency === receiptCurrency
 
-  const footerY = pageHeight - 15
-  doc.setFontSize(7)
-  doc.setFont("helvetica", "italic")
-  doc.setTextColor(128, 128, 128)
-  doc.text(
-    "LOZADA VIAJES - Corrientes 631 (Piso 1 Oficina F) Rosario, Santa Fe",
-    pageWidth / 2,
-    footerY - 3,
-    { align: "center" }
+    drawMetricTile(
+      margin,
+      summaryTop,
+      tileWidth,
+      tileHeight,
+      "Cobrado en este recibo",
+      formatCurrencyValue(receiptCurrency, receivedNow),
+      sameCurrency
+        ? `Moneda recibida: ${data.currencyName}`
+        : `Recibido: ${formatCurrencyValue(data.currency, data.amount)}`,
+      {
+        fillColor: brandColor,
+        borderColor: brandColor,
+        titleColor: [255, 255, 255],
+        valueColor: [255, 255, 255],
+        subtitleColor: [255, 245, 230],
+      }
+    )
+
+    drawMetricTile(
+      margin + tileWidth + tileGap,
+      summaryTop,
+      tileWidth,
+      tileHeight,
+      "Total cobrado",
+      formatCurrencyValue(receiptCurrency, data.totalPagado),
+      `Suma histórica cobrada del ${historyContextLabel}`,
+      {
+        fillColor: emeraldSoft,
+        borderColor: emeraldBorder,
+        titleColor: [22, 101, 52],
+        valueColor: [22, 101, 52],
+        subtitleColor: [22, 101, 52],
+      }
+    )
+
+    drawMetricTile(
+      margin,
+      summaryTop + tileHeight + tileGap,
+      tileWidth,
+      tileHeight,
+      totalContextLabel,
+      formatCurrencyValue(receiptCurrency, data.totalOperacion),
+      `Monto contratado tomado para el recibo`,
+      {
+        fillColor: slateSoft,
+        borderColor: slateBorder,
+        titleColor: [71, 85, 105],
+        valueColor: [15, 23, 42],
+        subtitleColor: [100, 116, 139],
+      }
+    )
+
+    drawMetricTile(
+      margin + tileWidth + tileGap,
+      summaryTop + tileHeight + tileGap,
+      tileWidth,
+      tileHeight,
+      "Saldo pendiente",
+      formatCurrencyValue(receiptCurrency, data.saldoRestante),
+      data.saldoRestante > 0 ? "Resto por abonar" : "Sin saldo pendiente",
+      {
+        fillColor: data.saldoRestante > 0 ? amberSoft : emeraldSoft,
+        borderColor: data.saldoRestante > 0 ? amberBorder : emeraldBorder,
+        titleColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
+        valueColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
+        subtitleColor: data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52],
+      }
+    )
+
+    y += tileHeight * 2 + tileGap + 6
+  }
+
+  const drawHistoryTableHeader = (top: number) => {
+    const dateWidth = 23
+    const detailWidth = 71
+    const receivedWidth = 34
+    const appliedWidth = contentWidth - dateWidth - detailWidth - receivedWidth
+
+    doc.setFillColor(...brandPale)
+    doc.setDrawColor(...brandBorder)
+    doc.roundedRect(margin, top, contentWidth, 10, 3, 3, "FD")
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(7.3)
+    doc.setTextColor(...brandColor)
+    doc.text("FECHA", margin + 3, top + 6)
+    doc.text("DETALLE", margin + dateWidth + 3, top + 6)
+    doc.text("COBRADO", margin + dateWidth + detailWidth + 3, top + 6)
+    doc.text("APLICADO AL SALDO", margin + dateWidth + detailWidth + receivedWidth + 3, top + 6)
+
+    return { dateWidth, detailWidth, receivedWidth, appliedWidth }
+  }
+
+  const drawHistoryTable = () => {
+    const subtitle =
+      paymentHistory.length > 1
+        ? "Incluye el acumulado cobrado y el pago emitido en este recibo"
+        : "Muestra el cobro actual y su impacto sobre el saldo"
+
+    drawSectionHeading("Historial de pagos", subtitle)
+
+    let columnSizes = drawHistoryTableHeader(y)
+    y += 12
+
+    if (paymentHistory.length === 0) {
+      drawInfoCard("Sin pagos registrados", [
+        {
+          label: "Histórico",
+          value: "No se encontraron cobros previos para este recibo.",
+        },
+      ])
+      return
+    }
+
+    paymentHistory.forEach((payment) => {
+      const detailText = payment.reference?.trim() || "Pago registrado"
+      const badgeText = payment.id === data.currentPaymentId ? "Este recibo" : ""
+      const detailValue = badgeText ? `${detailText} • ${badgeText}` : detailText
+      const detailLines = doc.splitTextToSize(detailValue, columnSizes.detailWidth - 6)
+      const receivedLines = doc.splitTextToSize(
+        formatCurrencyValue(payment.currency, payment.amount),
+        columnSizes.receivedWidth - 6
+      )
+      const appliedLines = doc.splitTextToSize(
+        formatCurrencyValue(receiptCurrency, payment.amountInReceiptCurrency || 0),
+        columnSizes.appliedWidth - 6
+      )
+      const maxLines = Math.max(detailLines.length, receivedLines.length, appliedLines.length, 1)
+      const rowHeight = Math.max(10, 5 + maxLines * 3.8)
+
+      if (y + rowHeight + 2 > pageHeight - footerReserve) {
+        doc.addPage()
+        addPageChrome(true)
+        drawSectionHeading("Historial de pagos", subtitle)
+        columnSizes = drawHistoryTableHeader(y)
+        y += 12
+      }
+
+      if (payment.id === data.currentPaymentId) {
+        doc.setFillColor(...brandPale)
+        doc.roundedRect(margin, y - 0.5, contentWidth, rowHeight, 3, 3, "F")
+        doc.setFillColor(...brandColor)
+        doc.roundedRect(margin, y - 0.5, 2.5, rowHeight, 2, 2, "F")
+      }
+
+      doc.setDrawColor(226, 232, 240)
+      doc.setLineWidth(0.25)
+      doc.line(margin, y + rowHeight, pageWidth - margin, y + rowHeight)
+
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(8.2)
+      doc.setTextColor(31, 41, 55)
+      doc.text(formatDateShort(payment.datePaid), margin + 3, y + 5)
+
+      doc.setFont("helvetica", payment.id === data.currentPaymentId ? "bold" : "normal")
+      doc.text(detailLines, margin + columnSizes.dateWidth + 3, y + 5)
+
+      doc.setFont("helvetica", "normal")
+      doc.text(
+        receivedLines,
+        margin + columnSizes.dateWidth + columnSizes.detailWidth + 3,
+        y + 5
+      )
+      doc.text(
+        appliedLines,
+        margin + columnSizes.dateWidth + columnSizes.detailWidth + columnSizes.receivedWidth + 3,
+        y + 5
+      )
+
+      y += rowHeight + 2
+    })
+  }
+
+  const drawFooterNote = () => {
+    ensureSpace(18)
+
+    const fillColor = data.saldoRestante > 0 ? amberSoft : emeraldSoft
+    const borderColor = data.saldoRestante > 0 ? amberBorder : emeraldBorder
+    const textColor: [number, number, number] = data.saldoRestante > 0 ? [146, 64, 14] : [22, 101, 52]
+    const noteTitle = data.saldoRestante > 0 ? "Saldo pendiente" : "Pago completo"
+    const noteBody =
+      data.saldoRestante > 0
+        ? `Luego de este recibo quedan ${formatCurrencyValue(receiptCurrency, data.saldoRestante)} pendientes. Total cobrado al momento: ${formatCurrencyValue(receiptCurrency, data.totalPagado)}.`
+        : `Con este recibo el ${historyContextLabel} queda pago en su totalidad. Total cobrado acumulado: ${formatCurrencyValue(receiptCurrency, data.totalPagado)}.`
+    const noteLines = doc.splitTextToSize(noteBody, contentWidth - 10)
+    const cardHeight = 12 + noteLines.length * 3.7
+
+    doc.setFillColor(...fillColor)
+    doc.setDrawColor(...borderColor)
+    doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD")
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(9.5)
+    doc.setTextColor(...textColor)
+    doc.text(noteTitle, margin + 5, y + 7)
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8.2)
+    doc.text(noteLines, margin + 5, y + 12)
+
+    y += cardHeight + 4
+  }
+
+  const addFooters = () => {
+    const totalPages = doc.getNumberOfPages()
+    const footerLeft = [companyAddress, companyLegajo ? `Legajo ${companyLegajo}` : "", companyTaxId ? `CUIT ${companyTaxId}` : ""]
+      .filter(Boolean)
+      .join(" | ")
+
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page)
+      const footerY = pageHeight - 11
+
+      doc.setDrawColor(...brandBorder)
+      doc.setLineWidth(0.3)
+      doc.line(margin, footerY - 4, pageWidth - margin, footerY - 4)
+
+      doc.setFont("helvetica", "normal")
+      doc.setFontSize(7)
+      doc.setTextColor(107, 114, 128)
+
+      if (footerLeft) {
+        doc.text(footerLeft, margin, footerY)
+      }
+
+      doc.text(
+        "Este recibo es válido como comprobante de pago. No válido como factura.",
+        pageWidth / 2,
+        footerY + 3.2,
+        { align: "center" }
+      )
+
+      doc.text(`Página ${page} de ${totalPages}`, pageWidth - margin, footerY, { align: "right" })
+    }
+  }
+
+  addPageChrome()
+
+  drawSectionHeading(
+    "Datos del cliente",
+    `Emitido en ${[data.agencyCity, data.fechaFormateada].filter(Boolean).join(", ")}`
   )
-  doc.text(
-    "Este recibo es valido como comprobante de pago. No valido como factura.",
-    pageWidth / 2,
-    footerY + 1,
-    { align: "center" }
+  drawInfoCard(
+    "Cliente",
+    [
+      { label: "Cliente", value: normalizeText(data.customerName) },
+      { label: "Domicilio", value: normalizeText(data.customerAddress) },
+      { label: "Localidad", value: normalizeText(data.customerCity) },
+    ],
+    {
+      fillColor: slateSoft,
+      borderColor: slateBorder,
+      titleColor: brandColor,
+    }
   )
 
+  drawSectionHeading("Detalle del cobro", `RECIBO X · ${data.receiptNumber}`)
+  drawInfoCard(
+    "Recibo",
+    [
+      { label: "Concepto", value: normalizeText(data.concepto) },
+      {
+        label: "Cobrado en este recibo",
+        value: formatCurrencyValue(receiptCurrency, receivedNow),
+        note:
+          data.currency === receiptCurrency
+            ? `Moneda recibida: ${data.currencyName}`
+            : `Recibido: ${formatCurrencyValue(data.currency, data.amount)} · Aplicado en ${receiptCurrency}`,
+      },
+      { label: "Sucursal", value: normalizeText(branchLabel, companyName) },
+    ],
+    {
+      fillColor: brandPale,
+      borderColor: brandBorder,
+      titleColor: brandColor,
+    }
+  )
+
+  if (data.receiptScope === "SERVICE") {
+    contextItems.push(
+      { label: "Servicio", value: normalizeText(data.serviceLabel) },
+      { label: "Detalle", value: normalizeText(data.serviceDescription, "") },
+      { label: "Proveedor", value: normalizeText(data.serviceOperatorName, "") },
+      { label: "Operación", value: normalizeText(data.fileCode, "") },
+      { label: "Destino", value: normalizeText(data.destination, "") },
+      {
+        label: "Fechas",
+        value: [formatDateLong(data.departureDate), formatDateLong(data.returnDate)]
+          .filter((entry) => entry !== "-")
+          .join(" · "),
+      }
+    )
+  } else {
+    contextItems.push(
+      { label: "Código de operación", value: normalizeText(data.fileCode, "") },
+      { label: "Destino", value: normalizeText(data.destination, "") },
+      { label: "Origen", value: normalizeText(data.origin, "") },
+      {
+        label: "Fechas",
+        value: [formatDateLong(data.departureDate), formatDateLong(data.returnDate)]
+          .filter((entry) => entry !== "-")
+          .join(" · "),
+      },
+      { label: "Pasajeros", value: buildPassengersText(data) },
+      { label: "Operador", value: normalizeText(data.operatorName, "") }
+    )
+  }
+
+  drawSectionHeading(
+    data.receiptScope === "SERVICE" ? "Servicio y operación" : "Detalle de la operación"
+  )
+  drawInfoCard(
+    data.receiptScope === "SERVICE" ? "Servicio asociado" : "Operación asociada",
+    contextItems,
+    {
+      fillColor: slateSoft,
+      borderColor: slateBorder,
+      titleColor: brandColor,
+    }
+  )
+
+  drawSectionHeading("Resumen financiero", `Totales expresados en ${receiptCurrency}`)
+  drawSummaryGrid()
+
+  drawHistoryTable()
+  drawFooterNote()
+
+  addFooters()
   doc.save(`recibo-${data.receiptNumber}.pdf`)
 }
