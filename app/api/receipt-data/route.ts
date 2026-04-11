@@ -13,6 +13,7 @@ import {
   getReceiptScope,
   type ReceiptPaymentRecord,
 } from "@/lib/receipts/receipt-data"
+import { buildReceiptFileName } from "@/lib/receipts/receipt-file"
 import { createServerClient } from "@/lib/supabase/server"
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "ID de pago requerido" }, { status: 400 })
     }
 
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
     const { data: payment, error } = await (supabase.from("payments") as any)
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
         operation_service_id,
         operations:operation_id (
           id,
+          seller_id,
           file_code,
           destination,
           origin,
@@ -106,6 +108,7 @@ export async function GET(request: NextRequest) {
     }
 
     let customerName = "Cliente"
+    let customerLastName = ""
     let customerAddress = ""
     let customerCity = ""
 
@@ -125,9 +128,14 @@ export async function GET(request: NextRequest) {
         customerName =
           `${selectedCustomer.first_name || ""} ${selectedCustomer.last_name || ""}`.trim() ||
           "Cliente"
+        customerLastName = selectedCustomer.last_name || ""
         customerAddress = selectedCustomer.address || ""
         customerCity = selectedCustomer.city || ""
       }
+    }
+
+    if (user.role === "SELLER" && payment.operations?.seller_id !== user.id) {
+      return NextResponse.json({ error: "No autorizado para ver este recibo" }, { status: 403 })
     }
 
     let totalOperacion = 0
@@ -206,6 +214,7 @@ export async function GET(request: NextRequest) {
     const agencyCity = agency?.city || getOrg("city", "Rosario")
     const agencyName = agency?.name || companyName
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
+    const receiptFileName = buildReceiptFileName(customerLastName, receiptNumber)
 
     const fechaPago = payment.date_paid || payment.date_due || new Date().toISOString()
     const fechaFormateada = format(parseDateValue(fechaPago), "d 'de' MMMM 'de' yyyy", { locale: es })
@@ -246,6 +255,8 @@ export async function GET(request: NextRequest) {
       brandColor,
       brandLogo,
       customerName,
+      customerLastName,
+      receiptFileName,
       customerAddress,
       customerCity,
       currencyName,

@@ -17,6 +17,8 @@ export interface ReceiptPdfData {
   brandColor?: string
   brandLogo?: string
   customerName: string
+  customerLastName?: string
+  receiptFileName?: string
   customerAddress: string
   customerCity: string
   currencyName: string
@@ -780,5 +782,5 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
   drawFooterNote()
 
   addFooters()
-  doc.save(`recibo-${data.receiptNumber}.pdf`)
+  doc.save(data.receiptFileName || `recibo-${data.receiptNumber}.pdf`)
 }

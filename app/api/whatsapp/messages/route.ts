@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { buildSellerMessageScopeFilter, getSellerOperationIds } from "@/lib/whatsapp/message-access"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
+    const requestedCustomerId = searchParams.get("customerId")
+    const requestedChannel = searchParams.get("channel")
+    const effectiveChannel = requestedChannel || (requestedCustomerId ? "WHATSAPP" : "ALL")
+    const safeLimit = Math.min(parseInt(searchParams.get("limit") || "2000"), 2000)
 
     // Obtener agencias del usuario
     const { data: userAgencies } = await supabase
@@ -15,6 +20,8 @@ export async function GET(request: Request) {
       .eq("user_id", user.id)
 
     const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
+    const sellerOperationIds =
+      user.role === "SELLER" ? await getSellerOperationIds(supabase, user.id) : []
 
     // Query mensajes
     let query = (supabase.from("whatsapp_messages") as any)
@@ -22,13 +29,19 @@ export async function GET(request: Request) {
         *,
         message_templates:template_id (name, emoji_prefix, category),
         customers:customer_id (first_name, last_name, email),
-        operations:operation_id (destination, departure_date)
+        operations:operation_id (destination, departure_date, file_code, seller_id)
       `)
       .order("scheduled_for", { ascending: true })
 
-    // Filtrar por agencia
-    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+    if (user.role === "SELLER") {
+      query = query.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
+    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
       query = query.in("agency_id", agencyIds)
+    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length === 0) {
+      return NextResponse.json({
+        messages: [],
+        counts: { PENDING: 0, SENT: 0, SKIPPED: 0 },
+      })
     }
 
     // Filtros
@@ -40,45 +53,81 @@ export async function GET(request: Request) {
       query = query.in("status", ["PENDING", "SENT", "SKIPPED"])
     }
 
-    const customerId = searchParams.get("customerId")
-    if (customerId) {
-      // Obtener operaciones del cliente para incluir mensajes de operaciones
-      const { data: operationCustomers } = await supabase
-        .from("operation_customers")
-        .select("operation_id")
-        .eq("customer_id", customerId)
-      
-      const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
-      
-      // Incluir mensajes del cliente Y de sus operaciones
-      if (operationIds.length > 0) {
-        query = query.or(`customer_id.eq.${customerId},operation_id.in.(${operationIds.join(",")})`)
-      } else {
-      query = query.eq("customer_id", customerId)
-      }
+    if (effectiveChannel !== "ALL") {
+      query = query.eq("channel", effectiveChannel)
     }
 
-    const limit = parseInt(searchParams.get("limit") || "2000")
-    query = query.limit(Math.min(limit, 2000)) // Máximo 2000 para cubrir todos los mensajes
+    query = query.limit(safeLimit)
 
-    const { data: messages, error } = await query
+    const { data: rawMessages, error } = await query
 
     if (error) {
       console.error("Error fetching messages:", error)
       return NextResponse.json({ error: "Error al obtener mensajes" }, { status: 500 })
     }
 
+    let messages = (rawMessages || []) as Array<any>
+
+    if (requestedCustomerId) {
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id")
+        .eq("customer_id", requestedCustomerId)
+
+      const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
+      messages = messages.filter((message) => {
+        if (message.customer_id === requestedCustomerId) {
+          return true
+        }
+
+        return Boolean(message.operation_id && operationIds.includes(message.operation_id))
+      })
+    }
+
     // Contar por estado
-    const { data: counts } = await (supabase.from("whatsapp_messages") as any)
-      .select("status")
-      .in("agency_id", agencyIds.length > 0 ? agencyIds : ["00000000-0000-0000-0000-000000000000"])
+    let countsQuery = (supabase.from("whatsapp_messages") as any)
+      .select("status, customer_id, operation_id")
+
+    if (user.role === "SELLER") {
+      countsQuery = countsQuery.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
+    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+      countsQuery = countsQuery.in("agency_id", agencyIds)
+    } else if (user.role !== "SUPER_ADMIN" && agencyIds.length === 0) {
+      return NextResponse.json({
+        messages,
+        counts: { PENDING: 0, SENT: 0, SKIPPED: 0 },
+      })
+    }
+
+    if (effectiveChannel !== "ALL") {
+      countsQuery = countsQuery.eq("channel", effectiveChannel)
+    }
+
+    const { data: rawCounts } = await countsQuery
+
+    let counts = (rawCounts || []) as Array<any>
+    if (requestedCustomerId) {
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("operation_id")
+        .eq("customer_id", requestedCustomerId)
+
+      const operationIds = (operationCustomers || []).map((oc: any) => oc.operation_id).filter(Boolean)
+      counts = counts.filter((message) => {
+        if (message.customer_id === requestedCustomerId) {
+          return true
+        }
+
+        return Boolean(message.operation_id && operationIds.includes(message.operation_id))
+      })
+    }
 
     const countByStatus = {
       PENDING: 0,
       SENT: 0,
       SKIPPED: 0,
     }
-    for (const m of counts || []) {
+    for (const m of counts) {
       if (countByStatus[m.status as keyof typeof countByStatus] !== undefined) {
         countByStatus[m.status as keyof typeof countByStatus]++
       }
@@ -111,6 +160,7 @@ export async function POST(request: Request) {
       quotation_id,
       agency_id,
       scheduled_for,
+      status,
     } = body
 
     if (!customer_id || !phone || !message) {
@@ -135,7 +185,9 @@ export async function POST(request: Request) {
         quotation_id,
         agency_id,
         scheduled_for: scheduled_for || new Date().toISOString(),
-        status: "PENDING",
+        status: ["PENDING", "SENT", "SKIPPED"].includes(status) ? status : "PENDING",
+        channel: "WHATSAPP",
+        message_kind: "STANDARD",
       })
       .select()
       .single()

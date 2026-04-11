@@ -30,6 +30,7 @@ import {
   requiresCustomerIncomeExchangeRate,
 } from "@/lib/payments/customer-income-fx"
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
+import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -648,6 +649,14 @@ export async function POST(request: Request) {
       })
     } catch (auditError) {
       console.warn('Error logging audit action:', auditError)
+    }
+
+    if (finalStatus === "PAID" && direction === "INCOME" && payer_type === "CUSTOMER") {
+      try {
+        await upsertSellerReceiptMessage(supabase, payment.id)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
+      }
     }
 
     return NextResponse.json({ payment })
@@ -1452,6 +1461,14 @@ export async function PATCH(request: Request) {
 
     // Invalidar caché
     revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    if ((wasPaid || markAsPaid) && existingPayment.direction === "INCOME" && existingPayment.payer_type === "CUSTOMER") {
+      try {
+        await upsertSellerReceiptMessage(supabase, paymentId)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
+      }
+    }
 
     return NextResponse.json({ success: true, message: "Pago editado correctamente" })
   } catch (error) {

@@ -19,6 +19,7 @@ import {
   mapPaymentMethodToLedgerMethod,
 } from "@/lib/accounting/payment-counterparts"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
+import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 
 export async function POST(request: Request) {
   try {
@@ -478,6 +479,12 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("Error creando mensaje WhatsApp:", error)
         // No lanzamos error para no romper el flujo principal
+      }
+
+      try {
+        await upsertSellerReceiptMessage(supabase, paymentId)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
       }
     }
 

@@ -142,6 +142,7 @@ export async function GET(request: Request) {
         .from("whatsapp_messages")
         .select("id, message, whatsapp_link, status, scheduled_for, phone, customer_name, operation_id")
         .in("operation_id", operationIds)
+        .eq("channel", "WHATSAPP")
         .eq("status", "PENDING")
 
       if (messages) {
@@ -151,7 +152,7 @@ export async function GET(request: Request) {
           whatsapp_link: string
           status: string
           scheduled_for: string
-          phone: string
+          phone: string | null
           customer_name: string
           operation_id: string | null
         }>

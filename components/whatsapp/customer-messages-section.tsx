@@ -81,7 +81,7 @@ export function CustomerMessagesSection({
 
   const fetchMessages = useCallback(async () => {
     try {
-      const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}`)
+      const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}&channel=WHATSAPP`)
       if (!response.ok) {
         setMessages([])
         return
