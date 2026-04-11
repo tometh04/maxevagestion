@@ -39,6 +39,7 @@ const cashMovementSchema = z.object({
   operation_id: z.string().optional().nullable(),
   type: z.enum(["INCOME", "EXPENSE"]),
   category: z.string().min(1, "La categoría es requerida"),
+  category_id: z.string().optional().nullable(),
   amount: z.coerce.number().min(0.01, "El monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
@@ -49,16 +50,15 @@ const cashMovementSchema = z.object({
 
 type CashMovementFormValues = z.infer<typeof cashMovementSchema>
 
-const categoryOptions = [
+interface ExpenseCategory {
+  id: string
+  name: string
+  color?: string
+}
+
+const incomeCategoryOptions = [
   "Pago Cliente",
-  "Pago Operador",
-  "Gastos Generales",
-  "Marketing",
-  "Sueldos",
-  "Alquiler",
-  "Servicios",
   "Otros Ingresos",
-  "Otros Egresos",
 ]
 
 interface NewCashMovementDialogProps {
@@ -76,6 +76,7 @@ export function NewCashMovementDialog({
 }: NewCashMovementDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
 
   // Helper to get datetime-local format
   const getDefaultDateTimeLocal = () => {
@@ -94,6 +95,7 @@ export function NewCashMovementDialog({
       operation_id: null,
       type: "INCOME",
       category: "",
+      category_id: null,
       amount: 0,
       currency: "ARS",
       financial_account_id: "",
@@ -103,7 +105,16 @@ export function NewCashMovementDialog({
     },
   })
 
-  // Cargar cuentas financieras cuando se abre el dialog
+  const movementType = form.watch("type")
+
+  // Reset category when switching between INCOME/EXPENSE so a stale selection
+  // from the other type doesn't get submitted.
+  useEffect(() => {
+    form.setValue("category", "")
+    form.setValue("category_id", null)
+  }, [movementType, form])
+
+  // Cargar cuentas financieras y categorías de gasto cuando se abre el dialog
   useEffect(() => {
     if (open) {
       const fetchFinancialAccounts = async () => {
@@ -120,10 +131,23 @@ export function NewCashMovementDialog({
           console.error("Error fetching financial accounts:", error)
         }
       }
+      const fetchExpenseCategories = async () => {
+        try {
+          const response = await fetch("/api/expenses/categories")
+          if (response.ok) {
+            const data = await response.json()
+            setExpenseCategories(data.categories || [])
+          }
+        } catch (error) {
+          console.error("Error fetching expense categories:", error)
+        }
+      }
       fetchFinancialAccounts()
+      fetchExpenseCategories()
     } else {
       form.reset()
       setFinancialAccounts([])
+      setExpenseCategories([])
     }
   }, [open, form])
 
@@ -145,6 +169,7 @@ export function NewCashMovementDialog({
           ...values,
           operation_id: values.operation_id || null,
           financial_account_id: values.financial_account_id,
+          category_id: values.category_id || null,
           affects_balance: values.affects_balance,
           movement_date: movementDate,
           notes: values.notes || null,
@@ -212,20 +237,50 @@ export function NewCashMovementDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Categoría *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Seleccionar categoría" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {categoryOptions.map((category) => (
-                            <SelectItem key={category} value={category}>
-                              {category}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {movementType === "EXPENSE" ? (
+                        <Select
+                          onValueChange={(value) => {
+                            const selected = expenseCategories.find((c) => c.id === value)
+                            field.onChange(selected?.name || "")
+                            form.setValue("category_id", value)
+                          }}
+                          value={form.watch("category_id") || ""}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar categoría" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {expenseCategories.map((category) => (
+                              <SelectItem key={category.id} value={category.id}>
+                                {category.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Select
+                          onValueChange={(value) => {
+                            field.onChange(value)
+                            form.setValue("category_id", null)
+                          }}
+                          value={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar categoría" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {incomeCategoryOptions.map((category) => (
+                              <SelectItem key={category} value={category}>
+                                {category}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
