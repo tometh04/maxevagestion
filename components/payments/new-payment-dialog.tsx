@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
-import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle } from "lucide-react"
+import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt } from "lucide-react"
 import { toast } from "sonner"
 import {
   buildOpenOperationBasePayableOperators,
@@ -96,6 +96,13 @@ interface NewPaymentDialogProps {
   onSuccess: () => void
 }
 
+function isInternationalDestination(destination?: string | null): boolean {
+  if (!destination) return false
+  const normalized = destination.trim().toLowerCase()
+  const domesticKeywords = ["argentina", "nacional", "cabotaje", "domestic"]
+  return !domesticKeywords.some((kw) => normalized.includes(kw))
+}
+
 export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [operations, setOperations] = useState<Operation[]>([])
@@ -103,6 +110,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const [operationOperators, setOperationOperators] = useState<OperationOperator[]>([])
   const [loadingOps, setLoadingOps] = useState(false)
   const [searchOp, setSearchOp] = useState("")
+  const [applyRg5617, setApplyRg5617] = useState(false)
+  const [applyRg3819, setApplyRg3819] = useState(false)
 
   const today = new Date().toISOString().split("T")[0]
 
@@ -129,6 +138,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const watchOperationId = form.watch("operation_id")
   const watchCurrency = form.watch("currency")
   const watchMarkAsPaid = form.watch("mark_as_paid")
+  const watchMethod = form.watch("method")
+  const watchAmount = form.watch("amount")
 
   // Actualizar payer_type automáticamente según dirección
   useEffect(() => {
@@ -147,6 +158,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       setFinancialAccounts([])
       setOperationOperators([])
       setSearchOp("")
+      setApplyRg5617(false)
+      setApplyRg3819(false)
       return
     }
     async function fetchOperations() {
@@ -327,6 +340,8 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
             datePaid: values.date_paid || today,
             reference: values.reference || null,
             financial_account_id: values.financial_account_id,
+            apply_rg5617: showRg5617 ? applyRg5617 : false,
+            apply_rg3819: showRg3819 ? applyRg3819 : false,
           }),
         })
 
@@ -352,6 +367,16 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   }
 
   const selectedOp = operations.find((o) => o.id === watchOperationId)
+
+  // Perception conditions
+  const showRg5617 = watchDirection === "INCOME" && watchMarkAsPaid && selectedOp && isInternationalDestination(selectedOp.destination)
+  const showRg3819 = showRg5617 && watchMethod?.toLowerCase() === "efectivo"
+
+  // Reset perception checkboxes when conditions change
+  useEffect(() => {
+    if (!showRg5617) setApplyRg5617(false)
+    if (!showRg3819) setApplyRg3819(false)
+  }, [showRg5617, showRg3819])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -694,6 +719,59 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
                       </FormItem>
                     )}
                   />
+
+                  {/* Percepciones opcionales */}
+                  {(showRg5617 || showRg3819) && (
+                    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 space-y-3">
+                      <div className="flex items-center gap-1.5">
+                        <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                        <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Destino: <span className="font-medium text-foreground">{selectedOp?.destination}</span> (internacional)
+                      </p>
+                      {showRg5617 && (
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            id="new-rg5617"
+                            checked={applyRg5617}
+                            onCheckedChange={(checked) => setApplyRg5617(checked === true)}
+                          />
+                          <label htmlFor="new-rg5617" className="text-sm leading-tight cursor-pointer">
+                            <span className="font-medium">RG 5617 — 30%</span>
+                            <span className="block text-xs text-muted-foreground mt-0.5">
+                              Percepción Ganancias/Bienes Personales.
+                              {watchAmount > 0 && (
+                                <span className="font-medium text-foreground ml-1">
+                                  ({watchCurrency} {(watchAmount * 0.3).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                      {showRg3819 && (
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            id="new-rg3819"
+                            checked={applyRg3819}
+                            onCheckedChange={(checked) => setApplyRg3819(checked === true)}
+                          />
+                          <label htmlFor="new-rg3819" className="text-sm leading-tight cursor-pointer">
+                            <span className="font-medium">RG 3819 — 5%</span>
+                            <span className="block text-xs text-muted-foreground mt-0.5">
+                              Percepción adicional por pago en efectivo.
+                              {watchAmount > 0 && (
+                                <span className="font-medium text-foreground ml-1">
+                                  ({watchCurrency} {(watchAmount * 0.05).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
