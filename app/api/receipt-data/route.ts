@@ -14,6 +14,7 @@ import {
   type ReceiptPaymentRecord,
 } from "@/lib/receipts/receipt-data"
 import { buildReceiptFileName } from "@/lib/receipts/receipt-file"
+import { buildReceiptPassengerDetails } from "@/lib/receipts/receipt-passengers"
 import { createServerClient } from "@/lib/supabase/server"
 
 const SERVICE_LABELS: Record<string, string> = {
@@ -58,6 +59,9 @@ export async function GET(request: NextRequest) {
         operations:operation_id (
           id,
           seller_id,
+          leads:lead_id (
+            contact_name
+          ),
           file_code,
           destination,
           origin,
@@ -111,6 +115,7 @@ export async function GET(request: NextRequest) {
     let customerLastName = ""
     let customerAddress = ""
     let customerCity = ""
+    let passengerNamesText = "Cliente"
 
     if (payment.operations?.id) {
       const { data: operationCustomers } = await (supabase.from("operation_customers") as any)
@@ -120,18 +125,16 @@ export async function GET(request: NextRequest) {
         `)
         .eq("operation_id", payment.operations.id)
 
-      const selectedCustomer =
-        operationCustomers?.find((customer: any) => customer.role === "MAIN")?.customers ||
-        operationCustomers?.find((customer: any) => customer.customers)?.customers
+      const passengerDetails = buildReceiptPassengerDetails({
+        operationCustomers,
+        leadContactName: payment.operations.leads?.contact_name || "",
+      })
 
-      if (selectedCustomer) {
-        customerName =
-          `${selectedCustomer.first_name || ""} ${selectedCustomer.last_name || ""}`.trim() ||
-          "Cliente"
-        customerLastName = selectedCustomer.last_name || ""
-        customerAddress = selectedCustomer.address || ""
-        customerCity = selectedCustomer.city || ""
-      }
+      customerName = passengerDetails.customerName
+      customerLastName = passengerDetails.customerLastName
+      customerAddress = passengerDetails.customerAddress
+      customerCity = passengerDetails.customerCity
+      passengerNamesText = passengerDetails.passengerNamesText
     }
 
     if (user.role === "SELLER" && payment.operations?.seller_id !== user.id) {
@@ -256,6 +259,7 @@ export async function GET(request: NextRequest) {
       brandLogo,
       customerName,
       customerLastName,
+      passengerNamesText,
       receiptFileName,
       customerAddress,
       customerCity,

@@ -18,6 +18,7 @@ export interface ReceiptPdfData {
   brandLogo?: string
   customerName: string
   customerLastName?: string
+  passengerNamesText: string
   receiptFileName?: string
   customerAddress: string
   customerCity: string
@@ -740,6 +741,8 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
       { label: "Detalle", value: normalizeText(data.serviceDescription, "") },
       { label: "Operación", value: normalizeText(data.fileCode, "") },
       { label: "Destino", value: normalizeText(data.destination, "") },
+      { label: "Pasajeros", value: normalizeText(data.passengerNamesText) },
+      { label: "Composición", value: buildPassengersText(data) },
       {
         label: "Fechas",
         value: [formatDateLong(data.departureDate), formatDateLong(data.returnDate)]
@@ -758,7 +761,8 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
           .filter((entry) => entry !== "-")
           .join(" · "),
       },
-      { label: "Pasajeros", value: buildPassengersText(data) }
+      { label: "Pasajeros", value: normalizeText(data.passengerNamesText) },
+      { label: "Composición", value: buildPassengersText(data) }
     )
   }
 
