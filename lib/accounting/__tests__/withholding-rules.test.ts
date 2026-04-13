@@ -250,6 +250,117 @@ describe("Withholding Rules - calculateWithholdings", () => {
     })
   })
 
+  describe("RG 5617 - 30% percepción operaciones internacionales", () => {
+    it("should apply 30% for international customer payment", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        destination: "Brasil",
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+
+      expect(rg5617).toBeDefined()
+      expect(rg5617!.amount).toBe(30000) // 100000 * 30%
+      expect(rg5617!.rate).toBe(30)
+    })
+
+    it("should NOT apply 30% for domestic destination", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        destination: "Argentina - Buenos Aires",
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+
+      expect(rg5617).toBeUndefined()
+    })
+
+    it("should NOT apply 30% for operator payments", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "OPERATOR_PAYMENT",
+        destination: "Brasil",
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+
+      expect(rg5617).toBeUndefined()
+    })
+
+    it("should NOT apply 30% when destination is missing", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+
+      expect(rg5617).toBeUndefined()
+    })
+  })
+
+  describe("RG 3819 - 5% percepción pagos en efectivo turismo internacional", () => {
+    it("should apply 5% for cash payment on international destination", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        payment_method: "EFECTIVO",
+        destination: "Colombia",
+      })
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg3819).toBeDefined()
+      expect(rg3819!.amount).toBe(5000) // 100000 * 5%
+      expect(rg3819!.rate).toBe(5)
+    })
+
+    it("should NOT apply 5% for non-cash payment", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        payment_method: "TRANSFERENCIA",
+        destination: "Colombia",
+      })
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg3819).toBeUndefined()
+    })
+
+    it("should NOT apply 5% for domestic cash payment", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        payment_method: "EFECTIVO",
+        destination: "Argentina",
+      })
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg3819).toBeUndefined()
+    })
+
+    it("should apply BOTH 30% and 5% for international cash payment", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        payment_method: "EFECTIVO",
+        destination: "México",
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg5617).toBeDefined()
+      expect(rg5617!.amount).toBe(30000)
+      expect(rg3819).toBeDefined()
+      expect(rg3819!.amount).toBe(5000)
+    })
+  })
+
   describe("applies_to filtering", () => {
     it("should apply ALL rules to both payment types", () => {
       const rules: WithholdingRule[] = [

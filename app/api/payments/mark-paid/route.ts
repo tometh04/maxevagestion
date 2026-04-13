@@ -20,6 +20,7 @@ import {
 } from "@/lib/accounting/payment-counterparts"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
+import { autoCreateWithholdings } from "@/lib/accounting/withholding-rules"
 
 export async function POST(request: Request) {
   try {
@@ -425,6 +426,46 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("Error calculando FX:", error)
         // No lanzamos error para no romper el flujo
+      }
+    }
+
+    // ============================================
+    // CALCULAR PERCEPCIONES AUTOMÁTICAS (RG 5617 / RG 3819)
+    // ============================================
+    if (paymentData.direction === "INCOME" && paymentData.operation_id) {
+      try {
+        // Get operation destination for international check
+        const { data: opForPerc } = await (supabase.from("operations") as any)
+          .select("destination, agency_id")
+          .eq("id", paymentData.operation_id)
+          .single()
+
+        // Get customer CUIT from billing_info
+        const { data: billingInfo } = await (supabase.from("billing_info") as any)
+          .select("cuit")
+          .eq("operation_id", paymentData.operation_id)
+          .maybeSingle()
+
+        await autoCreateWithholdings(supabase, {
+          amount: parseFloat(paymentData.amount),
+          currency: paymentData.currency,
+          type: "CUSTOMER_PAYMENT",
+          counterpart_cuit: billingInfo?.cuit || undefined,
+          counterpart_name: await getMainPassengerName(paymentData.operation_id, supabase) || undefined,
+          tax_period: datePaid.substring(0, 7),
+          withholding_date: datePaid,
+          operation_id: paymentData.operation_id,
+          source_type: "PAYMENT",
+          source_id: paymentId,
+          direction: "PRACTICED",
+          created_by: user.id,
+          agency_id: opForPerc?.agency_id || undefined,
+          payment_method: paymentData.method || undefined,
+          destination: opForPerc?.destination || undefined,
+        })
+      } catch (error: unknown) {
+        console.error("Error calculando percepciones:", error)
+        // No lanzamos error para no romper el flujo principal
       }
     }
 

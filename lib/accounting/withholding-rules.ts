@@ -19,6 +19,8 @@ export type WithholdingType =
   | "RETENCION_GANANCIAS"
   | "RETENCION_IVA"
   | "RETENCION_IIBB"
+  | "PERCEPCION_RG5617_30"  // 30% sobre operaciones en moneda extranjera (Ganancias/Bienes Personales)
+  | "PERCEPCION_RG3819_5"   // 5% sobre pagos en efectivo de turismo internacional
 
 export type WithholdingAppliesTo =
   | "OPERATOR_PAYMENT"
@@ -32,6 +34,10 @@ export interface WithholdingRule {
   min_amount: number // minimum amount threshold to apply
   exempt_cuits: string[] // CUITs that are exempt
   is_active: boolean
+  /** RG 5617: solo aplica a operaciones internacionales (destino fuera de Argentina) */
+  requires_international_destination?: boolean
+  /** RG 3819: solo aplica cuando el método de pago es efectivo */
+  requires_cash_payment?: boolean
 }
 
 export interface CalculateWithholdingsParams {
@@ -40,6 +46,10 @@ export interface CalculateWithholdingsParams {
   type: "OPERATOR_PAYMENT" | "CUSTOMER_PAYMENT"
   counterpart_cuit?: string
   tax_period?: string // e.g. "2026-03"
+  /** Método de pago: "EFECTIVO", "TRANSFERENCIA", "MERCADOPAGO", etc. */
+  payment_method?: string
+  /** Destino de la operación: "Brasil", "Colombia", "Argentina", etc. */
+  destination?: string
 }
 
 export interface WithholdingResult {
@@ -59,6 +69,8 @@ export interface AutoCreateWithholdingsParams extends CalculateWithholdingsParam
   notes?: string
   created_by?: string
   agency_id?: string
+  payment_method?: string
+  destination?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +118,25 @@ export const DEFAULT_WITHHOLDING_RULES: WithholdingRule[] = [
     exempt_cuits: [],
     is_active: false,
   },
+  {
+    type: "PERCEPCION_RG5617_30",
+    applies_to: "CUSTOMER_PAYMENT",
+    rate: 30,
+    min_amount: 0,
+    exempt_cuits: [],
+    is_active: true,
+    requires_international_destination: true,
+  },
+  {
+    type: "PERCEPCION_RG3819_5",
+    applies_to: "CUSTOMER_PAYMENT",
+    rate: 5,
+    min_amount: 0,
+    exempt_cuits: [],
+    is_active: true,
+    requires_cash_payment: true,
+    requires_international_destination: true,
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -120,11 +151,30 @@ export const DEFAULT_WITHHOLDING_RULES: WithholdingRule[] = [
  * @param params – transaction details (amount, currency, payment type, etc.).
  * @returns an array of applicable withholdings with computed amounts.
  */
+/**
+ * Check if a destination is international (outside Argentina).
+ */
+function isInternationalDestination(destination?: string): boolean {
+  if (!destination) return false
+  const normalized = destination.trim().toLowerCase()
+  const domesticKeywords = ["argentina", "nacional", "cabotaje", "domestic"]
+  return !domesticKeywords.some((kw) => normalized.includes(kw))
+}
+
+/**
+ * Check if a payment method is cash (efectivo).
+ */
+function isCashPayment(method?: string): boolean {
+  if (!method) return false
+  const normalized = method.trim().toLowerCase()
+  return normalized === "efectivo" || normalized === "cash"
+}
+
 export function calculateWithholdings(
   rules: WithholdingRule[],
   params: CalculateWithholdingsParams
 ): WithholdingResult[] {
-  const { amount, type, counterpart_cuit } = params
+  const { amount, type, counterpart_cuit, payment_method, destination } = params
   const results: WithholdingResult[] = []
 
   for (const rule of rules) {
@@ -143,6 +193,16 @@ export function calculateWithholdings(
       rule.exempt_cuits.length > 0 &&
       rule.exempt_cuits.includes(counterpart_cuit)
     ) {
+      continue
+    }
+
+    // RG 5617/3819: skip if requires international destination but it's domestic
+    if (rule.requires_international_destination && !isInternationalDestination(destination)) {
+      continue
+    }
+
+    // RG 3819: skip if requires cash payment but it's not cash
+    if (rule.requires_cash_payment && !isCashPayment(payment_method)) {
       continue
     }
 
@@ -223,6 +283,8 @@ export async function autoCreateWithholdings(
     type: params.type,
     counterpart_cuit: params.counterpart_cuit,
     tax_period: params.tax_period,
+    payment_method: params.payment_method,
+    destination: params.destination,
   })
 
   if (withholdings.length === 0) return []
