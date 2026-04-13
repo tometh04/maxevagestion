@@ -541,7 +541,7 @@ export function OperationPaymentsSection({
     try {
       const { payer_type, direction, ...restValues } = values
       const datePaidStr = values.date_paid.toISOString().split("T")[0]
-      // Create payment as PENDING, then mark-paid to trigger ledger + percepciones
+      // Create payment as PAID directly (single atomic call)
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -552,36 +552,17 @@ export function OperationPaymentsSection({
           ...restValues,
           financial_account_id: values.financial_account_id,
           exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
+          date_paid: datePaidStr,
           date_due: datePaidStr,
-          status: "PENDING",
+          status: "PAID",
+          apply_rg5617: applyRg5617,
+          apply_rg3819: applyRg3819,
         }),
       })
 
       if (!response.ok) {
         const error = await response.json()
         throw new Error(error.error || "Error al registrar cobro")
-      }
-
-      const createData = await response.json()
-      if (createData.payment?.id) {
-        const markPaidResponse = await fetch("/api/payments/mark-paid", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            paymentId: createData.payment.id,
-            datePaid: datePaidStr,
-            reference: values.notes || null,
-            financial_account_id: values.financial_account_id,
-            exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
-            apply_rg5617: applyRg5617,
-            apply_rg3819: applyRg3819,
-          }),
-        })
-        if (!markPaidResponse.ok) {
-          const error = await markPaidResponse.json()
-          console.error("Error marking payment as paid:", error)
-          toast.warning("Cobro creado pero hubo un error al procesarlo: " + (error.error || ""))
-        }
       }
 
       setIncomeDialogOpen(false)

@@ -31,6 +31,7 @@ import {
 } from "@/lib/payments/customer-income-fx"
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
+import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -130,6 +131,8 @@ export async function POST(request: Request) {
       date_due,
       status,
       notes,
+      apply_rg5617,
+      apply_rg3819,
     } = body
 
     const finalStatus = status || "PENDING"
@@ -184,6 +187,7 @@ export async function POST(request: Request) {
           agency_id,
           sale_currency,
           currency,
+          destination,
           operation_operators(
             operator_id
           )
@@ -596,6 +600,119 @@ export async function POST(request: Request) {
           operatorId: payer_type === "OPERATOR" ? operatorId : null,
           userId: user.id,
         })
+
+        // ============================================
+        // PERCEPCIONES AUTOMÁTICAS (RG 5617 / RG 3819)
+        // Solo para cobros de cliente con operación
+        // ============================================
+        if (direction === "INCOME" && operation_id) {
+          try {
+            const { data: billingInfo } = await (supabase.from("billing_info") as any)
+              .select("cuit")
+              .eq("operation_id", operation_id)
+              .maybeSingle()
+
+            const excludedTypes: WithholdingType[] = []
+            if (!apply_rg5617) excludedTypes.push("PERCEPCION_RG5617_30")
+            if (!apply_rg3819) excludedTypes.push("PERCEPCION_RG3819_5")
+
+            const createdWithholdings = await autoCreateWithholdings(supabase, {
+              amount: parseFloat(amount),
+              currency,
+              type: "CUSTOMER_PAYMENT",
+              counterpart_cuit: billingInfo?.cuit || undefined,
+              counterpart_name: passengerName || undefined,
+              tax_period: (date_paid || new Date().toISOString().split("T")[0]).substring(0, 7),
+              withholding_date: date_paid || new Date().toISOString().split("T")[0],
+              operation_id,
+              source_type: "PAYMENT",
+              source_id: payment.id,
+              direction: "PRACTICED",
+              created_by: user.id,
+              agency_id: agencyId,
+              payment_method: method || undefined,
+              destination: operationData?.destination || undefined,
+              excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
+            })
+
+            // Asientos contables para percepciones (doble entrada)
+            const perceptionRecords = createdWithholdings.filter((w: any) =>
+              w.type === "PERCEPCION_RG5617_30" || w.type === "PERCEPCION_RG3819_5"
+            )
+
+            if (perceptionRecords.length > 0) {
+              const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
+                .select("id")
+                .eq("account_code", "2.1.04")
+                .eq("is_active", true)
+                .maybeSingle()
+
+              let percAfipAccountId: string | null = null
+              if (percChartAccount) {
+                const { data: percFinAccount } = await (supabase.from("financial_accounts") as any)
+                  .select("id")
+                  .eq("chart_account_id", percChartAccount.id)
+                  .eq("currency", "ARS")
+                  .eq("is_active", true)
+                  .maybeSingle()
+                percAfipAccountId = percFinAccount?.id || null
+              }
+
+              if (percAfipAccountId) {
+                const percName = passengerName || "Cliente"
+                const percOpCode = operation_id.slice(0, 8)
+
+                for (const perc of perceptionRecords) {
+                  const percAmount = parseFloat(perc.amount)
+                  const percLabel = perc.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"
+
+                  await createLedgerMovement(
+                    {
+                      operation_id,
+                      type: "INCOME",
+                      concept: `Percepción ${percLabel} - ${percName} (${percOpCode})`,
+                      currency: "ARS",
+                      amount_original: percAmount,
+                      exchange_rate: null,
+                      amount_ars_equivalent: percAmount,
+                      method: ledgerMethod,
+                      account_id: accountId,
+                      seller_id: sellerId,
+                      notes: `Percepción ${percLabel} cobrada al cliente`,
+                      created_by: user.id,
+                      movement_date: date_paid || undefined,
+                    },
+                    supabase
+                  )
+
+                  await createLedgerMovement(
+                    {
+                      operation_id,
+                      type: "EXPENSE",
+                      concept: `Percepción ${percLabel} - ${percName} (${percOpCode})`,
+                      currency: "ARS",
+                      amount_original: percAmount,
+                      exchange_rate: null,
+                      amount_ars_equivalent: percAmount,
+                      method: ledgerMethod,
+                      account_id: percAfipAccountId,
+                      seller_id: sellerId,
+                      notes: `Percepción ${percLabel} a depositar AFIP`,
+                      created_by: user.id,
+                      movement_date: date_paid || undefined,
+                    },
+                    supabase
+                  )
+                }
+              } else {
+                console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada.")
+              }
+            }
+          } catch (percError) {
+            console.error("Error calculando percepciones:", percError)
+            // No romper el flujo principal
+          }
+        }
 
       } catch (accountingError) {
         const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
