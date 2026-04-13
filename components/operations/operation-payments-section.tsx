@@ -38,8 +38,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -126,6 +127,14 @@ interface OperationPaymentsSectionProps {
   operators: Array<{ id: string; name: string }>
   operatorPayments?: OperationOperatorPaymentLike[]
   operationServices?: OperationServicePaymentRelationLike[]
+  destination?: string
+}
+
+function isInternationalDestination(destination?: string | null): boolean {
+  if (!destination) return false
+  const normalized = destination.trim().toLowerCase()
+  const domesticKeywords = ["argentina", "nacional", "cabotaje", "domestic"]
+  return !domesticKeywords.some((kw) => normalized.includes(kw))
 }
 
 export function OperationPaymentsSection({
@@ -139,6 +148,7 @@ export function OperationPaymentsSection({
   operators,
   operatorPayments = [],
   operationServices = [],
+  destination,
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -152,6 +162,8 @@ export function OperationPaymentsSection({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
+  const [applyRg5617, setApplyRg5617] = useState(false)
+  const [applyRg3819, setApplyRg3819] = useState(false)
   const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
   const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
@@ -528,6 +540,8 @@ export function OperationPaymentsSection({
     setIsLoading(true)
     try {
       const { payer_type, direction, ...restValues } = values
+      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      // Create payment as PENDING, then mark-paid to trigger ledger + percepciones
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -538,9 +552,8 @@ export function OperationPaymentsSection({
           ...restValues,
           financial_account_id: values.financial_account_id,
           exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
-          date_paid: values.date_paid.toISOString().split("T")[0],
-          date_due: values.date_paid.toISOString().split("T")[0],
-          status: "PAID",
+          date_due: datePaidStr,
+          status: "PENDING",
         }),
       })
 
@@ -549,8 +562,32 @@ export function OperationPaymentsSection({
         throw new Error(error.error || "Error al registrar cobro")
       }
 
+      const createData = await response.json()
+      if (createData.payment?.id) {
+        const markPaidResponse = await fetch("/api/payments/mark-paid", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: createData.payment.id,
+            datePaid: datePaidStr,
+            reference: values.notes || null,
+            financial_account_id: values.financial_account_id,
+            exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
+            apply_rg5617: applyRg5617,
+            apply_rg3819: applyRg3819,
+          }),
+        })
+        if (!markPaidResponse.ok) {
+          const error = await markPaidResponse.json()
+          console.error("Error marking payment as paid:", error)
+          toast.warning("Cobro creado pero hubo un error al procesarlo: " + (error.error || ""))
+        }
+      }
+
       setIncomeDialogOpen(false)
       incomeForm.reset()
+      setApplyRg5617(false)
+      setApplyRg3819(false)
       router.refresh()
     } catch (error) {
       console.error("Error registering income:", error)
@@ -1052,6 +1089,63 @@ export function OperationPaymentsSection({
                   />
                 </div>
               </div>
+
+              {/* Percepciones opcionales */}
+              {isInternationalDestination(destination) && (() => {
+                const watchedMethod = incomeForm.watch("method")
+                const watchedAmount = Number(incomeForm.watch("amount") || 0)
+                const watchedCurrency = incomeForm.watch("currency")
+                const isCash = watchedMethod === "Efectivo"
+                return (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Destino: <span className="font-medium text-foreground">{destination}</span> (internacional)
+                    </p>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="income-rg5617"
+                        checked={applyRg5617}
+                        onCheckedChange={(checked) => setApplyRg5617(checked === true)}
+                      />
+                      <label htmlFor="income-rg5617" className="text-sm leading-tight cursor-pointer">
+                        <span className="font-medium">RG 5617 — 30%</span>
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          Percepción Ganancias/Bienes Personales.
+                          {watchedAmount > 0 && (
+                            <span className="font-medium text-foreground ml-1">
+                              ({watchedCurrency} {(watchedAmount * 0.3).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                    {isCash && (
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="income-rg3819"
+                          checked={applyRg3819}
+                          onCheckedChange={(checked) => setApplyRg3819(checked === true)}
+                        />
+                        <label htmlFor="income-rg3819" className="text-sm leading-tight cursor-pointer">
+                          <span className="font-medium">RG 3819 — 5%</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            Percepción adicional por pago en efectivo.
+                            {watchedAmount > 0 && (
+                              <span className="font-medium text-foreground ml-1">
+                                ({watchedCurrency} {(watchedAmount * 0.05).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               <FormField
                 control={incomeForm.control}
