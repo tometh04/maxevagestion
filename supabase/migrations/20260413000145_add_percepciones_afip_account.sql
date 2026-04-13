@@ -27,7 +27,7 @@ INSERT INTO financial_accounts (
 )
 SELECT
   'Percepciones a depositar AFIP',
-  'OTHER',
+  'SAVINGS_ARS',
   'ARS',
   0,
   true,
