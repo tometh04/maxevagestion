@@ -30,7 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Loader2, CheckCircle, Wallet, Calendar } from "lucide-react"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Loader2, CheckCircle, Wallet, Calendar, Receipt } from "lucide-react"
 import { toast } from "sonner"
 
 const markPaidSchema = z.object({
@@ -69,6 +70,13 @@ interface MarkPaidDialogProps {
   onSuccess: () => void
 }
 
+function isInternationalDestination(destination?: string | null): boolean {
+  if (!destination) return false
+  const normalized = destination.trim().toLowerCase()
+  const domesticKeywords = ["argentina", "nacional", "cabotaje", "domestic"]
+  return !domesticKeywords.some((kw) => normalized.includes(kw))
+}
+
 export function MarkPaidDialog({
   payment,
   open,
@@ -79,6 +87,9 @@ export function MarkPaidDialog({
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [operationCurrency, setOperationCurrency] = useState<string | null>(null)
   const [loadingOperation, setLoadingOperation] = useState(false)
+  const [operationDestination, setOperationDestination] = useState<string | null>(null)
+  const [applyRg5617, setApplyRg5617] = useState(false)
+  const [applyRg3819, setApplyRg3819] = useState(false)
 
   const form = useForm<MarkPaidFormValues>({
     resolver: zodResolver(markPaidSchema) as any,
@@ -107,6 +118,7 @@ export function MarkPaidDialog({
                 ? (operation.sale_currency || operation.currency || "USD")
                 : (operation.operator_cost_currency || operation.currency || "USD")
               setOperationCurrency(currency)
+              setOperationDestination(operation.destination || null)
             }
           }
         } catch (error) {
@@ -119,7 +131,11 @@ export function MarkPaidDialog({
       fetchOperation()
     } else {
       setOperationCurrency(null)
+      setOperationDestination(null)
     }
+    // Reset perception checkboxes when dialog opens/closes
+    setApplyRg5617(false)
+    setApplyRg3819(false)
   }, [open, payment])
 
   // Calcular si se necesita tipo de cambio
@@ -127,6 +143,13 @@ export function MarkPaidDialog({
     if (!payment || !operationCurrency) return false
     return payment.currency !== operationCurrency
   }, [payment, operationCurrency])
+
+  // Determinar si aplican percepciones (para mostrar checkboxes)
+  const isIncome = payment?.direction === "INCOME"
+  const isInternational = isInternationalDestination(operationDestination)
+  const isCash = payment?.method?.toLowerCase() === "efectivo"
+  const showRg5617 = isIncome && isInternational
+  const showRg3819 = isIncome && isInternational && isCash
 
   // Cargar cuentas financieras siempre
   useEffect(() => {
@@ -182,6 +205,8 @@ export function MarkPaidDialog({
           reference: values.reference || null,
           financial_account_id: values.financial_account_id || null,
           exchange_rate: needsExchangeRate ? values.exchange_rate : null,
+          apply_rg5617: showRg5617 ? applyRg5617 : false,
+          apply_rg3819: showRg3819 ? applyRg3819 : false,
         }),
       })
 
@@ -211,8 +236,6 @@ export function MarkPaidDialog({
   }
 
   if (!payment) return null
-
-  const isIncome = payment.direction === "INCOME"
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -337,6 +360,61 @@ export function MarkPaidDialog({
                 />
               )}
             </div>
+
+            {/* Percepciones opcionales */}
+            {(showRg5617 || showRg3819) && (
+              <div className="rounded-xl border border-border/40 bg-amber-500/5 p-4 space-y-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-amber-500/10">
+                    <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Percepciones Impositivas</h4>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Destino: <span className="font-medium text-foreground">{operationDestination}</span> (internacional)
+                </p>
+                {showRg5617 && (
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="rg5617"
+                      checked={applyRg5617}
+                      onCheckedChange={(checked) => setApplyRg5617(checked === true)}
+                    />
+                    <label htmlFor="rg5617" className="text-sm leading-tight cursor-pointer">
+                      <span className="font-medium">RG 5617 — 30%</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        Percepción Ganancias/Bienes Personales sobre operaciones internacionales.
+                        {payment && (
+                          <span className="font-medium text-foreground ml-1">
+                            ({payment.currency} {(payment.amount * 0.3).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                )}
+                {showRg3819 && (
+                  <div className="flex items-start gap-3">
+                    <Checkbox
+                      id="rg3819"
+                      checked={applyRg3819}
+                      onCheckedChange={(checked) => setApplyRg3819(checked === true)}
+                    />
+                    <label htmlFor="rg3819" className="text-sm leading-tight cursor-pointer">
+                      <span className="font-medium">RG 3819 — 5%</span>
+                      <span className="block text-xs text-muted-foreground mt-0.5">
+                        Percepción adicional por pago en efectivo de turismo internacional.
+                        {payment && (
+                          <span className="font-medium text-foreground ml-1">
+                            ({payment.currency} {(payment.amount * 0.05).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Cuenta Financiera */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">

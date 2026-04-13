@@ -50,6 +50,8 @@ export interface CalculateWithholdingsParams {
   payment_method?: string
   /** Destino de la operación: "Brasil", "Colombia", "Argentina", etc. */
   destination?: string
+  /** Tipos de retención/percepción a excluir del cálculo */
+  excluded_types?: WithholdingType[]
 }
 
 export interface WithholdingResult {
@@ -174,12 +176,15 @@ export function calculateWithholdings(
   rules: WithholdingRule[],
   params: CalculateWithholdingsParams
 ): WithholdingResult[] {
-  const { amount, type, counterpart_cuit, payment_method, destination } = params
+  const { amount, type, counterpart_cuit, payment_method, destination, excluded_types } = params
   const results: WithholdingResult[] = []
 
   for (const rule of rules) {
     // Skip inactive rules
     if (!rule.is_active) continue
+
+    // Skip excluded types
+    if (excluded_types?.includes(rule.type)) continue
 
     // Check if the rule applies to this payment type
     if (rule.applies_to !== "ALL" && rule.applies_to !== type) continue

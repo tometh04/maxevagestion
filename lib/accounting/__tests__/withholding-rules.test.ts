@@ -416,4 +416,39 @@ describe("Withholding Rules - calculateWithholdings", () => {
       expect(custResult).toHaveLength(0)
     })
   })
+
+  describe("excluded_types", () => {
+    it("should skip excluded perception types", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        destination: "Brasil",
+        payment_method: "EFECTIVO",
+        excluded_types: ["PERCEPCION_RG5617_30"],
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg5617).toBeUndefined()
+      expect(rg3819).toBeDefined()
+      expect(rg3819!.amount).toBe(5000)
+    })
+
+    it("should skip both percepciones when both excluded", () => {
+      const results = calculateWithholdings(DEFAULT_WITHHOLDING_RULES, {
+        amount: 100_000,
+        currency: "ARS",
+        type: "CUSTOMER_PAYMENT",
+        destination: "Brasil",
+        payment_method: "EFECTIVO",
+        excluded_types: ["PERCEPCION_RG5617_30", "PERCEPCION_RG3819_5"],
+      })
+      const rg5617 = results.find((r) => r.type === "PERCEPCION_RG5617_30")
+      const rg3819 = results.find((r) => r.type === "PERCEPCION_RG3819_5")
+
+      expect(rg5617).toBeUndefined()
+      expect(rg3819).toBeUndefined()
+    })
+  })
 })

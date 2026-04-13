@@ -20,7 +20,7 @@ import {
 } from "@/lib/accounting/payment-counterparts"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
-import { autoCreateWithholdings } from "@/lib/accounting/withholding-rules"
+import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 
 export async function POST(request: Request) {
   try {
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     const supabase = await createServerClient()
     const body = await request.json()
-    const { paymentId, datePaid, reference, financial_account_id, exchange_rate } = body
+    const { paymentId, datePaid, reference, financial_account_id, exchange_rate, apply_rg5617, apply_rg3819 } = body
 
     if (!paymentId || !datePaid || !financial_account_id) {
       return NextResponse.json({ error: "Faltan parámetros (paymentId, datePaid, financial_account_id son requeridos)" }, { status: 400 })
@@ -446,6 +446,11 @@ export async function POST(request: Request) {
           .eq("operation_id", paymentData.operation_id)
           .maybeSingle()
 
+        // Build excluded types based on user selection
+        const excludedTypes: WithholdingType[] = []
+        if (!apply_rg5617) excludedTypes.push("PERCEPCION_RG5617_30")
+        if (!apply_rg3819) excludedTypes.push("PERCEPCION_RG3819_5")
+
         await autoCreateWithholdings(supabase, {
           amount: parseFloat(paymentData.amount),
           currency: paymentData.currency,
@@ -462,6 +467,7 @@ export async function POST(request: Request) {
           agency_id: opForPerc?.agency_id || undefined,
           payment_method: paymentData.method || undefined,
           destination: opForPerc?.destination || undefined,
+          excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
         })
       } catch (error: unknown) {
         console.error("Error calculando percepciones:", error)
