@@ -49,6 +49,8 @@ const TYPE_LABELS: Record<string, string> = {
   RETENCION_GANANCIAS: "Retención Ganancias",
   RETENCION_IVA: "Retención IVA",
   RETENCION_IIBB: "Retención IIBB",
+  PERCEPCION_RG5617_30: "RG 5617 — 30%",
+  PERCEPCION_RG3819_5: "RG 3819 — 5%",
 }
 
 const DIRECTION_LABELS: Record<string, string> = {
@@ -60,6 +62,8 @@ const SOURCE_LABELS: Record<string, string> = {
   PURCHASE_INVOICE: "Factura de compra",
   BANK_MOVEMENT: "Movimiento bancario",
   OPERATOR_PAYMENT: "Pago a operador",
+  PAYMENT: "Cobro de cliente",
+  AUTO: "Cálculo automático",
   MANUAL: "Carga manual",
 }
 
@@ -185,6 +189,8 @@ export default function WithholdingsPage() {
                   <SelectItem value="RETENCION_GANANCIAS">Retención Ganancias</SelectItem>
                   <SelectItem value="RETENCION_IVA">Retención IVA</SelectItem>
                   <SelectItem value="RETENCION_IIBB">Retención IIBB</SelectItem>
+                  <SelectItem value="PERCEPCION_RG5617_30">RG 5617 — 30%</SelectItem>
+                  <SelectItem value="PERCEPCION_RG3819_5">RG 3819 — 5%</SelectItem>
                 </SelectContent>
               </Select>
             </div>
