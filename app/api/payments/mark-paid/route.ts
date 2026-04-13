@@ -451,7 +451,7 @@ export async function POST(request: Request) {
         if (!apply_rg5617) excludedTypes.push("PERCEPCION_RG5617_30")
         if (!apply_rg3819) excludedTypes.push("PERCEPCION_RG3819_5")
 
-        await autoCreateWithholdings(supabase, {
+        const createdWithholdings = await autoCreateWithholdings(supabase, {
           amount: parseFloat(paymentData.amount),
           currency: paymentData.currency,
           type: "CUSTOMER_PAYMENT",
@@ -469,6 +469,91 @@ export async function POST(request: Request) {
           destination: opForPerc?.destination || undefined,
           excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
         })
+
+        // ============================================
+        // ASIENTOS CONTABLES para percepciones (doble entrada)
+        // Débito: cuenta financiera del cobro (entra dinero del cliente)
+        // Crédito: "Percepciones a depositar AFIP" (pasivo - deuda con AFIP)
+        // ============================================
+        const perceptionRecords = createdWithholdings.filter((w: any) =>
+          w.type === "PERCEPCION_RG5617_30" || w.type === "PERCEPCION_RG3819_5"
+        )
+
+        if (perceptionRecords.length > 0) {
+          // Find the "Percepciones a depositar AFIP" liability account (2.1.04)
+          const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
+            .select("id")
+            .eq("account_code", "2.1.04")
+            .eq("is_active", true)
+            .maybeSingle()
+
+          let percAfipAccountId: string | null = null
+          if (percChartAccount) {
+            const { data: percFinAccount } = await (supabase.from("financial_accounts") as any)
+              .select("id")
+              .eq("chart_account_id", percChartAccount.id)
+              .eq("currency", "ARS")
+              .eq("is_active", true)
+              .maybeSingle()
+            percAfipAccountId = percFinAccount?.id || null
+          }
+
+          if (percAfipAccountId) {
+            const percPassengerName = passengerName || "Cliente"
+            const percOpCode = paymentData.operation_id.slice(0, 8)
+
+            for (const perc of perceptionRecords) {
+              const percAmount = parseFloat(perc.amount)
+              const percLabel = perc.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"
+
+              try {
+                // 1. INCOME on financial account (money received from customer)
+                await createLedgerMovement(
+                  {
+                    operation_id: paymentData.operation_id,
+                    type: "INCOME",
+                    concept: `Percepción ${percLabel} - ${percPassengerName} (${percOpCode})`,
+                    currency: "ARS",
+                    amount_original: percAmount,
+                    exchange_rate: null,
+                    amount_ars_equivalent: percAmount,
+                    method: ledgerMethod,
+                    account_id: financial_account_id,
+                    seller_id: sellerId,
+                    notes: `Percepción ${percLabel} cobrada al cliente`,
+                    created_by: user.id,
+                    movement_date: datePaid,
+                  },
+                  supabase
+                )
+
+                // 2. EXPENSE on AFIP liability account (increases the liability)
+                await createLedgerMovement(
+                  {
+                    operation_id: paymentData.operation_id,
+                    type: "EXPENSE",
+                    concept: `Percepción ${percLabel} - ${percPassengerName} (${percOpCode})`,
+                    currency: "ARS",
+                    amount_original: percAmount,
+                    exchange_rate: null,
+                    amount_ars_equivalent: percAmount,
+                    method: ledgerMethod,
+                    account_id: percAfipAccountId,
+                    seller_id: sellerId,
+                    notes: `Percepción ${percLabel} a depositar AFIP`,
+                    created_by: user.id,
+                    movement_date: datePaid,
+                  },
+                  supabase
+                )
+              } catch (ledgerError) {
+                console.error(`Error creando asiento contable para percepción ${perc.type}:`, ledgerError)
+              }
+            }
+          } else {
+            console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada. Ejecutar migración 145.")
+          }
+        }
       } catch (error: unknown) {
         console.error("Error calculando percepciones:", error)
         // No lanzamos error para no romper el flujo principal
