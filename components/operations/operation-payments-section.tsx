@@ -1333,8 +1333,8 @@ export function OperationPaymentsSection({
                     )}
                   />
 
-                  {/* Switch para marcar como pagado - solo para PENDING de operador */}
-                  {editingPayment?.status === "PENDING" && editingPayment?.payer_type === "OPERATOR" && (
+                  {/* Switch para marcar como pagado - para cualquier pago PENDING */}
+                  {editingPayment?.status === "PENDING" && (
                     <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background p-3">
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
