@@ -11,19 +11,31 @@ export async function DELETE(
   if (!auth.authorized) return auth.response
 
   const { id } = await params
-  const supabase = createAdminClient()
+  const supabase = createAdminClient() as any
 
-  // Stop connector socket first
+  // Stop connector socket first (best effort)
   await callConnector(`/devices/${id}/stop`, "POST")
 
-  const db = supabase as any
-
   // Delete associated data: messages first (FK to chats), then chats
-  await db.from("wa_messages").delete().eq("device_id", id)
-  await db.from("wa_chats").delete().eq("device_id", id)
+  const { error: msgErr } = await supabase.from("wa_messages").delete().eq("device_id", id)
+  if (msgErr) {
+    return NextResponse.json({ error: `Error eliminando mensajes: ${msgErr.message}` }, { status: 500 })
+  }
+
+  const { error: chatErr } = await supabase.from("wa_chats").delete().eq("device_id", id)
+  if (chatErr) {
+    return NextResponse.json({ error: `Error eliminando chats: ${chatErr.message}` }, { status: 500 })
+  }
 
   // Soft delete the device itself
-  await db.from("wa_devices").update({ is_active: false, status: "DISCONNECTED" }).eq("id", id)
+  const { error: devErr } = await supabase
+    .from("wa_devices")
+    .update({ is_active: false, status: "DISCONNECTED" })
+    .eq("id", id)
+
+  if (devErr) {
+    return NextResponse.json({ error: `Error eliminando dispositivo: ${devErr.message}` }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

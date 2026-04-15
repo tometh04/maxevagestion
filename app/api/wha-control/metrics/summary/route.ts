@@ -25,6 +25,21 @@ export async function GET(request: Request) {
   // Get device IDs to filter
   let deviceIds: string[] | null = null
   if (deviceId && deviceId !== "all") {
+    // Validate device belongs to selected agency if both are specified
+    if (agencyId && agencyId !== "all") {
+      const { data: dev } = await supabase
+        .from("wa_devices")
+        .select("id")
+        .eq("id", deviceId)
+        .eq("agency_id", agencyId)
+        .eq("is_active", true)
+        .single()
+
+      if (!dev) {
+        // Device doesn't belong to this agency
+        return NextResponse.json({ summary: emptySummary() })
+      }
+    }
     deviceIds = [deviceId]
   } else {
     let devQuery = supabase
@@ -54,10 +69,10 @@ export async function GET(request: Request) {
     allowedChatIds = new Set(individualChats.map((c: any) => c.id))
   }
 
-  // Query all messages in range directly (real-time, no pre-aggregation)
+  // Query all messages in range — include media_file_name for PDF detection
   let msgQuery = supabase
     .from("wa_messages")
-    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type")
+    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type, media_file_name, raw_payload")
 
   if (deviceIds) {
     msgQuery = msgQuery.in("device_id", deviceIds)
@@ -81,10 +96,11 @@ export async function GET(request: Request) {
     return true
   })
 
-  // Count inbound/outbound + PDFs sent + initiated conversations
+  // Count inbound/outbound + PDFs + initiated conversations
   let inbound_count = 0
   let outbound_count = 0
   let pdfs_sent_count = 0
+  let pdfs_received_count = 0
   const chatIds = new Set<string>()
   const inboundChatIds = new Set<string>()
   const outboundChatIds = new Set<string>()
@@ -93,17 +109,24 @@ export async function GET(request: Request) {
 
   for (const m of msgs) {
     chatIds.add(m.chat_id)
+
+    // Count PDFs for ALL directions (both sent and received)
+    if (m.message_type === "document" && isPdfDocument(m)) {
+      if (m.direction === "outbound") {
+        pdfs_sent_count++
+      } else if (m.direction === "inbound") {
+        pdfs_received_count++
+      }
+    }
+
     if (m.direction === "inbound") {
       inbound_count++
       inboundChatIds.add(m.chat_id)
     } else if (m.direction === "outbound") {
       outbound_count++
       outboundChatIds.add(m.chat_id)
-      // Count PDFs sent: only actual PDF documents, not all document types
-      if (m.message_type === "document" && isPdfDocument(m.media_mime_type)) {
-        pdfs_sent_count++
-      }
     }
+
     // Track first message in each chat
     const existing = chatFirstMessage.get(m.chat_id)
     if (!existing || m.sent_at < existing.sent_at) {
@@ -170,14 +193,6 @@ export async function GET(request: Request) {
     return new Date(utc.getTime() + ARG_OFFSET_MS)
   }
 
-  function isBusinessHours(iso: string): boolean {
-    const arg = toArgentinaDate(iso)
-    const day = arg.getUTCDay() // 0=Sun, 6=Sat
-    if (day === 0 || day === 6) return false
-    const hour = arg.getUTCHours()
-    return hour >= WORK_START_HOUR && hour < WORK_END_HOUR
-  }
-
   // Calculate business seconds between two timestamps
   // Only counts time during Mon-Fri 9:00-17:00 Argentina time
   function businessSecondsBetween(startIso: string, endIso: string): number {
@@ -187,11 +202,9 @@ export async function GET(request: Request) {
 
     let totalSeconds = 0
 
-    // Walk through each day between start and end
     const startArg = toArgentinaDate(startIso)
     const endArg = toArgentinaDate(endIso)
 
-    // Simple approach: iterate day by day
     const startDay = new Date(Date.UTC(startArg.getUTCFullYear(), startArg.getUTCMonth(), startArg.getUTCDate()))
     const endDay = new Date(Date.UTC(endArg.getUTCFullYear(), endArg.getUTCMonth(), endArg.getUTCDate()))
 
@@ -200,7 +213,6 @@ export async function GET(request: Request) {
       const dayOfWeek = currentDay.getUTCDay()
       // Skip weekends
       if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-        // Business start/end for this day in UTC (adjusted for Argentina)
         const bizStartUtc = new Date(currentDay).getTime() + (WORK_START_HOUR * HOUR_MS) - ARG_OFFSET_MS
         const bizEndUtc = new Date(currentDay).getTime() + (WORK_END_HOUR * HOUR_MS) - ARG_OFFSET_MS
 
@@ -257,16 +269,50 @@ export async function GET(request: Request) {
     avg_first_response_seconds,
     initiated_count,
     pdfs_sent_count,
+    pdfs_received_count,
+    pdfs_total_count: pdfs_sent_count + pdfs_received_count,
   }
 
   return NextResponse.json({ summary })
 }
 
-/** Check if a document is a PDF based on mime type */
-function isPdfDocument(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return false // No mime type = don't assume PDF
-  const mime = mimeType.toLowerCase()
-  return mime === "application/pdf" || mime.includes("pdf")
+/** Check if a document is a PDF based on mime type, file name, OR raw_payload */
+function isPdfDocument(msg: any): boolean {
+  // 1. Check direct columns
+  if (msg.media_mime_type) {
+    if (msg.media_mime_type.toLowerCase() === "application/pdf") return true
+  }
+  if (msg.media_file_name) {
+    if (msg.media_file_name.toLowerCase().endsWith(".pdf")) return true
+  }
+
+  // 2. Fallback: extract from raw_payload (Baileys stores doc metadata here)
+  const docMsg = msg.raw_payload?.message?.documentMessage
+    || msg.raw_payload?.message?.documentWithCaptionMessage?.message?.documentMessage
+  if (docMsg) {
+    if (docMsg.mimetype?.toLowerCase() === "application/pdf") return true
+    const fname = docMsg.fileName || docMsg.title
+    if (fname && fname.toLowerCase().endsWith(".pdf")) return true
+  }
+
+  return false
+}
+
+/** Return an empty summary object */
+function emptySummary() {
+  return {
+    inbound_count: 0,
+    outbound_count: 0,
+    active_chats_count: 0,
+    new_chats_count: 0,
+    responded_chats_count: 0,
+    unanswered_chats_count: 0,
+    avg_first_response_seconds: null,
+    initiated_count: 0,
+    pdfs_sent_count: 0,
+    pdfs_received_count: 0,
+    pdfs_total_count: 0,
+  }
 }
 
 /**

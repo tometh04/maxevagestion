@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Plus, RefreshCw, Power, PowerOff, Trash2, Smartphone, Loader2, Building2 } from "lucide-react"
+import { toast } from "sonner"
 import { ConnectDeviceDialog } from "./connect-device-dialog"
 
 interface Agency {
@@ -83,10 +84,18 @@ export function DeviceList({ agencies }: DeviceListProps) {
   const handleDisconnect = async (deviceId: string) => {
     setActionLoading(deviceId)
     try {
-      await fetch(`/api/wha-control/devices/${deviceId}/disconnect`, { method: "POST" })
+      const res = await fetch(`/api/wha-control/devices/${deviceId}/disconnect`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || "Error al desconectar")
+      } else if (data.warning) {
+        toast.warning(data.warning)
+      } else {
+        toast.success("Dispositivo desconectado")
+      }
       await fetchDevices()
     } catch (err) {
-      console.error("Error disconnecting:", err)
+      toast.error("Error de red al desconectar")
     } finally {
       setActionLoading(null)
     }
@@ -95,10 +104,16 @@ export function DeviceList({ agencies }: DeviceListProps) {
   const handleReconnect = async (deviceId: string) => {
     setActionLoading(deviceId)
     try {
-      await fetch(`/api/wha-control/devices/${deviceId}/reconnect`, { method: "POST" })
+      const res = await fetch(`/api/wha-control/devices/${deviceId}/reconnect`, { method: "POST" })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || "Error al reconectar")
+      } else {
+        toast.success("Reconectando dispositivo...")
+      }
       await fetchDevices()
     } catch (err) {
-      console.error("Error reconnecting:", err)
+      toast.error("Error de red al reconectar")
     } finally {
       setActionLoading(null)
     }
@@ -108,10 +123,16 @@ export function DeviceList({ agencies }: DeviceListProps) {
     if (!confirm("¿Estás seguro de eliminar este dispositivo?")) return
     setActionLoading(deviceId)
     try {
-      await fetch(`/api/wha-control/devices/${deviceId}`, { method: "DELETE" })
+      const res = await fetch(`/api/wha-control/devices/${deviceId}`, { method: "DELETE" })
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || "Error al eliminar")
+      } else {
+        toast.success("Dispositivo eliminado")
+      }
       await fetchDevices()
     } catch (err) {
-      console.error("Error deleting:", err)
+      toast.error("Error de red al eliminar")
     } finally {
       setActionLoading(null)
     }

@@ -32,6 +32,8 @@ interface Summary {
   avg_first_response_seconds: number | null
   initiated_count: number
   pdfs_sent_count: number
+  pdfs_received_count: number
+  pdfs_total_count: number
 }
 
 interface TimeseriesPoint {
@@ -39,6 +41,8 @@ interface TimeseriesPoint {
   inbound: number
   outbound: number
   pdfs: number
+  pdfs_sent: number
+  pdfs_received: number
   initiated: number
   avg_response: number | null
 }
@@ -128,7 +132,8 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
         { label: "Mensajes Recibidos", value: summary.inbound_count, icon: MessageCircle, color: "text-blue-600" },
         { label: "Mensajes Enviados", value: summary.outbound_count, icon: MessageSquareText, color: "text-green-600" },
         { label: "Conversaciones Iniciadas", value: summary.initiated_count, icon: Send, color: "text-cyan-600" },
-        { label: "Cotizaciones (PDFs)", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600" },
+        { label: "PDFs Enviados", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600" },
+        { label: "PDFs Recibidos", value: summary.pdfs_received_count, icon: FileText, color: "text-amber-600" },
         { label: "Tiempo Resp. Promedio", value: formatResponseTime(summary.avg_first_response_seconds), icon: Clock, color: "text-orange-600" },
         { label: "Chats Activos", value: summary.active_chats_count, icon: Users, color: "text-purple-600" },
         { label: "Sin Responder", value: summary.unanswered_chats_count, icon: AlertCircle, color: "text-red-600" },
@@ -209,10 +214,10 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
             ))}
           </div>
 
-          {/* Cotizaciones + Iniciados chart */}
+          {/* PDFs + Iniciados chart */}
           <Card className="rounded-xl border border-border/40">
             <CardHeader>
-              <CardTitle className="text-sm">Cotizaciones (PDFs) e Iniciadas por día</CardTitle>
+              <CardTitle className="text-sm">PDFs e Iniciadas por día</CardTitle>
             </CardHeader>
             <CardContent>
               {timeseries.length > 0 ? (
@@ -223,7 +228,8 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
                     <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip />
                     <Legend />
-                    <Bar dataKey="pdfs" name="Cotizaciones (PDFs)" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="pdfs_sent" name="PDFs Enviados" fill="#e11d48" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="pdfs_received" name="PDFs Recibidos" fill="#f59e0b" radius={[4, 4, 0, 0]} />
                     <Bar dataKey="initiated" name="Conv. Iniciadas" fill="#06b6d4" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>

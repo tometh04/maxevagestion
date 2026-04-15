@@ -7,7 +7,6 @@ export async function GET(request: Request) {
   const auth = await whaControlAuthGuard()
   if (!auth.authorized) return auth.response
 
-
   const { searchParams } = new URL(request.url)
   const includeInactive = searchParams.get("includeInactive") === "true"
   const agencyId = searchParams.get("agencyId")
@@ -32,12 +31,15 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Enrich with live connector status
+  // Enrich with live connector status — single batch attempt
+  // If connector is unreachable, skip enrichment entirely (use DB status)
   const enriched = await Promise.all(
     (devices || []).map(async (device: any) => {
       try {
-        const liveStatus = await callConnector(`/devices/${device.id}/status`)
-        // Only override status if it's NOT pending QR (don't mark as CONNECTED while waiting for scan)
+        const result = await callConnector(`/devices/${device.id}/status`)
+        if (!result.ok) return device // Connector unreachable, use DB status as-is
+
+        const liveStatus = result.data
         if (liveStatus?.isRunning && device.status !== "CONNECTED" && device.status !== "PENDING_QR") {
           await supabase
             .from("wa_devices")
@@ -69,18 +71,17 @@ export async function POST(request: Request) {
   const body = await request.json()
   const { displayName, agencyId } = body
 
-  if (!displayName) {
+  if (!displayName?.trim()) {
     return NextResponse.json({ error: "displayName is required" }, { status: 400 })
   }
 
-
-  const supabasePost = createAdminClient() as any
+  const supabase = createAdminClient() as any
 
   // Create device record
-  const insertData: any = { display_name: displayName, status: "PENDING_QR" }
+  const insertData: any = { display_name: displayName.trim(), status: "PENDING_QR" }
   if (agencyId) insertData.agency_id = agencyId
 
-  const { data: device, error } = await supabasePost
+  const { data: device, error } = await supabase
     .from("wa_devices")
     .insert(insertData)
     .select("*, agencies:agency_id(id, name)")
@@ -91,7 +92,13 @@ export async function POST(request: Request) {
   }
 
   // Tell connector to start the device (begin QR generation)
-  await callConnector(`/devices/${device.id}/start`, "POST")
+  const connResult = await callConnector(`/devices/${device.id}/start`, "POST")
+  if (!connResult.ok) {
+    return NextResponse.json({
+      device,
+      warning: `Dispositivo creado pero el conector no respondió: ${connResult.error}`,
+    })
+  }
 
   return NextResponse.json({ device })
 }
@@ -106,14 +113,20 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "id is required" }, { status: 400 })
   }
 
-  
-  const supabaseDel = createAdminClient() as any
+  const supabase = createAdminClient() as any
 
-  // Stop connector socket first
+  // Stop connector socket first (best effort)
   await callConnector(`/devices/${id}/stop`, "POST")
 
   // Soft delete
-  await supabaseDel.from("wa_devices").update({ is_active: false }).eq("id", id)
+  const { error } = await supabase
+    .from("wa_devices")
+    .update({ is_active: false, status: "DISCONNECTED" })
+    .eq("id", id)
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true })
 }

@@ -5,11 +5,23 @@ import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 // Message types that don't count as real messages (reactions, stickers, etc.)
 const EXCLUDED_MESSAGE_TYPES = new Set(["reaction", "sticker", "unknown"])
 
-/** Check if a document is a PDF based on mime type */
-function isPdfDocument(mimeType: string | null | undefined): boolean {
-  if (!mimeType) return false // No mime type = don't assume PDF
-  const mime = mimeType.toLowerCase()
-  return mime === "application/pdf" || mime.includes("pdf")
+/** Check if a document is a PDF based on mime type, file name, OR raw_payload */
+function isPdfDocument(msg: any): boolean {
+  if (msg.media_mime_type) {
+    if (msg.media_mime_type.toLowerCase() === "application/pdf") return true
+  }
+  if (msg.media_file_name) {
+    if (msg.media_file_name.toLowerCase().endsWith(".pdf")) return true
+  }
+  // Fallback: extract from raw_payload (Baileys stores doc metadata here)
+  const docMsg = msg.raw_payload?.message?.documentMessage
+    || msg.raw_payload?.message?.documentWithCaptionMessage?.message?.documentMessage
+  if (docMsg) {
+    if (docMsg.mimetype?.toLowerCase() === "application/pdf") return true
+    const fname = docMsg.fileName || docMsg.title
+    if (fname && fname.toLowerCase().endsWith(".pdf")) return true
+  }
+  return false
 }
 
 /**
@@ -49,6 +61,20 @@ export async function GET(request: Request) {
   // Get device IDs to filter
   let deviceIds: string[] | null = null
   if (deviceId && deviceId !== "all") {
+    // Validate device belongs to selected agency if both are specified
+    if (agencyId && agencyId !== "all") {
+      const { data: dev } = await supabase
+        .from("wa_devices")
+        .select("id")
+        .eq("id", deviceId)
+        .eq("agency_id", agencyId)
+        .eq("is_active", true)
+        .single()
+
+      if (!dev) {
+        return NextResponse.json({ timeseries: [] })
+      }
+    }
     deviceIds = [deviceId]
   } else {
     let devQuery = supabase
@@ -78,10 +104,10 @@ export async function GET(request: Request) {
     allowedChatIds = new Set(individualChats.map((c: any) => c.id))
   }
 
-  // Query messages directly (real-time)
+  // Query messages — include media_file_name for PDF detection
   let query = supabase
     .from("wa_messages")
-    .select("direction, sent_at, chat_id, message_type, media_mime_type")
+    .select("direction, sent_at, chat_id, message_type, media_mime_type, media_file_name, raw_payload")
     .order("sent_at", { ascending: true })
 
   if (deviceIds) {
@@ -120,22 +146,30 @@ export async function GET(request: Request) {
 
   // Group by date
   const byDate = new Map<string, {
-    inbound: number; outbound: number; pdfs: number;
+    inbound: number; outbound: number; pdfs_sent: number; pdfs_received: number;
     chatFirstInbound: Map<string, string>; chatFirstOutbound: Map<string, string>;
     chatFirstMsg: Map<string, { direction: string; sent_at: string }>
   }>()
 
   for (const m of filteredMessages) {
-    // Extract YYYY-MM-DD from sent_at
     const dateStr = m.sent_at.substring(0, 10)
     if (!byDate.has(dateStr)) {
       byDate.set(dateStr, {
-        inbound: 0, outbound: 0, pdfs: 0,
+        inbound: 0, outbound: 0, pdfs_sent: 0, pdfs_received: 0,
         chatFirstInbound: new Map(), chatFirstOutbound: new Map(),
         chatFirstMsg: new Map()
       })
     }
     const day = byDate.get(dateStr)!
+
+    // Count PDFs for both directions
+    if (m.message_type === "document" && isPdfDocument(m)) {
+      if (m.direction === "outbound") {
+        day.pdfs_sent++
+      } else if (m.direction === "inbound") {
+        day.pdfs_received++
+      }
+    }
 
     if (m.direction === "inbound") {
       day.inbound++
@@ -146,10 +180,6 @@ export async function GET(request: Request) {
       day.outbound++
       if (!day.chatFirstOutbound.has(m.chat_id)) {
         day.chatFirstOutbound.set(m.chat_id, m.sent_at)
-      }
-      // Only count actual PDF documents, not all document types
-      if (m.message_type === "document" && isPdfDocument(m.media_mime_type)) {
-        day.pdfs++
       }
     }
 
@@ -225,7 +255,9 @@ export async function GET(request: Request) {
         date: date.substring(5), // "MM-DD" format for chart
         inbound: data.inbound,
         outbound: data.outbound,
-        pdfs: data.pdfs,
+        pdfs_sent: data.pdfs_sent,
+        pdfs_received: data.pdfs_received,
+        pdfs: data.pdfs_sent + data.pdfs_received,
         initiated,
         avg_response: responseTimes.length > 0
           ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
