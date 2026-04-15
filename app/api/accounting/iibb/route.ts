@@ -67,7 +67,8 @@ export async function GET(request: Request) {
     const jurisdictions: IIBBJurisdiction[] = taxSettings?.iibb_jurisdictions || []
 
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`
+    const lastDay = new Date(year, month, 0).getDate()
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     // Get all invoices issued in the period (base imponible = facturación)
     const { data: invoices } = await (supabase.from("invoices") as any)

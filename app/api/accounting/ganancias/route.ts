@@ -39,7 +39,8 @@ export async function GET(request: Request) {
     const quarterStartMonth = (quarter - 1) * 3 + 1
     const quarterEndMonth = quarter * 3
     const startDate = `${year}-${String(quarterStartMonth).padStart(2, "0")}-01`
-    const endDate = `${year}-${String(quarterEndMonth).padStart(2, "0")}-31`
+    const lastDay = new Date(year, quarterEndMonth, 0).getDate()
+    const endDate = `${year}-${String(quarterEndMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     // Read ganancias_rate from financial_settings (default 35 if not set)
     const { data: settings } = await (supabase.from("financial_settings") as any)

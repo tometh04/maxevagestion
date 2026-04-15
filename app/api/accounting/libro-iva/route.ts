@@ -17,7 +17,8 @@ export async function GET(request: Request) {
     const format = searchParams.get("format") || "json" // json, csv, or rg3683
 
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`
+    const lastDay = new Date(year, month, 0).getDate()
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     // ── LIBRO IVA VENTAS ──
     // From invoices table (facturas emitidas con CAE)
