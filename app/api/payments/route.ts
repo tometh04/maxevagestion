@@ -32,6 +32,7 @@ import {
 import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
+import { annotatePaymentAsJournalEntry } from "@/lib/accounting/journal-entries"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -583,7 +584,7 @@ export async function POST(request: Request) {
           )
         }
 
-        await createPaymentCounterpartMovement({
+        const counterpartResult = await createPaymentCounterpartMovement({
           supabase,
           paymentId: payment.id,
           operationId: operation_id || null,
@@ -605,6 +606,7 @@ export async function POST(request: Request) {
         // PERCEPCIONES AUTOMÁTICAS (RG 5617 / RG 3819)
         // Solo para cobros de cliente con operación
         // ============================================
+        const perceptionMovementIds: string[] = []
         if (direction === "INCOME" && operation_id) {
           try {
             const { data: billingInfo } = await (supabase.from("billing_info") as any)
@@ -666,7 +668,7 @@ export async function POST(request: Request) {
                   const percAmount = parseFloat(perc.amount)
                   const percLabel = perc.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"
 
-                  await createLedgerMovement(
+                  const { id: percIncomeId } = await createLedgerMovement(
                     {
                       operation_id,
                       type: "INCOME",
@@ -684,8 +686,9 @@ export async function POST(request: Request) {
                     },
                     supabase
                   )
+                  perceptionMovementIds.push(percIncomeId)
 
-                  await createLedgerMovement(
+                  const { id: percExpenseId } = await createLedgerMovement(
                     {
                       operation_id,
                       type: "EXPENSE",
@@ -703,6 +706,7 @@ export async function POST(request: Request) {
                     },
                     supabase
                   )
+                  perceptionMovementIds.push(percExpenseId)
                 }
               } else {
                 console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada.")
@@ -712,6 +716,41 @@ export async function POST(request: Request) {
             console.error("Error calculando percepciones:", percError)
             // No romper el flujo principal
           }
+        }
+
+        // ============================================
+        // ASIENTO CONTABLE AUTOMÁTICO (partida doble)
+        // Anota los movimientos existentes como journal entry
+        // ============================================
+        try {
+          const paymentDate = date_paid || new Date().toISOString().split("T")[0]
+          const jeDescription = direction === "INCOME"
+            ? passengerName
+              ? `Cobro - ${passengerName} (${operationCode})`
+              : `Cobro de cliente - Op. ${operationCode}`
+            : passengerName
+              ? `Pago a operador - ${passengerName} (${operationCode})`
+              : `Pago a operador - Op. ${operationCode}`
+
+          await annotatePaymentAsJournalEntry(
+            {
+              mainMovementId: ledgerMovementId,
+              counterpartMovementId: counterpartResult?.id || null,
+              perceptionMovementIds,
+              description: jeDescription,
+              date: paymentDate,
+              amount: amountARS,
+              currency: currency as "ARS" | "USD",
+              operation_id: operation_id || null,
+              direction: direction === "INCOME" ? "INCOME" : "EXPENSE",
+              financialAccountId: accountId,
+              created_by: user.id,
+            },
+            supabase
+          )
+        } catch (jeError) {
+          console.error("Error creando asiento contable automático:", jeError)
+          // No romper el flujo principal — el pago ya fue registrado
         }
 
       } catch (accountingError) {

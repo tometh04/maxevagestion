@@ -65,6 +65,26 @@ const FacturasComprasPageClient = dynamic(
   }
 )
 
+const JournalEntriesPageClient = dynamic(
+  () =>
+    import("@/components/accounting/journal-entries-page-client").then((m) => ({
+      default: m.JournalEntriesPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
+const ChartOfAccountsTree = dynamic(
+  () =>
+    import("@/components/accounting/chart-of-accounts-tree").then((m) => ({
+      default: m.ChartOfAccountsTree,
+    })),
+  {
+    loading: () => <Skeleton className="h-[400px] w-full" />,
+  }
+)
+
 export default async function ContabilidadPage() {
   const { user } = await getCurrentUser()
   const userRole = user.role as any
@@ -118,6 +138,12 @@ export default async function ContabilidadPage() {
 
   return (
     <ContabilidadTabs
+      journalEntriesContent={
+        <JournalEntriesPageClient />
+      }
+      chartOfAccountsContent={
+        <ChartOfAccountsTree />
+      }
       monthlyPositionContent={
         <MonthlyPositionPageClient agencies={agencies} userRole={user.role || "SELLER"} />
       }

@@ -1,10 +1,12 @@
 "use client"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText } from "lucide-react"
+import { BookOpen, Users, Plane, UserCheck, BarChart3, FileText, BookMarked, ListTree } from "lucide-react"
 
 interface ContabilidadTabsProps {
   ledgerContent: React.ReactNode
+  journalEntriesContent: React.ReactNode
+  chartOfAccountsContent: React.ReactNode
   debtsSalesContent: React.ReactNode
   operatorPaymentsContent: React.ReactNode
   partnerAccountsContent: React.ReactNode
@@ -15,6 +17,8 @@ interface ContabilidadTabsProps {
 
 export function ContabilidadTabs({
   ledgerContent,
+  journalEntriesContent,
+  chartOfAccountsContent,
   debtsSalesContent,
   operatorPaymentsContent,
   partnerAccountsContent,
@@ -31,6 +35,10 @@ export function ContabilidadTabs({
           <TabsTrigger value="ledger" className="gap-1.5">
             <BookOpen className="h-3.5 w-3.5" />
             Libro Mayor
+          </TabsTrigger>
+          <TabsTrigger value="asientos" className="gap-1.5">
+            <BookMarked className="h-3.5 w-3.5" />
+            Asientos
           </TabsTrigger>
           <TabsTrigger value="operators" className="gap-1.5">
             <Plane className="h-3.5 w-3.5" />
@@ -54,10 +62,18 @@ export function ContabilidadTabs({
             <FileText className="h-3.5 w-3.5" />
             Facturas Compras
           </TabsTrigger>
+          <TabsTrigger value="plan-cuentas" className="gap-1.5">
+            <ListTree className="h-3.5 w-3.5" />
+            Plan de Cuentas
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="ledger" className="mt-6">
           {ledgerContent}
+        </TabsContent>
+
+        <TabsContent value="asientos" className="mt-6">
+          {journalEntriesContent}
         </TabsContent>
 
         <TabsContent value="operators" className="mt-6">
@@ -80,6 +96,10 @@ export function ContabilidadTabs({
 
         <TabsContent value="facturas-compras" className="mt-6">
           {facturasComprasContent}
+        </TabsContent>
+
+        <TabsContent value="plan-cuentas" className="mt-6">
+          {chartOfAccountsContent}
         </TabsContent>
       </Tabs>
     </div>

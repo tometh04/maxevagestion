@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
+import { ACCOUNT_CODES } from "./account-codes"
 
 type SupportedCurrency = "ARS" | "USD"
 type LedgerMethod = "CASH" | "BANK" | "MP" | "USD" | "OTHER"
-type CounterpartAccountCode = "1.1.03" | "2.1.01"
+type CounterpartAccountCode = typeof ACCOUNT_CODES.CUENTAS_POR_COBRAR | typeof ACCOUNT_CODES.CUENTAS_POR_PAGAR
 
 const COUNTERPART_PAYMENT_MARKER_KEY = "counterpart_payment_id"
 
@@ -139,11 +140,11 @@ export function getPaymentCounterpartAccountCode(
   payerType?: string | null
 ): CounterpartAccountCode | null {
   if (direction === "INCOME") {
-    return "1.1.03"
+    return ACCOUNT_CODES.CUENTAS_POR_COBRAR
   }
 
   if (payerType === "OPERATOR") {
-    return "2.1.01"
+    return ACCOUNT_CODES.CUENTAS_POR_PAGAR
   }
 
   return null

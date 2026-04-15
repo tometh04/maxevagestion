@@ -255,12 +255,23 @@ export async function getAccountBalance(
   const initialBalance = parseFloat(account.initial_balance || "0")
   const accountCurrency = account.currency as "ARS" | "USD"
 
+  // Obtener subcategoría para determinar naturaleza de la cuenta (Debe/Haber natural)
+  let subcategory: string | null = null
+  if (account.chart_account_id) {
+    const { data: chartAccountFull } = await (supabase
+      .from("chart_of_accounts") as any)
+      .select("subcategory")
+      .eq("id", account.chart_account_id)
+      .maybeSingle()
+    subcategory = chartAccountFull?.subcategory || null
+  }
+
   // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
   // Usamos admin client para bypasear RLS en el SELECT (mismo fix que para INSERT)
   const adminClient = await getAdminClient(supabase)
   const { data: movements, error: movementsError } = await (adminClient
     .from("ledger_movements") as any)
-    .select("type, amount_original, amount_ars_equivalent")
+    .select("type, amount_original, amount_ars_equivalent, debit_amount, credit_amount")
     .eq("account_id", accountId)
     .eq("affects_balance", true)
 
@@ -268,14 +279,35 @@ export async function getAccountBalance(
     throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
   }
 
-  // Calcular suma en memoria (optimizado: solo campos necesarios)
+  // Calcular suma en memoria — DUAL PATH:
+  // Si debit_amount/credit_amount están presentes → usar partida doble
+  // Si ambos son NULL → usar lógica legacy (type-based)
+  const { isDebitNaturalAccount } = await import("./account-codes")
+  const isDebitNatural = isDebitNaturalAccount(category || "ACTIVO", subcategory)
+
   const movementsSum = movements?.reduce((sum: number, m: any) => {
+    const hasDebitCredit = m.debit_amount !== null || m.credit_amount !== null
+
+    if (hasDebitCredit) {
+      // PATH NUEVO: Partida doble (Debe/Haber)
+      const debit = parseFloat(m.debit_amount || "0")
+      const credit = parseFloat(m.credit_amount || "0")
+      if (isDebitNatural) {
+        // ACTIVO, COSTOS, GASTOS: Debe aumenta, Haber disminuye
+        return sum + debit - credit
+      } else {
+        // PASIVO, PATRIMONIO, INGRESOS: Haber aumenta, Debe disminuye
+        return sum + credit - debit
+      }
+    }
+
+    // PATH LEGACY: type-based (movimientos sin debit/credit)
     const amount = parseFloat(
-      accountCurrency === "USD" 
+      accountCurrency === "USD"
         ? (m.amount_original || "0")
         : (m.amount_ars_equivalent || "0")
     )
-    
+
     if (category === "PASIVO") {
       if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
         return sum + amount
@@ -284,7 +316,7 @@ export async function getAccountBalance(
       }
       return sum
     }
-    
+
     if (m.type === "INCOME" || m.type === "FX_GAIN") {
       return sum + amount
     } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
@@ -332,19 +364,21 @@ export async function getAccountBalancesBatch(
     throw new Error(`Error obteniendo cuentas: ${accountsError?.message || "Unknown error"}`)
   }
 
-  // Query separada batch para categorías del plan de cuentas
+  // Query separada batch para categorías y subcategorías del plan de cuentas
   const chartAccountIds = Array.from(new Set(
     accounts.map((a: any) => a.chart_account_id).filter(Boolean)
   )) as string[]
   const chartCategoryMap = new Map<string, string>()
+  const chartSubcategoryMap = new Map<string, string>()
   if (chartAccountIds.length > 0) {
     const { data: chartAccounts } = await (supabase
       .from("chart_of_accounts") as any)
-      .select("id, category")
+      .select("id, category, subcategory")
       .in("id", chartAccountIds)
     if (chartAccounts) {
       for (const ca of chartAccounts) {
         chartCategoryMap.set(ca.id, ca.category)
+        if (ca.subcategory) chartSubcategoryMap.set(ca.id, ca.subcategory)
       }
     }
   }
@@ -376,7 +410,7 @@ export async function getAccountBalancesBatch(
 
   const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
   const { data: aggregatedData, error: aggError } = await adminClient.rpc("execute_readonly_query", {
-    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true GROUP BY account_id, type`
+    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars, SUM(COALESCE(debit_amount, 0)::numeric) as total_debit, SUM(COALESCE(credit_amount, 0)::numeric) as total_credit, COUNT(debit_amount) + COUNT(credit_amount) as debit_credit_count FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true GROUP BY account_id, type`
   })
 
   if (aggError) {
@@ -384,11 +418,11 @@ export async function getAccountBalancesBatch(
   }
 
   // Parsear resultados agrupados
-  const sumRows: Array<{ account_id: string; type: string; total_original: number; total_ars: number }> =
+  const sumRows: Array<{ account_id: string; type: string; total_original: number; total_ars: number; total_debit: number; total_credit: number; debit_credit_count: number }> =
     Array.isArray(aggregatedData) ? aggregatedData : (aggregatedData || [])
 
-  // Indexar sumas por account_id → type → { total_original, total_ars }
-  const sumsByAccount = new Map<string, Map<string, { total_original: number; total_ars: number }>>()
+  // Indexar sumas por account_id → type → { total_original, total_ars, total_debit, total_credit }
+  const sumsByAccount = new Map<string, Map<string, { total_original: number; total_ars: number; total_debit: number; total_credit: number; has_debit_credit: boolean }>>()
   for (const row of sumRows) {
     if (!sumsByAccount.has(row.account_id)) {
       sumsByAccount.set(row.account_id, new Map())
@@ -396,34 +430,57 @@ export async function getAccountBalancesBatch(
     sumsByAccount.get(row.account_id)!.set(row.type, {
       total_original: Number(row.total_original),
       total_ars: Number(row.total_ars),
+      total_debit: Number(row.total_debit || 0),
+      total_credit: Number(row.total_credit || 0),
+      has_debit_credit: Number(row.debit_credit_count || 0) > 0,
     })
   }
 
   // Calcular balance para cada cuenta usando las sumas agrupadas
-  // MISMA LÓGICA que antes: PASIVO invierte signos, ACTIVO normal
+  // DUAL PATH: Debe/Haber si presentes, legacy type-based si no
+  const { isDebitNaturalAccount } = await import("./account-codes")
+
   for (const account of accountsToCalculate) {
     const initialBalance = parseFloat(account.initial_balance || "0")
     const accountCurrency = account.currency as "ARS" | "USD"
     const category = account.chart_account_id
       ? chartCategoryMap.get(account.chart_account_id) || "ACTIVO"
       : "ACTIVO"
+    const subcategory = account.chart_account_id
+      ? chartSubcategoryMap.get(account.chart_account_id) || null
+      : null
+    const isDebitNatural = isDebitNaturalAccount(category, subcategory)
     const typeSums = sumsByAccount.get(account.id) || new Map()
 
     let movementsSum = 0
     typeSums.forEach((sums, type) => {
-      const amount = accountCurrency === "USD" ? sums.total_original : sums.total_ars
-
-      if (category === "PASIVO") {
-        if (type === "EXPENSE" || type === "OPERATOR_PAYMENT" || type === "FX_LOSS") {
-          movementsSum += amount
-        } else if (type === "INCOME" || type === "FX_GAIN") {
-          movementsSum -= amount
+      // Si hay movimientos con debit/credit, usar partida doble para esos
+      if (sums.has_debit_credit) {
+        if (isDebitNatural) {
+          movementsSum += sums.total_debit - sums.total_credit
+        } else {
+          movementsSum += sums.total_credit - sums.total_debit
         }
-      } else {
-        if (type === "INCOME" || type === "FX_GAIN") {
-          movementsSum += amount
-        } else if (type === "EXPENSE" || type === "FX_LOSS" || type === "COMMISSION" || type === "OPERATOR_PAYMENT") {
-          movementsSum -= amount
+      }
+
+      // Para movimientos legacy (sin debit/credit), usar lógica type-based
+      // Nota: sums.total_original/total_ars incluyen TODOS los movimientos,
+      // así que solo usamos la parte que NO tiene debit/credit
+      if (!sums.has_debit_credit) {
+        const amount = accountCurrency === "USD" ? sums.total_original : sums.total_ars
+
+        if (category === "PASIVO") {
+          if (type === "EXPENSE" || type === "OPERATOR_PAYMENT" || type === "FX_LOSS") {
+            movementsSum += amount
+          } else if (type === "INCOME" || type === "FX_GAIN") {
+            movementsSum -= amount
+          }
+        } else {
+          if (type === "INCOME" || type === "FX_GAIN") {
+            movementsSum += amount
+          } else if (type === "EXPENSE" || type === "FX_LOSS" || type === "COMMISSION" || type === "OPERATOR_PAYMENT") {
+            movementsSum -= amount
+          }
         }
       }
     })
@@ -728,8 +785,9 @@ export async function isAccountingOnlyAccount(
     .maybeSingle()
 
   const accountCode = chartAccount?.account_code
-  // Cuentas por Cobrar: 1.1.03, Cuentas por Pagar: 2.1.01
-  return accountCode === "1.1.03" || accountCode === "2.1.01"
+  // Cuentas por Cobrar / Cuentas por Pagar — no deben aparecer en selectores de pago
+  const { ACCOUNT_CODES } = await import("./account-codes")
+  return accountCode === ACCOUNT_CODES.CUENTAS_POR_COBRAR || accountCode === ACCOUNT_CODES.CUENTAS_POR_PAGAR
 }
 
 /**
