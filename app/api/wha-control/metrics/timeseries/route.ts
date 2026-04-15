@@ -5,22 +5,16 @@ import { whaControlAuthGuard } from "@/lib/wha-control/auth-guard"
 // Message types that don't count as real messages (reactions, stickers, etc.)
 const EXCLUDED_MESSAGE_TYPES = new Set(["reaction", "sticker", "unknown"])
 
-/** Check if a document is a PDF based on mime type, file name, OR raw_payload */
-function isPdfDocument(msg: any): boolean {
+/** Check if a document is a PDF based on mime type, file name, OR docPdfSet (server-side JSON extraction) */
+function isPdfDocument(msg: any, docPdfSet?: Set<string>): boolean {
   if (msg.media_mime_type) {
     if (msg.media_mime_type.toLowerCase() === "application/pdf") return true
   }
   if (msg.media_file_name) {
     if (msg.media_file_name.toLowerCase().endsWith(".pdf")) return true
   }
-  // Fallback: extract from raw_payload (Baileys stores doc metadata here)
-  const docMsg = msg.raw_payload?.message?.documentMessage
-    || msg.raw_payload?.message?.documentWithCaptionMessage?.message?.documentMessage
-  if (docMsg) {
-    if (docMsg.mimetype?.toLowerCase() === "application/pdf") return true
-    const fname = docMsg.fileName || docMsg.title
-    if (fname && fname.toLowerCase().endsWith(".pdf")) return true
-  }
+  // Fallback: check server-side extracted PDF set (from raw_payload JSON fields)
+  if (docPdfSet?.has(msg.id)) return true
   return false
 }
 
@@ -105,10 +99,10 @@ export async function GET(request: Request) {
     allowedChatIds = new Set(individualChats.map((c: any) => c.id))
   }
 
-  // Query messages — include media_file_name for PDF detection
+  // Query messages — WITHOUT raw_payload (too heavy for large datasets)
   let query = supabase
     .from("wa_messages")
-    .select("direction, sent_at, chat_id, message_type, media_mime_type, media_file_name, raw_payload")
+    .select("id, direction, sent_at, chat_id, message_type, media_mime_type, media_file_name")
     .order("sent_at", { ascending: true })
 
   if (deviceIds) {
@@ -123,6 +117,35 @@ export async function GET(request: Request) {
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Unknown error"
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+
+  // Extract ONLY the mimetype/fileName from raw_payload JSON (not the full blob)
+  // This avoids statement timeouts caused by fetching large raw_payload for 1000+ docs
+  // Uses fetchAllRows to paginate past Supabase's max-rows limit (default 1000)
+  let docMsgQuery = supabase
+    .from("wa_messages")
+    .select("id, doc_mime:raw_payload->message->documentMessage->>mimetype, doc_fname:raw_payload->message->documentMessage->>fileName, cap_mime:raw_payload->message->documentWithCaptionMessage->message->documentMessage->>mimetype, cap_fname:raw_payload->message->documentWithCaptionMessage->message->documentMessage->>fileName")
+    .eq("message_type", "document")
+    .order("id", { ascending: true })
+
+  if (deviceIds) {
+    docMsgQuery = docMsgQuery.in("device_id", deviceIds)
+  }
+  if (fromDate) docMsgQuery = docMsgQuery.gte("sent_at", fromDate)
+  if (toDate) docMsgQuery = docMsgQuery.lte("sent_at", toDate)
+
+  // Build lookup set: message IDs confirmed as PDFs via server-side JSON extraction
+  const docPdfSet = new Set<string>()
+  try {
+    const docRows = await fetchAllRows(docMsgQuery)
+    for (const d of docRows) {
+      const mime = d.doc_mime || d.cap_mime
+      const fname = d.doc_fname || d.cap_fname
+      if (mime?.toLowerCase() === "application/pdf") { docPdfSet.add(d.id); continue }
+      if (fname?.toLowerCase().endsWith(".pdf")) { docPdfSet.add(d.id); continue }
+    }
+  } catch {
+    // Non-critical: PDF fallback detection will be incomplete
   }
 
   // Filter messages: exclude groups (unless toggled) and non-real message types
@@ -164,7 +187,7 @@ export async function GET(request: Request) {
     const day = byDate.get(dateStr)!
 
     // Count PDFs for both directions
-    if (m.message_type === "document" && isPdfDocument(m)) {
+    if (m.message_type === "document" && isPdfDocument(m, docPdfSet)) {
       if (m.direction === "outbound") {
         day.pdfs_sent++
       } else if (m.direction === "inbound") {
