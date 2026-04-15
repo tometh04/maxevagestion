@@ -97,6 +97,7 @@ export async function GET(request: Request) {
       .from("wa_chats")
       .select("id")
       .eq("is_group", false)
+      .order("id", { ascending: true })
     if (deviceIds) {
       chatQuery = chatQuery.in("device_id", deviceIds)
     }
@@ -132,7 +133,7 @@ export async function GET(request: Request) {
   })
 
   // Get chats created in range (new contacts only) for "initiated" metric
-  let newChatsQuery = supabase.from("wa_chats").select("id, created_at")
+  let newChatsQuery = supabase.from("wa_chats").select("id, created_at").order("id", { ascending: true })
   if (deviceIds) {
     newChatsQuery = newChatsQuery.in("device_id", deviceIds)
   }

@@ -62,6 +62,7 @@ export async function GET(request: Request) {
       .from("wa_chats")
       .select("id")
       .eq("is_group", false)
+      .order("id", { ascending: true })
     if (deviceIds) {
       chatQuery = chatQuery.in("device_id", deviceIds)
     }
@@ -73,6 +74,7 @@ export async function GET(request: Request) {
   let msgQuery = supabase
     .from("wa_messages")
     .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type, media_file_name, raw_payload")
+    .order("id", { ascending: true })
 
   if (deviceIds) {
     msgQuery = msgQuery.in("device_id", deviceIds)
@@ -138,6 +140,7 @@ export async function GET(request: Request) {
   let newChatsForInitiatedQuery = supabase
     .from("wa_chats")
     .select("id")
+    .order("id", { ascending: true })
   if (deviceIds) {
     newChatsForInitiatedQuery = newChatsForInitiatedQuery.in("device_id", deviceIds)
   }
