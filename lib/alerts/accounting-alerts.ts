@@ -281,7 +281,8 @@ export async function generateMissingInvoiceAlert(
     }
 
     // 2. Para cada operación, verificar si tiene factura autorizada
-    for (const [operationId, info] of operationMap) {
+    // (Array.from es necesario por el target ES5 del tsconfig)
+    for (const [operationId, info] of Array.from(operationMap.entries())) {
       const { data: invoice } = await (supabase
         .from("invoices") as any)
         .select("id")
