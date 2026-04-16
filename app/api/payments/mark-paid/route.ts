@@ -437,6 +437,10 @@ export async function POST(request: Request) {
     }
 
     // Calcular FX automáticamente si hay diferencia de moneda
+    // NOTA: autoCalculateFXForPayment no es transaccional — si falla, el pago
+    // queda registrado pero sin su movimiento FX correlativo. Generamos alerta
+    // visible para revisión manual.
+    // TODO: migrar a RPC atómico (payment + ledger + FX en una sola transacción).
     if (paymentData.operation_id) {
       try {
         await autoCalculateFXForPayment(
@@ -447,11 +451,28 @@ export async function POST(request: Request) {
           paymentData.currency === "USD" ? exchangeRate : null,
           user.id
         )
-        
+
         // Si se generó un FX_LOSS, verificar si debemos generar alerta
         // (la alerta se generará automáticamente en generateAllAlerts)
       } catch (error) {
-        console.error("Error calculando FX:", error)
+        console.error(
+          `⚠️ CRITICAL: Error calculando FX para payment ${paymentId} (op ${paymentData.operation_id}). Pago quedó sin FX correlativo. Revisar manualmente.`,
+          error
+        )
+        // Crear alerta de sistema para revisión manual
+        try {
+          await (supabase.from("alerts") as any).insert({
+            agency_id: agencyId || null,
+            user_id: user.id,
+            operation_id: paymentData.operation_id,
+            type: "SYSTEM",
+            description: `FX no calculado para pago ${paymentId}. Revisar manualmente diferencia de cambio.`,
+            date_due: new Date().toISOString(),
+            status: "PENDING",
+          })
+        } catch (alertError) {
+          console.error("Error generando alerta de FX fallido:", alertError)
+        }
         // No lanzamos error para no romper el flujo
       }
     }
@@ -507,6 +528,19 @@ export async function POST(request: Request) {
         )
 
         if (perceptionRecords.length > 0) {
+          // IDEMPOTENCY GUARD: si ya existen ledger_movements de percepcion
+          // para esta operación (mismo concepto), no crear duplicados.
+          const { data: existingPercMovements } = await (supabase.from("ledger_movements") as any)
+            .select("id, notes")
+            .eq("operation_id", paymentData.operation_id)
+            .ilike("notes", "%Percepción RG%")
+            .limit(1)
+
+          if (existingPercMovements && existingPercMovements.length > 0) {
+            console.log(
+              `[mark-paid] Ledger movements de percepción ya existen para op ${paymentData.operation_id}. Skipping duplicate creation.`
+            )
+          } else {
           // Find the "Percepciones a depositar AFIP" liability account (2.1.04)
           const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
             .select("id")
@@ -580,6 +614,7 @@ export async function POST(request: Request) {
           } else {
             console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada. Ejecutar migración 145.")
           }
+          } // end else (no existing percepciones) - idempotency guard
         }
       } catch (error: unknown) {
         console.error("Error calculando percepciones:", error)

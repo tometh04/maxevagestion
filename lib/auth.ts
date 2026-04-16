@@ -6,7 +6,11 @@ type User = Database['public']['Tables']['users']['Row']
 
 export async function getCurrentUser(): Promise<{ user: User; session: { user: any } }> {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  // Seguridad: si DISABLE_AUTH=true pero NODE_ENV=production, ignoramos la flag.
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+    console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
+  }
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     // Retornar usuario mock para desarrollo (usar IDs reales para evitar errores de UUID)
     const mockUser: User = {
       id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
@@ -53,7 +57,7 @@ export async function getCurrentUser(): Promise<{ user: User; session: { user: a
 
 export async function getUserAgencies(userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> {
   // BYPASS EN DESARROLLO - Retornar array vacío si falla
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     try {
       const supabase = await createServerClient()
       const { data: agencies } = await supabase

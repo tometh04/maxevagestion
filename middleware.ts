@@ -69,7 +69,11 @@ export async function middleware(req: NextRequest) {
   }
 
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  // Seguridad: en producción NUNCA aplicar el bypass aunque DISABLE_AUTH=true.
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+    console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
+  }
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     return NextResponse.next()
   }
 

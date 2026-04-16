@@ -643,6 +643,19 @@ export async function POST(request: Request) {
             )
 
             if (perceptionRecords.length > 0) {
+              // IDEMPOTENCY GUARD: si ya existen ledger_movements de percepcion
+              // para esta operación, no crear duplicados.
+              const { data: existingPercMovements } = await (supabase.from("ledger_movements") as any)
+                .select("id")
+                .eq("operation_id", operation_id)
+                .ilike("notes", "%Percepción RG%")
+                .limit(1)
+
+              if (existingPercMovements && existingPercMovements.length > 0) {
+                console.log(
+                  `[payments POST] Ledger movements de percepción ya existen para op ${operation_id}. Skipping duplicate creation.`
+                )
+              } else {
               const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
                 .select("id")
                 .eq("account_code", "2.1.04")
@@ -711,6 +724,7 @@ export async function POST(request: Request) {
               } else {
                 console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada.")
               }
+              } // end else (no existing percepciones) - idempotency guard
             }
           } catch (percError) {
             console.error("Error calculando percepciones:", percError)
@@ -791,6 +805,66 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("Error generating payment alerts:", error)
         // No lanzamos error para no romper la creación del pago
+      }
+    }
+
+    // ============================================
+    // ALERTA: Operación cobrada sin factura
+    // Se genera al registrar cobro PAID si la operación no tiene factura autorizada
+    // ============================================
+    if (finalStatus === "PAID" && direction === "INCOME" && operation_id) {
+      try {
+        // Resolver agency_id y file_code de la operación (las variables del scope
+        // interno de creación del cash_movement no están accesibles acá).
+        const { data: opForAlert } = await (supabase.from("operations") as any)
+          .select("agency_id, file_code")
+          .eq("id", operation_id)
+          .maybeSingle()
+
+        const alertAgencyId = opForAlert?.agency_id || null
+        const opCode = opForAlert?.file_code || operation_id.slice(0, 8)
+
+        if (!alertAgencyId) {
+          // Sin agency_id no podemos crear la alerta — la operación debería tener una;
+          // logueamos para que el equipo investigue datos huérfanos.
+          console.warn(
+            `[missing-invoice-alert] operation ${operation_id} sin agency_id, skip alert`
+          )
+        } else {
+          const { data: authorizedInvoice } = await (supabase.from("invoices") as any)
+            .select("id")
+            .eq("operation_id", operation_id)
+            .eq("status", "authorized")
+            .limit(1)
+            .maybeSingle()
+
+          if (!authorizedInvoice) {
+            const alertDescription = `Operación ${opCode} cobrada sin factura autorizada`
+
+            // Verificar que no exista alerta PENDING duplicada
+            const { data: existingAlert } = await (supabase.from("alerts") as any)
+              .select("id")
+              .eq("type", "MISSING_INVOICE")
+              .eq("agency_id", alertAgencyId)
+              .like("description", `%${opCode}%`)
+              .eq("status", "PENDING")
+              .maybeSingle()
+
+            if (!existingAlert) {
+              await (supabase.from("alerts") as any).insert({
+                agency_id: alertAgencyId,
+                user_id: user.id,
+                operation_id,
+                type: "MISSING_INVOICE",
+                description: alertDescription,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            }
+          }
+        }
+      } catch (alertError) {
+        console.error("Error generating missing invoice alert:", alertError)
       }
     }
 
@@ -1009,11 +1083,19 @@ export async function DELETE(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const paymentId = searchParams.get("paymentId")
 
     if (!paymentId) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
+    }
+
+    // Validación de permisos por rol:
+    // - VIEWER: no puede eliminar pagos
+    // - SELLER: solo puede eliminar pagos de operaciones donde él es seller_id
+    // - ADMIN, SUPER_ADMIN, CONTABLE: pueden eliminar cualquier pago
+    if (user.role === "VIEWER") {
+      return NextResponse.json({ error: "No tienes permisos para eliminar pagos" }, { status: 403 })
     }
 
     // 1. Obtener el pago con su ledger_movement_id
@@ -1025,6 +1107,32 @@ export async function DELETE(request: Request) {
     if (fetchError || !payment) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
+
+    // SELLER: verificar que la operación asociada le pertenece
+    if (user.role === "SELLER") {
+      if (!payment.operation_id) {
+        return NextResponse.json(
+          { error: "No tienes permisos para eliminar este pago" },
+          { status: 403 }
+        )
+      }
+      const { data: operation, error: opError } = await (supabase.from("operations") as any)
+        .select("id, seller_id")
+        .eq("id", payment.operation_id)
+        .single()
+
+      if (opError || !operation || operation.seller_id !== user.id) {
+        return NextResponse.json(
+          { error: "No tienes permisos para eliminar pagos de esta operación" },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Log de auditoría (pendiente: persistir en tabla de audit_logs)
+    console.warn(
+      `[AUDIT] Payment deletion: user=${user.id} (${user.email}, role=${user.role}) deleted payment=${payment.id} amount=${payment.amount} ${payment.currency} operation_id=${payment.operation_id}`
+    )
 
     if (payment.source === "OPERATOR_BULK") {
       return NextResponse.json(

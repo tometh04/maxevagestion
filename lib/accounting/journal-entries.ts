@@ -171,77 +171,113 @@ export async function createJournalEntry(
   }
 
   // 2. Crear los ledger_movements para cada línea
-  const { createLedgerMovement, invalidateBalanceCache } = await import("./ledger")
+  // ATOMICIDAD: Supabase JS client no soporta transacciones nativas. Si alguna
+  // línea falla, hacemos rollback manual borrando los movements creados + el
+  // journal_entry para no dejar asientos desbalanceados.
+  // TODO: migrar a RPC SQL create_journal_entry_atomic() para atomicidad real.
+  const { createLedgerMovement } = await import("./ledger")
   const movementIds: string[] = []
 
-  for (const line of lines) {
-    const isDebit = (line.debit_amount || 0) > 0
-    const amount = isDebit ? line.debit_amount! : line.credit_amount!
+  try {
+    for (const line of lines) {
+      const isDebit = (line.debit_amount || 0) > 0
+      const amount = isDebit ? line.debit_amount! : line.credit_amount!
 
-    // Determinar tipo legacy basado en la línea
-    // Si no se especifica, inferir del debit/credit
-    const legacyType = line.legacy_type || (isDebit ? "EXPENSE" : "INCOME")
-    const legacyMethod = line.legacy_method || "OTHER"
+      // Determinar tipo legacy basado en la línea
+      // Si no se especifica, inferir del debit/credit
+      const legacyType = line.legacy_type || (isDebit ? "EXPENSE" : "INCOME")
+      const legacyMethod = line.legacy_method || "OTHER"
 
-    // Calcular ARS equivalent
-    const amountARS = currency === "USD" && exchange_rate
-      ? amount * exchange_rate
-      : amount
+      // Calcular ARS equivalent
+      const amountARS = currency === "USD" && exchange_rate
+        ? amount * exchange_rate
+        : amount
 
-    // account_id: usar financial_account_id si existe, sino buscar por chart_account_id
-    let accountId = line.financial_account_id
-    if (!accountId && line.chart_account_id) {
-      // Buscar financial_account vinculado a esta chart_account
-      const { data: fa } = await (adminClient.from("financial_accounts") as any)
-        .select("id")
-        .eq("chart_account_id", line.chart_account_id)
-        .eq("is_active", true)
-        .limit(1)
-        .maybeSingle()
-      accountId = fa?.id || null
+      // account_id: usar financial_account_id si existe, sino buscar por chart_account_id
+      let accountId = line.financial_account_id
+      if (!accountId && line.chart_account_id) {
+        // Buscar financial_account vinculado a esta chart_account
+        const { data: fa } = await (adminClient.from("financial_accounts") as any)
+          .select("id")
+          .eq("chart_account_id", line.chart_account_id)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle()
+        accountId = fa?.id || null
+      }
+
+      if (!accountId) {
+        throw new Error(
+          `No se encontró cuenta financiera para chart_account_id: ${line.chart_account_id}. ` +
+          `Asegúrate de que la cuenta contable tenga una cuenta financiera vinculada.`
+        )
+      }
+
+      const { id: movId } = await createLedgerMovement(
+        {
+          operation_id: line.operation_id || operation_id || null,
+          lead_id: null,
+          type: legacyType,
+          concept: line.concept || description,
+          currency,
+          amount_original: amount,
+          exchange_rate: exchange_rate || null,
+          amount_ars_equivalent: amountARS,
+          method: legacyMethod,
+          account_id: accountId,
+          seller_id: line.seller_id || null,
+          operator_id: line.operator_id || null,
+          receipt_number: line.receipt_number || null,
+          notes: line.notes || null,
+          created_by: created_by || null,
+          movement_date: entry_date,
+        },
+        supabase
+      )
+
+      // Actualizar el movimiento con los campos de partida doble
+      // (createLedgerMovement no conoce estos campos aún)
+      const { error: updateError } = await (adminClient.from("ledger_movements") as any)
+        .update({
+          journal_entry_id: journalEntry.id,
+          debit_amount: isDebit ? amount : null,
+          credit_amount: isDebit ? null : amount,
+          chart_account_id: line.chart_account_id || null,
+        })
+        .eq("id", movId)
+
+      if (updateError) {
+        throw new Error(`Error actualizando partida doble en movement ${movId}: ${updateError.message}`)
+      }
+
+      movementIds.push(movId)
     }
-
-    if (!accountId) {
-      throw new Error(
-        `No se encontró cuenta financiera para chart_account_id: ${line.chart_account_id}. ` +
-        `Asegúrate de que la cuenta contable tenga una cuenta financiera vinculada.`
+  } catch (loopError) {
+    // ROLLBACK MANUAL: borrar movements parcialmente creados + journal_entry
+    console.error(
+      `[createJournalEntry] Error durante loop de líneas. Rolling back journal_entry ${journalEntry.id} y ${movementIds.length} movements.`,
+      loopError
+    )
+    try {
+      if (movementIds.length > 0) {
+        await (adminClient.from("ledger_movements") as any)
+          .delete()
+          .in("id", movementIds)
+      }
+      // También borrar cualquier movement residual por journal_entry_id (defensa extra)
+      await (adminClient.from("ledger_movements") as any)
+        .delete()
+        .eq("journal_entry_id", journalEntry.id)
+      await (adminClient.from("journal_entries") as any)
+        .delete()
+        .eq("id", journalEntry.id)
+    } catch (rollbackError) {
+      console.error(
+        `[createJournalEntry] ROLLBACK FAILED para journal_entry ${journalEntry.id}. Data inconsistente - revisar manualmente.`,
+        rollbackError
       )
     }
-
-    const { id: movId } = await createLedgerMovement(
-      {
-        operation_id: line.operation_id || operation_id || null,
-        lead_id: null,
-        type: legacyType,
-        concept: line.concept || description,
-        currency,
-        amount_original: amount,
-        exchange_rate: exchange_rate || null,
-        amount_ars_equivalent: amountARS,
-        method: legacyMethod,
-        account_id: accountId,
-        seller_id: line.seller_id || null,
-        operator_id: line.operator_id || null,
-        receipt_number: line.receipt_number || null,
-        notes: line.notes || null,
-        created_by: created_by || null,
-        movement_date: entry_date,
-      },
-      supabase
-    )
-
-    // Actualizar el movimiento con los campos de partida doble
-    // (createLedgerMovement no conoce estos campos aún)
-    await (adminClient.from("ledger_movements") as any)
-      .update({
-        journal_entry_id: journalEntry.id,
-        debit_amount: isDebit ? amount : null,
-        credit_amount: isDebit ? null : amount,
-        chart_account_id: line.chart_account_id || null,
-      })
-      .eq("id", movId)
-
-    movementIds.push(movId)
+    throw loopError instanceof Error ? loopError : new Error(String(loopError))
   }
 
   return {

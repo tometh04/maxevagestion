@@ -342,6 +342,28 @@ export async function createPaymentCounterpartMovement(
     return null
   }
 
+  // IDEMPOTENCY GUARD: evitar contramovimiento duplicado si esta función es
+  // invocada dos veces para el mismo pago (ej: POST con status=PAID + llamada
+  // posterior a mark-paid, o retries). Buscamos por marker en notes.
+  const existingMarker = buildPaymentCounterpartMarker(params.paymentId)
+  if (existingMarker) {
+    const { data: existingCounterpart } = await (supabase.from("ledger_movements") as any)
+      .select("id, account_id")
+      .eq("operation_id", params.operationId)
+      .eq("account_id", accountId)
+      .eq("type", "INCOME")
+      .ilike("notes", `%${existingMarker}%`)
+      .limit(1)
+      .maybeSingle()
+
+    if (existingCounterpart?.id) {
+      console.log(
+        `[payment-counterparts] Counterpart ya existe para payment ${params.paymentId} (ledger_movement ${existingCounterpart.id}). Skipping duplicate.`
+      )
+      return { id: existingCounterpart.id, accountId: existingCounterpart.account_id }
+    }
+  }
+
   let exchangeRate = normalizePositiveNumber(params.exchangeRate)
   if (currency === "USD" && !exchangeRate) {
     const { getExchangeRateWithFallback } = await import("./exchange-rates")

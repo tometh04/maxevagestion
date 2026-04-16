@@ -278,6 +278,23 @@ export async function autoCreateWithholdings(
   supabase: SupabaseClient,
   params: AutoCreateWithholdingsParams
 ): Promise<any[]> {
+  // IDEMPOTENCY GUARD: si ya existen retenciones/percepciones para este
+  // (source_type, source_id), no crear duplicados. Protege contra retries,
+  // doble-click en mark-paid, o race conditions.
+  if (params.source_type && params.source_id) {
+    const { data: existing, error: existingError } = await (supabase.from("tax_withholdings") as any)
+      .select("id, type, amount, rate_applied")
+      .eq("source_type", params.source_type)
+      .eq("source_id", params.source_id)
+
+    if (!existingError && existing && existing.length > 0) {
+      console.log(
+        `[withholding-rules] Withholdings ya creadas para source ${params.source_type}/${params.source_id} (${existing.length} registros). Skipping duplicate creation.`
+      )
+      return existing
+    }
+  }
+
   // 1. Load rules
   const rules = await loadWithholdingRules(supabase, params.agency_id)
 
