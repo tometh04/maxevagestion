@@ -114,13 +114,18 @@ export async function GET(request: Request) {
       .eq("direction", "SUFFERED")
       .eq("tax_period", taxPeriod)
 
-    const totalPercepcionesIva = (percepciones || []).reduce((s: number, p: any) => s + Number(p.amount), 0)
+    // Separate percepciones by currency
+    const percepcionesARS = (percepciones || []).filter((p: any) => p.currency !== "USD").reduce((s: number, p: any) => s + Number(p.amount), 0)
+    const percepcionesUSD = (percepciones || []).filter((p: any) => p.currency === "USD").reduce((s: number, p: any) => s + Number(p.amount), 0)
 
-    // Adjust IVA position with percepciones
+    // Adjust IVA position with percepciones per currency
     const adjustedSummary = {
       ...ivaSummary,
-      percepciones_iva: totalPercepcionesIva,
-      iva_to_pay_adjusted: (ivaSummary.iva_to_pay || 0) - totalPercepcionesIva,
+      percepciones_iva: { ars: percepcionesARS, usd: percepcionesUSD },
+      iva_to_pay_adjusted: {
+        ars: ivaSummary.ars.iva_to_pay - percepcionesARS,
+        usd: ivaSummary.usd.iva_to_pay - percepcionesUSD,
+      },
     }
 
     return NextResponse.json({

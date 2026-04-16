@@ -41,9 +41,28 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<{
     summary: {
-      total_sales_iva: number
-      total_purchases_iva: number
-      iva_to_pay: number
+      ars: {
+        total_sales_iva: number
+        total_purchases_iva: number
+        iva_to_pay: number
+        debito_fiscal: number
+        credito_fiscal: number
+        count_sales: number
+        count_purchases: number
+      }
+      usd: {
+        total_sales_iva: number
+        total_purchases_iva: number
+        iva_to_pay: number
+        debito_fiscal: number
+        credito_fiscal: number
+        count_sales: number
+        count_purchases: number
+      }
+      exempt_count: number
+      exempt_base: number
+      percepciones_iva: { ars: number; usd: number }
+      iva_to_pay_adjusted: { ars: number; usd: number }
     }
     sales: any[]
     purchases: any[]
@@ -152,32 +171,71 @@ export function IVAPageClient({ agencies }: IVAPageClientProps) {
         </Select>
       </div>
 
-      {/* Summary - KPI cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">IVA Ventas</p>
-          <div className="text-2xl font-semibold tabular-nums tracking-tight text-warning mt-1">
-            {formatCurrency(data.summary.total_sales_iva)}
+      {/* Summary - KPI cards ARS */}
+      <div>
+        <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Pesos (ARS)</p>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Débito Fiscal (Ventas)</p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-warning mt-1">
+              {formatCurrency(data.summary.ars.total_sales_iva)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{data.summary.ars.count_sales} operaciones</p>
           </div>
-        </div>
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">IVA Compras</p>
-          <div className="text-2xl font-semibold tabular-nums tracking-tight text-info mt-1">
-            {formatCurrency(data.summary.total_purchases_iva)}
+          <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Crédito Fiscal (Compras)</p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-info mt-1">
+              {formatCurrency(data.summary.ars.total_purchases_iva)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">{data.summary.ars.count_purchases} compras</p>
           </div>
-        </div>
-        <div className="rounded-xl border border-border/40 p-5">
-          <p className="text-xs font-medium text-muted-foreground">IVA a Pagar</p>
-          <div className="mt-1">
-            <Badge
-              variant={data.summary.iva_to_pay >= 0 ? "destructive" : "default"}
-              className="text-lg"
-            >
-              {formatCurrency(data.summary.iva_to_pay)}
-            </Badge>
+          <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">IVA a Pagar</p>
+            <div className="mt-1">
+              <Badge
+                variant={data.summary.ars.iva_to_pay >= 0 ? "destructive" : "default"}
+                className="text-lg"
+              >
+                {formatCurrency(data.summary.ars.iva_to_pay)}
+              </Badge>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Summary - KPI cards USD (only if there are USD operations) */}
+      {(data.summary.usd.count_sales > 0 || data.summary.usd.count_purchases > 0) && (
+        <div>
+          <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wider">Dólares (USD)</p>
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-border/40 p-5">
+              <p className="text-xs font-medium text-muted-foreground">Débito Fiscal (Ventas)</p>
+              <div className="text-2xl font-semibold tabular-nums tracking-tight text-warning mt-1">
+                {formatCurrency(data.summary.usd.total_sales_iva, "USD")}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{data.summary.usd.count_sales} operaciones</p>
+            </div>
+            <div className="rounded-xl border border-border/40 p-5">
+              <p className="text-xs font-medium text-muted-foreground">Crédito Fiscal (Compras)</p>
+              <div className="text-2xl font-semibold tabular-nums tracking-tight text-info mt-1">
+                {formatCurrency(data.summary.usd.total_purchases_iva, "USD")}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{data.summary.usd.count_purchases} compras</p>
+            </div>
+            <div className="rounded-xl border border-border/40 p-5">
+              <p className="text-xs font-medium text-muted-foreground">IVA a Pagar</p>
+              <div className="mt-1">
+                <Badge
+                  variant={data.summary.usd.iva_to_pay >= 0 ? "destructive" : "default"}
+                  className="text-lg"
+                >
+                  {formatCurrency(data.summary.usd.iva_to_pay, "USD")}
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sales IVA Table */}
       <div className="rounded-xl border border-border/40">

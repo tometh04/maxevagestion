@@ -32,7 +32,9 @@ export async function generateIVAAlert(
   try {
     const ivaStatus = await getMonthlyIVAToPay(supabase, year, month)
 
-    if (ivaStatus.iva_to_pay > threshold) {
+    const ivaToPay = ivaStatus.ars.iva_to_pay + ivaStatus.usd.iva_to_pay
+
+    if (ivaToPay > threshold) {
       // Verificar si ya existe una alerta de IVA para este mes
       const { data: existing } = await (supabase.from("alerts") as any)
         .select("id")
@@ -42,14 +44,19 @@ export async function generateIVAAlert(
         .maybeSingle()
 
       if (!existing) {
+        const parts: string[] = []
+        if (ivaStatus.ars.iva_to_pay > 0) {
+          parts.push(ivaStatus.ars.iva_to_pay.toLocaleString("es-AR", { style: "currency", currency: "ARS" }))
+        }
+        if (ivaStatus.usd.iva_to_pay > 0) {
+          parts.push(ivaStatus.usd.iva_to_pay.toLocaleString("es-AR", { style: "currency", currency: "USD" }))
+        }
+
         await (supabase.from("alerts") as any).insert({
           agency_id: agencyId,
           user_id: userId,
           type: "IVA_PENDING",
-          description: `IVA pendiente de pago: ${ivaStatus.iva_to_pay.toLocaleString("es-AR", {
-            style: "currency",
-            currency: "ARS",
-          })} (Mes: ${month}/${year})`,
+          description: `IVA pendiente de pago: ${parts.join(" + ")} (Mes: ${month}/${year})`,
           date_due: new Date(year, month, 10).toISOString(), // Vence el día 10 del mes siguiente
           status: "PENDING",
         })

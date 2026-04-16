@@ -33,16 +33,21 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Calculate totals by type
+    // Calculate totals by type AND currency
     const items = withholdings || []
+    const sumByCurrency = (filtered: any[]) => ({
+      ars: Math.round(filtered.filter((w: any) => w.currency !== "USD").reduce((s: number, w: any) => s + Number(w.amount), 0) * 100) / 100,
+      usd: Math.round(filtered.filter((w: any) => w.currency === "USD").reduce((s: number, w: any) => s + Number(w.amount), 0) * 100) / 100,
+    })
+
     const totals = {
-      percepcion_iva: items.filter((w: any) => w.type === "PERCEPCION_IVA").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      percepcion_iibb: items.filter((w: any) => w.type === "PERCEPCION_IIBB").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      retencion_ganancias: items.filter((w: any) => w.type === "RETENCION_GANANCIAS").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      retencion_iva: items.filter((w: any) => w.type === "RETENCION_IVA").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      retencion_iibb: items.filter((w: any) => w.type === "RETENCION_IIBB").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      total_a_favor: items.filter((w: any) => w.direction === "SUFFERED").reduce((s: number, w: any) => s + Number(w.amount), 0),
-      total_practicadas: items.filter((w: any) => w.direction === "PRACTICED").reduce((s: number, w: any) => s + Number(w.amount), 0),
+      percepcion_iva: sumByCurrency(items.filter((w: any) => w.type === "PERCEPCION_IVA")),
+      percepcion_iibb: sumByCurrency(items.filter((w: any) => w.type === "PERCEPCION_IIBB")),
+      retencion_ganancias: sumByCurrency(items.filter((w: any) => w.type === "RETENCION_GANANCIAS")),
+      retencion_iva: sumByCurrency(items.filter((w: any) => w.type === "RETENCION_IVA")),
+      retencion_iibb: sumByCurrency(items.filter((w: any) => w.type === "RETENCION_IIBB")),
+      total_a_favor: sumByCurrency(items.filter((w: any) => w.direction === "SUFFERED")),
+      total_practicadas: sumByCurrency(items.filter((w: any) => w.direction === "PRACTICED")),
     }
 
     return NextResponse.json({ withholdings: items, totals })

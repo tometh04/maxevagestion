@@ -33,14 +33,19 @@ interface Withholding {
   operators?: { id: string; name: string } | null
 }
 
+interface CurrencyAmount {
+  ars: number
+  usd: number
+}
+
 interface Totals {
-  percepcion_iva: number
-  percepcion_iibb: number
-  retencion_ganancias: number
-  retencion_iva: number
-  retencion_iibb: number
-  total_a_favor: number
-  total_practicadas: number
+  percepcion_iva: CurrencyAmount
+  percepcion_iibb: CurrencyAmount
+  retencion_ganancias: CurrencyAmount
+  retencion_iva: CurrencyAmount
+  retencion_iibb: CurrencyAmount
+  total_a_favor: CurrencyAmount
+  total_practicadas: CurrencyAmount
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -154,8 +159,20 @@ export default function WithholdingsPage() {
     }
   }
 
-  const formatMoney = (amount: number) =>
-    `$ ${Number(amount).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const formatMoney = (amount: number, currency: string = "ARS") =>
+    new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: currency === "USD" ? "USD" : "ARS",
+      minimumFractionDigits: 2,
+    }).format(amount)
+
+  const formatCurrencyAmount = (ca: CurrencyAmount) => {
+    const parts: string[] = []
+    if (ca.ars) parts.push(formatMoney(ca.ars, "ARS"))
+    if (ca.usd) parts.push(formatMoney(ca.usd, "USD"))
+    if (parts.length === 0) return formatMoney(0)
+    return parts.join(" + ")
+  }
 
   const periodLabel = period
     ? new Date(period + "-01").toLocaleDateString("es-AR", { month: "long", year: "numeric" })
@@ -218,7 +235,10 @@ export default function WithholdingsPage() {
                 <TrendingUp className="h-4 w-4 text-green-600" />
                 <span className="text-xs text-muted-foreground">Total a Favor (sufridas)</span>
               </div>
-              <p className="text-2xl font-bold text-green-600">{formatMoney(totals.total_a_favor)}</p>
+              <p className="text-xl font-bold text-green-600">{formatMoney(totals.total_a_favor.ars)}</p>
+              {totals.total_a_favor.usd > 0 && (
+                <p className="text-sm font-medium text-green-600/80 mt-0.5">{formatMoney(totals.total_a_favor.usd, "USD")}</p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -227,7 +247,10 @@ export default function WithholdingsPage() {
                 <ShieldCheck className="h-4 w-4 text-blue-600" />
                 <span className="text-xs text-muted-foreground">Percepción IVA</span>
               </div>
-              <p className="text-2xl font-bold">{formatMoney(totals.percepcion_iva)}</p>
+              <p className="text-xl font-bold">{formatMoney(totals.percepcion_iva.ars)}</p>
+              {totals.percepcion_iva.usd > 0 && (
+                <p className="text-sm font-medium text-muted-foreground mt-0.5">{formatMoney(totals.percepcion_iva.usd, "USD")}</p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -236,7 +259,10 @@ export default function WithholdingsPage() {
                 <Receipt className="h-4 w-4 text-purple-600" />
                 <span className="text-xs text-muted-foreground">Percepción IIBB</span>
               </div>
-              <p className="text-2xl font-bold">{formatMoney(totals.percepcion_iibb)}</p>
+              <p className="text-xl font-bold">{formatMoney(totals.percepcion_iibb.ars)}</p>
+              {totals.percepcion_iibb.usd > 0 && (
+                <p className="text-sm font-medium text-muted-foreground mt-0.5">{formatMoney(totals.percepcion_iibb.usd, "USD")}</p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -245,7 +271,10 @@ export default function WithholdingsPage() {
                 <TrendingDown className="h-4 w-4 text-orange-600" />
                 <span className="text-xs text-muted-foreground">Retenciones Practicadas</span>
               </div>
-              <p className="text-2xl font-bold">{formatMoney(totals.total_practicadas)}</p>
+              <p className="text-xl font-bold">{formatMoney(totals.total_practicadas.ars)}</p>
+              {totals.total_practicadas.usd > 0 && (
+                <p className="text-sm font-medium text-muted-foreground mt-0.5">{formatMoney(totals.total_practicadas.usd, "USD")}</p>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -308,7 +337,7 @@ export default function WithholdingsPage() {
                     </TableCell>
                     <TableCell className="text-right font-medium text-sm">
                       <span className={w.direction === "SUFFERED" ? "text-green-600" : "text-orange-600"}>
-                        {formatMoney(w.amount)}
+                        {formatMoney(w.amount, w.currency)}
                       </span>
                     </TableCell>
                     <TableCell>

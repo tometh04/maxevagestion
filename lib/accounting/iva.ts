@@ -314,18 +314,23 @@ export async function deletePurchaseIVA(
  * Crédito Fiscal: IVA sobre compras (facturas de operadores)
  * Percepciones: IVA percibido por bancos/terceros (a favor)
  */
-export async function getMonthlyIVAToPay(
-  supabase: SupabaseClient<Database>,
-  year: number,
-  month: number
-): Promise<{
+interface CurrencyIVASummary {
   total_sales_iva: number
   total_purchases_iva: number
   iva_to_pay: number
   debito_fiscal: number
   credito_fiscal: number
-  debito_by_rate: Record<string, { rate: number; base: number; iva: number; count: number }>
-  credito_by_rate: Record<string, { rate: number; base: number; iva: number; count: number }>
+  count_sales: number
+  count_purchases: number
+}
+
+export async function getMonthlyIVAToPay(
+  supabase: SupabaseClient<Database>,
+  year: number,
+  month: number
+): Promise<{
+  ars: CurrencyIVASummary
+  usd: CurrencyIVASummary
   exempt_count: number
   exempt_base: number
 }> {
@@ -333,9 +338,9 @@ export async function getMonthlyIVAToPay(
   const lastDay = new Date(year, month, 0).getDate()
   const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
-  // Obtener ventas con detalle de alícuota
+  // Obtener ventas con detalle de alícuota y moneda
   const { data: salesIVA, error: salesError } = await (supabase.from("iva_sales") as any)
-    .select("iva_amount, net_amount, sale_amount_total, iva_rate, service_type, is_exempt")
+    .select("iva_amount, net_amount, sale_amount_total, iva_rate, service_type, is_exempt, currency")
     .gte("sale_date", startDate)
     .lte("sale_date", endDate)
 
@@ -343,16 +348,16 @@ export async function getMonthlyIVAToPay(
     throw new Error(`Error obteniendo IVA de ventas: ${salesError.message}`)
   }
 
-  // Agrupar débito fiscal por alícuota
-  const debitoByRate: Record<string, { rate: number; base: number; iva: number; count: number }> = {}
   let exemptCount = 0
   let exemptBase = 0
+  let salesIvaARS = 0, salesIvaUSD = 0
+  let salesCountARS = 0, salesCountUSD = 0
 
   for (const record of (salesIVA || [])) {
-    const rate = parseFloat(record.iva_rate || "0.21")
     const iva = parseFloat(record.iva_amount || "0")
-    const base = parseFloat(record.net_amount || "0")
     const isExempt = record.is_exempt === true
+    const rate = parseFloat(record.iva_rate || "0.21")
+    const isUSD = record.currency === "USD"
 
     if (isExempt || rate === 0) {
       exemptCount++
@@ -360,22 +365,13 @@ export async function getMonthlyIVAToPay(
       continue
     }
 
-    const rateKey = `${(rate * 100).toFixed(1)}%`
-    if (!debitoByRate[rateKey]) {
-      debitoByRate[rateKey] = { rate, base: 0, iva: 0, count: 0 }
-    }
-    debitoByRate[rateKey].base += base
-    debitoByRate[rateKey].iva += iva
-    debitoByRate[rateKey].count++
+    if (isUSD) { salesIvaUSD += iva; salesCountUSD++ }
+    else { salesIvaARS += iva; salesCountARS++ }
   }
 
-  const total_sales_iva = (salesIVA || []).reduce(
-    (sum: number, r: any) => sum + parseFloat(r.iva_amount || "0"), 0
-  )
-
-  // Obtener compras con detalle de alícuota
+  // Obtener compras con detalle de alícuota y moneda
   const { data: purchasesIVA, error: purchasesError } = await (supabase.from("iva_purchases") as any)
-    .select("iva_amount, net_amount, operator_cost_total, iva_rate")
+    .select("iva_amount, net_amount, operator_cost_total, iva_rate, currency")
     .gte("purchase_date", startDate)
     .lte("purchase_date", endDate)
 
@@ -383,43 +379,43 @@ export async function getMonthlyIVAToPay(
     throw new Error(`Error obteniendo IVA de compras: ${purchasesError.message}`)
   }
 
-  // Agrupar crédito fiscal por alícuota
-  const creditoByRate: Record<string, { rate: number; base: number; iva: number; count: number }> = {}
+  let purchasesIvaARS = 0, purchasesIvaUSD = 0
+  let purchasesCountARS = 0, purchasesCountUSD = 0
 
   for (const record of (purchasesIVA || [])) {
-    const rate = parseFloat(record.iva_rate || "0.21")
     const iva = parseFloat(record.iva_amount || "0")
-    const base = parseFloat(record.net_amount || "0")
+    const rate = parseFloat(record.iva_rate || "0.21")
+    const isUSD = record.currency === "USD"
 
     if (rate === 0) continue
 
-    const rateKey = `${(rate * 100).toFixed(1)}%`
-    if (!creditoByRate[rateKey]) {
-      creditoByRate[rateKey] = { rate, base: 0, iva: 0, count: 0 }
-    }
-    creditoByRate[rateKey].base += base
-    creditoByRate[rateKey].iva += iva
-    creditoByRate[rateKey].count++
+    if (isUSD) { purchasesIvaUSD += iva; purchasesCountUSD++ }
+    else { purchasesIvaARS += iva; purchasesCountARS++ }
   }
 
-  const total_purchases_iva = (purchasesIVA || []).reduce(
-    (sum: number, r: any) => sum + parseFloat(r.iva_amount || "0"), 0
-  )
-
-  const debito_fiscal = total_sales_iva
-  const credito_fiscal = total_purchases_iva
-  const iva_to_pay = debito_fiscal - credito_fiscal
+  const r = (n: number) => Math.round(n * 100) / 100
 
   return {
-    total_sales_iva: Math.round(total_sales_iva * 100) / 100,
-    total_purchases_iva: Math.round(total_purchases_iva * 100) / 100,
-    iva_to_pay: Math.round(iva_to_pay * 100) / 100,
-    debito_fiscal: Math.round(debito_fiscal * 100) / 100,
-    credito_fiscal: Math.round(credito_fiscal * 100) / 100,
-    debito_by_rate: debitoByRate,
-    credito_by_rate: creditoByRate,
+    ars: {
+      total_sales_iva: r(salesIvaARS),
+      total_purchases_iva: r(purchasesIvaARS),
+      iva_to_pay: r(salesIvaARS - purchasesIvaARS),
+      debito_fiscal: r(salesIvaARS),
+      credito_fiscal: r(purchasesIvaARS),
+      count_sales: salesCountARS,
+      count_purchases: purchasesCountARS,
+    },
+    usd: {
+      total_sales_iva: r(salesIvaUSD),
+      total_purchases_iva: r(purchasesIvaUSD),
+      iva_to_pay: r(salesIvaUSD - purchasesIvaUSD),
+      debito_fiscal: r(salesIvaUSD),
+      credito_fiscal: r(purchasesIvaUSD),
+      count_sales: salesCountUSD,
+      count_purchases: purchasesCountUSD,
+    },
     exempt_count: exemptCount,
-    exempt_base: Math.round(exemptBase * 100) / 100,
+    exempt_base: r(exemptBase),
   }
 }
 
