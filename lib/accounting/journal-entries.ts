@@ -439,6 +439,18 @@ export async function annotatePaymentAsJournalEntry(
       .eq("account_code", resultadoCode)
       .maybeSingle()
 
+    // Leer el monto original del movimiento principal para usar como Debe/Haber
+    // IMPORTANTE: Usar amount_original (moneda original), NO amount_ars_equivalent
+    // para que el asiento refleje el monto en la moneda correcta
+    const { data: mainMovement } = await (adminClient.from("ledger_movements") as any)
+      .select("amount_original")
+      .eq("id", params.mainMovementId)
+      .single()
+
+    const entryAmount = mainMovement
+      ? parseFloat(mainMovement.amount_original || params.amount)
+      : params.amount
+
     // Crear el journal_entry
     const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
       .insert({
@@ -447,7 +459,7 @@ export async function annotatePaymentAsJournalEntry(
         operation_id: params.operation_id || null,
         source: "AUTO_PAYMENT",
         is_balanced: true,
-        total_amount: params.amount,
+        total_amount: entryAmount,
         currency: params.currency,
         created_by: params.created_by || null,
       })
@@ -467,7 +479,7 @@ export async function annotatePaymentAsJournalEntry(
       await (adminClient.from("ledger_movements") as any)
         .update({
           journal_entry_id: journalEntry.id,
-          debit_amount: params.amount,
+          debit_amount: entryAmount,
           credit_amount: null,
           chart_account_id: financialChartAccountId,
         })
@@ -479,7 +491,7 @@ export async function annotatePaymentAsJournalEntry(
           .update({
             journal_entry_id: journalEntry.id,
             debit_amount: null,
-            credit_amount: params.amount,
+            credit_amount: entryAmount,
             chart_account_id: counterpartChartAccountId,
           })
           .eq("id", params.counterpartMovementId)
@@ -490,7 +502,7 @@ export async function annotatePaymentAsJournalEntry(
         .update({
           journal_entry_id: journalEntry.id,
           debit_amount: null,
-          credit_amount: params.amount,
+          credit_amount: entryAmount,
           chart_account_id: financialChartAccountId,
         })
         .eq("id", params.mainMovementId)
@@ -500,7 +512,7 @@ export async function annotatePaymentAsJournalEntry(
         await (adminClient.from("ledger_movements") as any)
           .update({
             journal_entry_id: journalEntry.id,
-            debit_amount: params.amount,
+            debit_amount: entryAmount,
             credit_amount: null,
             chart_account_id: counterpartChartAccountId,
           })
