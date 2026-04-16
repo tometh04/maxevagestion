@@ -100,10 +100,18 @@ export async function getLatestExchangeRate(
  */
 /**
  * Default fallback exchange rate USD→ARS when no rate is available in the database.
- * Used across API routes as a last-resort value. Update this single constant
- * instead of hunting down hardcoded values scattered across the codebase.
+ * Used across API routes as a last-resort value.
+ *
+ * Prioridad:
+ *   1. `USD_ARS_EMERGENCY_RATE` env var (preferido — permite ajustar sin deploy)
+ *   2. Constante hardcodeada (último recurso, aprox. mercado 2026)
+ *
+ * IMPORTANTE: si termina usándose el fallback, se loguea un 🚨 con alta visibilidad.
+ * Esto indica que falta cargar tasas en la tabla `exchange_rates`.
  */
-export const DEFAULT_USD_ARS_FALLBACK_RATE = 1200
+const parsedEnvRate = Number(process.env.USD_ARS_EMERGENCY_RATE)
+export const DEFAULT_USD_ARS_FALLBACK_RATE =
+  Number.isFinite(parsedEnvRate) && parsedEnvRate > 0 ? parsedEnvRate : 1500
 
 const FALLBACK_RATE = DEFAULT_USD_ARS_FALLBACK_RATE
 let _lastFallbackWarning = 0

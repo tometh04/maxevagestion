@@ -240,12 +240,12 @@ export async function POST(
         if (existingCustomer) customerId = existingCustomer.id
       }
 
-      // Si encontramos cliente, vincularlo a la operación
+      // Si encontramos cliente, vincularlo a la operación como pasajero principal
       if (customerId) {
         await supabase.from("operation_customers").insert({
           operation_id: operation.id,
           customer_id: customerId,
-          is_primary: true,
+          role: "MAIN",
         })
       }
     }

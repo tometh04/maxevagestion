@@ -76,7 +76,10 @@ export function buildOperatorPaymentUpdate(
 ) {
   const currentPaid = toMoney(operatorPayment.paid_amount)
   const totalAmount = toMoney(operatorPayment.amount)
-  const nextPaidAmount = roundMoney(Math.max(0, currentPaid + paymentDelta))
+  // Tope en [0, totalAmount]: evita que un pago cree sobrepago (paid_amount > amount)
+  // o saldo negativo (paid_amount < 0 por reverso mayor al pagado).
+  const rawNextPaid = currentPaid + paymentDelta
+  const nextPaidAmount = roundMoney(Math.min(totalAmount, Math.max(0, rawNextPaid)))
   const fullyPaid = nextPaidAmount + MONEY_EPSILON >= totalAmount
 
   return {
