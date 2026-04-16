@@ -93,6 +93,7 @@ const typeLabels: Record<string, string> = {
   DESTINATION_REQUIREMENT: "Requisito",
   BIRTHDAY: "Cumpleanos",
   TASK_REMINDER: "Tarea",
+  MISSING_INVOICE: "Sin Factura",
 }
 
 const statusLabels: Record<string, string> = {

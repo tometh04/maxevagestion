@@ -65,6 +65,7 @@ const typeLabels: Record<string, string> = {
   MISSING_DOCUMENTS: "Documentos faltantes",
   NEW_OPERATION: "Nueva operación",
   COMMISSION_GENERATED: "Comisión generada",
+  MISSING_INVOICE: "Sin factura",
   GENERAL: "General",
 }
 
@@ -200,6 +201,7 @@ export function NotificationsPageClient({
               <SelectItem value="PAYMENT_OVERDUE">Pagos vencidos</SelectItem>
               <SelectItem value="UPCOMING_TRIP">Viajes próximos</SelectItem>
               <SelectItem value="MISSING_DOCUMENTS">Documentos faltantes</SelectItem>
+              <SelectItem value="MISSING_INVOICE">Sin factura</SelectItem>
             </SelectContent>
           </Select>
         </div>

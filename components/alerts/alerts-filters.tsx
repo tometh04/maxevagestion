@@ -37,6 +37,7 @@ const typeOptions = [
   { value: "MISSING_DOC", label: "Documento Faltante" },
   { value: "GENERIC", label: "Genérico" },
   { value: "TASK_REMINDER", label: "Recordatorio de Tarea" },
+  { value: "MISSING_INVOICE", label: "Sin Factura" },
 ]
 
 const statusOptions = [

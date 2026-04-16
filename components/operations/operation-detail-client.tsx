@@ -76,6 +76,7 @@ const alertTypeLabels: Record<string, string> = {
   UPCOMING_TRIP: "Viaje Próximo",
   MISSING_DOC: "Documento Faltante",
   PASSPORT_EXPIRY: "Documento Vencido",
+  MISSING_INVOICE: "Sin Factura",
   GENERIC: "Genérico",
 }
 
