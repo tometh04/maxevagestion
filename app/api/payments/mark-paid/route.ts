@@ -391,7 +391,7 @@ export async function POST(request: Request) {
       }
     }
 
-    await createPaymentCounterpartMovement({
+    const counterpartResult = await createPaymentCounterpartMovement({
       supabase,
       paymentId,
       operationId: paymentData.operation_id || null,
@@ -408,6 +408,33 @@ export async function POST(request: Request) {
       operatorId: paymentData.payer_type === "OPERATOR" ? linkedOperatorId : null,
       userId: user.id,
     })
+
+    // ============================================
+    // ASIENTO 3 — Cobranza (Caja / Ds x Ventas)
+    // Anotar los movimientos de pago como asiento contable con Debe/Haber
+    // ============================================
+    try {
+      const { annotatePaymentAsJournalEntry } = await import("@/lib/accounting/journal-entries")
+      const operationCode = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : "N/A"
+
+      await annotatePaymentAsJournalEntry({
+        mainMovementId: ledgerMovementId,
+        counterpartMovementId: counterpartResult?.id || null,
+        description: paymentData.direction === "INCOME"
+          ? `Cobro — ${passengerName || `Op. ${operationCode}`}`
+          : `Pago a operador — ${passengerName || `Op. ${operationCode}`}`,
+        date: datePaid,
+        amount: parseFloat(paymentData.amount),
+        currency: paymentData.currency as "ARS" | "USD",
+        operation_id: paymentData.operation_id || null,
+        direction: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
+        financialAccountId: financial_account_id,
+        created_by: user.id,
+      }, supabase)
+    } catch (error) {
+      console.error("Error creating payment journal entry:", error)
+      // No romper el flujo principal
+    }
 
     // Calcular FX automáticamente si hay diferencia de moneda
     if (paymentData.operation_id) {

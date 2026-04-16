@@ -548,3 +548,370 @@ export async function annotatePaymentAsJournalEntry(
     return null // No romper el flujo principal
   }
 }
+
+// ============================================================
+// AUTO-JOURNAL ENTRIES — Asientos automáticos por operación
+// ============================================================
+
+/**
+ * Resolver códigos de cuenta a IDs (batch)
+ */
+async function resolveAccountIds(
+  codes: string[],
+  adminClient: any
+): Promise<Record<string, string>> {
+  const { data } = await (adminClient.from("chart_of_accounts") as any)
+    .select("id, account_code")
+    .in("account_code", codes)
+    .eq("is_active", true)
+
+  const map: Record<string, string> = {}
+  for (const row of (data || [])) {
+    map[row.account_code] = row.id
+  }
+  return map
+}
+
+/**
+ * Mapear product_type de operation_operators al código de cuenta de costo
+ */
+function getCostAccountCode(productType?: string | null): string {
+  switch (productType) {
+    case "HOTEL": return ACCOUNT_CODES.COSTO_HOTELERIA
+    case "FLIGHT": return ACCOUNT_CODES.COSTO_AEREOS
+    case "TRANSFER": return ACCOUNT_CODES.COSTO_TRANSFERS
+    case "CRUISE":
+    case "PACKAGE":
+    case "MIXED":
+    default: return ACCOUNT_CODES.COSTO_OPERADORES
+  }
+}
+
+/**
+ * Verificar si ya existen asientos automáticos para una operación con un source dado
+ */
+async function hasExistingJournalEntry(
+  operationId: string,
+  source: JournalEntrySource,
+  adminClient: any
+): Promise<boolean> {
+  const { data } = await (adminClient.from("journal_entries") as any)
+    .select("id")
+    .eq("operation_id", operationId)
+    .eq("source", source)
+    .limit(1)
+    .maybeSingle()
+  return !!data
+}
+
+/**
+ * ASIENTO 1 — Venta
+ *
+ * Al confirmar una operación:
+ *   Debe: Cuentas por Cobrar (1.1.03) → sale_amount_total
+ *   Haber: Ventas de Viajes (4.1.01) → sale_amount_total
+ *
+ * Registra el activo (derecho de cobro) y el ingreso por la venta.
+ */
+export async function createSaleJournalEntry(
+  operation: {
+    id: string
+    sale_amount_total: number
+    sale_currency?: string
+    currency?: string
+    destination?: string
+    file_code?: string
+    operation_date?: string
+    created_at?: string
+  },
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  try {
+    const adminClient = await getAdminClient(supabase)
+    const saleAmount = Number(operation.sale_amount_total) || 0
+    if (saleAmount <= 0) return null
+
+    // Idempotencia: no crear si ya existe
+    if (await hasExistingJournalEntry(operation.id, "AUTO_CONFIRMATION", adminClient)) {
+      return null
+    }
+
+    const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+    const codes = [ACCOUNT_CODES.CUENTAS_POR_COBRAR, ACCOUNT_CODES.VENTAS]
+    const accountIds = await resolveAccountIds(codes, adminClient)
+
+    const cpcId = accountIds[ACCOUNT_CODES.CUENTAS_POR_COBRAR]
+    const ventasId = accountIds[ACCOUNT_CODES.VENTAS]
+
+    if (!cpcId || !ventasId) {
+      console.error("Asiento Venta: cuentas contables no encontradas (1.1.03, 4.1.01)")
+      return null
+    }
+
+    const opCode = operation.file_code || operation.id.slice(0, 8)
+    const dest = operation.destination || ""
+    const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
+
+    const entry = await createJournalEntry({
+      entry_date: entryDate,
+      description: `Venta ${opCode}${dest ? ` — ${dest}` : ""}`,
+      operation_id: operation.id,
+      source: "AUTO_CONFIRMATION",
+      currency,
+      lines: [
+        {
+          chart_account_id: cpcId,
+          debit_amount: saleAmount,
+          concept: `Ds x Ventas — ${opCode}`,
+          legacy_type: "INCOME",
+        },
+        {
+          chart_account_id: ventasId,
+          credit_amount: saleAmount,
+          concept: `Ventas — ${opCode}`,
+          legacy_type: "INCOME",
+        },
+      ],
+    }, supabase)
+
+    return entry.id
+  } catch (error) {
+    console.error("Error creando asiento de venta:", error)
+    return null
+  }
+}
+
+/**
+ * ASIENTO 2 — Costo de Venta
+ *
+ * Al confirmar una operación:
+ *   Debe: Costo de Venta (4.2.XX según product_type) → costo total
+ *   Haber: Cuentas por Pagar (2.1.01) → una línea por operador
+ *
+ * Registra la obligación de pago con cada operador.
+ */
+export async function createCostJournalEntry(
+  operation: {
+    id: string
+    operator_cost?: number
+    sale_currency?: string
+    currency?: string
+    file_code?: string
+    operation_date?: string
+    created_at?: string
+  },
+  operators: Array<{
+    operator_id: string
+    cost: number
+    cost_currency?: string
+    product_type?: string | null
+    operators?: { id: string; name: string } | null
+  }>,
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  try {
+    const adminClient = await getAdminClient(supabase)
+
+    // Si no hay operadores con costo, intentar con operator_cost general
+    let effectiveOperators = operators.filter(op => Number(op.cost) > 0)
+
+    if (effectiveOperators.length === 0) {
+      const generalCost = Number(operation.operator_cost) || 0
+      if (generalCost <= 0) return null
+      // Sin detalle de operadores, crear un asiento genérico
+      effectiveOperators = [{ operator_id: "", cost: generalCost, product_type: null, operators: null }]
+    }
+
+    // Idempotencia: verificar con un source distinto para no mezclar con el de venta
+    // Usamos el mismo AUTO_CONFIRMATION pero checkeamos la descripción
+    const { data: existingCost } = await (adminClient.from("journal_entries") as any)
+      .select("id")
+      .eq("operation_id", operation.id)
+      .eq("source", "AUTO_CONFIRMATION")
+      .ilike("description", "Costo%")
+      .limit(1)
+      .maybeSingle()
+    if (existingCost) return null
+
+    const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+    const opCode = operation.file_code || operation.id.slice(0, 8)
+    const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
+
+    // Resolver todos los códigos de cuenta que necesitamos
+    const costCodes = Array.from(new Set(effectiveOperators.map(op => getCostAccountCode(op.product_type))))
+    const allCodes = [...costCodes, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
+    const accountIds = await resolveAccountIds(allCodes, adminClient)
+
+    const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
+    if (!cppId) {
+      console.error("Asiento Costo: cuenta 2.1.01 no encontrada")
+      return null
+    }
+
+    // Construir líneas: una de Debe por cada tipo de costo, una de Haber por operador
+    const totalCost = effectiveOperators.reduce((sum, op) => sum + Number(op.cost), 0)
+
+    // Agrupar costos por cuenta contable (por product_type)
+    const costByAccount: Record<string, number> = {}
+    for (const op of effectiveOperators) {
+      const code = getCostAccountCode(op.product_type)
+      costByAccount[code] = (costByAccount[code] || 0) + Number(op.cost)
+    }
+
+    const lines: JournalEntryLine[] = []
+
+    // Líneas de Debe (costos agrupados por tipo)
+    for (const [code, amount] of Object.entries(costByAccount)) {
+      const chartId = accountIds[code]
+      if (!chartId) continue
+      lines.push({
+        chart_account_id: chartId,
+        debit_amount: Math.round(amount * 100) / 100,
+        concept: `Costo de venta — ${opCode}`,
+        legacy_type: "EXPENSE",
+      })
+    }
+
+    // Líneas de Haber (una por operador)
+    for (const op of effectiveOperators) {
+      const operatorName = op.operators?.name || "Operador"
+      lines.push({
+        chart_account_id: cppId,
+        credit_amount: Math.round(Number(op.cost) * 100) / 100,
+        concept: `${operatorName} a pagar — ${opCode}`,
+        operator_id: op.operator_id || null,
+        legacy_type: "EXPENSE",
+      })
+    }
+
+    if (lines.length < 2) return null
+
+    const entry = await createJournalEntry({
+      entry_date: entryDate,
+      description: `Costo ${opCode}`,
+      operation_id: operation.id,
+      source: "AUTO_CONFIRMATION",
+      currency,
+      lines,
+    }, supabase)
+
+    return entry.id
+  } catch (error) {
+    console.error("Error creando asiento de costo:", error)
+    return null
+  }
+}
+
+/**
+ * ASIENTO 4 — Comisiones
+ *
+ * Al calcular comisiones de una operación:
+ *   Debe: Comisiones x Ventas (4.3.03) → monto total comisión
+ *   Haber: Cuentas por Pagar (2.1.01) → una línea por vendedor
+ *
+ * "Com x Ventas" es una cuenta de ajuste de ingresos (sube por el Debe).
+ * El contrapunto es la obligación de pago con los vendedores.
+ */
+export async function createCommissionJournalEntry(
+  operation: {
+    id: string
+    seller_id?: string
+    seller_secondary_id?: string
+    file_code?: string
+    sale_currency?: string
+    currency?: string
+    operation_date?: string
+    created_at?: string
+  },
+  commissionData: {
+    totalCommission: number
+    primaryCommission: number
+    secondaryCommission: number | null
+  },
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  try {
+    const adminClient = await getAdminClient(supabase)
+    if (commissionData.totalCommission <= 0) return null
+
+    // Idempotencia
+    if (await hasExistingJournalEntry(operation.id, "AUTO_COMMISSION", adminClient)) {
+      return null
+    }
+
+    const currency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+    const opCode = operation.file_code || operation.id.slice(0, 8)
+    const entryDate = operation.operation_date || operation.created_at?.split("T")[0] || new Date().toISOString().split("T")[0]
+
+    const codes = [ACCOUNT_CODES.COMISIONES_VENDEDORES, ACCOUNT_CODES.CUENTAS_POR_PAGAR]
+    const accountIds = await resolveAccountIds(codes, adminClient)
+
+    const comVentasId = accountIds[ACCOUNT_CODES.COMISIONES_VENDEDORES]
+    const cppId = accountIds[ACCOUNT_CODES.CUENTAS_POR_PAGAR]
+
+    if (!comVentasId || !cppId) {
+      console.error("Asiento Comisiones: cuentas 4.3.03 o 2.1.01 no encontradas")
+      return null
+    }
+
+    // Obtener nombres de vendedores
+    const sellerIds = [operation.seller_id, operation.seller_secondary_id].filter(Boolean)
+    const { data: sellers } = await (adminClient.from("users") as any)
+      .select("id, name")
+      .in("id", sellerIds)
+
+    const sellerNames: Record<string, string> = {}
+    for (const s of (sellers || [])) {
+      sellerNames[s.id] = s.name
+    }
+
+    const lines: JournalEntryLine[] = [
+      // Debe: Comisiones x Ventas (gasto)
+      {
+        chart_account_id: comVentasId,
+        debit_amount: Math.round(commissionData.totalCommission * 100) / 100,
+        concept: `Com. x Ventas — ${opCode}`,
+        legacy_type: "COMMISSION",
+      },
+    ]
+
+    // Haber: una línea por vendedor
+    if (commissionData.primaryCommission > 0 && operation.seller_id) {
+      const name = sellerNames[operation.seller_id] || "Vendedor"
+      lines.push({
+        chart_account_id: cppId,
+        credit_amount: Math.round(commissionData.primaryCommission * 100) / 100,
+        concept: `Com. ${name} a pagar — ${opCode}`,
+        seller_id: operation.seller_id,
+        legacy_type: "COMMISSION",
+      })
+    }
+
+    if (commissionData.secondaryCommission && commissionData.secondaryCommission > 0 && operation.seller_secondary_id) {
+      const name = sellerNames[operation.seller_secondary_id] || "Vendedor"
+      lines.push({
+        chart_account_id: cppId,
+        credit_amount: Math.round(commissionData.secondaryCommission * 100) / 100,
+        concept: `Com. ${name} a pagar — ${opCode}`,
+        seller_id: operation.seller_secondary_id,
+        legacy_type: "COMMISSION",
+      })
+    }
+
+    if (lines.length < 2) return null
+
+    const entry = await createJournalEntry({
+      entry_date: entryDate,
+      description: `Comisiones ${opCode}`,
+      operation_id: operation.id,
+      source: "AUTO_COMMISSION",
+      currency,
+      lines,
+    }, supabase)
+
+    return entry.id
+  } catch (error) {
+    console.error("Error creando asiento de comisiones:", error)
+    return null
+  }
+}

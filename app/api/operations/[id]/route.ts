@@ -527,15 +527,52 @@ export async function PATCH(
     }
 
     // Calcular comisiones automáticamente en cada update (si tiene vendedor y margen)
+    let commissionData: { totalCommission: number; percentage: number; primaryCommission: number; secondaryCommission: number | null } | null = null
     try {
       const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
-      const commissionData = await calculateCommission(op)
+      commissionData = await calculateCommission(op)
 
       if (commissionData.totalCommission > 0) {
         await createOrUpdateCommissionRecords(op, commissionData)
       }
     } catch (error) {
       console.error("Error calculating commission:", error)
+    }
+
+    // ============================================
+    // ASIENTOS CONTABLES AUTOMÁTICOS (al confirmar)
+    // ============================================
+    const isNewConfirmation =
+      (body.status === "CONFIRMED" || body.status === "CLOSED") &&
+      currentOp.status !== "CONFIRMED" &&
+      currentOp.status !== "CLOSED"
+
+    if (isNewConfirmation) {
+      try {
+        const {
+          createSaleJournalEntry,
+          createCostJournalEntry,
+          createCommissionJournalEntry,
+        } = await import("@/lib/accounting/journal-entries")
+
+        // Asiento 1: Venta (Ds x Ventas / Ventas)
+        await createSaleJournalEntry(op, supabase)
+
+        // Asiento 2: Costo (Costo Venta / Operadores a pagar)
+        const { data: opOperators } = await (supabase.from("operation_operators") as any)
+          .select("operator_id, cost, cost_currency, product_type, operators:operator_id(id, name)")
+          .eq("operation_id", operationId)
+
+        await createCostJournalEntry(op, opOperators || [], supabase)
+
+        // Asiento 4: Comisiones (Com x Ventas / Com vendedores a pagar)
+        if (commissionData && commissionData.totalCommission > 0) {
+          await createCommissionJournalEntry(op, commissionData, supabase)
+        }
+      } catch (error) {
+        console.error("Error creating journal entries on confirmation:", error)
+        // No romper el flujo principal
+      }
     }
 
     // Invalidar caché del dashboard (los KPIs cambian al editar una operación)
