@@ -48,6 +48,34 @@ interface ChartAccount {
   children?: ChartAccount[]
 }
 
+type ChartBalances = Record<string, { ars: number; usd: number }>
+
+function formatBalance(amount: number, currency: "ARS" | "USD"): string {
+  if (amount === 0) return ""
+  return amount.toLocaleString("es-AR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/** Suma recursiva del saldo de una cuenta + sus hijos */
+function getTreeBalance(
+  account: ChartAccount,
+  balances: ChartBalances
+): { ars: number; usd: number } {
+  const own = balances[account.id] || { ars: 0, usd: 0 }
+  const childrenSum = (account.children || []).reduce(
+    (acc, child) => {
+      const cb = getTreeBalance(child, balances)
+      return { ars: acc.ars + cb.ars, usd: acc.usd + cb.usd }
+    },
+    { ars: 0, usd: 0 }
+  )
+  return { ars: own.ars + childrenSum.ars, usd: own.usd + childrenSum.usd }
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   ACTIVO: "bg-blue-100 text-blue-800",
   PASIVO: "bg-red-100 text-red-800",
@@ -76,6 +104,7 @@ function AccountNode({
   toggleExpand,
   onAddSub,
   searchTerm,
+  balances,
 }: {
   account: ChartAccount
   depth?: number
@@ -83,6 +112,7 @@ function AccountNode({
   toggleExpand: (id: string) => void
   onAddSub: (parent: ChartAccount) => void
   searchTerm: string
+  balances: ChartBalances
 }) {
   const hasChildren = account.children && account.children.length > 0
   const isExpanded = expandedIds.has(account.id)
@@ -163,6 +193,30 @@ function AccountNode({
           </Badge>
         )}
 
+        {/* Balance */}
+        {(() => {
+          const bal = account.is_movement_account
+            ? balances[account.id] || { ars: 0, usd: 0 }
+            : getTreeBalance(account, balances)
+          const hasBalance = bal.ars !== 0 || bal.usd !== 0
+          if (!hasBalance) return null
+          return (
+            <span className="text-xs font-mono text-right min-w-[120px] shrink-0">
+              {bal.ars !== 0 && (
+                <span className={bal.ars >= 0 ? "text-emerald-600" : "text-red-600"}>
+                  {formatBalance(bal.ars, "ARS")}
+                </span>
+              )}
+              {bal.ars !== 0 && bal.usd !== 0 && <span className="text-muted-foreground mx-1">|</span>}
+              {bal.usd !== 0 && (
+                <span className={bal.usd >= 0 ? "text-blue-600" : "text-red-600"}>
+                  {formatBalance(bal.usd, "USD")}
+                </span>
+              )}
+            </span>
+          )
+        })()}
+
         {/* Add subcuenta button */}
         <Button
           variant="ghost"
@@ -190,6 +244,7 @@ function AccountNode({
               toggleExpand={toggleExpand}
               onAddSub={onAddSub}
               searchTerm={searchTerm}
+              balances={balances}
             />
           ))}
         </div>
@@ -200,6 +255,7 @@ function AccountNode({
 
 export function ChartOfAccountsTree() {
   const [accounts, setAccounts] = useState<ChartAccount[]>([])
+  const [balances, setBalances] = useState<ChartBalances>({})
   const [loading, setLoading] = useState(true)
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [searchTerm, setSearchTerm] = useState("")
@@ -218,10 +274,11 @@ export function ChartOfAccountsTree() {
   const fetchAccounts = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/accounting/chart-of-accounts?includeInactive=true")
+      const res = await fetch("/api/accounting/chart-of-accounts?includeInactive=true&includeBalances=true")
       if (!res.ok) throw new Error("Error fetching accounts")
       const data = await res.json()
       setAccounts(data.accounts || [])
+      setBalances(data.balances || {})
 
       // Auto-expand level 1 accounts
       const level1Ids = new Set<string>(
@@ -365,6 +422,7 @@ export function ChartOfAccountsTree() {
                 toggleExpand={toggleExpand}
                 onAddSub={openCreateDialog}
                 searchTerm={searchTerm}
+                balances={balances}
               />
             ))}
           </div>

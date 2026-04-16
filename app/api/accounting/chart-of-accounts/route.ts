@@ -61,7 +61,43 @@ export async function GET(request: Request) {
 
     const tree = rootAccounts.map(buildTree)
 
-    return NextResponse.json({ accounts: tree, flat: accounts || [] })
+    // Opcionalmente incluir saldos por cuenta contable
+    let balances: Record<string, { ars: number; usd: number }> | undefined
+    if (searchParams.get("includeBalances") === "true") {
+      try {
+        // Obtener todas las financial_accounts con su chart_account_id
+        const { data: financialAccounts } = await (supabase
+          .from("financial_accounts") as any)
+          .select("id, chart_account_id, currency")
+          .not("chart_account_id", "is", null)
+
+        if (financialAccounts && financialAccounts.length > 0) {
+          const { getAccountBalancesBatch } = await import("@/lib/accounting/ledger")
+          const faIds = financialAccounts.map((fa: any) => fa.id)
+          const faBalances = await getAccountBalancesBatch(faIds, supabase)
+
+          // Agrupar por chart_account_id separando ARS y USD
+          balances = {}
+          for (const fa of financialAccounts) {
+            const bal = faBalances[fa.id] || 0
+            const chartId = fa.chart_account_id as string
+            if (!balances[chartId]) {
+              balances[chartId] = { ars: 0, usd: 0 }
+            }
+            if (fa.currency === "USD") {
+              balances[chartId].usd += bal
+            } else {
+              balances[chartId].ars += bal
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error calculating chart balances:", error)
+        // No fallar, simplemente no incluir balances
+      }
+    }
+
+    return NextResponse.json({ accounts: tree, flat: accounts || [], ...(balances ? { balances } : {}) })
   } catch (error) {
     console.error("Error in GET /api/accounting/chart-of-accounts:", error)
     return NextResponse.json({ error: "Error al obtener plan de cuentas" }, { status: 500 })
