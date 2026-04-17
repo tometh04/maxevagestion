@@ -116,7 +116,7 @@ describe("Exchange Rates Service", () => {
       expect(result.rate).toBe(1500)
     })
 
-    it("should return fallback rate of 1450 when no rates at all", async () => {
+    it("should return fallback rate of 1500 when no rates at all", async () => {
       const supabase = createMockSupabase({
         rpcResult: { data: null, error: { code: "PGRST202", message: "not found" } },
         selectResult: { data: null, error: null },
@@ -124,7 +124,10 @@ describe("Exchange Rates Service", () => {
 
       const errorSpy = jest.spyOn(console, "error").mockImplementation()
       const result = await getExchangeRateWithFallback(supabase, "2026-03-01", "test")
-      expect(result).toEqual({ rate: 1450, source: "fallback" })
+      // El fallback se actualizó de 1450 → 1500 (valor más cercano al mercado
+      // 2026). Override-eable con env USD_ARS_EMERGENCY_RATE. Ver
+      // lib/accounting/exchange-rates.ts::DEFAULT_USD_ARS_FALLBACK_RATE.
+      expect(result).toEqual({ rate: 1500, source: "fallback" })
       errorSpy.mockRestore()
     })
   })

@@ -1,3 +1,11 @@
+/**
+ * @jest-environment node
+ *
+ * Este test importa API route handlers de Next.js que usan Request/Response
+ * de fetch y ReadableStream (WHATWG Streams API). jsdom no provee
+ * ReadableStream, por eso forzamos el ambiente `node` (que sí lo tiene en
+ * Node 18+).
+ */
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 
