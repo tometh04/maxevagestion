@@ -110,6 +110,7 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
         currency={filters.currency}
         agencyId={filters.agencyId}
         type={filters.type}
+        customerQuery={filters.customerQuery}
         emptyMessage="No encontramos movimientos con los filtros actuales"
       />
 

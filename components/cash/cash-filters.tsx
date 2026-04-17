@@ -9,7 +9,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { X } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Search, X } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { format, parseISO } from "date-fns"
 
@@ -18,6 +19,7 @@ export interface CashFiltersState {
   dateTo: string
   agencyId: string
   currency: string
+  customerQuery?: string
 }
 
 interface CashFiltersProps {
@@ -42,6 +44,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   const [dateTo, setDateTo] = useState<Date | undefined>(
     value.dateTo ? parseISO(value.dateTo) : undefined
   )
+  const [customerQuery, setCustomerQuery] = useState(value.customerQuery || "")
 
   // Sync external value changes
   useEffect(() => {
@@ -49,24 +52,43 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
     setCurrency(value.currency)
     setDateFrom(value.dateFrom ? parseISO(value.dateFrom) : undefined)
     setDateTo(value.dateTo ? parseISO(value.dateTo) : undefined)
+    setCustomerQuery(value.customerQuery || "")
   }, [value])
+
+  // Debounce de búsqueda de cliente (evita un request por cada tecla)
+  useEffect(() => {
+    if (customerQuery === (value.customerQuery || "")) return
+    const t = setTimeout(() => {
+      onChange({
+        dateFrom: formatDateString(dateFrom),
+        dateTo: formatDateString(dateTo),
+        agencyId,
+        currency,
+        customerQuery: customerQuery.trim() || undefined,
+      })
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerQuery])
 
   const formatDateString = (date: Date | undefined): string => {
     return date ? format(date, "yyyy-MM-dd") : ""
   }
 
   // Notify parent on any change
-  const emitChange = (updates: Partial<{ dateFrom: Date | undefined; dateTo: Date | undefined; agencyId: string; currency: string }>) => {
+  const emitChange = (updates: Partial<{ dateFrom: Date | undefined; dateTo: Date | undefined; agencyId: string; currency: string; customerQuery: string }>) => {
     const newDateFrom = updates.dateFrom !== undefined ? updates.dateFrom : dateFrom
     const newDateTo = updates.dateTo !== undefined ? updates.dateTo : dateTo
     const newAgencyId = updates.agencyId !== undefined ? updates.agencyId : agencyId
     const newCurrency = updates.currency !== undefined ? updates.currency : currency
+    const newCustomerQuery = updates.customerQuery !== undefined ? updates.customerQuery : customerQuery
 
     onChange({
       dateFrom: formatDateString(newDateFrom),
       dateTo: formatDateString(newDateTo),
       agencyId: newAgencyId,
       currency: newCurrency,
+      customerQuery: newCustomerQuery.trim() || undefined,
     })
   }
 
@@ -75,6 +97,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
     setDateTo(defaultValue.dateTo ? parseISO(defaultValue.dateTo) : undefined)
     setAgencyId(defaultValue.agencyId)
     setCurrency(defaultValue.currency)
+    setCustomerQuery(defaultValue.customerQuery || "")
     onChange(defaultValue)
   }
 
@@ -145,6 +168,16 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
         minDate={dateFrom}
         className="h-8 text-xs rounded-full"
       />
+
+      <div className="relative">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          value={customerQuery}
+          onChange={(e) => setCustomerQuery(e.target.value)}
+          placeholder="Cliente..."
+          className="h-8 text-xs rounded-full pl-8 w-[180px]"
+        />
+      </div>
 
       <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
         <X className="mr-1 h-3.5 w-3.5" /> Limpiar

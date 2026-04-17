@@ -54,6 +54,7 @@ interface MovementsTableProps {
   currency?: string
   agencyId?: string
   type?: string
+  customerQuery?: string
 }
 
 export function MovementsTable({
@@ -65,6 +66,7 @@ export function MovementsTable({
   currency,
   agencyId,
   type,
+  customerQuery,
 }: MovementsTableProps) {
   const [movements, setMovements] = useState<CashMovement[]>(initialMovements || [])
   const [loading, setLoading] = useState(!initialMovements)
@@ -94,6 +96,7 @@ export function MovementsTable({
       if (currency) params.append("currency", currency)
       if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
       if (type && type !== "ALL") params.append("type", type)
+      if (customerQuery && customerQuery.trim()) params.append("customerQuery", customerQuery.trim())
       params.append("page", page.toString())
       params.append("limit", limit.toString())
 
@@ -111,7 +114,7 @@ export function MovementsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, type, page, limit])
+  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, type, customerQuery, page, limit])
 
   useEffect(() => {
     fetchMovements()
