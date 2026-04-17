@@ -9,8 +9,17 @@ import { Button } from "@/components/ui/button"
 import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
+import dynamic from "next/dynamic"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
-import { QuotationBuilderDialog } from "@/components/sales/quotation-builder-dialog"
+// Lazy load: quotation-builder-dialog pesa ~1900 líneas y solo se abre al
+// generar cotización (fracción de las veces que se abre un lead).
+const QuotationBuilderDialog = dynamic(
+  () =>
+    import("@/components/sales/quotation-builder-dialog").then((m) => ({
+      default: m.QuotationBuilderDialog,
+    })),
+  { ssr: false }
+)
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
 import { LeadDocumentsSection } from "@/components/sales/lead-documents-section"
 import {

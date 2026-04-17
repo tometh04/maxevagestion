@@ -37,7 +37,14 @@ import {
   BreadcrumbSeparator,
   BreadcrumbPage,
 } from "@/components/ui/breadcrumb"
-import { EditOperationDialog } from "./edit-operation-dialog"
+import dynamic from "next/dynamic"
+
+// Lazy load: edit-operation-dialog pesa ~1200 líneas y sólo se abre al
+// clickear "Editar" en la vista de detalle.
+const EditOperationDialog = dynamic(
+  () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
 import { OperationRequirementsSection } from "./operation-requirements-section"
 import { PassengersSection } from "./passengers-section"
 import { OperationServicesSection } from "./operation-services-section"

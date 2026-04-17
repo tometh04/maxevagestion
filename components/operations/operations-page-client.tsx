@@ -1,9 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { OperationsFilters } from "./operations-filters"
 import { OperationsTable } from "./operations-table"
-import { NewOperationDialog } from "./new-operation-dialog"
+// Lazy load: new-operation-dialog pesa ~1650 líneas y solo se abre al
+// clickear "Nueva operación".
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
+  { ssr: false }
+)
 import { Button } from "@/components/ui/button"
 import { Plus, HelpCircle } from "lucide-react"
 import {

@@ -21,7 +21,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { EditOperationDialog } from "./edit-operation-dialog"
+import dynamic from "next/dynamic"
+
+// Lazy load: edit-operation-dialog pesa ~1200 líneas y sólo se abre al
+// editar una operación desde el listado.
+const EditOperationDialog = dynamic(
+  () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
 import {
   AlertDialog,
   AlertDialogAction,

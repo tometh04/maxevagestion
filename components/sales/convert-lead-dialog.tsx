@@ -1,7 +1,17 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { NewOperationDialog } from "@/components/operations/new-operation-dialog"
+import dynamic from "next/dynamic"
+
+// Lazy load: new-operation-dialog pesa ~1650 líneas y solo se carga al
+// convertir un lead a operación.
+const NewOperationDialog = dynamic(
+  () =>
+    import("@/components/operations/new-operation-dialog").then((m) => ({
+      default: m.NewOperationDialog,
+    })),
+  { ssr: false }
+)
 
 interface LeadData {
     id: string
