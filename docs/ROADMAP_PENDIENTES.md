@@ -151,7 +151,7 @@ Estos llegaron en la reunión del equipo y esperan input:
     `lib/commissions/calculate.ts` con `splitFactor`, UI en
     `new-operation-dialog.tsx` y `edit-operation-dialog.tsx`.
   - Default 50 cuando se asigna secondary seller.
-- 🟠 **Objetivos de vendedores — feature grande pendiente**
+- ✅ **Objetivos de vendedores** (commit 3d69eaa)
   - Backend: migración 131 creó tablas `seller_objectives` y
     `seller_objective_records`. API en
     `app/api/commissions/objectives/route.ts` con GET/POST/PATCH/DELETE.
