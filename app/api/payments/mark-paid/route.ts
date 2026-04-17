@@ -21,6 +21,7 @@ import {
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
@@ -30,6 +31,11 @@ export async function POST(request: Request) {
     if (!canAccessModule(user.role, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para marcar pagos como cobrados" }, { status: 403 })
     }
+
+    // Rate limit: marcar como pagado es destructivo y ejecuta side effects
+    // contables (FX, percepciones, counterparts). Evita doble-submit/bot.
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments/mark-paid:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
 
     const supabase = await createServerClient()
     const body = await request.json()

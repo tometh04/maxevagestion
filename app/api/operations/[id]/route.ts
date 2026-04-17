@@ -6,6 +6,7 @@ import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { logAudit, getClientIP } from "@/lib/audit"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
 
 type IncomingOperatorPayload = {
   operator_id: string
@@ -653,6 +654,11 @@ export async function DELETE(
     if (!["ADMIN", "SUPER_ADMIN"].includes(userRole)) {
       return NextResponse.json({ error: "Solo administradores pueden eliminar operaciones" }, { status: 403 })
     }
+
+    // Rate limit: DELETE operation es altamente destructivo (cascadea a
+    // pagos, ledger, IVA, operator_payments, comisiones, etc.)
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations/[id]:DELETE", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
 
     // Get operation data before deletion
     const { data: operation } = await supabase

@@ -11,15 +11,21 @@ import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
+
     // Verificar permiso de escritura
     if (!canPerformAction(user, "operations", "write")) {
       return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
     }
+
+    // Rate limit por usuario: creación de operación dispara side effects
+    // contables (ledger, IVA, operator_payments). Evita doble-submit/bot.
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
 
     const supabase = await createServerClient()
     const body = await request.json()

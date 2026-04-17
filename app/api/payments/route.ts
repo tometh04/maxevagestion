@@ -34,6 +34,7 @@ import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-messag
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 import { annotatePaymentAsJournalEntry } from "@/lib/accounting/journal-entries"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -114,6 +115,10 @@ export async function POST(request: Request) {
     if (!canAccessModule(user.role, "cash")) {
       return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
     }
+
+    // Rate limit por usuario para evitar doble-submit / bots / scripting
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
 
     const body = await request.json()
 
@@ -1136,6 +1141,10 @@ export async function DELETE(request: Request) {
     if (!paymentId) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
     }
+
+    // Rate limit por usuario: eliminar pagos es destructivo
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments:DELETE", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
 
     // Validación de permisos por rol:
     // - VIEWER: no puede eliminar pagos
