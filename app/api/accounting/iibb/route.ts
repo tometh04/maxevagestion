@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 // Argentine provinces for IIBB jurisdictions
 const VALID_JURISDICTIONS = [
@@ -73,8 +74,8 @@ export async function GET(request: Request) {
     // Get all invoices issued in the period (base imponible = facturación)
     const { data: invoices } = await (supabase.from("invoices") as any)
       .select("id, imp_neto, imp_total, imp_iva, moneda, cotizacion, created_at, receptor_nombre")
-      .gte("created_at", `${startDate}T00:00:00`)
-      .lte("created_at", `${endDate}T23:59:59`)
+      .gte("created_at", startOfDayAR(startDate))
+      .lte("created_at", endOfDayAR(endDate))
       .eq("status", "authorized")
 
     // Get IIBB percepciones sufridas in the period (credit)

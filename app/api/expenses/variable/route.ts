@@ -9,6 +9,7 @@ import {
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 /**
  * POST /api/expenses/variable
@@ -211,7 +212,7 @@ export async function GET(request: Request) {
       .order("movement_date", { ascending: false })
 
     if (dateFrom) query = query.gte("movement_date", dateFrom)
-    if (dateTo) query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    if (dateTo) query = query.lte("movement_date", endOfDayAR(dateTo))
     if (categoryId) query = query.eq("category_id", categoryId)
     if (currencyParam && currencyParam !== "ALL") query = query.eq("currency", currencyParam)
     if (user.role === "SELLER") query = query.eq("user_id", user.id)

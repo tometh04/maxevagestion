@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { roundMoney } from "@/lib/currency"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 /**
  * GET /api/expenses/monthly
@@ -40,8 +41,8 @@ export async function GET(request: Request) {
         .like("concept", "Gasto recurrente:%")
         .order("movement_date", { ascending: false })
 
-      if (dateFrom) recQuery = recQuery.gte("movement_date", `${dateFrom}T00:00:00`)
-      if (dateTo) recQuery = recQuery.lte("movement_date", `${dateTo}T23:59:59`)
+      if (dateFrom) recQuery = recQuery.gte("movement_date", startOfDayAR(dateFrom))
+      if (dateTo) recQuery = recQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") recQuery = recQuery.eq("currency", currencyParam)
 
       const { data: recurring, error: recError } = await recQuery
@@ -85,8 +86,8 @@ export async function GET(request: Request) {
         .not("category", "in", '("OPERATOR_PAYMENT","Pago Operador","Pago Cliente")')
         .order("movement_date", { ascending: false })
 
-      if (dateFrom) varQuery = varQuery.gte("movement_date", `${dateFrom}T00:00:00`)
-      if (dateTo) varQuery = varQuery.lte("movement_date", `${dateTo}T23:59:59`)
+      if (dateFrom) varQuery = varQuery.gte("movement_date", startOfDayAR(dateFrom))
+      if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") varQuery = varQuery.eq("currency", currencyParam)
       if (user.role === "SELLER") varQuery = varQuery.eq("user_id", user.id)
 

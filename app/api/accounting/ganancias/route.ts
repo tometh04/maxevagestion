@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 // Subcategorías de cuentas contables consideradas como gastos deducibles
 const SUBCATEGORIAS_DEDUCIBLES = [
@@ -55,16 +56,16 @@ export async function GET(request: Request) {
     // Get all operations in the quarter with their margins
     const { data: operations } = await (supabase.from("operations") as any)
       .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, sale_currency, status, created_at")
-      .gte("created_at", `${startDate}T00:00:00`)
-      .lte("created_at", `${endDate}T23:59:59`)
+      .gte("created_at", startOfDayAR(startDate))
+      .lte("created_at", endOfDayAR(endDate))
       .in("status", ["CONFIRMED", "CLOSED"])
 
     // Get expenses (gastos) in the quarter
     const { data: expenses, error: expensesError } = await (supabase.from("ledger_movements") as any)
       .select("id, amount_original, currency, type, concept, movement_date")
       .eq("type", "EXPENSE")
-      .gte("movement_date", `${startDate}T00:00:00`)
-      .lte("movement_date", `${endDate}T23:59:59`)
+      .gte("movement_date", startOfDayAR(startDate))
+      .lte("movement_date", endOfDayAR(endDate))
 
     if (expensesError) {
       console.error("Error querying expenses for ganancias:", expensesError)
@@ -77,8 +78,8 @@ export async function GET(request: Request) {
     // Get commissions paid in the quarter
     const { data: commissions } = await (supabase.from("commission_records") as any)
       .select("id, amount, percentage, status, date_calculated")
-      .gte("date_calculated", `${startDate}T00:00:00`)
-      .lte("date_calculated", `${endDate}T23:59:59`)
+      .gte("date_calculated", startOfDayAR(startDate))
+      .lte("date_calculated", endOfDayAR(endDate))
 
     // Calculate income (margins from operations)
     let totalMarginUSD = 0

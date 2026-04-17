@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function GET(request: Request) {
   try {
@@ -30,8 +31,8 @@ export async function GET(request: Request) {
         moneda, cotizacion, concepto, created_at,
         invoice_items (descripcion, cantidad, precio_unitario, iva_porcentaje, tax_treatment, subtotal, iva_importe)
       `)
-      .gte("created_at", `${startDate}T00:00:00`)
-      .lte("created_at", `${endDate}T23:59:59`)
+      .gte("created_at", startOfDayAR(startDate))
+      .lte("created_at", endOfDayAR(endDate))
       .eq("status", "authorized")
       .order("created_at", { ascending: true })
 

@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export const dynamic = 'force-dynamic'
 
@@ -79,7 +80,7 @@ export async function GET(request: Request) {
           .from("ledger_movements")
           .select("amount_original, type")
           .eq("account_id", account.id)
-          .lte("created_at", `${fechaCorte}T23:59:59`)
+          .lte("created_at", endOfDayAR(fechaCorte))
 
         let balance = parseFloat(account.initial_balance || "0")
         
@@ -118,7 +119,7 @@ export async function GET(request: Request) {
       .from("operations")
       .select("id, file_code, destination, sale_amount_total, sale_currency, currency, departure_date, agency_id, created_at")
       .neq("status", "CANCELLED")
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     if (agencyId !== "ALL") {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
@@ -243,7 +244,7 @@ export async function GET(request: Request) {
         month,
         partner:partner_id(id, partner_name)
       `)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     // Obtener retiros de socios hasta la fecha de corte
     const { data: withdrawals, error: withdrawalsError } = await (supabase.from("partner_withdrawals") as any)
@@ -350,7 +351,7 @@ export async function GET(request: Request) {
         operators:operator_id (id, name)
       `)
       .in("status", ["PENDING", "OVERDUE"])
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     const { data: operatorPayments, error: opPayError } = await operatorPaymentsQuery
 
@@ -446,8 +447,8 @@ export async function GET(request: Request) {
       .eq("direction", "INCOME")
       .eq("payer_type", "CUSTOMER")
       .eq("status", "PAID")
-      .gte("created_at", `${fechaInicioMes}T00:00:00`)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     let ingresosUSD = 0, ingresosARS = 0
     if (ingresosMes) {
@@ -462,8 +463,8 @@ export async function GET(request: Request) {
     const { data: costosMes } = await (supabase.from("operator_payments") as any)
       .select("amount, currency, paid_amount, paid_at")
       .eq("status", "PAID")
-      .gte("paid_at", `${fechaInicioMes}T00:00:00`)
-      .lte("paid_at", `${fechaCorte}T23:59:59`)
+      .gte("paid_at", startOfDayAR(fechaInicioMes))
+      .lte("paid_at", endOfDayAR(fechaCorte))
 
     let costosUSD = 0, costosARS = 0
     if (costosMes) {
@@ -481,8 +482,8 @@ export async function GET(request: Request) {
       .select("amount_original, currency")
       .eq("type", "EXPENSE")
       .is("operation_id", null)
-      .gte("created_at", `${fechaInicioMes}T00:00:00`)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     let gastosUSD = 0, gastosARS = 0
     if (gastosMes) {
@@ -499,8 +500,8 @@ export async function GET(request: Request) {
       .from("ledger_movements")
       .select("amount_original, currency")
       .eq("type", "COMMISSION")
-      .gte("created_at", `${fechaInicioMes}T00:00:00`)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     let comisionesUSD = 0, comisionesARS = 0
     if (comisionesMes) {

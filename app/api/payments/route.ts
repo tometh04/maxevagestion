@@ -33,6 +33,7 @@ import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
 import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
 import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
 import { annotatePaymentAsJournalEntry } from "@/lib/accounting/journal-entries"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -1052,10 +1053,10 @@ export async function GET(request: Request) {
     // Si se filtra por una operación específica, no filtrar por fecha (mostrar todos los pagos de esa operación)
     if (!operationId) {
       if (dateFrom) {
-        query = query.gte("created_at", `${dateFrom}T00:00:00`)
+        query = query.gte("created_at", startOfDayAR(dateFrom))
       }
       if (dateTo) {
-        query = query.lte("created_at", `${dateTo}T23:59:59`)
+        query = query.lte("created_at", endOfDayAR(dateTo))
       }
     }
 

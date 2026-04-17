@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function GET(request: Request) {
   try {
@@ -53,10 +54,10 @@ export async function GET(request: Request) {
       query = query.eq("user_id", userId)
     }
     if (dateFrom) {
-      query = query.gte("created_at", `${dateFrom}T00:00:00`)
+      query = query.gte("created_at", startOfDayAR(dateFrom))
     }
     if (dateTo) {
-      query = query.lte("created_at", `${dateTo}T23:59:59`)
+      query = query.lte("created_at", endOfDayAR(dateTo))
     }
     if (search) {
       // Buscar en action, entity_type o details (cast a text)
