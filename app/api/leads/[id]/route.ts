@@ -13,6 +13,7 @@ import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
 } from "@/lib/accounting/deposit-utils"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 export async function DELETE(
   request: Request,
@@ -67,6 +68,26 @@ export async function DELETE(
       console.error("Error deleting lead:", error)
       return NextResponse.json({ error: "Error al eliminar lead" }, { status: 500 })
     }
+
+    // Audit log — quién borró qué lead y sus datos clave
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "DELETE",
+      entity_type: "lead",
+      entity_id: id,
+      details: {
+        contact_name: lead?.contact_name || null,
+        contact_phone: lead?.contact_phone || null,
+        contact_email: lead?.contact_email || null,
+        status: lead?.status || null,
+        source: lead?.source || null,
+        assigned_seller_id: lead?.assigned_seller_id || null,
+        agency_id: lead?.agency_id || null,
+        user_role: user.role,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

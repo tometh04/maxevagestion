@@ -1175,10 +1175,24 @@ export async function DELETE(request: Request) {
       }
     }
 
-    // Log de auditoría (pendiente: persistir en tabla de audit_logs)
-    console.warn(
-      `[AUDIT] Payment deletion: user=${user.id} (${user.email}, role=${user.role}) deleted payment=${payment.id} amount=${payment.amount} ${payment.currency} operation_id=${payment.operation_id}`
-    )
+    // Audit log en BD (tabla audit_log vía lib/audit.ts)
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "PAYMENT_DELETE",
+      entity_type: "payment",
+      entity_id: payment.id,
+      details: {
+        amount: payment.amount,
+        currency: payment.currency,
+        operation_id: payment.operation_id,
+        payer_type: payment.payer_type,
+        direction: payment.direction,
+        status: payment.status,
+        user_role: user.role,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     if (payment.source === "OPERATOR_BULK") {
       return NextResponse.json(

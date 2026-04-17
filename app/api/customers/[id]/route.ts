@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 export async function GET(
   request: Request,
@@ -283,6 +284,24 @@ export async function DELETE(
         settingsData.notifications
       )
     }
+
+    // Audit log (tabla audit_log) — quién borró al cliente y sus datos clave
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "DELETE",
+      entity_type: "customer",
+      entity_id: customerId,
+      details: {
+        first_name: customer?.first_name || null,
+        last_name: customer?.last_name || null,
+        email: customer?.email || null,
+        phone: customer?.phone || null,
+        document_number: customer?.document_number || null,
+        user_role: user.role,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {
