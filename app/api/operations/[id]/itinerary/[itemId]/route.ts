@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "operations", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para modificar itinerarios" }, { status: 403 })
+    }
+
     const { itemId } = await params
     const body = await request.json()
     const adminDb = createAdminClient() as any
@@ -38,7 +44,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "operations", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar items de itinerario" }, { status: 403 })
+    }
+
     const { itemId } = await params
     const adminDb = createAdminClient() as any
 

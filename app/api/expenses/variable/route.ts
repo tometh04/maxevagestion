@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -18,6 +19,11 @@ import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para crear gastos" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
     const body = await request.json()

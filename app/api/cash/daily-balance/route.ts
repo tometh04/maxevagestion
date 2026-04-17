@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule, type UserRole } from "@/lib/permissions"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    if (!canAccessModule(user.role as UserRole, "cash") && !canAccessModule(user.role as UserRole, "accounting")) {
+      return NextResponse.json({ error: "No tiene permiso para ver balances de caja" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
 
     const { searchParams } = new URL(request.url)

@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "operations", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para subir imágenes al itinerario" }, { status: 403 })
+    }
+
     const { id: operationId } = await params
     const adminDb = createAdminClient()
 

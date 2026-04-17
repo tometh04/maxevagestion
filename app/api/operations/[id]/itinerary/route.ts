@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "operations", "read")) {
+      return NextResponse.json({ error: "No tiene permiso para ver itinerarios" }, { status: 403 })
+    }
+
     const { id: operationId } = await params
     const supabase = await createServerClient()
 
@@ -31,7 +37,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "operations", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para crear items de itinerario" }, { status: 403 })
+    }
+
     const { id: operationId } = await params
     const body = await request.json()
     const adminDb = createAdminClient() as any

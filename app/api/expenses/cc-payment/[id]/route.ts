@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
 
 /**
@@ -13,6 +14,11 @@ export async function DELETE(
 ) {
   try {
     const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para eliminar pagos de tarjeta" }, { status: 403 })
+    }
+
     const { id } = await params
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any

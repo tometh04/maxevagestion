@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canPerformAction } from "@/lib/permissions-api"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
@@ -23,6 +24,11 @@ const CLASSIFICATION_LABELS: Record<string, string> = {
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "accounting", "write") && !canPerformAction(user, "cash", "write")) {
+      return NextResponse.json({ error: "No tiene permiso para crear pagos de tarjeta" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
     const body = await request.json()
@@ -293,6 +299,11 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    if (!canPerformAction(user, "accounting", "read") && !canPerformAction(user, "cash", "read")) {
+      return NextResponse.json({ error: "No tiene permiso para ver pagos de tarjeta" }, { status: 403 })
+    }
+
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
 
