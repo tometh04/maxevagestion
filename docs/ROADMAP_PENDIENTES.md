@@ -29,7 +29,7 @@ Estos llegaron en la reunión del equipo y esperan input:
 - 🟠 **Rotar token GitHub expuesto** (`ghp_SKo...`)
   - Está en el remote del clone `maxeva-saas` en texto plano.
   - Acción: https://github.com/settings/tokens → Revoke → generar nuevo.
-- 🟠 **25 API routes con `createAdminClient` sin pre-check de permisos**
+- ✅ **25 API routes con `createAdminClient` auditadas** (commit a215d06) - 16 ya tenían pre-check, 9 agregadas
   - Bypasean RLS con `service_role`. Si hay un bug de lógica,
     exponen datos cross-agency.
   - Acción: auditar cada route y agregar `canPerformAction(...)` o
