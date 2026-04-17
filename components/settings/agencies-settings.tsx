@@ -33,6 +33,7 @@ export function AgenciesSettings() {
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [editingAgency, setEditingAgency] = useState<any>(null)
+  const [isSaving, setIsSaving] = useState(false)
 
   const form = useForm<AgencyFormValues>({
     resolver: zodResolver(agencySchema),
@@ -60,6 +61,7 @@ export function AgenciesSettings() {
   }
 
   const handleSubmit = async (values: AgencyFormValues) => {
+    setIsSaving(true)
     try {
       const res = await fetch("/api/settings/agencies", {
         method: "POST",
@@ -78,6 +80,8 @@ export function AgenciesSettings() {
     } catch (error) {
       console.error("Error saving agency:", error)
       toast.error("Error al guardar agencia")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -173,8 +177,8 @@ export function AgenciesSettings() {
                     )}
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  {editingAgency ? "Actualizar" : "Crear"}
+                <Button type="submit" className="w-full" disabled={isSaving}>
+                  {isSaving ? "Guardando..." : editingAgency ? "Actualizar" : "Crear"}
                 </Button>
               </form>
             </Form>

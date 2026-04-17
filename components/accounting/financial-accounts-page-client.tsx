@@ -84,6 +84,7 @@ interface FinancialAccountsPageClientProps {
 export function FinancialAccountsPageClient({ agencies: initialAgencies }: FinancialAccountsPageClientProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [accounts, setAccounts] = useState<any[]>([])
   const [agencies, setAgencies] = useState<any[]>(initialAgencies)
   const [selectedAgencyId, setSelectedAgencyId] = useState<string>("ALL")
@@ -232,6 +233,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       accountData.asset_quantity = Number(formData.asset_quantity) || 0
     }
 
+    setIsSaving(true)
     try {
       const res = await fetch("/api/accounting/financial-accounts", {
         method: "POST",
@@ -251,6 +253,8 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
       fetchData()
     } catch (error: any) {
       toast.error(error.message || "Error al crear cuenta")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -774,10 +778,12 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
                 </div>
 
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setOpenDialog(false)}>
+                  <Button type="button" variant="outline" onClick={() => setOpenDialog(false)} disabled={isSaving}>
                     Cancelar
                   </Button>
-                  <Button type="submit">Crear Cuenta</Button>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving ? "Creando..." : "Crear Cuenta"}
+                  </Button>
                 </DialogFooter>
               </form>
             </DialogContent>

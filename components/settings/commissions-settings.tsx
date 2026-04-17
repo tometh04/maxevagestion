@@ -77,6 +77,7 @@ interface CommissionRule {
 export function CommissionsSettings() {
   const [rules, setRules] = useState<CommissionRule[]>([])
   const [loading, setLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<CommissionRule | null>(null)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
@@ -152,6 +153,7 @@ export function CommissionsSettings() {
   }
 
   const handleSubmit = async (values: CommissionRuleFormValues) => {
+    setIsSaving(true)
     try {
       if (editingRule) {
         // Update
@@ -182,6 +184,8 @@ export function CommissionsSettings() {
     } catch (error) {
       console.error("Error saving rule:", error)
       toast.error("Error al guardar la regla")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -479,10 +483,12 @@ export function CommissionsSettings() {
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)} disabled={isSaving}>
                   Cancelar
                 </Button>
-                <Button type="submit" size="sm">Guardar</Button>
+                <Button type="submit" size="sm" disabled={isSaving}>
+                  {isSaving ? "Guardando..." : "Guardar"}
+                </Button>
               </DialogFooter>
             </form>
           </Form>
