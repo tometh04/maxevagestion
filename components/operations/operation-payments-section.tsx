@@ -1450,17 +1450,6 @@ export function OperationPaymentsSection({
                       <FormLabel>Operador</FormLabel>
                       {operators.length === 0 ? (
                         <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
-                      ) : operators.length === 1 ? (
-                        <Select value={operators[0].id} disabled>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value={operators[0].id}>{operators[0].name}</SelectItem>
-                          </SelectContent>
-                        </Select>
                       ) : (
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>

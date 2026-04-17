@@ -116,6 +116,13 @@ interface OperationDetailClientProps {
   commissionRecords?: Array<{ percentage: number | null; seller_id: string; amount: number }>
   operationServices?: OperationService[]
   operatorPayments?: OperationOperatorPaymentLike[]
+  /** Operadores asignados a la operación (operation_operators). Usado para
+   * poblar el selector de "Pagar a operador" con TODOS los operadores,
+   * incluyendo los que aún no tienen operator_payment generado. */
+  operationOperators?: Array<{
+    operator_id: string
+    operators?: { id: string; name: string } | null
+  }>
 }
 
 export function OperationDetailClient({
@@ -133,6 +140,7 @@ export function OperationDetailClient({
   commissionRecords = [],
   operationServices = [],
   operatorPayments = [],
+  operationOperators = [],
 }: OperationDetailClientProps) {
   const router = useRouter()
   const [editDialogOpen, setEditDialogOpen] = useState(false)
@@ -202,9 +210,10 @@ export function OperationDetailClient({
       buildOpenOperationBasePayableOperators({
         operatorPayments: operatorPayments || [],
         operationServices: operationServices as OperationServicePaymentRelationLike[],
+        operationOperators: operationOperators || [],
         fallbackNamesById: operatorNameMap,
       }),
-    [operationServices, operatorPayments, operatorNameMap]
+    [operationServices, operatorPayments, operationOperators, operatorNameMap]
   )
   const purchaseSummary = useMemo(
     () =>

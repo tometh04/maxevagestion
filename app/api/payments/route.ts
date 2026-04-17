@@ -324,19 +324,65 @@ export async function POST(request: Request) {
             }, { status: 400 })
           }
 
-          if (resolvedOperatorId) {
+          // Si el operador está asignado a la operación (en operation_operators)
+          // pero aún no tiene operator_payment creado, lo creamos on-the-fly usando
+          // el cost de operation_operators. Esto soporta el caso de operaciones
+          // con múltiples operadores donde el registro de deuda se genera
+          // recién al momento de registrar el pago.
+          if (resolvedOperatorId && operation_id && operationOperatorIds.has(resolvedOperatorId)) {
+            const { data: opOperator } = await (supabase.from("operation_operators") as any)
+              .select("cost, cost_currency")
+              .eq("operation_id", operation_id)
+              .eq("operator_id", resolvedOperatorId)
+              .maybeSingle()
+
+            const opCost = opOperator?.cost != null ? parseFloat(opOperator.cost) : 0
+            const opCurrency = opOperator?.cost_currency || currency || "USD"
+
+            // Crear operator_payment solo si hay cost > 0
+            if (opCost > 0) {
+              const { data: newOpPayment, error: createOpPayError } = await (supabase.from("operator_payments") as any)
+                .insert({
+                  operation_id,
+                  operator_id: resolvedOperatorId,
+                  amount: opCost,
+                  currency: opCurrency,
+                  paid_amount: 0,
+                  status: "PENDING",
+                  due_date: new Date().toISOString().split("T")[0],
+                })
+                .select("id, operator_id")
+                .single()
+
+              if (createOpPayError || !newOpPayment) {
+                console.error("[payments POST] No se pudo crear operator_payment on-the-fly:", createOpPayError)
+                return NextResponse.json(
+                  { error: "No se pudo registrar la deuda del operador para esta operación" },
+                  { status: 500 }
+                )
+              }
+
+              resolvedOperatorId = (newOpPayment as any).operator_id
+              resolvedOperatorPaymentId = (newOpPayment as any).id
+            } else {
+              return NextResponse.json(
+                { error: "El operador seleccionado no tiene costo registrado en la operación" },
+                { status: 400 }
+              )
+            }
+          } else if (resolvedOperatorId) {
             return NextResponse.json({ error: "No hay deuda pendiente para el operador seleccionado en esta operación" }, { status: 400 })
+          } else {
+            return NextResponse.json({
+              error: operationOperatorIds.size > 1
+                ? "Debe seleccionar el operador al que corresponde el pago"
+                : "No hay deuda pendiente a operador para esta operación",
+            }, { status: 400 })
           }
-
-          return NextResponse.json({
-            error: operationOperatorIds.size > 1
-              ? "Debe seleccionar el operador al que corresponde el pago"
-              : "No hay deuda pendiente a operador para esta operación",
-          }, { status: 400 })
+        } else {
+          resolvedOperatorId = matchedOperatorPayment.operator_id
+          resolvedOperatorPaymentId = matchedOperatorPayment.id
         }
-
-        resolvedOperatorId = matchedOperatorPayment.operator_id
-        resolvedOperatorPaymentId = matchedOperatorPayment.id
       }
     }
 

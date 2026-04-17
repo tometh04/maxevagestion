@@ -117,6 +117,15 @@ export default async function OperationDetailPage({
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
+  // Get operators assigned to the operation (may include operators without operator_payment)
+  // Needed so the "Pagar a operador" dialog can list ALL assigned operators,
+  // not only the ones that already have a pending operator_payment.
+  const { data: operationOperators } = await (supabase
+    .from("operation_operators") as any)
+    .select("operator_id, operators:operator_id(id, name)")
+    .eq("operation_id", id)
+    .order("created_at", { ascending: true })
+
   // Get commission records for this operation
   const { data: commissionRecords } = await (supabase
     .from("commission_records") as any)
@@ -170,6 +179,7 @@ export default async function OperationDetailPage({
       commissionRecords={commissionRecords || []}
       operationServices={operationServices || []}
       operatorPayments={operatorPayments || []}
+      operationOperators={operationOperators || []}
     />
   )
 }

@@ -142,10 +142,19 @@ export function buildOperationPaymentOperators({
 export function buildOpenOperationBasePayableOperators({
   operatorPayments = [],
   operationServices = [],
+  operationOperators = [],
   fallbackNamesById,
 }: {
   operatorPayments?: OperationOperatorPaymentLike[] | null
   operationServices?: OperationServicePaymentRelationLike[] | null
+  /**
+   * Operadores asignados a la operación desde `operation_operators`.
+   * Se incluyen AUN CUANDO no tengan `operator_payment` creado, para
+   * permitir registrar pagos ad-hoc a cualquier operador de la operación.
+   * (Fix bug multi-operador: antes el Select quedaba limitado a los que
+   * ya tenían deuda en operator_payments.)
+   */
+  operationOperators?: OperationOperatorRelationLike[] | null
   fallbackNamesById?: Map<string, string>
 }): OperatorOption[] {
   const openBasePayments = getOpenOperationBaseOperatorPayments({
@@ -153,11 +162,20 @@ export function buildOpenOperationBasePayableOperators({
     operationServices,
   })
 
+  // 1) Operadores con deuda pendiente (path original)
+  const fromPayments = openBasePayments.map((operatorPayment) => ({
+    id: operatorPayment?.operators?.id || operatorPayment?.operator_id,
+    name: operatorPayment?.operators?.name,
+  }))
+
+  // 2) Operadores asignados a la operación (aunque no tengan operator_payment)
+  const fromOperationOperators = (operationOperators || []).map((rel) => ({
+    id: rel?.operators?.id || rel?.operator_id,
+    name: rel?.operators?.name,
+  }))
+
   return buildOperatorOptions(
-    openBasePayments.map((operatorPayment) => ({
-      id: operatorPayment?.operators?.id || operatorPayment?.operator_id,
-      name: operatorPayment?.operators?.name,
-    })),
+    [...fromPayments, ...fromOperationOperators],
     fallbackNamesById
   )
 }

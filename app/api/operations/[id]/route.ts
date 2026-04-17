@@ -211,6 +211,28 @@ export async function PATCH(
     const newCurrency = body.currency || body.sale_currency || oldCurrency
     const currencyChanged = oldCurrency !== newCurrency
 
+    // Bloquear cambio de moneda si la operación ya tiene movimientos contables
+    // (fix A.2 auditoría): recalcular ledger_movements existentes en la nueva
+    // moneda es complejo (requiere TC histórico por cada movimiento) y peligroso.
+    // Preferimos fallar claro y pedir al usuario que elimine pagos primero.
+    if (currencyChanged) {
+      const { data: existingLedger } = await (supabase.from("ledger_movements") as any)
+        .select("id")
+        .eq("operation_id", operationId)
+        .limit(1)
+
+      if (existingLedger && existingLedger.length > 0) {
+        return NextResponse.json(
+          {
+            error:
+              `No se puede cambiar la moneda de esta operación porque ya tiene pagos/movimientos contables registrados en ${oldCurrency}. ` +
+              "Para cambiarla, primero elimine los pagos existentes o contacte al equipo contable.",
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Extraer operators del body para no enviarlo a la tabla operations
     const { operators: incomingOperators, ...bodyWithoutOperators } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
@@ -297,27 +319,27 @@ export async function PATCH(
     // ============================================
     if (usesIncomingOperators) {
       try {
-        await (supabase.from("operation_operators") as any)
-          .delete()
-          .eq("operation_id", operationId)
+        // Llamada atómica: DELETE + INSERT en una transacción SQL.
+        // Si falla el insert, rollback automático → no perdemos los operadores viejos.
+        // (Fix A.4 de la auditoría: evita dejar la operación sin operadores.)
+        const operatorsPayload = synchronizedOperators.map((operatorData) => ({
+          operator_id: operatorData.operator_id,
+          cost: operatorData.cost || 0,
+          cost_currency: operatorData.cost_currency || "USD",
+          product_type: operatorData.product_type || null,
+          notes: operatorData.notes || null,
+        }))
 
-        if (synchronizedOperators.length > 0) {
-          const operationOperatorsData = synchronizedOperators.map((operatorData) => ({
-            operation_id: operationId,
-            operator_id: operatorData.operator_id,
-            cost: operatorData.cost || 0,
-            cost_currency: operatorData.cost_currency || "USD",
-            product_type: operatorData.product_type || null,
-            notes: operatorData.notes || null,
-          }))
+        const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
+          p_operation_id: operationId,
+          p_operators: operatorsPayload,
+        })
 
-          const { error: opOpError } = await (supabase.from("operation_operators") as any)
-            .insert(operationOperatorsData)
-
-          if (opOpError) {
-            console.error("Error inserting operation operators:", opOpError)
-            auditWarnings.push("No se pudo sincronizar operation_operators")
-          }
+        if (rpcError) {
+          console.error("Error en RPC replace_operation_operators:", rpcError)
+          auditWarnings.push(
+            "No se pudo sincronizar operation_operators (rollback aplicado, operadores anteriores intactos)"
+          )
         }
       } catch (error) {
         console.error("Error updating operation operators:", error)
