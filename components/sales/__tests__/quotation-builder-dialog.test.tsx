@@ -1,3 +1,4 @@
+/// <reference types="@testing-library/jest-dom" />
 import React from "react"
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -57,7 +58,7 @@ jest.mock("@/components/ui/button", () => {
 })
 
 jest.mock("@/components/ui/input", () => {
-  const React = require("react")
+  const React = require("react") as typeof import("react")
   const MockInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(function MockInput(
     props,
     ref
@@ -69,7 +70,7 @@ jest.mock("@/components/ui/input", () => {
 })
 
 jest.mock("@/components/ui/textarea", () => {
-  const React = require("react")
+  const React = require("react") as typeof import("react")
   const MockTextarea = React.forwardRef<
     HTMLTextAreaElement,
     React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -434,7 +435,7 @@ describe("QuotationBuilderDialog", () => {
 
   it("disables saving while a flight screenshot upload is still in progress", async () => {
     const fetchMock = global.fetch as jest.Mock
-    let resolveUpload: ((value: any) => void) | null = null
+    let resolveUpload: (value: any) => void = () => {}
 
     fetchMock
       .mockResolvedValueOnce({
@@ -519,7 +520,7 @@ describe("QuotationBuilderDialog", () => {
       expect(screen.getByRole("button", { name: /guardar y enviar por whatsapp/i })).toBeDisabled()
     })
 
-    resolveUpload?.({
+    resolveUpload({
       ok: true,
       json: async () => ({ url: "https://example.com/quotation-flight.png" }),
     })

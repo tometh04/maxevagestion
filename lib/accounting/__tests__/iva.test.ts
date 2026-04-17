@@ -106,9 +106,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(315)
-      expect(result.total_purchases_iva).toBe(50)
-      expect(result.iva_to_pay).toBe(265)
+      expect(result.ars.total_sales_iva).toBe(315)
+      expect(result.ars.total_purchases_iva).toBe(50)
+      expect(result.ars.iva_to_pay).toBe(265)
     })
 
     it("should handle empty data", async () => {
@@ -141,9 +141,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(0)
-      expect(result.total_purchases_iva).toBe(0)
-      expect(result.iva_to_pay).toBe(0)
+      expect(result.ars.total_sales_iva).toBe(0)
+      expect(result.ars.total_purchases_iva).toBe(0)
+      expect(result.ars.iva_to_pay).toBe(0)
     })
 
     it("should handle null iva_amount values", async () => {
@@ -176,9 +176,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(210)
-      expect(result.total_purchases_iva).toBe(0)
-      expect(result.iva_to_pay).toBe(210)
+      expect(result.ars.total_sales_iva).toBe(210)
+      expect(result.ars.total_purchases_iva).toBe(0)
+      expect(result.ars.iva_to_pay).toBe(210)
     })
   })
 })
