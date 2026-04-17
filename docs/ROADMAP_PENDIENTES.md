@@ -38,11 +38,11 @@ Estos llegaron en la reunión del equipo y esperan input:
   - Hoy hay un rate-limit global por IP en `middleware.ts` (200/min).
   - Falta rate-limit diferenciado por user y por tipo de endpoint
     (write vs read vs AI).
-- 🟡 **Trello webhook signature obligatorio**
+- ✅ **Trello webhook signature obligatorio** (commit 626f4b0)
   - `app/api/trello/webhook/route.ts:14` — si `secret` no está
     configurado, acepta cualquier webhook (impersonation posible).
   - Fix: `throw new Error("Webhook secret required")` si falta.
-- 🟡 **Manychat API key: timing-safe comparison**
+- ✅ **Manychat API key: timing-safe comparison** (commit 626f4b0)
   - Hoy usa `!==` directo (vulnerable a timing attacks teóricos).
   - Fix: `crypto.timingSafeEqual`.
 - 🟢 **Cookie session: SameSite=Strict + Secure explícito**
@@ -65,7 +65,7 @@ Estos llegaron en la reunión del equipo y esperan input:
   - Algunos lugares usan `Math.round(x*100)/100`, otros `parseFloat`
     directo, otros `roundMoney` (lib/currency.ts).
   - Fix: forzar `roundMoney` en todo cálculo monetario.
-- 🟡 **`debts-sales/route.ts` filtro de fecha con concat string**
+- ✅ **`debts-sales/route.ts` filtro de fecha** (commit 626f4b0)
   - Usa `opDate > dateToFilter + "T23:59:59"` (comparación string).
   - No se tocó en los batches de timezone porque la semántica es distinta.
   - Fix: migrarlo a usar helper `endOfDayAR` + comparación Date real.
@@ -94,7 +94,7 @@ Estos llegaron en la reunión del equipo y esperan input:
 
 ## 🎨 Frontend / UX
 
-- 🟡 **D4 lazy load de componentes gigantes**
+- ✅ **D4 lazy load de 3 dialogs gigantes** (commit 3ac0190) - admin-commissions-view queda pendiente
   - `quotation-builder-dialog.tsx` (1937 líneas)
   - `operation-payments-section.tsx` (1691)
   - `new-operation-dialog.tsx` (1658)
