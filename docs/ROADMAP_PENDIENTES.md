@@ -34,7 +34,7 @@ Estos llegaron en la reunión del equipo y esperan input:
     exponen datos cross-agency.
   - Acción: auditar cada route y agregar `canPerformAction(...)` o
     ownership check antes del admin client.
-- 🟡 **Rate limiting por usuario, no solo IP**
+- ✅ **Rate limiting por usuario** (commit bf07b3b) en POST/DELETE payments, mark-paid, POST/DELETE operations. Resto pendiente.
   - Hoy hay un rate-limit global por IP en `middleware.ts` (200/min).
   - Falta rate-limit diferenciado por user y por tipo de endpoint
     (write vs read vs AI).
@@ -53,7 +53,7 @@ Estos llegaron en la reunión del equipo y esperan input:
 
 ## 🧮 Integridad de datos contables
 
-- 🔴 **FX atomicity con RPC** (Bloque B4 pendiente)
+- 🟢 **FX atomicity con RPC** — re-priorizado a BAJO tras análisis
   - `autoCalculateFXForPayment` hoy genera alerta SYSTEM si falla
     (Sprint anterior), pero no hay rollback real del payment.
   - Fix: crear RPC `create_payment_with_fx_atomic()` con BEGIN/COMMIT.
