@@ -5,6 +5,7 @@ import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
 import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export const dynamic = 'force-dynamic'
 
@@ -186,13 +187,25 @@ export async function GET(request: Request) {
           continue
         }
 
-        // Aplicar filtro de fechas por departure_date de la operación
+        // Aplicar filtro de fechas por departure_date de la operación.
+        // Comparamos como timestamps reales (Date.getTime) con offset AR
+        // para evitar el bug de UTC/local que hacía que movimientos del
+        // final del día en AR quedaran fuera de rango.
         const opDate = operation.departure_date || operation.created_at
-        if (dateFromFilter && opDate && opDate < dateFromFilter) {
-          continue
-        }
-        if (dateToFilter && opDate && opDate > dateToFilter + "T23:59:59") {
-          continue
+        if (opDate) {
+          const opDateMs = new Date(opDate).getTime()
+          if (dateFromFilter) {
+            const fromMs = new Date(startOfDayAR(dateFromFilter)).getTime()
+            if (Number.isFinite(opDateMs) && Number.isFinite(fromMs) && opDateMs < fromMs) {
+              continue
+            }
+          }
+          if (dateToFilter) {
+            const toMs = new Date(endOfDayAR(dateToFilter)).getTime()
+            if (Number.isFinite(opDateMs) && Number.isFinite(toMs) && opDateMs > toMs) {
+              continue
+            }
+          }
         }
 
         const opId = operation.id

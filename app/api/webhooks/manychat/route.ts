@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server"
+import crypto from "crypto"
 import { createServerClient } from "@/lib/supabase/server"
 import { syncManychatLeadToLead, ManychatLeadData } from "@/lib/manychat/sync"
+
+/**
+ * Timing-safe string compare (evita que un atacante determine la API
+ * key válida midiendo el tiempo de respuesta).
+ */
+function apiKeyMatches(received: string, expected: string): boolean {
+  const a = Buffer.from(received)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
+}
 
 /**
  * POST /api/webhooks/manychat
@@ -41,7 +53,7 @@ export async function POST(request: Request) {
       )
     }
     
-    if (!apiKey || apiKey !== expectedApiKey) {
+    if (!apiKey || !apiKeyMatches(apiKey, expectedApiKey)) {
       console.error("❌ API key inválida o faltante")
       return NextResponse.json(
         { error: "No autorizado" },

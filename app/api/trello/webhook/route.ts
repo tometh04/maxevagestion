@@ -5,17 +5,32 @@ import { withRateLimit, RATE_LIMIT_CONFIGS } from "@/lib/rate-limit"
 import crypto from "crypto"
 
 /**
- * Verify Trello webhook signature
- * Trello sends a header with the signature
+ * Verify Trello webhook signature.
+ * Trello manda HMAC-SHA1(body, secret) base64 en el header x-trello-webhook.
+ *
+ * Seguridad: en producción NO se permite skippear la verificación.
+ * Antes, si `secret` era falsy la función devolvía `true` y aceptaba
+ * cualquier webhook — potencial vector de impersonation.
  */
 function verifyTrelloWebhook(body: string, signature: string, secret: string): boolean {
   if (!secret) {
-    // If no secret configured, skip verification (not recommended for production)
+    // En development puede que todavía no se haya configurado el secret;
+    // solo entonces toleramos la ausencia.
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "[trello-webhook] TRELLO_WEBHOOK_SECRET no configurado en prod — rechazo por seguridad"
+      )
+      return false
+    }
     return true
   }
 
-  const hash = crypto.createHmac("sha1", secret).update(body).digest("base64")
-  return hash === signature
+  // timingSafeEqual para evitar timing attacks al comparar HMAC
+  const expected = crypto.createHmac("sha1", secret).update(body).digest("base64")
+  const a = Buffer.from(expected)
+  const b = Buffer.from(signature)
+  if (a.length !== b.length) return false
+  return crypto.timingSafeEqual(a, b)
 }
 
 export async function POST(request: Request) {
