@@ -64,6 +64,24 @@ export async function POST(
       )
     }
 
+    // 3.1 CAS LOCK: evitar race si dos requests entran simultáneos para la
+    // misma cotización (fix A.3 auditoría). Pasamos el status APPROVED →
+    // CONVERTING en una sola query. Si otro request ya lo hizo, devuelve 0 filas.
+    const { data: lockedQuotation } = await supabase
+      .from("quotations")
+      .update({ status: "CONVERTING" })
+      .eq("id", id)
+      .eq("status", "APPROVED")
+      .select("id")
+      .maybeSingle()
+
+    if (!lockedQuotation) {
+      return NextResponse.json(
+        { error: "Esta cotización ya está siendo convertida por otra solicitud" },
+        { status: 409 }
+      )
+    }
+
     // 4. Obtener la opción seleccionada
     const selectedOption = (quotation.quotation_options || []).find(
       (opt: any) => opt.is_selected

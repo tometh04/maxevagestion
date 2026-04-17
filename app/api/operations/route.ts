@@ -222,6 +222,52 @@ export async function POST(request: Request) {
       reservation_code_hotel: reservation_code_hotel || null,
     }
 
+    // ============================================
+    // CAS LOCK: evitar race condition lead→operation (fix A.3 auditoría)
+    // Si la operación se crea desde un lead, bloqueamos el lead primero
+    // pasándolo a WON en una sola query atómica (.eq("status", ...)).
+    // Si otro request ya lo convirtió, este UPDATE retorna 0 filas → 409.
+    // Si la creación de la operación falla más abajo, rollbackeamos el
+    // lead a su estado anterior para que se pueda reintentar.
+    // ============================================
+    let leadPreviousStatus: string | null = null
+    if (lead_id) {
+      // Guardamos el estado actual del lead para rollback si algo falla
+      const { data: leadSnap } = await (supabase.from("leads") as any)
+        .select("status")
+        .eq("id", lead_id)
+        .maybeSingle()
+      leadPreviousStatus = leadSnap?.status || null
+
+      const { data: lockedLead } = await (supabase.from("leads") as any)
+        .update({ status: "WON" })
+        .eq("id", lead_id)
+        .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
+        .select("id")
+        .maybeSingle()
+
+      if (!lockedLead) {
+        // No pudo adquirir el lock: o ya está WON/LOST, o no existe.
+        // Si ya hay una operación vinculada, devolvemos 409 con la referencia.
+        const { data: existingOp } = await (supabase.from("operations") as any)
+          .select("id")
+          .eq("lead_id", lead_id)
+          .limit(1)
+          .maybeSingle()
+
+        if (existingOp) {
+          return NextResponse.json(
+            { error: "Este lead ya fue convertido a operación", existingOperationId: existingOp.id },
+            { status: 409 }
+          )
+        }
+        return NextResponse.json(
+          { error: "El lead no está en un estado convertible (debe estar NEW, IN_PROGRESS o QUOTED)" },
+          { status: 409 }
+        )
+      }
+    }
+
     const { data: operation, error: operationError } = await (supabase.from("operations") as any)
       .insert(operationData)
       .select()
@@ -229,6 +275,16 @@ export async function POST(request: Request) {
 
     if (operationError) {
       console.error("Error creating operation:", operationError)
+      // Rollback del CAS lock: devolver el lead a su estado anterior
+      if (lead_id && leadPreviousStatus && leadPreviousStatus !== "WON") {
+        try {
+          await (supabase.from("leads") as any)
+            .update({ status: leadPreviousStatus })
+            .eq("id", lead_id)
+        } catch (rollbackError) {
+          console.error("Error rollbackeando lead status tras fallo en creación:", rollbackError)
+        }
+      }
       // Pasar el mensaje real del error de Supabase para que el UI lo muestre
       const errorMsg = operationError.message || operationError.details || operationError.hint || "Error al crear operación"
       return NextResponse.json({ error: errorMsg }, { status: 500 })
