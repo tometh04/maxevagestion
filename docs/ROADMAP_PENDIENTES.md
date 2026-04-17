@@ -143,7 +143,26 @@ Estos llegaron en la reunión del equipo y esperan input:
 
 ---
 
-## 💰 Features que podrían agregarse
+## 💰 Features del equipo (reunión 30/03/2026)
+
+- ✅ **Comisión split 50/50 vendedor principal + secundario**
+  - Ya implementada end-to-end: schema `operations.commission_split`,
+    `operations.seller_secondary_id`, backend en
+    `lib/commissions/calculate.ts` con `splitFactor`, UI en
+    `new-operation-dialog.tsx` y `edit-operation-dialog.tsx`.
+  - Default 50 cuando se asigna secondary seller.
+- 🟠 **Objetivos de vendedores — feature grande pendiente**
+  - Backend: migración 131 creó tablas `seller_objectives` y
+    `seller_objective_records`. API en
+    `app/api/commissions/objectives/route.ts` con GET/POST/PATCH/DELETE.
+  - Falta TODO: UI admin para crear/listar objetivos, UI seller para
+    ver su progreso, job/cron que recalcula métricas de TRIPS_SOLD /
+    REVENUE_AMOUNT / MARGIN_AMOUNT / NEW_CUSTOMERS / CONVERSION_RATE,
+    y la integración con commission records para aplicar el bonus
+    cuando se alcanza el objetivo.
+  - Estimación: 6-10h de trabajo. Requiere un sprint dedicado.
+
+## 💰 Features adicionales (roadmap futuro)
 
 - 🟢 **Global search (⌘K)**
   - Existe parcial, falta cubrir más entidades.
