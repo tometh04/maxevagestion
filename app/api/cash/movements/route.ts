@@ -9,6 +9,7 @@ import {
 } from "@/lib/accounting/ledger"
 import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function POST(request: Request) {
   try {
@@ -217,12 +218,49 @@ export async function GET(request: Request) {
     const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
     const financialAccountId = searchParams.get("financialAccountId")
+    const customerQuery = (searchParams.get("customerQuery") ?? "").trim()
 
     // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
     const requestedLimit = parseInt(searchParams.get("limit") ?? "50")
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
+
+    // Si hay búsqueda por cliente, pre-resolvemos las operation_ids que matchean.
+    // Flujo: customers (first/last name ilike) → operation_customers → operation_ids.
+    // Después filtramos cash_movements por esos operation_ids (incluyendo
+    // movimientos sin operación si la query queda vacía).
+    let restrictToOperationIds: string[] | null = null
+    if (customerQuery) {
+      const words = customerQuery.split(/\s+/).filter(Boolean)
+      let custQ = (supabase.from("customers") as any).select("id")
+      for (const word of words) {
+        custQ = custQ.or(
+          `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+        )
+      }
+      const { data: matchingCustomers } = await custQ.limit(500)
+      const customerIds = (matchingCustomers || []).map((c: any) => c.id)
+      if (customerIds.length === 0) {
+        // Sin clientes matching → resultado vacío
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      const { data: opCustomerRows } = await (supabase.from("operation_customers") as any)
+        .select("operation_id")
+        .in("customer_id", customerIds)
+      restrictToOperationIds = Array.from(
+        new Set(((opCustomerRows as any[]) || []).map((r) => r.operation_id).filter(Boolean))
+      ) as string[]
+      if (restrictToOperationIds.length === 0) {
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+    }
 
     // Consultar cash_movements directamente — garantiza:
     // 1. Todos los movimientos (con Y sin operación asociada)
@@ -261,17 +299,23 @@ export async function GET(request: Request) {
       }
     }
     if (dateFrom) {
-      query = query.gte("movement_date", `${dateFrom}T00:00:00`)
+      query = query.gte("movement_date", startOfDayAR(dateFrom))
     }
     if (dateTo) {
-      // Incluir el día completo hasta las 23:59:59
-      query = query.lte("movement_date", `${dateTo}T23:59:59`)
+      // Incluir el día completo hasta las 23:59:59 en hora AR (fix bug
+      // "egresos no aparecen al filtrar fechas": antes se usaba UTC y se
+      // perdían movimientos cargados después de las 21h hora local)
+      query = query.lte("movement_date", endOfDayAR(dateTo))
     }
     if (typeParam && typeParam !== "ALL") {
       query = query.eq("type", typeParam)
     }
     if (currencyParam && currencyParam !== "ALL") {
       query = query.eq("currency", currencyParam)
+    }
+    // Filtro por cliente (restrictToOperationIds ya fue pre-calculado arriba)
+    if (restrictToOperationIds && restrictToOperationIds.length > 0) {
+      query = query.in("operation_id", restrictToOperationIds)
     }
     // SELLER solo ve sus propios movimientos
     if (user.role === "SELLER") {

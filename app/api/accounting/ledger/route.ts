@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function GET(request: Request) {
   try {
@@ -43,8 +44,9 @@ export async function GET(request: Request) {
       )
 
     // IMPORTANTE: filtros ANTES de order/range para que funcione la paginación
-    if (dateFrom) query = query.gte("movement_date", `${dateFrom}T00:00:00`)
-    if (dateTo)   query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    // Filtros de fecha con offset de AR: evita perder movimientos por desfasaje UTC
+    if (dateFrom) query = query.gte("movement_date", startOfDayAR(dateFrom))
+    if (dateTo)   query = query.lte("movement_date", endOfDayAR(dateTo))
     if (currency && currency !== "ALL") query = query.eq("currency", currency)
     if (accountId && accountId !== "ALL") query = query.eq("account_id", accountId)
     if (operationId) query = query.eq("operation_id", operationId)

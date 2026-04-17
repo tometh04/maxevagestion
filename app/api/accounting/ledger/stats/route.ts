@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 /**
  * GET /api/accounting/ledger/stats
@@ -44,10 +45,10 @@ export async function GET(request: Request) {
       ids = [accountId]
     }
 
-    // Construir filtro de fechas
+    // Construir filtro de fechas con offset AR (fix bug "movimientos fuera de rango")
     let dateFilter = ""
-    if (dateFrom) dateFilter += ` AND movement_date >= '${dateFrom}T00:00:00'`
-    if (dateTo) dateFilter += ` AND movement_date <= '${dateTo}T23:59:59'`
+    if (dateFrom) dateFilter += ` AND movement_date >= '${startOfDayAR(dateFrom)}'`
+    if (dateTo) dateFilter += ` AND movement_date <= '${endOfDayAR(dateTo)}'`
 
     // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles
     const sqlQuery = `SELECT account_id, SUM(CASE WHEN type IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN type NOT IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements WHERE affects_balance = true ${accountFilter} ${dateFilter} GROUP BY account_id`
