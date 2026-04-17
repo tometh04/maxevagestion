@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { CommissionsTable, Commission } from "./commissions-table"
+import { SellerObjectivesCards } from "./seller-objectives-cards"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -89,6 +90,9 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
         <h1 className="text-2xl font-semibold tracking-tight">Mis Comisiones</h1>
         <p className="text-muted-foreground">Revisa tus comisiones ganadas</p>
       </div>
+
+      {/* Objetivos del vendedor (si hay alguno activo) */}
+      <SellerObjectivesCards sellerId={sellerId} />
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">

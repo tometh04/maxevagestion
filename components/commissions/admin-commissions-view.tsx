@@ -50,6 +50,7 @@ import {
   Loader2,
   Receipt,
   AlertTriangle,
+  Target,
 } from "lucide-react"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -509,7 +510,16 @@ export function AdminCommissionsView({ userId, userRole }: AdminCommissionsViewP
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-semibold tracking-tight">Comisiones</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-2xl font-semibold tracking-tight">Comisiones</h1>
+        <Link
+          href="/commissions/objectives"
+          className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1.5 text-xs font-medium hover:bg-muted/50 transition-colors"
+        >
+          <Target className="h-3.5 w-3.5" />
+          Objetivos de vendedores
+        </Link>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
