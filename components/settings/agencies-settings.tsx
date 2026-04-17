@@ -18,6 +18,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { Building2, Plus, Pencil } from "lucide-react"
+import { toast } from "sonner"
 
 const agencySchema = z.object({
   name: z.string().min(1, "El nombre es requerido"),
@@ -72,11 +73,11 @@ export function AgenciesSettings() {
         form.reset()
         loadAgencies()
       } else {
-        alert(data.error || "Error al guardar agencia")
+        toast.error(data.error || "Error al guardar agencia")
       }
     } catch (error) {
       console.error("Error saving agency:", error)
-      alert("Error al guardar agencia")
+      toast.error("Error al guardar agencia")
     }
   }
 

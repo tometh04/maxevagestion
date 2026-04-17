@@ -33,6 +33,7 @@ import { CalendarIcon, User, MapPin, UserCheck, StickyNote } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",
@@ -204,7 +205,7 @@ export function NewLeadDialog({
       onSuccess()
     } catch (error: any) {
       console.error("Error creating lead:", error)
-      alert(error.message || "Error al crear lead")
+      toast.error(error.message || "Error al crear lead")
     } finally {
       setLoading(false)
     }

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { ArrowUpDown, DollarSign, CalendarIcon } from "lucide-react"
+import { toast } from "sonner"
 
 interface FinancialAccount {
   id: string
@@ -153,7 +154,7 @@ export function NewCashMovementDialog({
 
   const onSubmit = async (values: CashMovementFormValues) => {
     if (!values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
@@ -186,7 +187,7 @@ export function NewCashMovementDialog({
       form.reset()
     } catch (error) {
       console.error("Error creating cash movement:", error)
-      alert(error instanceof Error ? error.message : "Error al crear movimiento")
+      toast.error(error instanceof Error ? error.message : "Error al crear movimiento")
     } finally {
       setIsLoading(false)
     }

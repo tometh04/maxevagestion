@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Loader2, Upload, FileText, ExternalLink, Receipt as ReceiptIcon } from "lucide-react"
+import { toast } from "sonner"
 
 interface Receipt {
   id: string
@@ -87,7 +88,7 @@ export function ExpenseReceiptDialog({
       await fetchReceipts()
     } catch (err) {
       console.error("Error uploading receipt:", err)
-      alert(err instanceof Error ? err.message : "Error al subir comprobante")
+      toast.error(err instanceof Error ? err.message : "Error al subir comprobante")
     } finally {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ""

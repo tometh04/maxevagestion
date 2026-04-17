@@ -11,6 +11,7 @@ import {
   type PublicQuotationBranding,
   type PublicQuotationViewMode,
 } from "./public-quotation-document"
+import { toast } from "sonner"
 
 export function PublicQuotationView({
   mode = "interactive",
@@ -118,7 +119,7 @@ export function PublicQuotationView({
 
       if (!res.ok) {
         const err = await res.json()
-        alert(err.error || "Error al aceptar")
+        toast.error(err.error || "Error al aceptar")
         return
       }
 
@@ -137,7 +138,7 @@ export function PublicQuotationView({
         }
       })
     } catch {
-      alert("Error de conexion")
+      toast.error("Error de conexion")
     } finally {
       setAccepting(false)
     }

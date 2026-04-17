@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { toast } from "sonner"
 
 interface MovementsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -70,7 +71,7 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error al exportar movimientos:", error)
-      alert("No se pudo exportar el CSV. Intenta nuevamente.")
+      toast.error("No se pudo exportar el CSV. Intenta nuevamente.")
     }
   }, [filters])
 

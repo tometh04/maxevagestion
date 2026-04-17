@@ -49,6 +49,7 @@ import {
   type OperationServicePaymentRelationLike,
 } from "@/lib/operations/payment-operators"
 import { buildOperationPurchaseSummary } from "@/lib/operations/purchase-summary"
+import { toast } from "sonner"
 
 type OperationAccessScope = "full" | "own" | "agency-support"
 
@@ -179,7 +180,7 @@ export function OperationDetailClient({
       if (!response.ok) throw new Error("Error")
       router.refresh()
     } catch (error) {
-      alert("Error al eliminar alertas")
+      toast.error("Error al eliminar alertas")
     } finally {
       setIsDeletingAlerts(false)
     }
@@ -196,7 +197,7 @@ export function OperationDetailClient({
       if (!response.ok) throw new Error("Error")
       router.refresh()
     } catch (error) {
-      alert("Error al generar alertas")
+      toast.error("Error al generar alertas")
     } finally {
       setIsGeneratingAlerts(false)
     }

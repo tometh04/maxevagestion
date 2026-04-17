@@ -47,6 +47,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { Percent, Plus, Info, Settings2, Calendar } from "lucide-react"
+import { toast } from "sonner"
 
 const commissionRuleSchema = z.object({
   type: z.enum(["SELLER", "AGENCY"]),
@@ -180,7 +181,7 @@ export function CommissionsSettings() {
       fetchRules()
     } catch (error) {
       console.error("Error saving rule:", error)
-      alert("Error al guardar la regla")
+      toast.error("Error al guardar la regla")
     }
   }
 
@@ -206,7 +207,7 @@ export function CommissionsSettings() {
       setRuleToDelete(null)
     } catch (error) {
       console.error("Error deleting rule:", error)
-      alert("Error al eliminar la regla")
+      toast.error("Error al eliminar la regla")
       setDeleteDialogOpen(false)
       setRuleToDelete(null)
     }

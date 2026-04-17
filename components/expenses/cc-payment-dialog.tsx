@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { CreditCard, Landmark, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
+import { toast } from "sonner"
 
 interface Category {
   id: string
@@ -144,7 +145,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
 
   const onSubmit = async (values: CCPaymentFormValues) => {
     if (!isBalanced) {
-      alert("La suma de los items debe ser igual al monto total")
+      toast.error("La suma de los items debe ser igual al monto total")
       return
     }
 
@@ -180,7 +181,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
       form.reset()
     } catch (error) {
       console.error("Error creating cc payment:", error)
-      alert(error instanceof Error ? error.message : "Error al crear pago de tarjeta")
+      toast.error(error instanceof Error ? error.message : "Error al crear pago de tarjeta")
     } finally {
       setIsLoading(false)
     }

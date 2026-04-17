@@ -268,7 +268,7 @@ export function OperationPaymentsSection({
         window.open(data.whatsappLink, "_blank")
       }
       
-      alert("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
+      toast.success("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
       router.refresh()
     } catch (error) {
       console.error("Error sending receipt via WhatsApp:", error)
@@ -414,12 +414,12 @@ export function OperationPaymentsSection({
 
     // Si es PAID o se está marcando como pagado, necesita cuenta financiera
     if ((editingPayment.status === "PAID" || markAsPaid) && !values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
     if (editNeedsExchangeRate && !values.exchange_rate) {
-      alert(
+      toast.error(
         isEditingCustomerIncome
           ? "Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación"
           : "Debe ingresar el tipo de cambio para pagos en ARS"
@@ -528,12 +528,12 @@ export function OperationPaymentsSection({
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar cuenta financiera
     if (!values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
     if (incomeNeedsExchangeRate && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
+      toast.error("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
       return
     }
     
@@ -591,13 +591,13 @@ export function OperationPaymentsSection({
 
     // Validar cuenta financiera
     if (!values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
     // Validar tipo de cambio si es ARS
     if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+      toast.error("Debe ingresar el tipo de cambio para pagos en ARS")
       return
     }
     

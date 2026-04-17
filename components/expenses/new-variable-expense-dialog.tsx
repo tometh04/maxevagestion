@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Upload, FileText, Receipt, Landmark, StickyNote } from "lucide-react"
+import { toast } from "sonner"
 
 interface Category {
   id: string
@@ -163,7 +164,7 @@ export function NewVariableExpenseDialog({
       setSelectedFile(null)
     } catch (error) {
       console.error("Error creating expense:", error)
-      alert(error instanceof Error ? error.message : "Error al crear gasto")
+      toast.error(error instanceof Error ? error.message : "Error al crear gasto")
     } finally {
       setIsLoading(false)
     }

@@ -218,11 +218,11 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
         }
       } else {
         console.error("Error moviendo lead:", data.error)
-        alert("Error al mover la tarjeta: " + (data.error || "Error desconocido"))
+        toast.error("Error al mover la tarjeta: " + (data.error || "Error desconocido"))
       }
     } catch (error) {
       console.error("Error updating lead list:", error)
-      alert("Error al mover la tarjeta")
+      toast.error("Error al mover la tarjeta")
     } finally {
       setDraggedLead(null)
     }
