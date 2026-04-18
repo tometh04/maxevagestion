@@ -1,3 +1,11 @@
+/**
+ * @jest-environment node
+ *
+ * rate-limit.ts importa NextResponse de next/server (desde que agregamos
+ * el helper enforceUserRateLimit). Eso requiere Request/Response/
+ * ReadableStream globales, que existen en Node 18+ pero no en jsdom.
+ */
+
 // Use fake timers to prevent setInterval in rate-limit.ts from keeping Jest open
 jest.useFakeTimers()
 
