@@ -136,12 +136,22 @@ describe("Permissions API", () => {
       expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1"])
     })
 
-    it("should not filter SUPER_ADMIN", () => {
+    it("should filter SUPER_ADMIN by agency_id (multi-tenant: always scope to org)", () => {
       const query = createMockQuery()
       const user = { role: "SUPER_ADMIN", id: "sa-1" }
-      const result = applyLeadsFilters(query, user, ["agency-1"])
+      applyLeadsFilters(query, user, ["agency-1"])
 
-      // SUPER_ADMIN should not be filtered by agency
+      // Multi-tenant: SUPER_ADMIN es SUPER_ADMIN DENTRO de su org. Los agencyIds
+      // vienen pre-filtrados por org (getUserAgencyIds), así que filtrar por
+      // ellos también acota al org incluso para SUPER_ADMIN.
+      expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1"])
+    })
+
+    it("should not filter SUPER_ADMIN when agencyIds is empty (legacy / mock dev)", () => {
+      const query = createMockQuery()
+      const user = { role: "SUPER_ADMIN", id: "sa-1" }
+      applyLeadsFilters(query, user, [])
+
       expect(query.in).not.toHaveBeenCalled()
       expect(query.eq).not.toHaveBeenCalled()
     })
@@ -195,10 +205,18 @@ describe("Permissions API", () => {
       expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1", "agency-2"])
     })
 
-    it("should not filter SUPER_ADMIN", () => {
+    it("should filter SUPER_ADMIN by agency_id (multi-tenant: always scope to org)", () => {
       const query = createMockQuery()
       const user = { role: "SUPER_ADMIN", id: "sa-1" }
       applyOperationsFilters(query, user, ["agency-1"])
+
+      expect(query.in).toHaveBeenCalledWith("agency_id", ["agency-1"])
+    })
+
+    it("should not filter SUPER_ADMIN when agencyIds is empty (legacy / mock dev)", () => {
+      const query = createMockQuery()
+      const user = { role: "SUPER_ADMIN", id: "sa-1" }
+      applyOperationsFilters(query, user, [])
 
       expect(query.in).not.toHaveBeenCalled()
       expect(query.eq).not.toHaveBeenCalled()

@@ -15,6 +15,7 @@ export async function getCurrentUser(): Promise<{ user: User; session: { user: a
     const mockUser: User = {
       id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
       auth_id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe',
+      org_id: null,
       name: 'Usuario Desarrollo',
       email: 'tomas.sanchez04@gmail.com',
       role: 'SUPER_ADMIN',

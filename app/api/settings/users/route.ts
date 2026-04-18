@@ -10,9 +10,9 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
-    
-    // Traer usuarios con sus agencias asignadas (incluyendo el nombre de la agencia)
-    const { data: users, error: usersError } = await supabase
+
+    // Traer usuarios con sus agencias asignadas, filtrando por org del usuario actual
+    let query = supabase
       .from("users")
       .select(`
         *,
@@ -23,18 +23,23 @@ export async function GET() {
       `)
       .order("created_at", { ascending: false })
 
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+
+    const { data: users, error: usersError } = await query
+
     if (usersError) {
       console.error("Error fetching users:", usersError)
-      // Si hay error con la relación, intentar sin user_agencies
-      const { data: usersSimple, error: simpleError } = await supabase
-        .from("users")
-        .select("*")
-        .order("created_at", { ascending: false })
-      
+      // Fallback sin user_agencies
+      let simpleQuery = supabase.from("users").select("*").order("created_at", { ascending: false })
+      if (user.org_id) simpleQuery = simpleQuery.eq("org_id", user.org_id)
+      const { data: usersSimple, error: simpleError } = await simpleQuery
+
       if (simpleError) {
         return NextResponse.json({ error: "Error al cargar usuarios", details: simpleError.message }, { status: 500 })
       }
-      
+
       return NextResponse.json({ users: usersSimple || [] })
     }
 
@@ -59,9 +64,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta el ID del usuario" }, { status: 400 })
     }
 
+    // Verificar que el usuario target esté en la misma org que el solicitante
+    const { data: existingUser } = await supabase
+      .from("users")
+      .select("role, org_id")
+      .eq("id", id)
+      .single()
+
+    const target = existingUser as { role: string; org_id: string | null } | null
+    if (!target) {
+      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+    }
+    if (user.org_id && target.org_id !== user.org_id) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
+
     // No permitir cambiar el rol de SUPER_ADMIN
-    const { data: existingUser } = await supabase.from("users").select("role").eq("id", id).single()
-    if (existingUser && (existingUser as any).role === "SUPER_ADMIN" && role && role !== "SUPER_ADMIN") {
+    if (target.role === "SUPER_ADMIN" && role && role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "No se puede cambiar el rol de SUPER_ADMIN" }, { status: 400 })
     }
 

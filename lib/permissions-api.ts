@@ -119,7 +119,9 @@ export function resolveOperationAccessScope(
 }
 
 /**
- * Aplica filtros de leads según el rol del usuario
+ * Aplica filtros de leads según el rol del usuario.
+ * Multi-tenant: agencyIds ya viene acotado a la org del usuario (ver getUserAgencyIds),
+ * así que filtrar por ellos también acota por org — incluso para SUPER_ADMIN.
  */
 export function applyLeadsFilters(
   query: any,
@@ -142,8 +144,8 @@ export function applyLeadsFilters(
     throw new Error("No tiene permiso para ver leads")
   }
 
-  // Filtrar por agencias si no es SUPER_ADMIN
-  if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
+  // ADMIN / SUPER_ADMIN / VIEWER: siempre filtrar por las agencias de su org
+  if (agencyIds.length > 0) {
     query = query.in("agency_id", agencyIds)
   }
 
@@ -151,7 +153,9 @@ export function applyLeadsFilters(
 }
 
 /**
- * Aplica filtros de operaciones según el rol del usuario
+ * Aplica filtros de operaciones según el rol del usuario.
+ * Multi-tenant: agencyIds viene acotado a la org, así que filtrar por ellos también
+ * acota por org para todos los roles.
  */
 export function applyOperationsFilters(
   query: any,
@@ -173,8 +177,8 @@ export function applyOperationsFilters(
     return query.eq("seller_id", user.id)
   }
 
-  // Filtrar por agencias si no es SUPER_ADMIN
-  if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
+  // ADMIN / SUPER_ADMIN / VIEWER / CONTABLE: filtrar por agencias de su org
+  if (agencyIds.length > 0) {
     query = query.in("agency_id", agencyIds)
   }
 
@@ -182,8 +186,9 @@ export function applyOperationsFilters(
 }
 
 /**
- * Aplica filtros de clientes según el rol del usuario
- * NOTA: Esta función es async porque necesita hacer queries adicionales
+ * Aplica filtros de clientes según el rol del usuario.
+ * Multi-tenant: clients.org_id es NOT NULL — filtramos por la org del usuario.
+ * Sellers siguen con su restricción adicional de "solo clientes de mis operaciones".
  */
 export async function applyCustomersFilters(
   query: any,
@@ -194,8 +199,19 @@ export async function applyCustomersFilters(
 ): Promise<any> {
   const userRole = user.role as UserRole
 
-  // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes sin filtros
-  // Esto es crítico porque los clientes pueden existir sin operaciones asociadas
+  // Resolver org_id del usuario (una sola vez por request)
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('org_id')
+    .eq('id', user.id)
+    .maybeSingle()
+  const orgId = (userRow as any)?.org_id as string | null | undefined
+
+  if (orgId) {
+    query = query.eq('org_id', orgId)
+  }
+
+  // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes de su org (sin restricción adicional)
   if (userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "VIEWER") {
     return query
   }
@@ -353,34 +369,60 @@ export async function canAccessDocumentResource(
 }
 
 /**
- * Obtiene los IDs de agencias del usuario para filtrar queries
+ * Obtiene los IDs de agencias del usuario para filtrar queries.
+ *
+ * Multi-tenant: si el usuario tiene org_id, el resultado está acotado a las agencias
+ * de SU org. SUPER_ADMIN y CONTABLE ven todas las agencias de la org, pero NO las de
+ * otras orgs. Los demás roles solo ven las agencias a las que están asignados via
+ * user_agencies (también acotado a su org).
+ *
+ * Usuarios legacy sin org_id caen al comportamiento pre-SaaS (ver todo globalmente si
+ * es SUPER_ADMIN/CONTABLE). Esto preserva el modo dev con mock user y cualquier dato
+ * huérfano que haya quedado fuera del backfill de la migración 132.
  */
 export async function getUserAgencyIds(
   supabase: SupabaseClient<Database>,
   userId: string,
   userRole: UserRole
 ): Promise<string[]> {
-  // Usar caché para evitar consultas repetidas (TTL: 5 minutos)
   const { unstable_cache } = await import('next/cache')
-  
+
   return unstable_cache(
     async () => {
-      if (userRole === "SUPER_ADMIN" || userRole === "CONTABLE") {
-        // SUPER_ADMIN y CONTABLE ven todas las agencias
-        const { data: allAgencies } = await supabase.from("agencies").select("id")
-        return (allAgencies || []).map((a: any) => a.id)
+      // Buscar el org_id del usuario (nullable: usuarios pre-SaaS pueden no tenerlo)
+      const { data: userRow } = await supabase
+        .from('users')
+        .select('org_id')
+        .eq('id', userId)
+        .maybeSingle()
+      const orgId = (userRow as any)?.org_id as string | null | undefined
+
+      if (userRole === 'SUPER_ADMIN' || userRole === 'CONTABLE') {
+        let q = supabase.from('agencies').select('id')
+        if (orgId) q = q.eq('org_id', orgId)
+        const { data: agencies } = await q
+        return (agencies || []).map((a: any) => a.id)
       }
 
+      // Roles con alcance limitado: intersección de user_agencies con agencias de la org
       const { data: userAgencies } = await supabase
-        .from("user_agencies")
-        .select("agency_id")
-        .eq("user_id", userId)
+        .from('user_agencies')
+        .select('agency_id')
+        .eq('user_id', userId)
+      const assignedIds = (userAgencies || []).map((ua: any) => ua.agency_id as string)
 
-      return (userAgencies || []).map((ua: any) => ua.agency_id)
+      if (!orgId || assignedIds.length === 0) return assignedIds
+
+      const { data: orgAgencies } = await supabase
+        .from('agencies')
+        .select('id')
+        .eq('org_id', orgId)
+        .in('id', assignedIds)
+      return (orgAgencies || []).map((a: any) => a.id)
     },
     [`user-agencies-${userId}-${userRole}`],
     {
-      revalidate: 5 * 60, // 5 minutos
+      revalidate: 5 * 60,
       tags: [`user-agencies-${userId}`],
     }
   )()
