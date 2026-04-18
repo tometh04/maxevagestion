@@ -224,15 +224,26 @@ export async function POST(request: Request) {
 
     let costAccountId: string
     if (costosChart) {
-      const { data: costosFA } = await (supabase.from("financial_accounts") as any)
+      // Buscar la FA canónica (la más antigua) asociada a "Costos de Operadores" (4.2.01).
+      // IMPORTANTE: .order("created_at").limit(1) es crítico para NO generar duplicados.
+      // Bug previo (pre-Abr/2026): filtrábamos por paymentAccount.currency en el lookup pero
+      // el INSERT clavaba currency='ARS', así que pagos USD nunca encontraban FA y creaban
+      // duplicados ARS sin parar. Adicionalmente, .maybeSingle() con 2+ filas erra silencioso
+      // y caía al INSERT otra vez → crecimiento exponencial (llegamos a 42 duplicados en prod).
+      // Mismo patrón que getOrCreateDefaultAccount en lib/accounting/ledger.ts.
+      const { data: costosFAList } = await (supabase.from("financial_accounts") as any)
         .select("id")
         .eq("chart_account_id", costosChart.id)
-        .eq("currency", paymentAccount.currency || "ARS")
         .eq("is_active", true)
-        .maybeSingle()
-      if (costosFA?.id) {
-        costAccountId = costosFA.id
+        .order("created_at", { ascending: true })
+        .limit(1)
+
+      const existingFA = (costosFAList as Array<{ id: string }> | null)?.[0]
+
+      if (existingFA?.id) {
+        costAccountId = existingFA.id
       } else {
+        // No existe ninguna: crear la canónica (una sola vez).
         const { data: newFA, error: insErr } = await (supabase.from("financial_accounts") as any)
           .insert({
             name: "Costo de Operadores",
