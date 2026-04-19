@@ -50,6 +50,11 @@ export async function GET(request: Request) {
       .lte("created_at", filterTo.toISOString())
       .is("archived_at", null)
 
+    // Multi-tenant: scope por org del usuario
+    if (user.org_id) {
+      leadsQuery = leadsQuery.eq("org_id", user.org_id)
+    }
+
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
       leadsQuery = leadsQuery.eq("agency_id", agencyId)
