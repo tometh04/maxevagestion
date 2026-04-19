@@ -189,6 +189,11 @@ export function applyOperationsFilters(
  * Aplica filtros de clientes según el rol del usuario.
  * Multi-tenant: clients.org_id es NOT NULL — filtramos por la org del usuario.
  * Sellers siguen con su restricción adicional de "solo clientes de mis operaciones".
+ *
+ * Retorna `{ query }` (wrapped) a propósito: PostgrestFilterBuilder es thenable,
+ * y si lo retornáramos directo desde una función async, el `await` del caller
+ * auto-ejecutaría la query y devolvería el response `{ data, error, ... }` en
+ * vez del builder. Wrapping en objeto evita el auto-await.
  */
 export async function applyCustomersFilters(
   query: any,
@@ -196,7 +201,7 @@ export async function applyCustomersFilters(
   agencyIds: string[],
   supabase: SupabaseClient<Database>,
   context?: string
-): Promise<any> {
+): Promise<{ query: any }> {
   const userRole = user.role as UserRole
 
   // Resolver org_id del usuario (una sola vez por request)
@@ -213,7 +218,7 @@ export async function applyCustomersFilters(
 
   // SUPER_ADMIN, ADMIN y VIEWER ven TODOS los clientes de su org (sin restricción adicional)
   if (userRole === "SUPER_ADMIN" || userRole === "ADMIN" || userRole === "VIEWER") {
-    return query
+    return { query }
   }
 
   // CONTABLE no ve clientes
@@ -224,7 +229,7 @@ export async function applyCustomersFilters(
   // SELLER: en contexto de selector (crear operación), ver todos los clientes
   // para poder asignar cualquier cliente existente a una nueva operación
   if (userRole === "SELLER" && context === "selector") {
-    return query
+    return { query }
   }
 
   // SELLER en vista normal: solo ve clientes de sus operaciones
@@ -239,7 +244,7 @@ export async function applyCustomersFilters(
 
     if (operationIds.length === 0) {
       // No tiene operaciones, retornar query que no devuelva resultados usando limit(0)
-      return query.limit(0)
+      return { query: query.limit(0) }
     }
 
     // Obtener customer_ids de operation_customers
@@ -252,14 +257,14 @@ export async function applyCustomersFilters(
 
     if (customerIds.length === 0) {
       // No hay clientes asociados, retornar query que no devuelva resultados
-      return query.limit(0)
+      return { query: query.limit(0) }
     }
 
-    return query.in("id", customerIds)
+    return { query: query.in("id", customerIds) }
   }
 
   // Para otros roles no contemplados, retornar query vacío por seguridad
-  return query.limit(0)
+  return { query: query.limit(0) }
 }
 
 /**

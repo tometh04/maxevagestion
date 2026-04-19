@@ -51,7 +51,8 @@ export async function GET(request: Request) {
       `)
 
     try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase)
+      const applied = await applyCustomersFilters(query, user, agencyIds, supabase)
+      query = applied.query
     } catch (error: any) {
       console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })

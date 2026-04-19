@@ -37,7 +37,8 @@ export async function GET(request: Request) {
       `)
 
     try {
-      selectQuery = await applyCustomersFilters(selectQuery, user, agencyIds, supabase, context)
+      const applied = await applyCustomersFilters(selectQuery, user, agencyIds, supabase, context)
+      selectQuery = applied.query
     } catch (error: any) {
       console.error("Error applying customers filters:", error)
       return NextResponse.json({ error: error.message }, { status: 403 })
@@ -107,7 +108,8 @@ export async function GET(request: Request) {
       .select("*", { count: "exact", head: true })
 
     try {
-      countSelectQuery = await applyCustomersFilters(countSelectQuery, user, agencyIds, supabase)
+      const appliedCount = await applyCustomersFilters(countSelectQuery, user, agencyIds, supabase)
+      countSelectQuery = appliedCount.query
     } catch {
       // Ignore if filtering fails
     }
