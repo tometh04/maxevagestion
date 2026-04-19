@@ -39,12 +39,19 @@ interface CustomerAccountSectionProps {
   customerId: string
 }
 
+type PerCurrency = Record<string, number>
+
 export function CustomerAccountSection({ customerId }: CustomerAccountSectionProps) {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
-  const [summary, setSummary] = useState({
-    totalOwed: 0,
-    totalPaid: 0,
+  const [summary, setSummary] = useState<{
+    totalOwedByCurrency: PerCurrency
+    totalPaidByCurrency: PerCurrency
+    pendingPayments: number
+    overduePayments: number
+  }>({
+    totalOwedByCurrency: {},
+    totalPaidByCurrency: {},
     pendingPayments: 0,
     overduePayments: 0,
   })
@@ -55,23 +62,25 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
       // Obtener operaciones del cliente y sus pagos
       const response = await fetch(`/api/customers/${customerId}/payments`)
       const data = await response.json()
-      
+
       const allPayments = data.payments || []
       setPayments(allPayments)
-      
-      // Calcular resumen
+
+      // Calcular resumen separado por moneda (sumar USD con ARS da numeros falsos)
       const today = new Date()
-      let totalOwed = 0
-      let totalPaid = 0
+      const totalOwedByCurrency: PerCurrency = {}
+      const totalPaidByCurrency: PerCurrency = {}
       let pendingCount = 0
       let overdueCount = 0
-      
+
       allPayments.forEach((p: Payment) => {
         if (p.direction === "INCOME") {
+          const cur = p.currency || "ARS"
+          const amt = Number(p.amount) || 0
           if (p.status === "PAID") {
-            totalPaid += p.amount
+            totalPaidByCurrency[cur] = (totalPaidByCurrency[cur] || 0) + amt
           } else {
-            totalOwed += p.amount
+            totalOwedByCurrency[cur] = (totalOwedByCurrency[cur] || 0) + amt
             pendingCount++
             if (new Date(p.date_due) < today) {
               overdueCount++
@@ -79,10 +88,10 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
           }
         }
       })
-      
+
       setSummary({
-        totalOwed,
-        totalPaid,
+        totalOwedByCurrency,
+        totalPaidByCurrency,
         pendingPayments: pendingCount,
         overduePayments: overdueCount,
       })
@@ -131,7 +140,17 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
     )
   }
 
-  const balance = summary.totalOwed
+  const owedEntries = Object.entries(summary.totalOwedByCurrency).filter(([, v]) => v > 0)
+  const paidEntries = Object.entries(summary.totalPaidByCurrency).filter(([, v]) => v > 0)
+  const hasOwed = owedEntries.length > 0
+  const renderAmounts = (entries: [string, number][]) =>
+    entries.length === 0
+      ? <span>ARS 0,00</span>
+      : entries.map(([cur, amt], i) => (
+          <span key={cur} className={i > 0 ? "block text-base" : "block"}>
+            {formatCurrency(amt, cur)}
+          </span>
+        ))
 
   return (
     <Card>
@@ -152,25 +171,25 @@ export function CustomerAccountSection({ customerId }: CustomerAccountSectionPro
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm font-medium">Total Pagado</span>
             </div>
-            <p className="text-xl font-bold mt-1">
-              {formatCurrency(summary.totalPaid)}
-            </p>
+            <div className="text-xl font-bold mt-1">
+              {renderAmounts(paidEntries)}
+            </div>
           </div>
-          
+
           <div className={`p-4 rounded-lg border ${
-            balance > 0 
-              ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800" 
+            hasOwed
+              ? "bg-yellow-50 dark:bg-yellow-950/20 border-yellow-200 dark:border-yellow-800"
               : "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
           }`}>
             <div className={`flex items-center gap-2 ${
-              balance > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-gray-600"
+              hasOwed ? "text-yellow-600 dark:text-yellow-400" : "text-gray-600"
             }`}>
               <TrendingDown className="h-4 w-4" />
               <span className="text-sm font-medium">Saldo Pendiente</span>
             </div>
-            <p className="text-xl font-bold mt-1">
-              {formatCurrency(summary.totalOwed)}
-            </p>
+            <div className="text-xl font-bold mt-1">
+              {renderAmounts(owedEntries)}
+            </div>
           </div>
           
           <div className="p-4 rounded-lg border">

@@ -39,12 +39,19 @@ interface OperatorAccountSectionProps {
   creditLimit?: number | null
 }
 
+type PerCurrency = Record<string, number>
+
 export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAccountSectionProps) {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
-  const [summary, setSummary] = useState({
-    totalOwed: 0,
-    totalPaid: 0,
+  const [summary, setSummary] = useState<{
+    totalOwedByCurrency: PerCurrency
+    totalPaidByCurrency: PerCurrency
+    pendingPayments: number
+    overduePayments: number
+  }>({
+    totalOwedByCurrency: {},
+    totalPaidByCurrency: {},
     pendingPayments: 0,
     overduePayments: 0,
   })
@@ -54,23 +61,25 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
       setLoading(true)
       const response = await fetch(`/api/operators/${operatorId}/payments`)
       const data = await response.json()
-      
+
       const allPayments = data.payments || []
       setPayments(allPayments)
-      
-      // Calcular resumen
+
+      // Resumen separado por moneda (sumar USD con ARS da numeros falsos)
       const today = new Date()
-      let totalOwed = 0
-      let totalPaid = 0
+      const totalOwedByCurrency: PerCurrency = {}
+      const totalPaidByCurrency: PerCurrency = {}
       let pendingCount = 0
       let overdueCount = 0
-      
+
       allPayments.forEach((p: Payment) => {
         if (p.direction === "EXPENSE") {
+          const cur = p.currency || "ARS"
+          const amt = Number(p.amount) || 0
           if (p.status === "PAID") {
-            totalPaid += p.amount
+            totalPaidByCurrency[cur] = (totalPaidByCurrency[cur] || 0) + amt
           } else {
-            totalOwed += p.amount
+            totalOwedByCurrency[cur] = (totalOwedByCurrency[cur] || 0) + amt
             pendingCount++
             if (new Date(p.date_due) < today) {
               overdueCount++
@@ -78,10 +87,10 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
           }
         }
       })
-      
+
       setSummary({
-        totalOwed,
-        totalPaid,
+        totalOwedByCurrency,
+        totalPaidByCurrency,
         pendingPayments: pendingCount,
         overduePayments: overdueCount,
       })
@@ -112,7 +121,20 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
     return <Badge variant="secondary">Pendiente</Badge>
   }
 
-  const exceedsCreditLimit = creditLimit && summary.totalOwed > creditLimit
+  const owedEntries = Object.entries(summary.totalOwedByCurrency).filter(([, v]) => v > 0)
+  const paidEntries = Object.entries(summary.totalPaidByCurrency).filter(([, v]) => v > 0)
+  const hasOwed = owedEntries.length > 0
+  // creditLimit comparado solo en ARS — es el caso comun historico
+  const totalOwedArs = summary.totalOwedByCurrency["ARS"] || 0
+  const exceedsCreditLimit = creditLimit && totalOwedArs > creditLimit
+  const renderAmounts = (entries: [string, number][]) =>
+    entries.length === 0
+      ? <span>ARS 0,00</span>
+      : entries.map(([cur, amt], i) => (
+          <span key={cur} className={i > 0 ? "block text-base" : "block"}>
+            {formatCurrency(amt, cur)}
+          </span>
+        ))
 
   if (loading) {
     return (
@@ -144,13 +166,13 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Alerta de límite de crédito */}
+        {/* Alerta de límite de crédito — compara solo saldo en ARS */}
         {exceedsCreditLimit && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <strong>¡Límite de crédito excedido!</strong> El saldo pendiente ({formatCurrency(summary.totalOwed)}) 
-              supera el límite de crédito ({formatCurrency(creditLimit!)}).
+              <strong>¡Límite de crédito excedido!</strong> El saldo pendiente en ARS ({formatCurrency(totalOwedArs, "ARS")})
+              supera el límite de crédito ({formatCurrency(creditLimit!, "ARS")}).
             </AlertDescription>
           </Alert>
         )}
@@ -162,31 +184,31 @@ export function OperatorAccountSection({ operatorId, creditLimit }: OperatorAcco
               <TrendingUp className="h-4 w-4" />
               <span className="text-sm font-medium">Total Pagado</span>
             </div>
-            <p className="text-xl font-bold mt-1">
-              {formatCurrency(summary.totalPaid)}
-            </p>
+            <div className="text-xl font-bold mt-1">
+              {renderAmounts(paidEntries)}
+            </div>
           </div>
-          
+
           <div className={`p-4 rounded-lg border ${
-            exceedsCreditLimit 
+            exceedsCreditLimit
               ? "bg-destructive/10 border-destructive"
-              : summary.totalOwed > 0
+              : hasOwed
                 ? "bg-warning/10 border-warning"
                 : "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-700"
           }`}>
             <div className={`flex items-center gap-2 ${
               exceedsCreditLimit
                 ? "text-destructive"
-                : summary.totalOwed > 0
+                : hasOwed
                   ? "text-warning"
                   : "text-gray-600"
             }`}>
               <TrendingDown className="h-4 w-4" />
               <span className="text-sm font-medium">Saldo Adeudado</span>
             </div>
-            <p className="text-xl font-bold mt-1">
-              {formatCurrency(summary.totalOwed)}
-            </p>
+            <div className="text-xl font-bold mt-1">
+              {renderAmounts(owedEntries)}
+            </div>
             {creditLimit && (
               <p className="text-xs text-muted-foreground mt-1">
                 Límite: {formatCurrency(creditLimit)}
