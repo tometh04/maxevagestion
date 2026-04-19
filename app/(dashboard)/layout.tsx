@@ -3,6 +3,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
+import { TrialBanner } from "@/components/trial-banner"
 import {
   SidebarInset,
   SidebarProvider,
@@ -44,6 +45,7 @@ export default async function DashboardLayout({
         />
         <SidebarInset className="min-w-0">
           <SiteHeader />
+          <TrialBanner orgId={user.org_id ?? null} />
           {process.env.DISABLE_AUTH === "true" && (
             <div className="bg-yellow-500 text-yellow-950 text-center text-xs py-1 px-4 font-medium">
               ⚠️ Modo desarrollo — Autenticación deshabilitada (DISABLE_AUTH=true)
