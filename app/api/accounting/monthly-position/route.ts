@@ -134,24 +134,32 @@ export async function GET(request: Request) {
     if (operations && operations.length > 0) {
       const operationIds = (operations as any[]).map(op => op.id)
 
-      // Obtener pagos de clientes
-      const { data: customerPayments, error: paymentsError } = await supabase
-        .from("payments")
-        .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
-        .in("operation_id", operationIds)
-        .eq("direction", "INCOME")
-        .eq("payer_type", "CUSTOMER")
-        .eq("status", "PAID")
+      // Chunking: .in() revienta URL con >300 UUIDs (error silencioso "Bad Request")
+      const chunkSize = 200
+      const customerPayments: any[] = []
+      const opCustomers: any[] = []
 
-      if (paymentsError) {
-        console.error("[Balance] Error fetching customer payments:", paymentsError)
+      for (let i = 0; i < operationIds.length; i += chunkSize) {
+        const chunk = operationIds.slice(i, i + chunkSize)
+
+        const { data: paymentsChunk, error: paymentsError } = await supabase
+          .from("payments")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
+          .in("operation_id", chunk)
+          .eq("direction", "INCOME")
+          .eq("payer_type", "CUSTOMER")
+          .eq("status", "PAID")
+        if (paymentsError) {
+          console.error("[Balance] Error fetching customer payments:", paymentsError)
+        }
+        if (paymentsChunk) customerPayments.push(...paymentsChunk)
+
+        const { data: opCustChunk } = await supabase
+          .from("operation_customers")
+          .select("operation_id, customers:customer_id(id, first_name, last_name)")
+          .in("operation_id", chunk)
+        if (opCustChunk) opCustomers.push(...opCustChunk)
       }
-
-      // Obtener clientes de operaciones
-      const { data: opCustomers } = await supabase
-        .from("operation_customers")
-        .select("operation_id, customers:customer_id(id, first_name, last_name)")
-        .in("operation_id", operationIds)
 
       const customersByOp: Record<string, any> = {}
       if (opCustomers) {
