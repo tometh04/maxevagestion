@@ -21,26 +21,9 @@ export async function GET(request: Request) {
     // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build base query
-    let query = supabase.from("customers")
-
-    // Apply role-based filters FIRST (before select)
+    // Build base query — .select() FIRST so applyCustomersFilters can chain .eq() etc.
     const context = searchParams.get("context") || undefined
-    try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase, context)
-    } catch (error: any) {
-      console.error("Error applying customers filters:", error)
-      return NextResponse.json({ error: error.message }, { status: 403 })
-    }
-
-    // Add pagination with reasonable limits
-    const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
-    const offset = parseInt(searchParams.get("offset") || "0")
-    
-    // Apply search filter and select with relations
-    const search = searchParams.get("search")
-    let selectQuery = query.select(`
+    let selectQuery = supabase.from("customers").select(`
         *,
         operation_customers(
           operation_id,
@@ -52,6 +35,21 @@ export async function GET(request: Request) {
           )
         )
       `)
+
+    try {
+      selectQuery = await applyCustomersFilters(selectQuery, user, agencyIds, supabase, context)
+    } catch (error: any) {
+      console.error("Error applying customers filters:", error)
+      return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+
+    // Add pagination with reasonable limits
+    const requestedLimit = parseInt(searchParams.get("limit") || "100")
+    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
+    const offset = parseInt(searchParams.get("offset") || "0")
+
+    // Apply search filter after select + filters
+    const search = searchParams.get("search")
 
     // Apply search filter AFTER select (or() is only available after select)
     // Split search into words so "Emiliano Mossotti" matches first_name + last_name
@@ -103,17 +101,16 @@ export async function GET(request: Request) {
       }
     })
 
-    // Get total count for pagination
-    let countQuery = supabase.from("customers")
-    
+    // Get total count for pagination — .select() FIRST for chaining
+    let countSelectQuery = supabase
+      .from("customers")
+      .select("*", { count: "exact", head: true })
+
     try {
-      countQuery = await applyCustomersFilters(countQuery, user, agencyIds, supabase)
+      countSelectQuery = await applyCustomersFilters(countSelectQuery, user, agencyIds, supabase)
     } catch {
       // Ignore if filtering fails
     }
-    
-    // Apply select first, then search filter (or() is only available after select)
-    let countSelectQuery = countQuery.select("*", { count: "exact", head: true })
     
     if (search) {
       const words = search.trim().split(/\s+/)

@@ -109,17 +109,8 @@ export async function GET(request: Request) {
 
       const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-      // Get customers with operations (same pattern as debts-sales)
-      let query = supabase.from("customers")
-      try {
-        query = await applyCustomersFilters(query, user, agencyIds, supabase)
-      } catch (error: any) {
-        console.error("Error applying customers filters:", error)
-        return NextResponse.json({ error: error.message }, { status: 403 })
-      }
-
-      const { data: customers, error: customersError } = await query
-        .select(`
+      // Get customers with operations — .select() FIRST so applyCustomersFilters can chain .eq()
+      let query = supabase.from("customers").select(`
           id,
           first_name,
           last_name,
@@ -139,6 +130,15 @@ export async function GET(request: Request) {
             )
           )
         `)
+
+      try {
+        query = await applyCustomersFilters(query, user, agencyIds, supabase)
+      } catch (error: any) {
+        console.error("Error applying customers filters:", error)
+        return NextResponse.json({ error: error.message }, { status: 403 })
+      }
+
+      const { data: customers, error: customersError } = await query
 
       if (customersError) {
         console.error("Error fetching customers for aging:", customersError)

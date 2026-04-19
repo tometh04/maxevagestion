@@ -30,20 +30,8 @@ export async function GET(request: Request) {
     // Get user agencies
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build base query
-    let query = supabase.from("customers")
-
-    // Apply role-based filters
-    try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase)
-    } catch (error: any) {
-      console.error("Error applying customers filters:", error)
-      return NextResponse.json({ error: error.message }, { status: 403 })
-    }
-
-    // Get all customers with their operations
-    const { data: customers, error: customersError } = await query
-      .select(`
+    // Build base query — .select() FIRST so applyCustomersFilters can chain .eq()
+    let query = supabase.from("customers").select(`
         *,
         operation_customers(
           operation_id,
@@ -61,6 +49,15 @@ export async function GET(request: Request) {
           )
         )
       `)
+
+    try {
+      query = await applyCustomersFilters(query, user, agencyIds, supabase)
+    } catch (error: any) {
+      console.error("Error applying customers filters:", error)
+      return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+
+    const { data: customers, error: customersError } = await query
       .order("created_at", { ascending: false })
 
     if (customersError) {
