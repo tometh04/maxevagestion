@@ -47,17 +47,29 @@ export default async function OperatorDetailPage({ params }: { params: Promise<{
     console.error("Error fetching operations:", operationsError)
   }
 
-  // Calculate metrics
+  // Calculate metrics separados por moneda (mezclar USD con ARS daba numeros falsos)
   const operationsCount = (operations || []).length
-  const totalCost = (operations || []).reduce((sum: number, o: any) => sum + (o.operator_cost || 0), 0)
+  const totalCostByCurrency: Record<string, number> = {}
+  const paidAmountByCurrency: Record<string, number> = {}
 
-  const paidAmount = (operations || []).reduce((sum: number, o: any) => {
+  for (const o of (operations || []) as any[]) {
+    const opCur = o.currency || "ARS"
+    totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+
     const payments = (o.payments || []) as any[]
-    const paidPayments = payments.filter((p: any) => p.direction === "EXPENSE" && p.status === "PAID")
-    return sum + paidPayments.reduce((s: number, p: any) => s + (p.amount || 0), 0)
-  }, 0)
+    for (const p of payments) {
+      if (p.direction === "EXPENSE" && p.status === "PAID") {
+        const payCur = p.currency || opCur
+        paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+      }
+    }
+  }
 
-  const balance = totalCost - paidAmount
+  const balanceByCurrency: Record<string, number> = {}
+  const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
+  for (const cur of allCurrencies) {
+    balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
+  }
 
   // Get pending payments
   const pendingPayments = (operations || [])
@@ -67,9 +79,9 @@ export default async function OperatorDetailPage({ params }: { params: Promise<{
 
   const metrics = {
     operationsCount,
-    totalCost,
-    paidAmount,
-    balance,
+    totalCostByCurrency,
+    paidAmountByCurrency,
+    balanceByCurrency,
     pendingPaymentsCount: pendingPayments.length,
     nextPaymentDate: pendingPayments[0]?.date_due || null,
   }

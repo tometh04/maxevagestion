@@ -39,9 +39,9 @@ interface Operator {
 
 interface Metrics {
   operationsCount: number
-  totalCost: number
-  paidAmount: number
-  balance: number
+  totalCostByCurrency: Record<string, number>
+  paidAmountByCurrency: Record<string, number>
+  balanceByCurrency: Record<string, number>
   pendingPaymentsCount: number
   nextPaymentDate: string | null
 }
@@ -51,6 +51,34 @@ interface OperatorDetailClientProps {
   operations: any[]
   pendingPayments: any[]
   metrics: Metrics
+}
+
+function formatMoney(amount: number, currency: string) {
+  return `${currency} ${amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+}
+
+function renderMoneyEntries(byCurrency: Record<string, number>) {
+  const entries = Object.entries(byCurrency).filter(([, v]) => v > 0)
+  if (entries.length === 0) return <span>ARS 0,00</span>
+  return entries.map(([cur, amt], i) => (
+    <div key={cur} className={i > 0 ? "text-base" : ""}>
+      {formatMoney(amt, cur)}
+    </div>
+  ))
+}
+
+function renderBalanceEntries(byCurrency: Record<string, number>) {
+  const entries = Object.entries(byCurrency).filter(([, v]) => Math.abs(v) > 0.005)
+  if (entries.length === 0) {
+    return <Badge variant="default">ARS 0,00</Badge>
+  }
+  return entries.map(([cur, amt]) => (
+    <div key={cur}>
+      <Badge variant={amt > 0 ? "destructive" : "default"}>
+        {formatMoney(amt, cur)}
+      </Badge>
+    </div>
+  ))
 }
 
 export function OperatorDetailClient({
@@ -123,8 +151,8 @@ export function OperatorDetailClient({
             <CardTitle className="text-sm font-medium">Costo Total</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              ${metrics.totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+            <div className="text-2xl font-bold space-y-0.5">
+              {renderMoneyEntries(metrics.totalCostByCurrency)}
             </div>
           </CardContent>
         </Card>
@@ -134,8 +162,8 @@ export function OperatorDetailClient({
             <CardTitle className="text-sm font-medium">Pagado</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              ${metrics.paidAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+            <div className="text-2xl font-bold space-y-0.5">
+              {renderMoneyEntries(metrics.paidAmountByCurrency)}
             </div>
           </CardContent>
         </Card>
@@ -145,10 +173,8 @@ export function OperatorDetailClient({
             <CardTitle className="text-sm font-medium">Saldo Pendiente</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              <Badge variant={metrics.balance > 0 ? "destructive" : "default"}>
-                ${metrics.balance.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-              </Badge>
+            <div className="text-2xl font-bold space-y-1">
+              {renderBalanceEntries(metrics.balanceByCurrency)}
             </div>
           </CardContent>
         </Card>

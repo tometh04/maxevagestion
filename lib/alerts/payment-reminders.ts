@@ -133,7 +133,7 @@ async function generateOperatorPaymentReminders(
 ): Promise<PaymentReminder[]> {
   const reminders: PaymentReminder[] = []
 
-  // Obtener todos los pagos pendientes a operadores
+  // Obtener todos los pagos pendientes a operadores (incluye status OVERDUE y PENDING con paid parcial)
   const { data: operatorPayments, error } = await supabase
     .from("operator_payments")
     .select(
@@ -142,8 +142,10 @@ async function generateOperatorPaymentReminders(
       operation_id,
       operator_id,
       amount,
+      paid_amount,
       currency,
       due_date,
+      status,
       operations:operation_id(
         id,
         seller_id,
@@ -156,7 +158,7 @@ async function generateOperatorPaymentReminders(
       )
     `
     )
-    .eq("status", "PENDING")
+    .in("status", ["PENDING", "OVERDUE"])
     .order("due_date", { ascending: true })
 
   if (error) {
@@ -172,6 +174,12 @@ async function generateOperatorPaymentReminders(
       continue
     }
 
+    // Usar lo ADEUDADO (amount - paid_amount), no el amount total
+    const totalAmount = parseFloat(payment.amount || "0")
+    const paidAmount = parseFloat(payment.paid_amount || "0")
+    const pendingAmount = Math.max(0, totalAmount - paidAmount)
+    if (pendingAmount <= 0.005) continue
+
     const operation = payment.operations
     const operator = payment.operators
     const operationInfo = operation
@@ -182,7 +190,7 @@ async function generateOperatorPaymentReminders(
     reminders.push({
       paymentId: payment.id,
       paymentType: "OPERATOR",
-      amount: parseFloat(payment.amount || "0"),
+      amount: pendingAmount,
       currency: payment.currency || "ARS",
       dueDate: payment.due_date,
       reminderType,
@@ -190,7 +198,7 @@ async function generateOperatorPaymentReminders(
       operatorId: payment.operator_id,
       sellerId: operation?.seller_id || null,
       description: `Pago pendiente a operador ${operatorInfo}: ${formatCurrency(
-        parseFloat(payment.amount || "0"),
+        pendingAmount,
         payment.currency || "ARS"
       )} - ${operationInfo}`,
     })
