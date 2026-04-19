@@ -28,6 +28,9 @@ export async function GET(request: Request) {
 
       let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
 
+      // Multi-tenant: scope por org del usuario (defense-in-depth)
+      if (user.org_id) query = query.eq("org_id", user.org_id)
+
       // Apply role-based filtering
       if (user.role === "SELLER") {
         query = query.eq("seller_id", user.id)

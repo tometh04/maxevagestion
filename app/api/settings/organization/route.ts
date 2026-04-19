@@ -13,19 +13,19 @@ export async function GET(req: NextRequest) {
     const key = req.nextUrl.searchParams.get('key')
 
     let query = supabase.from('organization_settings').select('*')
+    // Multi-tenant: scope por org_id (post-migration 135)
+    if (user.org_id) query = query.eq('org_id', user.org_id)
     if (key) query = query.eq('key', key)
 
     const { data, error } = await query
 
     if (error) {
-      // If table doesn't exist, return empty data gracefully
       console.error('Error fetching organization_settings:', error.message)
       return Response.json({ data: [] })
     }
 
     return Response.json({ data: data || [] })
   } catch (error: any) {
-    // Don't catch Next.js redirect errors
     if (error?.digest?.startsWith('NEXT_REDIRECT')) throw error
     console.error('Error in GET /api/settings/organization:', error)
     return Response.json({ data: [] })
@@ -36,6 +36,9 @@ export async function POST(req: NextRequest) {
   try {
     const { user } = await getCurrentUser()
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!user.org_id) {
+      return Response.json({ error: 'Tu usuario no tiene organización asociada' }, { status: 400 })
+    }
 
     const body = await req.json()
     const { key, value } = body
@@ -45,15 +48,15 @@ export async function POST(req: NextRequest) {
     const syncAddressKeys = key === "address" || key === "company_address"
     const settingsToUpsert = syncAddressKeys
       ? [
-          { key: "address", value, updated_at: updatedAt },
-          { key: "company_address", value, updated_at: updatedAt },
+          { org_id: user.org_id, key: "address", value, updated_at: updatedAt },
+          { org_id: user.org_id, key: "company_address", value, updated_at: updatedAt },
         ]
-      : [{ key, value, updated_at: updatedAt }]
+      : [{ org_id: user.org_id, key, value, updated_at: updatedAt }]
 
-    // Upsert: insert or update
+    // Upsert por (org_id, key) — unique constraint post-migration 135
     const { data, error } = await supabase
       .from('organization_settings')
-      .upsert(settingsToUpsert as any, { onConflict: 'key' })
+      .upsert(settingsToUpsert as any, { onConflict: 'org_id,key' })
       .select()
 
     if (error) {

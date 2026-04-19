@@ -27,6 +27,9 @@ export async function GET(request: Request) {
       .from("operations")
       .select("id, agency_id")
 
+    // Multi-tenant: scope por org del usuario
+    if (user.org_id) operationsQuery = operationsQuery.eq("org_id", user.org_id)
+
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)

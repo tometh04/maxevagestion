@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
+import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
 
@@ -23,30 +24,8 @@ export default async function CRMManychatPage() {
 
   const supabase = await createServerClient()
 
-  // Get user agencies
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id, agencies(id, name)")
-    .eq("user_id", user.id)
-
-  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-  // Get agencies for filters - SUPER_ADMIN ve todas, otros solo sus agencias
-  let agencies: Array<{ id: string; name: string }> = []
-  if (user.role === "SUPER_ADMIN") {
-    const { data } = await supabase
-      .from("agencies")
-      .select("id, name")
-      .order("name")
-    agencies = (data || []) as Array<{ id: string; name: string }>
-  } else {
-    const { data } = await supabase
-      .from("agencies")
-      .select("id, name")
-      .in("id", agencyIds.length > 0 ? agencyIds : [])
-      .order("name")
-    agencies = (data || []) as Array<{ id: string; name: string }>
-  }
+  const agencies = await getScopedAgenciesForUser(supabase, user)
+  const agencyIds = agencies.map((a) => a.id)
 
   // Get sellers for filters
   let sellersQuery = supabase

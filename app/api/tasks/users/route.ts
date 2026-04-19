@@ -4,14 +4,19 @@ import { getCurrentUser } from "@/lib/auth"
 
 export async function GET() {
   try {
-    await getCurrentUser()
+    const { user } = await getCurrentUser()
 
     const supabase = await createServerClient()
-    const { data, error } = await supabase
+    let query = supabase
       .from("users")
       .select("id, name, email")
       .eq("is_active", true)
       .order("name")
+
+    // Multi-tenant: solo users de la misma org
+    if (user.org_id) query = query.eq("org_id", user.org_id)
+
+    const { data, error } = await query
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })

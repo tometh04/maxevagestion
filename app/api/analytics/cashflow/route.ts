@@ -40,6 +40,9 @@ export async function GET(request: Request) {
         )
         .order("movement_date", { ascending: true })
 
+      // Multi-tenant: scope por org del usuario (ledger_movements.org_id post-mig 134)
+      if (user.org_id) query = query.eq("org_id", user.org_id)
+
       // Apply role-based filtering
       if (user.role === "SELLER") {
         query = query.eq("user_id", user.id)

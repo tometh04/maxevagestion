@@ -34,6 +34,9 @@ export async function GET(request: Request) {
       .gte("created_at", startDate.toISOString())
       .lte("created_at", endDate.toISOString())
 
+    // Multi-tenant: scope por org del usuario
+    if (user.org_id) query = query.eq("org_id", user.org_id)
+
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
       query = query.eq("agency_id", agencyId)

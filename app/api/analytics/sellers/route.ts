@@ -46,6 +46,9 @@ export async function GET(request: Request) {
         .from("operations")
       .select("sale_amount_total, sale_currency, margin_amount, currency, seller_id, departure_date, created_at")
 
+      // Multi-tenant: scope por org del usuario
+      if (user.org_id) query = query.eq("org_id", user.org_id)
+
       // Apply role-based filtering
       if (user.role === "SELLER") {
         query = query.eq("seller_id", user.id)

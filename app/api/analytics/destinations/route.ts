@@ -29,6 +29,9 @@ export async function GET(request: Request) {
       // Select sale_currency and departure_date for currency conversion
       let query = supabase.from("operations").select("destination, destination_id, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at, destinations:destination_id(name)")
 
+      // Multi-tenant: scope por org del usuario
+      if (user.org_id) query = query.eq("org_id", user.org_id)
+
       // Apply role-based filtering
       if (user.role === "SELLER") {
         query = query.eq("seller_id", user.id)

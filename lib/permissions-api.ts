@@ -382,6 +382,43 @@ export async function canAccessDocumentResource(
 }
 
 /**
+ * Trae las agencias accesibles para el user (con nombre), scoped por org.
+ * Uso tipico: dropdown de "Agencia" en pages. Reemplaza el anti-patron:
+ *   if (user.role === 'SUPER_ADMIN') supabase.from('agencies').select().order()
+ * que no filtra por org y leakea agencias cross-tenant.
+ *
+ * - SUPER_ADMIN / CONTABLE: ven TODAS las agencias de SU org
+ * - Otros roles: solo las agencias asignadas via user_agencies (y dentro de su org)
+ * - User legacy sin org_id: fallback a comportamiento pre-SaaS
+ */
+export async function getScopedAgenciesForUser(
+  supabase: SupabaseClient<Database>,
+  user: { id: string; role: string; org_id?: string | null }
+): Promise<Array<{ id: string; name: string }>> {
+  let q = (supabase.from("agencies") as any).select("id, name").order("name")
+
+  if (user.org_id) {
+    q = q.eq("org_id", user.org_id)
+  }
+
+  if (user.role === "SUPER_ADMIN" || user.role === "CONTABLE") {
+    const { data } = await q
+    return (data || []) as Array<{ id: string; name: string }>
+  }
+
+  const { data: userAgencies } = await supabase
+    .from("user_agencies")
+    .select("agency_id")
+    .eq("user_id", user.id)
+  const assignedIds = (userAgencies || []).map((ua: any) => ua.agency_id as string)
+  if (assignedIds.length === 0) return []
+
+  q = q.in("id", assignedIds)
+  const { data } = await q
+  return (data || []) as Array<{ id: string; name: string }>
+}
+
+/**
  * Obtiene los IDs de agencias del usuario para filtrar queries.
  *
  * Multi-tenant: si el usuario tiene org_id, el resultado está acotado a las agencias
