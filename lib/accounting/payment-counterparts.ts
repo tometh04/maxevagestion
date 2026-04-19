@@ -417,5 +417,46 @@ export async function createPaymentCounterpartMovement(
     supabase
   )
 
+  // Anotar el counterpart con debit/credit + chart_account_id INMEDIATAMENTE.
+  //
+  // Por qué: antes esto dependía de que mark-paid/route.ts llamara a
+  // annotatePaymentAsJournalEntry después. Si esa llamada no ocurría (flujos
+  // alternativos, errores intermedios, data histórica), el counterpart quedaba
+  // como type=INCOME legacy y la fórmula de saldos lo SUMABA a CpC/CpP en vez
+  // de restarlo — inflando la deuda acumulada (ej: CpC USD +$1.24M con ~92%
+  // de movements sin anotar en prod al 2026-04-19).
+  //
+  // Al setear d/c acá, el counterpart queda correcto desde su creación. La
+  // fórmula de partida doble (committeada hoy en fix/plan-cuentas-balance)
+  // lo maneja bien: para CpC (ACTIVO, debit-natural), credit_amount resta.
+  // Para CpP (PASIVO), debit_amount suma (reduciendo la deuda).
+  //
+  // annotatePaymentAsJournalEntry sigue ejecutándose después pero queda
+  // idempotente (overwrite al mismo valor).
+  try {
+    const { data: counterpartChart } = await (supabase.from("chart_of_accounts") as any)
+      .select("id")
+      .eq("account_code", accountCode)
+      .eq("is_active", true)
+      .limit(1)
+      .maybeSingle()
+
+    if (counterpartChart?.id) {
+      // INCOME direction (cobro cliente) → reducir CpC vía credit
+      // EXPENSE direction (pago operador) → reducir CpP vía debit
+      const annotation = isCustomerIncome
+        ? { credit_amount: params.amount, debit_amount: null }
+        : { debit_amount: params.amount, credit_amount: null }
+
+      await (supabase.from("ledger_movements") as any)
+        .update({ ...annotation, chart_account_id: counterpartChart.id })
+        .eq("id", id)
+    }
+  } catch (err) {
+    // No romper el flow principal si la anotación inline falla. El movement
+    // ya quedó creado; annotatePaymentAsJournalEntry puede corregirlo después.
+    console.error("[payment-counterparts] No se pudo anotar d/c inline:", err)
+  }
+
   return { id, accountId }
 }
