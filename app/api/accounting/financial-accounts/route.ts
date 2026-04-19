@@ -38,7 +38,12 @@ export async function GET(request: Request) {
       `)
       .eq("is_active", true)
 
-    // Para non-SUPER_ADMIN, filtrar por agencias del usuario (incluir cuentas con agency_id null - son compartidas/generales)
+    // Multi-tenant: scope por org del user (financial_accounts.org_id es NOT NULL post-migration 133)
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+
+    // Para non-SUPER_ADMIN, filtrar por agencias del usuario (incluir cuentas con agency_id null - son compartidas/generales de la org)
     if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
       query = query.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
     } else if (userRole !== "SUPER_ADMIN" && agencyIds.length === 0) {
@@ -182,12 +187,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // Multi-tenant: org_id requerido (NOT NULL post-migration 133).
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
     // Preparar datos para inserción
     const accountData: any = {
       name,
       type,
       currency,
       agency_id,
+      org_id: user.org_id,
       initial_balance: Number(initial_balance) || 0,
       notes: notes || null,
       is_active: is_active !== undefined ? is_active : true,

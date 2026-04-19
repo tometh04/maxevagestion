@@ -48,13 +48,20 @@ export async function GET(request: Request) {
     // Parámetros de filtro
     const templateType = searchParams.get("type")
 
-    // Query base - simplificada
+    // Query base - scope por org_id (NOT NULL post-migration 133).
+    // Si agencyIds tiene data, tambien por ahi (preserva comportamiento anterior).
     let query = (supabase.from("pdf_templates") as any)
       .select(`*`)
-      .in("agency_id", agencyIds)
       .eq("is_active", true)
       .order("is_default", { ascending: false })
       .order("name", { ascending: true })
+
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+    if (agencyIds.length > 0) {
+      query = query.in("agency_id", agencyIds)
+    }
 
     // Filtros
     if (templateType) {
@@ -116,10 +123,19 @@ export async function POST(request: Request) {
         .eq("template_type", validatedData.template_type)
     }
 
+    // Multi-tenant: org_id requerido (NOT NULL post-migration 133).
+    if (!user.org_id) {
+      return NextResponse.json(
+        { error: "Tu usuario no tiene organización asociada" },
+        { status: 400 }
+      )
+    }
+
     // Crear template
     const { data: template, error } = await (supabase.from("pdf_templates") as any)
       .insert({
         agency_id: agencyIds[0],
+        org_id: user.org_id,
         ...validatedData,
         created_by: user.id,
       })

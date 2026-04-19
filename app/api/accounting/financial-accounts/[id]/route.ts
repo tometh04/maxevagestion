@@ -26,11 +26,16 @@ export async function DELETE(
     const { transfer_to_account_id } = body
 
     const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
-      .select("id, name, currency, is_active")
+      .select("id, name, currency, is_active, org_id")
       .eq("id", id)
       .single()
 
     if (accountError || !account) {
+      return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
+    }
+
+    // Multi-tenant: solo permitir eliminar cuentas de la misma org
+    if (user.org_id && account.org_id !== user.org_id) {
       return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
     }
 
