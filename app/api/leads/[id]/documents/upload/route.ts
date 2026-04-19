@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 import { createClient } from "@supabase/supabase-js"
 import OpenAI from "openai"
 
@@ -28,14 +29,20 @@ export async function POST(
       },
     })
 
-    // Verificar que el lead existe
+    // Verificar que el lead existe y pertenece a agencia de la org del user
     const { data: lead, error: leadError } = await supabase
       .from("leads")
-      .select("id")
+      .select("id, agency_id")
       .eq("id", leadId)
       .single()
 
     if (leadError || !lead) {
+      return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
+    }
+
+    // Multi-tenant: lead.agency_id debe estar en las agencias del user
+    const userAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+    if (userAgencyIds.length > 0 && (lead as any).agency_id && !userAgencyIds.includes((lead as any).agency_id)) {
       return NextResponse.json({ error: "Lead no encontrado" }, { status: 404 })
     }
 

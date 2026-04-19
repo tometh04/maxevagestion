@@ -50,11 +50,17 @@ export async function PATCH(
     // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from("users")
-      .select("id, role")
+      .select("id, role, org_id")
       .eq("id", userId)
       .single()
 
     if (fetchError || !existingUser) {
+      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+    }
+
+    // Multi-tenant: solo permitir modificar users de la misma org.
+    // Excepción: SUPER_ADMIN global (pre-SaaS, user sin org_id) puede operar como hoy.
+    if (user.org_id && (existingUser as any).org_id !== user.org_id) {
       return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
     }
 
@@ -126,11 +132,16 @@ export async function DELETE(
     // Obtener el usuario para verificar su rol y auth_id
     const { data: userToDelete, error: fetchError } = await supabase
       .from("users")
-      .select("id, auth_id, role, email")
+      .select("id, auth_id, role, email, org_id")
       .eq("id", userId)
       .single()
 
     if (fetchError || !userToDelete) {
+      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+    }
+
+    // Multi-tenant: solo permitir eliminar users de la misma org.
+    if (user.org_id && (userToDelete as any).org_id !== user.org_id) {
       return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
     }
 

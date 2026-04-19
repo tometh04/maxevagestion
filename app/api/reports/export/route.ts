@@ -118,6 +118,35 @@ export async function GET(request: Request) {
       }
 
       case "payments": {
+        // Multi-tenant: scope por agencias del user (excepto SUPER_ADMIN sin restricciones historicas).
+        // payments.operation_id → operations.agency_id. Si no hay agencyIds, solo SELLER con seller_id.
+        let agencyScopedOpIds: string[] | null = null
+        const effectiveAgencyIds =
+          agencyId && agencyId !== "ALL"
+            ? [agencyId]
+            : user.role !== "SUPER_ADMIN"
+              ? agencyIds
+              : null
+
+        if (effectiveAgencyIds && effectiveAgencyIds.length > 0) {
+          // Traer op ids acotados a agencias del user (chunked por si son muchos)
+          agencyScopedOpIds = []
+          const chunkSize = 200
+          for (let i = 0; i < effectiveAgencyIds.length; i += chunkSize) {
+            const chunk = effectiveAgencyIds.slice(i, i + chunkSize)
+            const { data: ops } = await (supabase.from("operations") as any)
+              .select("id")
+              .in("agency_id", chunk)
+            if (ops) agencyScopedOpIds.push(...ops.map((o: any) => o.id))
+          }
+          // Si el user no tiene agencias, no debe ver ningun pago
+          if (agencyScopedOpIds.length === 0) {
+            data = []
+            columns = []
+            break
+          }
+        }
+
         let query = (supabase.from("payments") as any)
           .select(`
             *,
@@ -128,6 +157,54 @@ export async function GET(request: Request) {
 
         if (dateFrom) query = query.gte("date_due", dateFrom)
         if (dateTo) query = query.lte("date_due", dateTo)
+
+        // Aplicar scope de agencia via operation_id (chunked si hace falta)
+        if (agencyScopedOpIds && agencyScopedOpIds.length > 0) {
+          // Con muchos op ids, chunkeamos la consulta de payments tambien
+          const chunkSize = 200
+          const allPayments: any[] = []
+          for (let i = 0; i < agencyScopedOpIds.length; i += chunkSize) {
+            const chunkIds = agencyScopedOpIds.slice(i, i + chunkSize)
+            let chunkQuery = (supabase.from("payments") as any)
+              .select(`*, operations:operation_id (destination, agencies:agency_id (name))`)
+              .neq("source", "OPERATOR_BULK")
+              .in("operation_id", chunkIds)
+              .order("date_due", { ascending: false })
+            if (dateFrom) chunkQuery = chunkQuery.gte("date_due", dateFrom)
+            if (dateTo) chunkQuery = chunkQuery.lte("date_due", dateTo)
+            const { data: chunkPayments } = await chunkQuery.limit(1000)
+            if (chunkPayments) allPayments.push(...chunkPayments)
+          }
+          // SELLER: restringir a sus propias operaciones
+          const filteredByRole = user.role === "SELLER"
+            ? allPayments.filter((p: any) => p.seller_id === user.id || p.operations?.seller_id === user.id)
+            : allPayments
+          data = filteredByRole.slice(0, 1000).map((p: any) => ({
+            fecha_vencimiento: p.date_due ? format(new Date(p.date_due), "dd/MM/yyyy") : "",
+            fecha_pago: p.date_paid ? format(new Date(p.date_paid), "dd/MM/yyyy") : "",
+            monto: p.amount || 0,
+            moneda: p.currency || "ARS",
+            estado: p.status || "",
+            metodo: p.method || "",
+            tipo: p.payer_type || "",
+            direccion: p.direction || "",
+            operacion: p.operations?.destination || "",
+            referencia: p.reference || "",
+          }))
+          columns = [
+            { key: "fecha_vencimiento", label: "Fecha Vencimiento" },
+            { key: "fecha_pago", label: "Fecha Pago" },
+            { key: "monto", label: "Monto" },
+            { key: "moneda", label: "Moneda" },
+            { key: "estado", label: "Estado" },
+            { key: "metodo", label: "Método" },
+            { key: "tipo", label: "Tipo" },
+            { key: "direccion", label: "Dirección" },
+            { key: "operacion", label: "Operación" },
+            { key: "referencia", label: "Referencia" },
+          ]
+          break
+        }
 
         const { data: payments } = await query.limit(1000)
         data = (payments || []).map((p: any) => ({

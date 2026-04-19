@@ -1,7 +1,32 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction } from "@/lib/permissions-api"
+import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+
+/**
+ * Valida que el item de itinerario pertenece a una operacion de la agencia del user.
+ * Retorna null si OK, o NextResponse con 404 si el item no es accesible para el user.
+ */
+async function verifyItemBelongsToUserOrg(
+  adminDb: any,
+  itemId: string,
+  user: any
+): Promise<NextResponse | null> {
+  const { data: item } = await adminDb
+    .from("itinerary_items")
+    .select("id, operation_id, operations:operation_id(agency_id)")
+    .eq("id", itemId)
+    .maybeSingle()
+  if (!item) {
+    return NextResponse.json({ error: "Item no encontrado" }, { status: 404 })
+  }
+  const itemAgencyId = (item as any).operations?.agency_id
+  const userAgencyIds = await getUserAgencyIds(adminDb, user.id, user.role as any)
+  if (userAgencyIds.length > 0 && itemAgencyId && !userAgencyIds.includes(itemAgencyId)) {
+    return NextResponse.json({ error: "Item no encontrado" }, { status: 404 })
+  }
+  return null
+}
 
 export async function PATCH(
   request: Request,
@@ -17,6 +42,9 @@ export async function PATCH(
     const { itemId } = await params
     const body = await request.json()
     const adminDb = createAdminClient() as any
+
+    const ownershipError = await verifyItemBelongsToUserOrg(adminDb, itemId, user)
+    if (ownershipError) return ownershipError
 
     // Remove fields that shouldn't be updated directly
     const { id, operation_id, created_at, ...updateData } = body
@@ -52,6 +80,9 @@ export async function DELETE(
 
     const { itemId } = await params
     const adminDb = createAdminClient() as any
+
+    const ownershipError = await verifyItemBelongsToUserOrg(adminDb, itemId, user)
+    if (ownershipError) return ownershipError
 
     const { error } = await adminDb
       .from("itinerary_items")

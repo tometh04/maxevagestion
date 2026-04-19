@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 
 export async function GET(request: Request) {
   try {
@@ -63,12 +64,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener movimientos del ledger" }, { status: 500 })
     }
 
-    // Filtro de acceso por rol (post-filter mínimo)
+    // Filtro de acceso por rol (post-filter)
     let filteredMovements = movements || []
     if (user.role === "SELLER") {
       filteredMovements = filteredMovements.filter((m: any) => m.seller_id === user.id)
     }
-    // Para SUPER_ADMIN no hace falta filtrar por agencia — ve todo
+
+    // Multi-tenant: movements con operation_id deben ser de agencias accesibles por el user.
+    // Movements sin operation_id (journal entries manuales, cash movements puros) se dejan
+    // pasar — su aislamiento efectivo requiere org_id en financial_accounts (pending P0).
+    const userAgencyIds = await getUserAgencyIds(adminSupabase, user.id, user.role as any)
+    if (userAgencyIds.length > 0) {
+      filteredMovements = filteredMovements.filter((m: any) => {
+        const opAgencyId = m.operations?.agency_id
+        if (!opAgencyId) return true
+        return userAgencyIds.includes(opAgencyId)
+      })
+    }
 
     const total = count ?? 0
     return NextResponse.json({
