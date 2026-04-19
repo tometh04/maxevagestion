@@ -19,25 +19,6 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permisos para acceder a operadores" }, { status: 403 })
     }
 
-    // For non-SUPER_ADMIN users, get their agency IDs to filter operators
-    let agencyOperatorIds: string[] | null = null
-    if (user.role !== "SUPER_ADMIN") {
-      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
-      if (agencyIds.length > 0) {
-        // Get operator IDs linked to operations within the user's agencies
-        const { data: agencyOperations } = await supabase
-          .from("operations")
-          .select("operator_id")
-          .in("agency_id", agencyIds)
-          .not("operator_id", "is", null)
-
-        agencyOperatorIds = Array.from(new Set((agencyOperations || []).map((op: any) => op.operator_id).filter(Boolean)))
-      } else {
-        // User has no agencies, return empty result
-        return NextResponse.json({ operators: [] })
-      }
-    }
-
     // Get all operators with their operations and payments
     let query = supabase
       .from("operators")
@@ -63,8 +44,26 @@ export async function GET(request: Request) {
       `,
       )
 
-    // Filter by agency-linked operators for non-SUPER_ADMIN users
-    if (agencyOperatorIds !== null) {
+    // Multi-tenant: filtrar por org del usuario (operators.org_id es NOT NULL)
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+
+    // SELLERs adicionalmente ven solo operators vinculados a operaciones de sus agencias
+    if (user.role === "SELLER") {
+      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+      if (agencyIds.length === 0) {
+        return NextResponse.json({ operators: [] })
+      }
+      const { data: agencyOperations } = await supabase
+        .from("operations")
+        .select("operator_id")
+        .in("agency_id", agencyIds)
+        .not("operator_id", "is", null)
+
+      const agencyOperatorIds = Array.from(
+        new Set((agencyOperations || []).map((op: any) => op.operator_id).filter(Boolean))
+      )
       if (agencyOperatorIds.length === 0) {
         return NextResponse.json({ operators: [] })
       }
@@ -145,10 +144,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
     }
 
-    // Create operator
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
+    // Create operator (org-scoped)
     const { data: operator, error: createError } = await (supabase
       .from("operators") as any)
       .insert({
+        org_id: user.org_id,
         name,
         contact_name: contact_name || null,
         contact_email: contact_email || null,

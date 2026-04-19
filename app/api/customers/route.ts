@@ -234,9 +234,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create customer
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
+    // Create customer (org-scoped)
     const { data: customer, error: createError } = await (supabase.from("customers") as any)
       .insert({
+        org_id: user.org_id,
         first_name,
         last_name,
         phone,
