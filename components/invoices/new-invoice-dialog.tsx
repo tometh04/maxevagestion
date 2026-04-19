@@ -109,6 +109,9 @@ export function NewInvoiceDialog({
   const [ivaId, setIvaId] = useState(isUsd ? "3" : "5") // 0% para turismo exterior, 21% local
   const [moneda, setMoneda] = useState(isUsd ? "DOL" : "PES")
   const [cotizacion, setCotizacion] = useState("1")
+  const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
+  const [cotizacionLoading, setCotizacionLoading] = useState(false)
+  const [cotizacionError, setCotizacionError] = useState<string | null>(null)
   const [fchServDesde, setFchServDesde] = useState(
     operationData?.departure_date ? operationData.departure_date.split("T")[0] : ""
   )
@@ -154,6 +157,42 @@ export function NewInvoiceDialog({
       })
       .catch(() => {})
   }, [open, agencyId])
+
+  // Auto-fetch cotización oficial de AFIP cuando moneda=DOL y el dialog está abierto.
+  // Evita el bug histórico donde el usuario dejaba "1" como cotización y AFIP
+  // rechazaba con error 10119 (tipo de cambio inferior al oficial).
+  useEffect(() => {
+    if (!open || moneda !== "DOL" || !agencyId) return
+
+    let cancelled = false
+    setCotizacionLoading(true)
+    setCotizacionError(null)
+
+    const today = new Date().toISOString().split("T")[0]
+    fetch(`/api/invoices/exchange-rate?currency=DOL&date=${today}&agency_id=${agencyId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return
+        if (data.rate && data.rate > 0) {
+          setCotizacionAfip(data.rate)
+          // Solo pisar el valor del usuario si todavía es el default "1"
+          // (así no sobrescribimos un valor que el usuario escribió a propósito)
+          setCotizacion((prev) => (prev === "1" ? String(data.rate) : prev))
+        } else {
+          setCotizacionError(data.error || "No se pudo obtener cotización")
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setCotizacionError(err.message || "Error de red")
+      })
+      .finally(() => {
+        if (!cancelled) setCotizacionLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, moneda, agencyId])
 
   // Auto-select comprobante type based on receptor condición IVA (for RI emisor)
   useEffect(() => {
@@ -449,15 +488,52 @@ export function NewInvoiceDialog({
               </div>
               {moneda === "DOL" && (
                 <div className="space-y-2">
-                  <Label>Cotización USD</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    min="1"
-                    value={cotizacion}
-                    onChange={e => setCotizacion(e.target.value)}
-                    className="w-40"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Label>Cotización USD</Label>
+                    {cotizacionLoading && (
+                      <span className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Loader2 className="h-3 w-3 animate-spin" /> consultando AFIP…
+                      </span>
+                    )}
+                    {cotizacionAfip && !cotizacionLoading && (
+                      <Badge variant="outline" className="text-xs">
+                        Oficial AFIP hoy: {cotizacionAfip.toFixed(2)}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="1"
+                      value={cotizacion}
+                      onChange={(e) => setCotizacion(e.target.value)}
+                      className="w-40"
+                    />
+                    {cotizacionAfip && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCotizacion(String(cotizacionAfip))}
+                      >
+                        Usar oficial
+                      </Button>
+                    )}
+                  </div>
+                  {cotizacionError && (
+                    <p className="text-xs text-destructive">
+                      ⚠️ No se pudo traer cotización oficial: {cotizacionError}. Ingresala manualmente.
+                    </p>
+                  )}
+                  {cotizacionAfip &&
+                    cotizacion &&
+                    Math.abs(parseFloat(cotizacion) - cotizacionAfip) / cotizacionAfip > 0.02 && (
+                      <p className="text-xs text-orange-500">
+                        ⚠️ La cotización que ingresaste difiere más del 2% de la oficial.
+                        AFIP va a rechazar la factura (error 10119).
+                      </p>
+                    )}
                 </div>
               )}
               {/* Resumen */}
