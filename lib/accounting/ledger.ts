@@ -409,8 +409,20 @@ export async function getAccountBalancesBatch(
   const adminClient = await getAdminClient(supabase)
 
   const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
+  // IMPORTANTE: la agrupación separa movements "legacy" (sin debit/credit seteados) de
+  // los de partida doble. Antes se usaba has_debit_credit a nivel de (account_id, type)
+  // y eso descartaba los legacy cuando cualquier movement del mismo tipo tenía d/c,
+  // desapareciendo plata del balance (~$227M en Caja ARS era el síntoma visible).
+  // Ahora las dos subpoblaciones se suman por separado y se combinan aditivamente.
   const { data: aggregatedData, error: aggError } = await adminClient.rpc("execute_readonly_query", {
-    query_text: `SELECT account_id, type, SUM(amount_original::numeric) as total_original, SUM(amount_ars_equivalent::numeric) as total_ars, SUM(COALESCE(debit_amount, 0)::numeric) as total_debit, SUM(COALESCE(credit_amount, 0)::numeric) as total_credit, COUNT(debit_amount) + COUNT(credit_amount) as debit_credit_count FROM ledger_movements WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true GROUP BY account_id, type`
+    query_text: `SELECT account_id, type,
+      SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_original::numeric ELSE 0 END) AS legacy_original,
+      SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_ars_equivalent::numeric ELSE 0 END) AS legacy_ars,
+      SUM(COALESCE(debit_amount, 0)::numeric) AS total_debit,
+      SUM(COALESCE(credit_amount, 0)::numeric) AS total_credit
+      FROM ledger_movements
+      WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true
+      GROUP BY account_id, type`
   })
 
   if (aggError) {
@@ -418,26 +430,27 @@ export async function getAccountBalancesBatch(
   }
 
   // Parsear resultados agrupados
-  const sumRows: Array<{ account_id: string; type: string; total_original: number; total_ars: number; total_debit: number; total_credit: number; debit_credit_count: number }> =
+  const sumRows: Array<{ account_id: string; type: string; legacy_original: number; legacy_ars: number; total_debit: number; total_credit: number }> =
     Array.isArray(aggregatedData) ? aggregatedData : (aggregatedData || [])
 
-  // Indexar sumas por account_id → type → { total_original, total_ars, total_debit, total_credit }
-  const sumsByAccount = new Map<string, Map<string, { total_original: number; total_ars: number; total_debit: number; total_credit: number; has_debit_credit: boolean }>>()
+  // Indexar sumas por account_id → type → { legacy_original, legacy_ars, total_debit, total_credit }
+  const sumsByAccount = new Map<string, Map<string, { legacy_original: number; legacy_ars: number; total_debit: number; total_credit: number }>>()
   for (const row of sumRows) {
     if (!sumsByAccount.has(row.account_id)) {
       sumsByAccount.set(row.account_id, new Map())
     }
     sumsByAccount.get(row.account_id)!.set(row.type, {
-      total_original: Number(row.total_original),
-      total_ars: Number(row.total_ars),
+      legacy_original: Number(row.legacy_original || 0),
+      legacy_ars: Number(row.legacy_ars || 0),
       total_debit: Number(row.total_debit || 0),
       total_credit: Number(row.total_credit || 0),
-      has_debit_credit: Number(row.debit_credit_count || 0) > 0,
     })
   }
 
-  // Calcular balance para cada cuenta usando las sumas agrupadas
-  // DUAL PATH: Debe/Haber si presentes, legacy type-based si no
+  // Calcular balance para cada cuenta usando las sumas agrupadas.
+  // DUAL ADITIVO: aplicamos partida doble a los movements con d/c Y legacy a los que no tienen.
+  // Ambas subpoblaciones se suman — antes eran excluyentes, lo que descartaba plata cuando
+  // coexistían ambos estilos en el mismo (account_id, type).
   const { isDebitNaturalAccount } = await import("./account-codes")
 
   for (const account of accountsToCalculate) {
@@ -454,32 +467,29 @@ export async function getAccountBalancesBatch(
 
     let movementsSum = 0
     typeSums.forEach((sums, type) => {
-      // Si hay movimientos con debit/credit, usar partida doble para esos
-      if (sums.has_debit_credit) {
-        if (isDebitNatural) {
-          movementsSum += sums.total_debit - sums.total_credit
-        } else {
-          movementsSum += sums.total_credit - sums.total_debit
-        }
+      // (A) Partida doble — movements que tienen debit_amount o credit_amount seteados.
+      // Si ambos son 0 el delta es 0 (no afecta).
+      if (isDebitNatural) {
+        movementsSum += sums.total_debit - sums.total_credit
+      } else {
+        movementsSum += sums.total_credit - sums.total_debit
       }
 
-      // Para movimientos legacy (sin debit/credit), usar lógica type-based
-      // Nota: sums.total_original/total_ars incluyen TODOS los movimientos,
-      // así que solo usamos la parte que NO tiene debit/credit
-      if (!sums.has_debit_credit) {
-        const amount = accountCurrency === "USD" ? sums.total_original : sums.total_ars
-
+      // (B) Legacy — movements con ambos debit_amount y credit_amount NULL.
+      // amount_original para USD, amount_ars_equivalent para ARS (convención existente).
+      const legacyAmount = accountCurrency === "USD" ? sums.legacy_original : sums.legacy_ars
+      if (legacyAmount !== 0) {
         if (category === "PASIVO") {
           if (type === "EXPENSE" || type === "OPERATOR_PAYMENT" || type === "FX_LOSS") {
-            movementsSum += amount
+            movementsSum += legacyAmount
           } else if (type === "INCOME" || type === "FX_GAIN") {
-            movementsSum -= amount
+            movementsSum -= legacyAmount
           }
         } else {
           if (type === "INCOME" || type === "FX_GAIN") {
-            movementsSum += amount
+            movementsSum += legacyAmount
           } else if (type === "EXPENSE" || type === "FX_LOSS" || type === "COMMISSION" || type === "OPERATOR_PAYMENT") {
-            movementsSum -= amount
+            movementsSum -= legacyAmount
           }
         }
       }
