@@ -64,21 +64,27 @@ export async function GET(request: Request) {
           filteredOperations = filteredOperations.filter((op: any) => op.agency_id === agencyId)
         }
 
-        // Obtener todos los pagos de clientes para estas operaciones
+        // Obtener todos los pagos de clientes para estas operaciones (chunked: .in() revienta URL con >300 UUIDs)
         const operationIds = filteredOperations.map((op: any) => op.id)
+        const paymentsByOperation: Record<string, number> = {}
         if (operationIds.length > 0) {
-          const { data: payments } = await supabase
-            .from("payments")
-            .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
-            .in("operation_id", operationIds)
-            .eq("direction", "INCOME")
-            .eq("payer_type", "CUSTOMER")
-            .eq("status", "PAID")
+          const chunkSize = 200
+          const allPayments: any[] = []
+          for (let i = 0; i < operationIds.length; i += chunkSize) {
+            const chunk = operationIds.slice(i, i + chunkSize)
+            const { data: payments } = await supabase
+              .from("payments")
+              .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+              .in("operation_id", chunk)
+              .eq("direction", "INCOME")
+              .eq("payer_type", "CUSTOMER")
+              .eq("status", "PAID")
+            if (payments) allPayments.push(...payments)
+          }
 
           // Agrupar pagos por operación
-          const paymentsByOperation: Record<string, number> = {}
-          if (payments) {
-            payments.forEach((payment: any) => {
+          if (allPayments.length > 0) {
+            allPayments.forEach((payment: any) => {
               const opId = payment.operation_id
               if (!paymentsByOperation[opId]) {
                 paymentsByOperation[opId] = 0

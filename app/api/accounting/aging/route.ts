@@ -159,8 +159,8 @@ export async function GET(request: Request) {
       // Get payments for these operations
       const paymentsByOperation: Record<string, { paidUsd: number; paidArs: number }> = {}
       if (allOperationIds.length > 0) {
-        // Supabase .in() has a limit, so chunk if needed
-        const chunkSize = 500
+        // Supabase .in() revienta URL con >300 UUIDs — chunk de 200 por seguridad
+        const chunkSize = 200
         for (let i = 0; i < allOperationIds.length; i += chunkSize) {
           const chunk = allOperationIds.slice(i, i + chunkSize)
           const { data: payments } = await supabase

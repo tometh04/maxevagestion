@@ -247,13 +247,21 @@ export async function applyCustomersFilters(
       return { query: query.limit(0) }
     }
 
-    // Obtener customer_ids de operation_customers
-    const { data: operationCustomers } = await supabase
-      .from("operation_customers")
-      .select("customer_id")
-      .in("operation_id", operationIds)
-
-    const customerIds = (operationCustomers || []).map((oc: any) => oc.customer_id)
+    // Obtener customer_ids de operation_customers (chunked: .in() revienta URL con >300 UUIDs)
+    const customerIds: string[] = []
+    const chunkSize = 200
+    for (let i = 0; i < operationIds.length; i += chunkSize) {
+      const chunk = operationIds.slice(i, i + chunkSize)
+      const { data: operationCustomers } = await supabase
+        .from("operation_customers")
+        .select("customer_id")
+        .in("operation_id", chunk)
+      if (operationCustomers) {
+        for (const oc of operationCustomers as any[]) {
+          if (oc.customer_id) customerIds.push(oc.customer_id)
+        }
+      }
+    }
 
     if (customerIds.length === 0) {
       // No hay clientes asociados, retornar query que no devuelva resultados

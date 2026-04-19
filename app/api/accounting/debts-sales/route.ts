@@ -76,37 +76,40 @@ export async function GET(request: Request) {
       })
     })
 
-    // Get all payments for these operations
-    // Usar amount_usd para calcular todo en USD
+    // Get all payments for these operations (chunked: .in() revienta URL con >300 UUIDs).
     let paymentsByOperation: Record<string, { paidUsd: number; currency: string }> = {}
     if (allOperationIds.length > 0) {
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
-        .in("operation_id", allOperationIds)
-        .eq("direction", "INCOME")
-        .eq("payer_type", "CUSTOMER")
+      const chunkSize = 200
+      for (let i = 0; i < allOperationIds.length; i += chunkSize) {
+        const chunk = allOperationIds.slice(i, i + chunkSize)
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+          .in("operation_id", chunk)
+          .eq("direction", "INCOME")
+          .eq("payer_type", "CUSTOMER")
 
-      if (payments) {
-        payments.forEach((payment: any) => {
-          const opId = payment.operation_id
-          if (!paymentsByOperation[opId]) {
-            paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
-          }
-          if (payment.status === "PAID") {
-            // Usar amount_usd si está disponible (pagos nuevos)
-            // Si no, calcularlo usando exchange_rate
-            let paidUsd = 0
-            if (payment.amount_usd != null) {
-              paidUsd = Number(payment.amount_usd)
-            } else if (payment.currency === "USD") {
-              paidUsd = Number(payment.amount) || 0
-            } else if (payment.currency === "ARS" && payment.exchange_rate) {
-              paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+        if (payments) {
+          payments.forEach((payment: any) => {
+            const opId = payment.operation_id
+            if (!paymentsByOperation[opId]) {
+              paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
             }
-            paymentsByOperation[opId].paidUsd += paidUsd
-          }
-        })
+            if (payment.status === "PAID") {
+              // Usar amount_usd si está disponible (pagos nuevos)
+              // Si no, calcularlo usando exchange_rate
+              let paidUsd = 0
+              if (payment.amount_usd != null) {
+                paidUsd = Number(payment.amount_usd)
+              } else if (payment.currency === "USD") {
+                paidUsd = Number(payment.amount) || 0
+              } else if (payment.currency === "ARS" && payment.exchange_rate) {
+                paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+              }
+              paymentsByOperation[opId].paidUsd += paidUsd
+            }
+          })
+        }
       }
     }
 
