@@ -45,17 +45,33 @@ export default async function OperatorsPage() {
     )
     .order("name")
 
-  // Calculate initial stats
+  // Calculate initial stats. Regla: separar por moneda (no mezclar ARS+USD).
   const initialOperators = (operators || []).map((op: any) => {
     const operations = (op.operations || []) as any[]
     const operationsCount = operations.length
-    const totalCost = operations.reduce((sum: number, o: any) => sum + (o.operator_cost || 0), 0)
-    const paidAmount = operations.reduce((sum: number, o: any) => {
+
+    const totalCostByCurrency: Record<string, number> = {}
+    const paidAmountByCurrency: Record<string, number> = {}
+
+    for (const o of operations) {
+      const opCur = o.currency || "ARS"
+      totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+
       const payments = (o.payments || []) as any[]
-      const paidPayments = payments.filter((p: any) => p.direction === "EXPENSE" && p.status === "PAID")
-      return sum + paidPayments.reduce((s: number, p: any) => s + (p.amount || 0), 0)
-    }, 0)
-    const balance = totalCost - paidAmount
+      for (const p of payments) {
+        if (p.direction === "EXPENSE" && p.status === "PAID") {
+          const payCur = p.currency || opCur
+          paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+        }
+      }
+    }
+
+    const balanceByCurrency: Record<string, number> = {}
+    const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
+    for (const cur of allCurrencies) {
+      balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
+    }
+
     const nextPayment = operations
       .flatMap((o: any) => (o.payments || []) as any[])
       .filter((p: any) => p.direction === "EXPENSE" && p.status === "PENDING")
@@ -69,9 +85,9 @@ export default async function OperatorsPage() {
       contact_phone: op.contact_phone,
       credit_limit: op.credit_limit,
       operationsCount,
-      totalCost,
-      paidAmount,
-      balance,
+      totalCostByCurrency,
+      paidAmountByCurrency,
+      balanceByCurrency,
       nextPaymentDate: nextPayment?.date_due || null,
     }
   })

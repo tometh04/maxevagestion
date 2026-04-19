@@ -26,10 +26,24 @@ export interface Operator {
   contact_phone: string | null
   credit_limit: number | null
   operationsCount: number
-  totalCost: number
-  paidAmount: number
-  balance: number
+  totalCostByCurrency: Record<string, number>
+  paidAmountByCurrency: Record<string, number>
+  balanceByCurrency: Record<string, number>
   nextPaymentDate: string | null
+}
+
+function renderMoneyEntries(byCurrency: Record<string, number>) {
+  const entries = Object.entries(byCurrency || {}).filter(([, v]) => Math.abs(v) > 0.005)
+  if (entries.length === 0) return <div>-</div>
+  return (
+    <div className="space-y-0.5">
+      {entries.map(([cur, amt]) => (
+        <div key={cur}>
+          {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+        </div>
+      ))}
+    </div>
+  )
 }
 
 interface OperatorsTableProps {
@@ -69,43 +83,35 @@ export function OperatorsTable({ operators, isLoading = false, emptyMessage }: O
         cell: ({ row }) => <div>{row.original.operationsCount}</div>,
       },
       {
-        accessorKey: "totalCost",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Costo Total" />
-        ),
-        cell: ({ row }) => (
-          <div>
-            ${row.original.totalCost.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-            })}
-          </div>
-        ),
+        id: "totalCost",
+        enableSorting: false,
+        header: "Costo Total",
+        cell: ({ row }) => renderMoneyEntries(row.original.totalCostByCurrency),
       },
       {
-        accessorKey: "paidAmount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" />
-        ),
-        cell: ({ row }) => (
-          <div>
-            ${row.original.paidAmount.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-            })}
-          </div>
-        ),
+        id: "paidAmount",
+        enableSorting: false,
+        header: "Pagado",
+        cell: ({ row }) => renderMoneyEntries(row.original.paidAmountByCurrency),
       },
       {
-        accessorKey: "balance",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Saldo" />
-        ),
-        cell: ({ row }) => (
-          <Badge variant={row.original.balance > 0 ? "destructive" : "default"}>
-            ${row.original.balance.toLocaleString("es-AR", {
-              minimumFractionDigits: 2,
-            })}
-          </Badge>
-        ),
+        id: "balance",
+        enableSorting: false,
+        header: "Saldo",
+        cell: ({ row }) => {
+          const entries = Object.entries(row.original.balanceByCurrency || {})
+            .filter(([, v]) => Math.abs(v) > 0.005)
+          if (entries.length === 0) return <Badge variant="default">-</Badge>
+          return (
+            <div className="space-y-0.5">
+              {entries.map(([cur, amt]) => (
+                <Badge key={cur} variant={amt > 0 ? "destructive" : "default"}>
+                  {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </Badge>
+              ))}
+            </div>
+          )
+        },
       },
       {
         id: "nextPaymentDate",

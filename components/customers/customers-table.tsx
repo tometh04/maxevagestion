@@ -27,7 +27,7 @@ interface Customer {
   document_type: string | null
   document_number: string | null
   trips: number
-  totalSpent: number
+  totalSpentByCurrency: Record<string, number>
   agency_id?: string
 }
 
@@ -153,19 +153,23 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         cell: ({ row }) => <div>{row.original.trips || 0}</div>,
       },
       {
-        accessorKey: "totalSpent",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Total Gastado" />
-        ),
-        cell: ({ row }) => (
-          <div>
-            {row.original.totalSpent > 0
-              ? `ARS ${row.original.totalSpent.toLocaleString("es-AR", {
-                  minimumFractionDigits: 2,
-                })}`
-              : "-"}
-          </div>
-        ),
+        id: "totalSpent",
+        enableSorting: false,
+        header: "Total Gastado",
+        cell: ({ row }) => {
+          const entries = Object.entries(row.original.totalSpentByCurrency || {})
+            .filter(([, v]) => v > 0)
+          if (entries.length === 0) return <div>-</div>
+          return (
+            <div className="space-y-0.5">
+              {entries.map(([cur, amt]) => (
+                <div key={cur}>
+                  {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </div>
+              ))}
+            </div>
+          )
+        },
       },
       {
         id: "actions",

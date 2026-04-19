@@ -77,25 +77,32 @@ export async function GET(request: Request) {
       throw new Error("Error al obtener operadores")
     }
 
-    // Calculate metrics for each operator
+    // Calculate metrics for each operator. Regla: separar por moneda.
     const operatorsWithStats = (data || []).map((op: any) => {
       const operations = (op.operations || []) as any[]
       const operationsCount = operations.length
 
-      // Calculate total operator_cost
-      const totalCost = operations.reduce((sum: number, o: any) => sum + (o.operator_cost || 0), 0)
+      const totalCostByCurrency: Record<string, number> = {}
+      const paidAmountByCurrency: Record<string, number> = {}
 
-      // Calculate total paid (only EXPENSE payments that are PAID)
-      const paidAmount = operations.reduce((sum: number, o: any) => {
+      for (const o of operations) {
+        const opCur = o.currency || "ARS"
+        totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+
         const payments = (o.payments || []) as any[]
-        const paidPayments = payments.filter(
-          (p: any) => p.direction === "EXPENSE" && p.status === "PAID",
-        )
-        return sum + paidPayments.reduce((s: number, p: any) => s + (p.amount || 0), 0)
-      }, 0)
+        for (const p of payments) {
+          if (p.direction === "EXPENSE" && p.status === "PAID") {
+            const payCur = p.currency || opCur
+            paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+          }
+        }
+      }
 
-      // Calculate balance (total cost - paid)
-      const balance = totalCost - paidAmount
+      const balanceByCurrency: Record<string, number> = {}
+      const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
+      for (const cur of allCurrencies) {
+        balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
+      }
 
       // Find next payment due date (PENDING EXPENSE payments)
       const nextPayment = operations
@@ -111,9 +118,9 @@ export async function GET(request: Request) {
         contact_phone: op.contact_phone,
         credit_limit: op.credit_limit,
         operationsCount,
-        totalCost,
-        paidAmount,
-        balance,
+        totalCostByCurrency,
+        paidAmountByCurrency,
+        balanceByCurrency,
         nextPaymentDate: nextPayment?.date_due || null,
       }
     })

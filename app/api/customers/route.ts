@@ -30,6 +30,7 @@ export async function GET(request: Request) {
           operations:operation_id(
             id,
             sale_amount_total,
+            sale_currency,
             currency,
             status
           )
@@ -82,25 +83,30 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
     }
 
-    // Calculate trips and total spent for each customer
+    // Calculate trips and total spent for each customer.
+    // Regla: NO mezclar monedas. totalSpentByCurrency = { USD: X, ARS: Y }.
     const customersWithStats = (customers || []).map((customer: any) => {
       const operations = customer.operation_customers || []
       const trips = operations.length
-      
-      // Calculate total spent (only from CONFIRMED, TRAVELLED, or CLOSED operations)
-      const totalSpent = operations
+
+      const totalSpentByCurrency: Record<string, number> = {}
+      operations
         .filter((oc: any) => {
           const status = oc.operations?.status
           return status === "CONFIRMED" || status === "TRAVELLED" || status === "CLOSED"
         })
-        .reduce((sum: number, oc: any) => {
-          return sum + (parseFloat(oc.operations?.sale_amount_total || 0))
-        }, 0)
+        .forEach((oc: any) => {
+          const op = oc.operations
+          if (!op) return
+          const cur = op.sale_currency || op.currency || "USD"
+          const amt = parseFloat(op.sale_amount_total || 0) || 0
+          totalSpentByCurrency[cur] = (totalSpentByCurrency[cur] || 0) + amt
+        })
 
       return {
         ...customer,
         trips,
-        totalSpent,
+        totalSpentByCurrency,
       }
     })
 

@@ -59,17 +59,33 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
     fetchCommissions()
   }, [fetchCommissions])
 
-  const totalCommissions = useMemo(() => {
-    return commissions.reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  // Agrupar por moneda (no mezclar ARS+USD en un solo numero)
+  const sumByCurrency = (items: Commission[]): Record<string, number> => {
+    const by: Record<string, number> = {}
+    for (const c of items) {
+      const cur = c.operations?.currency || "ARS"
+      by[cur] = (by[cur] || 0) + (Number(c.amount) || 0)
+    }
+    return by
+  }
 
-  const pendingCommissions = useMemo(() => {
-    return commissions.filter((comm) => comm.status === "PENDING").reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  const totalByCurrency = useMemo(() => sumByCurrency(commissions), [commissions])
+  const pendingByCurrency = useMemo(() => sumByCurrency(commissions.filter(c => c.status === "PENDING")), [commissions])
+  const paidByCurrency = useMemo(() => sumByCurrency(commissions.filter(c => c.status === "PAID")), [commissions])
 
-  const paidCommissions = useMemo(() => {
-    return commissions.filter((comm) => comm.status === "PAID").reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  const renderMoney = (by: Record<string, number>) => {
+    const entries = Object.entries(by).filter(([, v]) => Math.abs(v) > 0.005)
+    if (entries.length === 0) return <span>-</span>
+    return (
+      <>
+        {entries.map(([cur, amt], i) => (
+          <span key={cur} className={i > 0 ? "block text-base" : "block"}>
+            {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+          </span>
+        ))}
+      </>
+    )
+  }
 
   // Generate month options (last 12 months)
   const monthOptions = useMemo(() => {
@@ -98,23 +114,23 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-border/40 p-5">
             <p className="text-xs font-medium text-muted-foreground">Total Comisiones</p>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">
-              ${totalCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(totalByCurrency)}
+            </div>
         </div>
 
         <div className="rounded-xl border border-border/40 p-5">
             <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">
-              ${pendingCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(pendingByCurrency)}
+            </div>
         </div>
 
         <div className="rounded-xl border border-border/40 p-5">
             <p className="text-xs font-medium text-muted-foreground">Pagadas</p>
-            <p className="text-2xl font-semibold tabular-nums tracking-tight">
-              ${paidCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-            </p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(paidByCurrency)}
+            </div>
         </div>
       </div>
 
