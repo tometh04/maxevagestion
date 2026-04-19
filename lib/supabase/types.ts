@@ -13,6 +13,7 @@ export interface Database {
         Row: {
           id: string
           auth_id: string
+          org_id: string | null
           name: string
           email: string
           role: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
@@ -25,6 +26,7 @@ export interface Database {
         Insert: {
           id?: string
           auth_id: string
+          org_id?: string | null
           name: string
           email: string
           role: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
@@ -37,6 +39,7 @@ export interface Database {
         Update: {
           id?: string
           auth_id?: string
+          org_id?: string | null
           name?: string
           email?: string
           role?: 'SUPER_ADMIN' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
@@ -50,6 +53,7 @@ export interface Database {
       agencies: {
         Row: {
           id: string
+          org_id: string
           name: string
           city: string
           timezone: string
@@ -58,6 +62,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          org_id: string
           name: string
           city: string
           timezone: string
@@ -66,6 +71,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          org_id?: string
           name?: string
           city?: string
           timezone?: string
@@ -174,6 +180,7 @@ export interface Database {
       customers: {
         Row: {
           id: string
+          org_id: string
           first_name: string
           last_name: string
           phone: string
@@ -188,6 +195,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          org_id: string
           first_name: string
           last_name: string
           phone: string
@@ -202,6 +210,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          org_id?: string
           first_name?: string
           last_name?: string
           phone?: string
@@ -433,6 +442,7 @@ export interface Database {
       operators: {
         Row: {
           id: string
+          org_id: string
           name: string
           contact_name: string | null
           contact_email: string | null
@@ -443,6 +453,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          org_id: string
           name: string
           contact_name?: string | null
           contact_email?: string | null
@@ -453,6 +464,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          org_id?: string
           name?: string
           contact_name?: string | null
           contact_email?: string | null
@@ -623,6 +635,7 @@ export interface Database {
       alerts: {
         Row: {
           id: string
+          org_id: string | null
           operation_id: string | null
           customer_id: string | null
           user_id: string | null
@@ -635,6 +648,7 @@ export interface Database {
         }
         Insert: {
           id?: string
+          org_id?: string | null
           operation_id?: string | null
           customer_id?: string | null
           user_id?: string | null
@@ -647,6 +661,7 @@ export interface Database {
         }
         Update: {
           id?: string
+          org_id?: string | null
           operation_id?: string | null
           customer_id?: string | null
           user_id?: string | null
@@ -691,6 +706,144 @@ export interface Database {
           list_region_mapping?: Json
           created_at?: string
           updated_at?: string
+        }
+      }
+      organizations: {
+        Row: {
+          id: string
+          name: string
+          slug: string
+          owner_id: string | null
+          plan: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'
+          subscription_status: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'SUSPENDED'
+          subscription_id: string | null
+          trial_ends_at: string | null
+          grace_period_ends_at: string | null
+          max_users: number
+          max_agencies: number
+          max_operations_per_month: number
+          features: Json
+          billing_email: string | null
+          billing_name: string | null
+          cuit: string | null
+          logo_url: string | null
+          brand_color: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          slug: string
+          owner_id?: string | null
+          plan?: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'
+          subscription_status?: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'SUSPENDED'
+          subscription_id?: string | null
+          trial_ends_at?: string | null
+          grace_period_ends_at?: string | null
+          max_users?: number
+          max_agencies?: number
+          max_operations_per_month?: number
+          features?: Json
+          billing_email?: string | null
+          billing_name?: string | null
+          cuit?: string | null
+          logo_url?: string | null
+          brand_color?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          slug?: string
+          owner_id?: string | null
+          plan?: 'STARTER' | 'PROFESSIONAL' | 'ENTERPRISE'
+          subscription_status?: 'TRIAL' | 'ACTIVE' | 'PAST_DUE' | 'CANCELLED' | 'SUSPENDED'
+          subscription_id?: string | null
+          trial_ends_at?: string | null
+          grace_period_ends_at?: string | null
+          max_users?: number
+          max_agencies?: number
+          max_operations_per_month?: number
+          features?: Json
+          billing_email?: string | null
+          billing_name?: string | null
+          cuit?: string | null
+          logo_url?: string | null
+          brand_color?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      organization_members: {
+        Row: {
+          id: string
+          organization_id: string
+          user_id: string
+          role: 'OWNER' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          invited_by: string | null
+          status: 'PENDING' | 'ACTIVE' | 'SUSPENDED'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          user_id: string
+          role?: 'OWNER' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          invited_by?: string | null
+          status?: 'PENDING' | 'ACTIVE' | 'SUSPENDED'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          user_id?: string
+          role?: 'OWNER' | 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          invited_by?: string | null
+          status?: 'PENDING' | 'ACTIVE' | 'SUSPENDED'
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      organization_invitations: {
+        Row: {
+          id: string
+          organization_id: string
+          email: string
+          role: 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          token: string
+          invited_by: string | null
+          expires_at: string
+          accepted_at: string | null
+          status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          email: string
+          role?: 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          token?: string
+          invited_by?: string | null
+          expires_at?: string
+          accepted_at?: string | null
+          status?: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          email?: string
+          role?: 'ADMIN' | 'CONTABLE' | 'SELLER' | 'VIEWER'
+          token?: string
+          invited_by?: string | null
+          expires_at?: string
+          accepted_at?: string | null
+          status?: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED'
+          created_at?: string
         }
       }
     }
