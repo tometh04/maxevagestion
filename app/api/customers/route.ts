@@ -44,9 +44,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 403 })
     }
 
-    // Add pagination with reasonable limits
-    const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
+    // Add pagination with reasonable limits.
+    // Default alto para que la DataTable client-side pagine sobre la lista completa
+    // (tabla de clientes se usa principalmente para buscar/ordenar, no scroll infinito).
+    const requestedLimit = parseInt(searchParams.get("limit") || "2000")
+    const limit = Math.min(requestedLimit, 2000)
     const offset = parseInt(searchParams.get("offset") || "0")
 
     // Apply search filter after select + filters

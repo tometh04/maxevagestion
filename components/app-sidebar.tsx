@@ -49,7 +49,7 @@ interface NavItem {
 }
 
 const allNavigation: NavItem[] = [
-  // Dashboard - NO colapsable
+  // 1. Resumen
   {
     title: "Resumen",
     url: "/dashboard",
@@ -57,14 +57,30 @@ const allNavigation: NavItem[] = [
     module: "dashboard",
     collapsible: false,
   },
-  // Cerebro - AI Assistant (prominent placement)
+  // 2. CRM Ventas
   {
-    title: "🧠 Cerebro",
-    url: "/tools/cerebro",
-    icon: Bot,
-    collapsible: false,
+    title: "CRM Ventas",
+    url: "/sales/crm-manychat",
+    icon: ShoppingCart,
+    module: "leads",
+    items: [
+      // { title: "Leads", url: "/sales/leads" }, // OCULTO temporalmente
+      { title: "CRM Manychat", url: "/sales/crm-manychat" },
+      { title: "Estadísticas", url: "/sales/statistics" },
+    ],
   },
-  // Operaciones - Colapsable (moved to second position)
+  // 3. Clientes
+  {
+    title: "Clientes",
+    url: "/customers",
+    icon: Users,
+    module: "customers",
+    items: [
+      { title: "Clientes", url: "/customers" },
+      { title: "Estadísticas", url: "/customers/statistics" },
+    ],
+  },
+  // 4. Operaciones / Files
   {
     title: "Operaciones",
     url: "/operations",
@@ -77,30 +93,7 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/operations/settings" },
     ],
   },
-  // Clientes - Colapsable (renamed from "Clientes")
-  {
-    title: "Clientes",
-    url: "/customers",
-    icon: Users,
-    module: "customers",
-    items: [
-      { title: "Clientes", url: "/customers" },
-      { title: "Estadísticas", url: "/customers/statistics" },
-    ],
-  },
-  // CRM Ventas
-  {
-    title: "CRM Ventas",
-    url: "/sales/crm-manychat",
-    icon: ShoppingCart,
-    module: "leads",
-    items: [
-      // { title: "Leads", url: "/sales/leads" }, // OCULTO temporalmente
-      { title: "CRM Manychat", url: "/sales/crm-manychat" },
-      { title: "Estadísticas", url: "/sales/statistics" },
-    ],
-  },
-  // Finanzas - Colapsable (reorganizado)
+  // 5. Finanzas
   {
     title: "Finanzas",
     url: "/cash/summary",
@@ -116,7 +109,7 @@ const allNavigation: NavItem[] = [
       { title: "Configuración", url: "/finances/settings" },
     ],
   },
-  // Herramientas - Colapsable (unificado Recursos + Herramientas)
+  // 6. Herramientas (Cerebro se removio de aqui — ahora es item top-level al final)
   {
     title: "Herramientas",
     url: "/tools/tasks",
@@ -127,9 +120,15 @@ const allNavigation: NavItem[] = [
       { title: "Mensajes", url: "/messages" },
       { title: "Templates", url: "/resources/templates" },
       { title: "Tareas", url: "/tools/tasks" },
-      { title: "Cerebro", url: "/tools/cerebro" },
       { title: "WHA Control", url: "/tools/wha-control" },
     ],
+  },
+  // 7. Cerebro
+  {
+    title: "🧠 Cerebro",
+    url: "/tools/cerebro",
+    icon: Bot,
+    collapsible: false,
   },
 ]
 
