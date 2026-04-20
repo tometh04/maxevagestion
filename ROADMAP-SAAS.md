@@ -56,8 +56,7 @@
 | Mig | Archivo | Qué hace | Status |
 |-----|---------|----------|--------|
 | 141 | `20260419000141_saas_fix_rpc_security_invoker.sql` | Cambia `execute_readonly_query` de SECURITY DEFINER a INVOKER. **BLOQUEADA** hasta refactor de `lib/accounting/ledger.ts` (ver Pilar 2c). Aplicar juntas o se rompen todos los balances de la app. | ⏸️ no aplicar aún |
-
-**Próxima migración nueva prevista (142)**: `platform_admins` table + fix role rename Maxi (Pilar 4).
+| 142 | `20260419000142_saas_platform_admins.sql` | Crea tabla `platform_admins` + RLS + seed Tomi (Pilar 4). Segura de aplicar — no afecta a Maxi ni el resto de users. | ✅ correr en SQL Editor cuando quieras |
 
 ---
 
@@ -143,8 +142,7 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 
 **Por qué no ahora** (esta semana, 200 agencias activas): el refactor de `ledger.ts` es crítico en cálculos financieros; un bug introducido se ve como "plata desaparecida" en caja (ya ocurrió $227M ARS en el pasado). Riesgo de romper balances en prod > riesgo de leak teórico en 4 días.
 
-**Lint rule (pendiente)**:
-- [ ] ESLint rule o grep pre-commit: fallar si `createAdminClient` aparece fuera de `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*` y la whitelist de Storage uploads.
+**Lint guard ✅**: `scripts/check-admin-client.sh` + `scripts/admin-client-allowlist.txt`, integrado en `npm run lint`. Cualquier archivo nuevo que use `createAdminClient` fuera del allowlist falla el build — requiere review explícito para agregarse. Baseline = estado post-Pass-2 (26 archivos categorizados: AUTH, LIB, RPC_BLOCKED, STORAGE, WRITE_VALIDATED, WHA_CONTROL, LEGACY_PAGE, DEFINITION).
 
 ### ⏸️ Pilar 3 — Helpers y tipos
 
@@ -153,13 +151,12 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 - [ ] Tipos: `User` con `org_id: string` non-nullable (post-register)
 - [ ] Middleware: `getCurrentUser()` redirige a `/onboarding` si `org_id` null
 
-### ⏸️ Pilar 4 — PLATFORM_ADMIN separado
+### 🟡 Pilar 4 — PLATFORM_ADMIN separado (parcial)
 
-- [ ] Migration 140: table `platform_admins`
-- [ ] Helper `lib/auth/platform.ts` — `isPlatformAdmin(user)`
-- [ ] Rename `users.role`: Maxi `SUPER_ADMIN` → `ORG_OWNER`
-- [ ] Tomi insertado en `platform_admins`
-- [ ] Ruta guard para `/admin/*` — redirect si no es platform admin
+- [x] Migration 142: tabla `platform_admins` + RLS + seed de Tomi (pendiente correr en Supabase SQL Editor).
+- [x] Helper `lib/auth/platform.ts` → `isPlatformAdmin(supabase, userId)`.
+- [ ] Rename `users.role`: Maxi `SUPER_ADMIN` → `ORG_OWNER`. **Diferido** a post-launch — requiere DROP CHECK + ADD CHECK en `users.role` + actualizar todas las comparaciones de role en código. Mientras, Maxi queda como `SUPER_ADMIN` acotado por RLS de Pilar 1 (efecto práctico = ORG_OWNER).
+- [ ] Ruta guard para `/admin/*` — redirect si no es platform admin (Pilar 6).
 
 ### ⏸️ Pilar 5 — Tests de isolation (CI bloqueante)
 

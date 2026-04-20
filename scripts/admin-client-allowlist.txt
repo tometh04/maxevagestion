@@ -1,0 +1,58 @@
+# SaaS Pilar 2 — Allowlist de archivos con `createAdminClient`.
+#
+# Cada línea es un path relativo al repo que puede importar/llamar
+# `createAdminClient` legítimamente. Cualquier archivo FUERA de esta lista
+# que use `createAdminClient` hace fallar `scripts/check-admin-client.sh`.
+#
+# Formato: `path  # categoría — justificación breve`
+# Líneas vacías y comentarios se ignoran.
+#
+# Categorías:
+#   AUTH              — pre-sesión (no hay JWT todavía).
+#   LIB               — libs internas que reciben un client scoped por parámetro;
+#                       el admin interno debe migrarse en Pilar 3.
+#   RPC_BLOCKED       — routes que llaman `execute_readonly_query` (SECURITY
+#                       DEFINER); bloqueadas hasta Pilar 2c.
+#   STORAGE           — uploads a Supabase Storage; bucket policies son scope
+#                       separado de DB RLS.
+#   WRITE_VALIDATED   — writes que validan ownership vía parent RLS antes del
+#                       admin mutation (Pass 2 pattern); migrar a scoped-client
+#                       en Pilar 3.
+#   WHA_CONTROL       — tablas wha_control no existen en prod; cuando se
+#                       materialicen, agregar org_id + RLS desde cero.
+#   LEGACY_PAGE       — server component legacy; migrar en Pilar 3.
+#   DEFINITION        — archivo que define/exporta `createAdminClient`.
+
+lib/supabase/server.ts                                                   # DEFINITION — export de la función.
+
+lib/accounting/ledger.ts                                                 # LIB — getAdminClient interno, eliminar en Pilar 2c.
+lib/accounting/journal-entries.ts                                        # LIB — idem Pilar 2c.
+lib/accounting/audit.ts                                                  # LIB — idem Pilar 2c.
+
+app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
+
+app/api/accounting/ledger/stats/route.ts                                 # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+app/api/cash/daily-balance/route.ts                                      # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+
+app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
+app/api/quotations/upload-flight-screenshot/route.ts                     # STORAGE — solo sube archivos al bucket.
+
+app/api/operations/[id]/itinerary/route.ts                               # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/operations/[id]/itinerary/[itemId]/route.ts                      # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/expenses/variable/route.ts                                       # WRITE_VALIDATED — inyecta org_id al insert.
+app/api/expenses/variable/[id]/route.ts                                  # WRITE_VALIDATED — acotado por existing.org_id.
+app/api/expenses/cc-payment/route.ts                                     # WRITE_VALIDATED — inyecta org_id en group + items.
+app/api/expenses/cc-payment/[id]/route.ts                                # WRITE_VALIDATED — acotado por group.org_id.
+app/api/leads/[id]/route.ts                                              # WRITE_VALIDATED — acotado por lead.org_id.
+
+app/api/wha-control/chats/route.ts                                       # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/chats/[chatId]/messages/route.ts                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/route.ts                                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/route.ts                                # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/qr/route.ts                             # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/disconnect/route.ts                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/reconnect/route.ts                      # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/metrics/summary/route.ts                             # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/metrics/timeseries/route.ts                          # WHA_CONTROL — tablas no existen en prod.
+
+app/(dashboard)/operations/[id]/page.tsx                                 # LEGACY_PAGE — server component, migrar en Pilar 3.
