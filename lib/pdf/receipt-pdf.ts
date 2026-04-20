@@ -16,6 +16,8 @@ export interface ReceiptPdfData {
   companyTaxId?: string
   brandColor?: string
   brandLogo?: string
+  /** Texto libre de Términos y Condiciones (configurable por tenant en Settings). Render al pie. */
+  pdfTermsText?: string
   customerName: string
   customerLastName?: string
   passengerNamesText: string
@@ -784,6 +786,33 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
 
   drawHistoryTable()
   drawFooterNote()
+
+  // Términos y condiciones configurables por tenant (Settings → Interface → Términos en PDFs).
+  // Se renderizan en un bloque gris al pie antes del footer. Si el tenant no configuró texto,
+  // no se agrega el bloque.
+  const termsText = (data.pdfTermsText || "").trim()
+  if (termsText) {
+    const termsLines = doc.splitTextToSize(termsText, contentWidth - 10)
+    const cardHeight = 10 + termsLines.length * 3.5
+    ensureSpace(cardHeight + 4)
+    y += 4
+
+    doc.setFillColor(244, 246, 248)
+    doc.setDrawColor(225, 228, 232)
+    doc.roundedRect(margin, y, contentWidth, cardHeight, 4, 4, "FD")
+
+    doc.setFont("helvetica", "bold")
+    doc.setFontSize(8)
+    doc.setTextColor(75, 85, 99)
+    doc.text("Términos y Condiciones", margin + 5, y + 6)
+
+    doc.setFont("helvetica", "normal")
+    doc.setFontSize(8)
+    doc.setTextColor(75, 85, 99)
+    doc.text(termsLines, margin + 5, y + 10)
+
+    y += cardHeight + 4
+  }
 
   addFooters()
   doc.save(data.receiptFileName || `recibo-${data.receiptNumber}.pdf`)

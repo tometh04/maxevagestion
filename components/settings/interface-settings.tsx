@@ -1,8 +1,9 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Palette, Image, Building2, Upload, X, Pencil, Trash2 } from "lucide-react"
+import { Palette, Image, Building2, Upload, X, Pencil, Trash2, FileText } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -93,6 +94,7 @@ async function loadAllSettings(): Promise<Record<string, string>> {
     "tax_id",
     "legajo",
     "instagram",
+    "pdf_terms_text",
   ]
   for (const k of keys) {
     const v = localStorage.getItem(k)
@@ -169,6 +171,8 @@ export function InterfaceSettings() {
     website: "",
     instagram: "",
   })
+  const [pdfTermsText, setPdfTermsText] = useState("")
+  const [savingTerms, setSavingTerms] = useState(false)
   const [savingCompany, setSavingCompany] = useState(false)
   const [logoHover, setLogoHover] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -192,8 +196,21 @@ export function InterfaceSettings() {
         website: settings.website || settings.company_website || "",
         instagram: settings.instagram || settings.company_instagram || "",
       }))
+      if (settings.pdf_terms_text) setPdfTermsText(settings.pdf_terms_text)
     })
   }, [])
+
+  const handleSavePdfTerms = useCallback(async () => {
+    setSavingTerms(true)
+    try {
+      await saveSetting("pdf_terms_text", pdfTermsText.trim())
+      toast.success("Términos guardados — aparecerán al pie de cotizaciones y recibos")
+    } catch {
+      toast.error("No se pudo guardar")
+    } finally {
+      setSavingTerms(false)
+    }
+  }, [pdfTermsText])
 
   // --- Color picker handler ---
   const handleColorSelect = useCallback(async (hsl: string, hex: string) => {
@@ -442,6 +459,46 @@ export function InterfaceSettings() {
         <div className="flex justify-end pt-2">
           <Button onClick={handleSaveCompanyData} disabled={savingCompany}>
             {savingCompany ? "Guardando..." : "Guardar Datos"}
+          </Button>
+        </div>
+      </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Section: Términos y Condiciones en PDFs */}
+      {/* ----------------------------------------------------------------- */}
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+            <FileText className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+            Términos en PDFs
+          </span>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Texto que aparece al pie de las cotizaciones y recibos. Usalo para políticas de
+          cancelación, términos de pago, o cualquier mensaje fijo que quieras incluir en los
+          documentos que mandás a tus clientes. Si está vacío, los PDFs no muestran nada.
+        </p>
+
+        <div className="space-y-2">
+          <Label htmlFor="pdf_terms_text" className="text-xs">
+            Texto de términos y condiciones
+          </Label>
+          <Textarea
+            id="pdf_terms_text"
+            value={pdfTermsText}
+            onChange={(e) => setPdfTermsText(e.target.value)}
+            placeholder={`Ej: "Esta cotización tiene validez por 72 hs. Las reservas se confirman con el 30% de seña. Cancelaciones: consultar política vigente."`}
+            rows={5}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={handleSavePdfTerms} disabled={savingTerms}>
+            {savingTerms ? "Guardando..." : "Guardar Términos"}
           </Button>
         </div>
       </div>

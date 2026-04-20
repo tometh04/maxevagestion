@@ -214,6 +214,7 @@ export async function GET(request: NextRequest) {
     const companyTaxId = getOrg("tax_id", getOrg("company_tax_id", ""))
     const brandColor = getOrg("brand_color", "#f97316")
     const brandLogo = getOrg("brand_logo", "")
+    const pdfTermsText = getOrg("pdf_terms_text", "")
     const agencyCity = agency?.city || getOrg("city", "Rosario")
     const agencyName = agency?.name || companyName
     const receiptNumber = `1000-${paymentId.replace(/-/g, "").slice(-8).toUpperCase()}`
@@ -257,6 +258,7 @@ export async function GET(request: NextRequest) {
       companyTaxId,
       brandColor,
       brandLogo,
+      pdfTermsText,
       customerName,
       customerLastName,
       passengerNamesText,

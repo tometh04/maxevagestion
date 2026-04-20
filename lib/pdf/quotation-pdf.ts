@@ -31,6 +31,8 @@ interface BrandingData {
   email?: string
   website?: string
   instagram?: string
+  /** Texto libre de Términos y Condiciones (Settings → Interface → Términos en PDFs). */
+  pdf_terms_text?: string
 }
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -477,9 +479,14 @@ export async function generateQuotationPDF(
     y += 2
   }
 
-  if (data.terms_and_conditions) {
+  // Terms & Conditions: primero la versión per-quotation si existe (override
+  // manual al momento de cotizar). Si no, la versión org-wide configurada en
+  // Settings → Interface → Términos en PDFs. Así el tenant puede tener un
+  // texto default para todas las cotizaciones y customizar por cotización.
+  const effectiveTerms = (data.terms_and_conditions || branding.pdf_terms_text || "").trim()
+  if (effectiveTerms) {
     drawSectionTitle("Terminos y condiciones")
-    drawTextBlock("Condiciones", data.terms_and_conditions, [250, 250, 250], [120, 120, 120])
+    drawTextBlock("Condiciones", effectiveTerms, [250, 250, 250], [120, 120, 120])
   }
 
   drawSectionTitle("Disponibilidad")

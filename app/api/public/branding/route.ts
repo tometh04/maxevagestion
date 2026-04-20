@@ -35,6 +35,7 @@ export async function GET() {
       "email",
       "website",
       "instagram",
+      "pdf_terms_text",
     ]
 
     for (const item of data) {
