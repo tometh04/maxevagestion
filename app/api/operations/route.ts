@@ -12,6 +12,7 @@ import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } f
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { checkLimit } from "@/lib/billing/limits"
 
 export async function POST(request: Request) {
   try {
@@ -28,6 +29,15 @@ export async function POST(request: Request) {
     if (rateLimitBlock) return rateLimitBlock
 
     const supabase = await createServerClient()
+
+    // SaaS Pilar 7 — enforce límite de operaciones/mes del plan del tenant.
+    // Si la org está SUSPENDED o alcanzó el tope del plan, 403 con motivo.
+    if ((user as any).org_id) {
+      const limit = await checkLimit(supabase, (user as any).org_id, "max_operations_per_month")
+      if (!limit.ok) {
+        return NextResponse.json({ error: limit.message }, { status: 403 })
+      }
+    }
     const body = await request.json()
 
     const {
