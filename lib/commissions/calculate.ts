@@ -18,15 +18,22 @@ interface Operation {
 }
 
 /**
- * Obtiene el porcentaje de comisión para un vendedor consultando la tabla commission_rules.
- * Prioridad: regla específica del vendedor (seller_id) → regla genérica (seller_id IS NULL) → 0%.
+ * Obtiene el porcentaje de comisión para un vendedor.
+ * Prioridad (2026-04-20):
+ *   1. commission_rules con seller_id específico — override avanzado por
+ *      destino, fechas, etc.
+ *   2. users.default_commission_percentage — canónico: es el % que se setea
+ *      al crear/editar el vendedor en Settings → Usuarios. Workflow que pidió
+ *      el owner: creás user con rol vendedor, ponés su %, listo.
+ *   3. commission_rules genérica (sin seller_id) — default del tenant.
+ *   4. 0% con warning.
  */
 async function getSellerPercentage(sellerId: string): Promise<number> {
   try {
     const supabase = await createServerClient()
     const today = new Date().toISOString().split("T")[0]
 
-    // 1. Buscar regla específica para este vendedor
+    // 1. Regla específica override en commission_rules.
     const { data: sellerRules } = await (supabase
       .from("commission_rules") as any)
       .select("*")
@@ -41,7 +48,18 @@ async function getSellerPercentage(sellerId: string): Promise<number> {
       return Number((sellerRules as any[])[0].value) || 0
     }
 
-    // 2. Fallback: buscar regla genérica de tipo SELLER (sin seller_id específico)
+    // 2. users.default_commission_percentage — fuente canónica.
+    const { data: userRow } = await (supabase
+      .from("users") as any)
+      .select("default_commission_percentage")
+      .eq("id", sellerId)
+      .maybeSingle()
+    const userPct = (userRow as any)?.default_commission_percentage
+    if (userPct != null) {
+      return Number(userPct) || 0
+    }
+
+    // 3. Fallback opcional: regla genérica de la org.
     const { data: genericRules } = await (supabase
       .from("commission_rules") as any)
       .select("*")
@@ -60,9 +78,8 @@ async function getSellerPercentage(sellerId: string): Promise<number> {
     console.error("[Commissions] Error fetching commission rules:", err)
   }
 
-  // 3. Sin regla → 0% con advertencia
   console.warn(
-    `[Commissions] No commission rule found for seller ${sellerId}. Configure one in Settings → Comisiones.`
+    `[Commissions] No commission rule found for seller ${sellerId}. Configure one in Settings → Usuarios (default_commission_percentage).`
   )
   return 0
 }
