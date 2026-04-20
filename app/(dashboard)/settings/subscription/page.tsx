@@ -3,13 +3,14 @@ import { createServerClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { PLANS, PLAN_ORDER, formatArs, type PlanId } from "@/lib/billing/plans"
+import { CheckoutButton } from "@/components/billing/checkout-button"
 
 type OrgRow = {
   id: string
   name: string
   slug: string
-  plan: "STARTER" | "PROFESSIONAL" | "ENTERPRISE"
+  plan: PlanId
   subscription_status: "TRIAL" | "ACTIVE" | "PAST_DUE" | "CANCELLED" | "SUSPENDED"
   trial_ends_at: string | null
   grace_period_ends_at: string | null
@@ -17,6 +18,7 @@ type OrgRow = {
   max_agencies: number
   max_operations_per_month: number
   billing_email: string | null
+  mp_preapproval_id: string | null
   created_at: string
 }
 
@@ -72,18 +74,11 @@ export default async function SubscriptionPage() {
     .maybeSingle()
 
   const org = data as OrgRow | null
-
   if (!org) {
     return (
       <div className="flex flex-1 flex-col gap-4 p-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Suscripción</h1>
-        </div>
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No se encontró información de la organización.
-          </CardContent>
-        </Card>
+        <div><h1 className="text-2xl font-semibold tracking-tight">Suscripción</h1></div>
+        <Card><CardContent className="py-12 text-center text-muted-foreground">No se encontró información de la organización.</CardContent></Card>
       </div>
     )
   }
@@ -92,6 +87,8 @@ export default async function SubscriptionPage() {
     org.subscription_status === "TRIAL" && org.trial_ends_at
       ? Math.max(0, daysBetween(new Date(), new Date(org.trial_ends_at)))
       : null
+
+  const currentPlan = PLANS[org.plan]
 
   return (
     <div className="flex flex-1 flex-col gap-6 p-6">
@@ -112,8 +109,8 @@ export default async function SubscriptionPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <div className="text-xs uppercase text-muted-foreground tracking-wide">Plan</div>
-              <div className="text-lg font-medium">{org.plan}</div>
+              <div className="text-xs uppercase text-muted-foreground tracking-wide">Plan actual</div>
+              <div className="text-lg font-medium">{currentPlan?.name ?? org.plan}</div>
             </div>
             <div>
               <div className="text-xs uppercase text-muted-foreground tracking-wide">Email de facturación</div>
@@ -146,20 +143,47 @@ export default async function SubscriptionPage() {
               </div>
             )}
           </div>
-
-          <div className="pt-2">
-            <Button disabled>Elegir plan (próximamente)</Button>
-            <p className="text-xs text-muted-foreground mt-2">
-              Los pagos se habilitarán cuando integremos MercadoPago.
-            </p>
-          </div>
         </CardContent>
       </Card>
 
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Planes disponibles</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {PLAN_ORDER.map((planId) => {
+            const plan = PLANS[planId]
+            const isCurrent = org.plan === planId && org.subscription_status === "ACTIVE"
+            return (
+              <Card key={plan.id} className={isCurrent ? "border-blue-500" : ""}>
+                <CardHeader>
+                  <CardTitle>{plan.name}</CardTitle>
+                  <div className="text-2xl font-bold mt-2">
+                    {formatArs(plan.priceArsMonthly)}
+                    <span className="text-sm font-normal text-muted-foreground"> / mes</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{plan.description}</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <ul className="text-sm space-y-1 list-disc list-inside">
+                    {plan.features.map((f, i) => (
+                      <li key={i}>{f}</li>
+                    ))}
+                  </ul>
+                  <div className="pt-2">
+                    {isCurrent ? (
+                      <Badge variant="default">Plan actual</Badge>
+                    ) : (
+                      <CheckoutButton plan={plan.id} />
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
+
       <Card>
-        <CardHeader>
-          <CardTitle>Límites de tu plan</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Límites de tu plan</CardTitle></CardHeader>
         <CardContent>
           <dl className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
@@ -173,7 +197,7 @@ export default async function SubscriptionPage() {
             <div>
               <dt className="text-xs uppercase text-muted-foreground tracking-wide">Operaciones/mes</dt>
               <dd className="text-lg font-medium">
-                {org.max_operations_per_month >= 999999 ? "Ilimitadas" : org.max_operations_per_month}
+                {org.max_operations_per_month >= 99999 ? "Ilimitadas" : org.max_operations_per_month}
               </dd>
             </div>
           </dl>

@@ -135,8 +135,13 @@ export async function middleware(req: NextRequest) {
   //   - /login, /auth, /api/auth (ciclo de auth)
   //   - webhooks/public (ya excluidos arriba)
   //
-  // Esto evita el edge case donde un user registrado queda sin tenant y
-  // llega a la app rompiendo queries que asumen org_id no-null.
+  // Pilar 9 — paywall gate. Si el user tiene org_id pero la subscripción
+  // está SUSPENDED / CANCELLED, o TRIAL ya venció, lo mandamos a
+  // /paywall. Excepciones adicionales:
+  //   - /paywall
+  //   - /settings/subscription y /api/billing/*  (para que pueda pagar)
+  //   - /api/billing/mp-webhook (MP llama sin auth — ya excluido por
+  //     el paso de auth previo al no tener cookies)
   const pathname = req.nextUrl.pathname
   const isOnboardingAllowed =
     pathname.startsWith("/onboarding") ||
@@ -145,6 +150,16 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api/auth") ||
     pathname === "/logout"
+
+  const isPaywallAllowed =
+    isOnboardingAllowed ||
+    pathname.startsWith("/paywall") ||
+    pathname.startsWith("/settings/subscription") ||
+    pathname.startsWith("/api/billing") ||
+    // Platform admins (Tomi) nunca quedan bloqueados — pueden diagnosticar
+    // la org suspendida.
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin")
 
   if (authUserId && !isOnboardingAllowed) {
     // Hacemos la verificación con el mismo client (hereda la sesión del JWT
@@ -157,10 +172,34 @@ export async function middleware(req: NextRequest) {
     const orgId = (userRow as any)?.org_id as string | null | undefined
     const isActive = (userRow as any)?.is_active !== false
 
-    if (isActive && userRow && !orgId) {
+    if (!isActive) {
+      // User desactivado — dejamos pasar al logout y login, el resto redirige.
+      return response
+    }
+
+    if (userRow && !orgId) {
       const url = req.nextUrl.clone()
       url.pathname = "/onboarding"
       return NextResponse.redirect(url)
+    }
+
+    // Gate de paywall: consultamos el estado de la sub del tenant.
+    if (orgId && !isPaywallAllowed) {
+      const { data: orgRow } = await (supabase.from("organizations") as any)
+        .select("subscription_status, trial_ends_at")
+        .eq("id", orgId)
+        .maybeSingle()
+
+      const status = (orgRow as any)?.subscription_status as string | undefined
+      const trialEndsAt = (orgRow as any)?.trial_ends_at as string | null | undefined
+      const trialExpired = status === "TRIAL" && trialEndsAt && new Date(trialEndsAt) < new Date()
+      const blocked = status === "SUSPENDED" || status === "CANCELLED" || trialExpired
+
+      if (blocked) {
+        const url = req.nextUrl.clone()
+        url.pathname = "/paywall"
+        return NextResponse.redirect(url)
+      }
     }
   }
 
