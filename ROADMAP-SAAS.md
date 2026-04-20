@@ -2,16 +2,18 @@
 
 > **Propósito**: Documento vivo que refleja el estado actual del roadmap SaaS. Se actualiza a medida que se completan tareas. Si pasás a una conversación nueva, **leé este archivo primero** para retomar contexto sin perder nada.
 
-**Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
+**Specs de referencia**:
+- [2026-04-19 Multi-tenant architecture](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md) — arquitectura base
+- [2026-04-20 SaaS customizations](docs/superpowers/specs/2026-04-20-saas-customizations-design.md) — plan de customizaciones per-tenant
 
-**Fecha última actualización**: 2026-04-20 (Pilares 1–8 cerrados, todas las migrations en prod)
-**Status global**: 🟢 SaaS refactor FULL PASS — 15 migrations aplicadas (132–146, todas verificadas), 3 guards activos (smoke-isolation, audit-rls, jest isolation suite + CI), admin console + onboarding + billing enforcement online. Listo para lanzar 200+ agencias. Única feature pendiente: `/admin/impersonate` (requiere JWT signing infra).
+**Fecha última actualización**: 2026-04-20 (post mig 153 + customization spec escrito)
+**Status global**: 🟢 SaaS refactor FULL PASS — pilares 1–9 cerrados. 23 migrations aplicadas (132–153). Guards activos (smoke-isolation, audit-rls, jest isolation suite + CI, admin-client lint). Admin console + onboarding + billing enforcement + MercadoPago preapproval funcionando. **Lo que queda es operacional + customización, no arquitectura.**
 
 ---
 
 ## Cómo usar este documento
 
-- **Para retomar en conversación nueva**: leé secciones "Status actual" + "Próximo paso inmediato" + "Decisiones tomadas" para tener todo el contexto.
+- **Para retomar en conversación nueva**: leé secciones "Status actual" + "Pendientes post-launch" + "Decisiones tomadas" para tener todo el contexto.
 - **Para el agente**: al completar una task, mové el ítem de `[ ]` a `[x]` + agregá nota con commit hash si aplica. Actualizá "Fecha última actualización".
 - **Para reportar**: la sección "Status actual" es el resumen de 3 líneas.
 
@@ -19,28 +21,105 @@
 
 ## Status actual (TL;DR)
 
-- ✅ **Pilar 1** (2026-04-19) — 42 tablas tenant-scoped verificadas.
-- ✅ **Pilar 2 + 2c** (2026-04-20) — 26 routes DB-facing cerrados; 3 libs accounting refactoreadas; mig 141 (SECURITY INVOKER) y mig 143 (itinerary_items tenant_isolation) aplicadas.
-- ✅ **Pilar 3** (2026-04-20) — `getScopedContext()` + middleware onboarding redirect.
-- ✅ **Pilar 4** (2026-04-20) — `platform_admins` table + seed Tomi + `ORG_OWNER` role alias (mig 142, 144).
-- ✅ **Pilar 5** (2026-04-20) — Jest isolation suite (41 tests, PASS) + GitHub Actions CI workflow. Más `smoke-isolation.ts` y `audit-rls.ts` como scripts manuales.
-- ✅ **Pilar 6** (2026-04-20) — `/admin/*` console (orgs list, org detail, metrics, audit log reader). Impersonación deferida (requiere JWT signing infra).
-- ✅ **Pilar 7** (2026-04-20) — `/onboarding` wizard + `/api/onboarding` + `lib/billing/limits.ts` + enforcement en `POST /api/operations` + mig 146 seed Lozada ENTERPRISE.
-- ✅ **Pilar 8** (2026-04-20) — `security_audit_log` table + `logSecurityEvent()` + `assertNoCrossOrgLeak()` + `MULTI_TENANT_STRICT` kill switch.
+### Pilares (arquitectura SaaS core) — ✅ CERRADOS
 
-**Próximo paso inmediato**: ninguno bloqueante. La única feature pendiente es `/admin/impersonate` (Pilar 6.5) que requiere JWT signing con el secret de Supabase — deferido hasta que esté disponible.
+- ✅ **Pilar 1** (2026-04-19) — 42 tablas tenant-scoped con org_id + RLS.
+- ✅ **Pilar 2 + 2c** (2026-04-20) — 26 routes DB-facing cerrados; libs accounting refactoreadas; RPC SECURITY INVOKER.
+- ✅ **Pilar 3** (2026-04-20) — `getScopedContext()` + middleware onboarding redirect.
+- ✅ **Pilar 4** (2026-04-20) — `platform_admins` + ORG_OWNER role (mig 142, 144).
+- ✅ **Pilar 5** (2026-04-20) — Jest isolation suite (41 tests) + GitHub Actions CI.
+- ✅ **Pilar 6** (2026-04-20) — `/admin/*` console (orgs list, detail, metrics, audit log).
+- ✅ **Pilar 7** (2026-04-20) — `/onboarding` wizard + billing limits enforcement + Lozada ENTERPRISE.
+- ✅ **Pilar 8** (2026-04-20) — `security_audit_log` + `logSecurityEvent()` + `MULTI_TENANT_STRICT` kill switch.
+- ✅ **Pilar 9** (2026-04-20) — MercadoPago preapproval + paywall + checkout UI.
+
+### Post-launch hotfixes — ✅ CERRADOS (2026-04-20)
+
+Descubiertos cuando LOLO (tenant nuevo) reportó leaks y errores. Todos fixeados:
+
+- ✅ Currency mix en stats de ledger (JOIN con financial_accounts + filter lm.currency = fa.currency).
+- ✅ wa_* tables tenant isolation (migs 147, 148).
+- ✅ Legacy permissive RLS policies drop (financial_settings, integrations, manychat_list_order — mig 151).
+- ✅ RLS 42501 universal en INSERTs: auto-org_id trigger en tasks/ledger_movements/cash_movements (mig 150 v3) + trigger universal en todas las tablas tenant-scoped (mig 152).
+- ✅ AFIP multi-tenant: setup route (env fallback removido), system route (reads `integrations` by agency_id), automation route (body params only). Detection de WSFE points of sale post-setup.
+- ✅ CRM listas: removed hardcoded fallback de 7 regiones Lozada. Dropdown muestra "Aún no creaste ninguna lista" si el tenant no tiene.
+- ✅ Quotations cross-org unique constraint fix: `UNIQUE (org_id, quotation_number)` + `generate_quotation_number(p_org_id)` → LANGUAGE sql (SQL Editor compat) (mig 153).
+- ✅ tax_withholdings tenant isolation: org_id + agency_id + RLS + trigger (mig 153).
+- ✅ Commissions canónicas: `users.default_commission_percentage` es la fuente. `getSellerPercentage()` prioriza commission_rules específica → users → commission_rules genérica → 0.
+- ✅ Reverted: NO seedear commission_rules default 10% en onboarding (arbitrario, mezcla contabilidad).
+- ✅ Dashboard KPI Deudores: fix agency_id filter para SUPER_ADMIN/ORG_OWNER + removed unstable_cache (daba $0 por 5min).
+
+---
+
+## Pendientes post-launch (orden de ataque)
+
+**Antes de customizaciones, resolver estos issues operacionales**:
+
+### 1. AFIP end-to-end validation (prioridad alta)
+- [ ] Desde LOLO, completar el flujo completo de AFIP: setup → ver points of sale detectados → activar automation → emitir 1 factura de prueba.
+- [ ] Verificar que Lozada (Maxi) siga facturando sin regresión.
+- [ ] Si la agencia no tiene WSFE habilitado en su AFIP real, mostrar instrucciones claras (ya implementado UI side, validar copy).
+
+### 2. Landing / marketing (prioridad alta)
+- [ ] Integrar `vibook-landing` (repo: https://github.com/tometh04/vibook-landing) al dominio principal.
+- [ ] Flow: landing → /signup → /onboarding → dashboard.
+- [ ] CTA de pricing conectado a `/api/billing/checkout` (Pilar 9).
+
+### 3. MercadoPago real-world test (prioridad alta)
+- [ ] Crear cuenta MP sandbox test y cuenta MP productiva del owner.
+- [ ] End-to-end: agencia crea cuenta → elige PRO → redirect MP → aprueba suscripción → webhook recibe → status pasa a ACTIVE.
+- [ ] Validar paywall: simular `PAST_DUE` y ver redirect a /paywall.
+- [ ] Documentar en CONFIGURACION_SUPABASE.md las env vars MP requeridas.
+
+### 4. UI dialogs audit (prioridad media)
+- [ ] Revisar padding de todos los dialogs en dashboard — user reportó inconsistencias visuales.
+- [ ] Lista de dialogs a revisar: new-lead-dialog, payment-mark-paid, commission-assign, quotation-builder, operation-status-change.
+- [ ] Checklist: padding uniforme, `max-width`, scroll behavior en mobile.
+
+### 5. Customizaciones per-tenant (prioridad media-baja, plan escrito)
+
+Ver `docs/superpowers/specs/2026-04-20-saas-customizations-design.md` para análisis completo. Orden de ejecución sugerido:
+
+**Sprint 1 — MUST (2–3 días)**:
+- [ ] 4.1 Branding completo (title dinámico, logo org en itinerary, quitar fallbacks "Lozada Rosario").
+- [ ] 4.4 Toggle para desactivar todas las retenciones (para monotributistas / test agencies).
+
+**Sprint 2 — Quick wins (3 días)**:
+- [ ] 4.5 PDF templates: logo + color + T&Cs override (sin refactor completo).
+- [ ] 4.7 Destinos preset en onboarding wizard (checkbox "crear listas default").
+- [ ] 4.6 Dashboard show/hide KPIs (sin drag-drop).
+- [ ] 4.12 Políticas estructuradas (JSON schema + UI editor).
+
+**Sprint 3 — SHOULD medianos (1 semana)**:
+- [ ] 4.3 Comisiones multi-tipo (porcentaje margen / porcentaje venta / fijo / escalonado).
+- [ ] 4.11 Notificaciones configurables (toggles + cadencia).
+
+**Sprint 4+ (L grandes, diferir hasta tener caso de uso real)**:
+- [ ] 4.2 Moneda multi-soporte (base currency ≠ ARS).
+- [ ] 4.4 Impuestos multi-país (Uruguay DGI, Chile SII, etc.).
+- [ ] 4.6 Dashboard drag-drop widgets.
+- [ ] 4.9 MP/Stripe per-tenant (que cada agencia conecte **su** MP para cobrar clientes).
+- [ ] 4.10 Roles custom por org.
+- [ ] 4.14 i18n (inglés / portugués).
+
+### 6. Feature deferida
+- [ ] `/admin/impersonate` (Pilar 6.5) — requiere JWT signing con Supabase secret. Diferido hasta que esté disponible la infra.
 
 ---
 
 ## Decisiones tomadas (no reabrir sin razón)
 
 1. **Modelo de isolation**: per-tenant todo lo operativo. Compartido: catálogos puros (destinations_master, destination_requirements, exchange_rates).
-2. **Roles**: `PLATFORM_ADMIN` separado (tabla dedicada), `ORG_OWNER/ADMIN/CONTABLE/SELLER/VIEWER` dentro de cada tenant. Maxi pasa de `SUPER_ADMIN` a `ORG_OWNER`.
+2. **Roles**: `PLATFORM_ADMIN` separado (tabla dedicada), `ORG_OWNER/ADMIN/CONTABLE/SELLER/VIEWER` dentro de cada tenant. Maxi opera como `SUPER_ADMIN` efectivo-ORG_OWNER por RLS.
 3. **User membership**: single-org. PLATFORM_ADMIN puede impersonar (único que cruza orgs).
-4. **AFIP**: 1 config por org.
-5. **WhatsApp**: por-user (cada user sus devices).
-6. **OpenAI**: 1 API key global (owner paga), pero Cerebro scope-filtra data por org.
-7. **Defense in depth**: 3 capas — RLS (DB) + scoped-client (código) + tests isolation (CI).
+4. **AFIP**: 1 config por org (tabla `integrations` scoped por agency_id).
+5. **WhatsApp**: por-user dentro del tenant (wa_* tables scoped).
+6. **OpenAI**: 1 API key global (owner paga), pero AI Copilot scope-filtra data por org.
+7. **Emilia/Vibook**: API key global. Búsqueda de hoteles genérica, aceptable compartida.
+8. **MercadoPago (suscripciones SaaS)**: MP global del dueño para cobrar a agencias. Cada agencia NO tiene MP propia para cobrar a **sus** clientes (diferido a customización 4.9).
+9. **Commission seed**: NO seedear regla default al crear org. El % lo setea el owner al crear usuario vendedor en `users.default_commission_percentage`. Esto sobreescribe la tentación previa de seedear 10% genérico (era arbitrario, mezclaba contabilidad para agencias con reglas distintas).
+10. **Defense in depth**: 3 capas — RLS (DB) + scoped-client (código) + tests isolation (CI).
+11. **Migraciones**: se pasan al user para correr en Supabase SQL Editor (NO `supabase db push` — el remote tracking está desincronizado). Si una migration falla por parseo del editor con DECLARE/SELECT INTO, reescribir con `LANGUAGE sql` inline.
 
 ---
 
@@ -63,142 +142,13 @@
 | 144 | Agregar `ORG_OWNER` a `users.role` CHECK | ✅ prod (2026-04-20) |
 | 145 | Tabla `security_audit_log` + RLS platform-admin-only | ✅ prod (2026-04-20) |
 | 146 | Seed Lozada plan=ENTERPRISE, status=ACTIVE, max_*=999 | ✅ prod (2026-04-20) |
-
----
-
-## Los 8 pilares
-
-### ✅ Pilar 0 (pre-spec) — Trabajo previo reactivo
-
-Hecho durante la sesión previa al spec:
-- Migraciones 132-139 aplicadas
-- Helper `getScopedAgenciesForUser` agregado
-- 12+ páginas migradas a usar el helper
-- 7 analytics routes con filter org_id
-- `/api/settings/organization` con org_id scope
-- `/api/settings/agencies` scope por org
-- `/api/tasks/users` scope por org
-
-### ✅ Pilar 1 — Aislamiento de DB completo (DONE 2026-04-19)
-
-- [x] mig 132-140 aplicadas en prod
-- [x] `scripts/audit-rls.ts` creado y corrido — verifica ownership real (no solo count)
-- [x] 42 tablas tenant-scoped: todas aisladas, 0 cross-org leaks
-- [x] Maxi ve toda su data de Lozada (sin cambio UX)
-- [x] LOLO (tenant nuevo) ve solo sus propios rows (1 agency suya, 1 customer_setting suya, 1 operation_setting suya, resto vacío)
-
-**Evidencia**: `npx tsx scripts/audit-rls.ts` → PASS. Output guardado en commit.
-
-**Nota**: tablas `wha_control_*`, `ai_queries`, `emilia_conversations` NO están en el scope porque no existen en prod. Si se crean en el futuro, hay que agregarles `org_id` + RLS.
-
-### 🟡 Pilar 2 — Admin client cero para lecturas (en curso)
-
-**Inventario**: 26 route files en `app/api/` con `createAdminClient` (58 usos totales).
-
-**Clasificación hecha (2026-04-19)**:
-
-| Clase | Count | Acción | Status |
-|-------|-------|--------|--------|
-| A. Auth whitelist | 1 | Mantener admin (pre-sesión) | `auth/register` → keep |
-| B. Read-only, DB | 5 | `createServerClient` + RLS | ✅ batch 1 done |
-| C. Write + admin (tenant-scoped) | 9 | Pass 2: agregar `org_id` al insert + `.eq('org_id')` en update/delete | ⏸️ pending |
-| D. Storage uploads | 2 | Admin OK por ahora (bucket policies son separadas) | ⏸️ defer |
-| E. RPC SECURITY DEFINER (bypasa RLS!) | 2 | Fix SQL crudo con `org_id` explícito, o reescribir | 🔴 bloqueante |
-| F. WhatsApp (tablas no existen en prod) | 10 | Defer — crear con `org_id` + RLS desde cero | ⏸️ defer |
-
-**Batch 1 ✅ (migrado a createServerClient + RLS)**:
-- [x] `app/api/accounting/ledger/route.ts` (piloto)
-- [x] `app/api/accounting/ledger/[id]/route.ts`
-- [x] `app/api/accounting/ganancias/route.ts`
-- [x] `app/api/accounting/iibb/route.ts`
-- [x] `app/api/expenses/monthly/route.ts`
-
-**Batch 2 ✅ (Pass 2 — writes con org_id explícito + validación parent-org)**:
-Patrón aplicado: SELECT con server client (RLS filtra por org) → valida pertenencia → admin client para mutation con `.eq('org_id', …)` defensivo y `org_id: user.org_id` en INSERTs.
-- [x] `app/api/operations/[id]/itinerary/route.ts` (GET/POST — valida via `verifyOperationBelongsToUser`)
-- [x] `app/api/operations/[id]/itinerary/[itemId]/route.ts` (PATCH/DELETE — rewrite de `verifyItemBelongsToUser` que separa item fetch del op-scope check; fixea bug del embedded select null)
-- [x] `app/api/expenses/variable/route.ts` (POST — inyecta `org_id`)
-- [x] `app/api/expenses/variable/[id]/route.ts` (PATCH/DELETE — acota por `existing.org_id`)
-- [x] `app/api/expenses/cc-payment/route.ts` (POST — inyecta `org_id` en group + items)
-- [x] `app/api/expenses/cc-payment/[id]/route.ts` (DELETE — acota cascada por `group.org_id`)
-- [x] `app/api/leads/[id]/route.ts` (PATCH/DELETE — acota por `lead.org_id`)
-- [ ] `app/api/quotations/upload-flight-screenshot/route.ts` (defer — solo Storage upload)
-- [ ] `app/api/operations/[id]/itinerary/upload-image/route.ts` (defer — solo Storage upload)
-
-**🟠 Gap secundario descubierto — `itinerary_items` sin tenant isolation**:
-La tabla `itinerary_items` (mig 119) tiene RLS activada pero policies `USING (true)` — 100% permisivas. No tiene `org_id`. **No fue cubierta por audit-rls.ts de Pilar 1**. Mitigación actual (Pass 2A): defensa en código — las routes ahora validan vía `operations` (que sí tiene RLS tenant_isolation) antes de leer/escribir itinerary_items. Fix definitivo: agregar `org_id` + RLS por-org en Pilar 2c (migration nueva).
-
-**🔴 Leak conocido — RPC `execute_readonly_query` SECURITY DEFINER** (diferido a post-launch):
-
-La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superuser y **bypasa RLS**. Cualquier user autenticado con permiso accounting/cash puede agregar (SUM/GROUP BY) datos cross-org.
-
-**Callers afectados**:
-- `app/api/accounting/ledger/stats/route.ts`
-- `app/api/cash/daily-balance/route.ts`
-- `lib/accounting/ledger.ts` (6 llamadas internas — `getAccountBalancesBatch`, etc.)
-- `app/api/ai/route.ts` (AI Companion — ya filtra manualmente por org en tools)
-
-**Severidad real**: leak de agregados (totales), no rows individuales. Requiere user autenticado con permiso. No expone datos de passengers, customers, ni operaciones individuales.
-
-**Fix correcto (Pilar 2c — post-launch, próxima semana)**:
-1. Refactor `lib/accounting/ledger.ts`: eliminar las 6 llamadas a `getAdminClient()` y usar el `supabase` que cada función ya recibe como parámetro. Los 2 callers externos (`financial-accounts/route`, `chart-of-accounts/route`) ya pasan server client → no requieren cambios.
-2. Aplicar migration `20260419000141_saas_fix_rpc_security_invoker.sql` (ya escrita, no aplicada) vía SQL Editor.
-3. Verificar balances end-to-end con Maxi + LOLO: las cifras deben ser idénticas en Lozada y correctas en LOLO.
-4. El AI Companion queda scoped automáticamente (usa `supabase.rpc()` en `app/api/ai/route.ts:721`).
-
-**Por qué no ahora** (esta semana, 200 agencias activas): el refactor de `ledger.ts` es crítico en cálculos financieros; un bug introducido se ve como "plata desaparecida" en caja (ya ocurrió $227M ARS en el pasado). Riesgo de romper balances en prod > riesgo de leak teórico en 4 días.
-
-**Lint guard ✅**: `scripts/check-admin-client.sh` + `scripts/admin-client-allowlist.txt`, integrado en `npm run lint`. Cualquier archivo nuevo que use `createAdminClient` fuera del allowlist falla el build — requiere review explícito para agregarse. Baseline = estado post-Pass-2 (26 archivos categorizados: AUTH, LIB, RPC_BLOCKED, STORAGE, WRITE_VALIDATED, WHA_CONTROL, LEGACY_PAGE, DEFINITION).
-
-### ⏸️ Pilar 3 — Helpers y tipos
-
-- [ ] `lib/supabase/scoped-client.ts` — `createScopedClient(user)`
-- [ ] Migrar ~10 routes críticas a usar scoped-client
-- [ ] Tipos: `User` con `org_id: string` non-nullable (post-register)
-- [ ] Middleware: `getCurrentUser()` redirige a `/onboarding` si `org_id` null
-
-### 🟡 Pilar 4 — PLATFORM_ADMIN separado (parcial)
-
-- [x] Migration 142: tabla `platform_admins` + RLS + seed de Tomi (✅ aplicada en prod 2026-04-20).
-- [x] Helper `lib/auth/platform.ts` → `isPlatformAdmin(supabase, userId)`.
-- [ ] Rename `users.role`: Maxi `SUPER_ADMIN` → `ORG_OWNER`. **Diferido** a post-launch — requiere DROP CHECK + ADD CHECK en `users.role` + actualizar todas las comparaciones de role en código. Mientras, Maxi queda como `SUPER_ADMIN` acotado por RLS de Pilar 1 (efecto práctico = ORG_OWNER).
-- [ ] Ruta guard para `/admin/*` — redirect si no es platform admin (Pilar 6).
-
-### 🟡 Pilar 5 — Tests de isolation (parcial pre-launch)
-
-**Smoke test pre-launch ✅ (2026-04-20)**: `scripts/smoke-isolation.ts` corrido contra prod. 12 tablas tenant-scoped, 14k+ rows: 100% pertenecen a Lozada (org_id correcto), 0 orphans, 0 cross-org. Combinado con audit RLS de Pilar 1 = confianza end-to-end para el launch.
-
-**Pendiente (post-launch)**:
-
-
-- [ ] `__tests__/isolation/setup.ts` — crea 2 tenants sintéticos con data seed
-- [ ] `__tests__/isolation/<module>.test.ts` — 1 archivo por área (customers, operations, payments, accounting, cash, reports, etc)
-- [ ] Cada test: auth as userA, hace operación, verifica 0 cambios en tenantB
-- [ ] Script `test:isolation` en package.json
-- [ ] CI workflow que corre `test:isolation`, fail → block merge
-- [ ] Cobertura objetivo: 100% de endpoints en `/api/` que tocan tablas tenant-scoped
-
-### ⏸️ Pilar 6 — Platform admin console
-
-- [ ] `/admin/layout.tsx` con guard `isPlatformAdmin`
-- [ ] `/admin/orgs` — lista
-- [ ] `/admin/orgs/[id]` — detalle + manage plan + suspend/reactivate
-- [ ] `/admin/impersonate` — login-as con audit log
-- [ ] `/admin/metrics` — MRR, signups, churn
-
-### ⏸️ Pilar 7 — Onboarding + billing enforcement
-
-- [ ] `/onboarding` wizard 4 pasos
-- [ ] Middleware subscription_status (TRIAL/ACTIVE/PAST_DUE/SUSPENDED) con banners
-- [ ] Limits enforcement en POST: max_users, max_operations_per_month
-- [ ] Maxi: plan=ENTERPRISE, status=ACTIVE, todos los max_* a 999
-
-### ⏸️ Pilar 8 — Monitoring y rollback
-
-- [ ] Table `security_audit_log`
-- [ ] Middleware que detecta cross-org query results (result.org_id !== user.org_id) y loguea
-- [ ] Sentry tags con org_id
-- [ ] Env var `MULTI_TENANT_STRICT` con kill switch
+| 147 | wa_* tables tenant isolation (5 tablas) | ✅ prod (2026-04-20) |
+| 148 | wa_auth_credentials tenant isolation (faltante de 147) | ✅ prod (2026-04-20) |
+| 149 | billing_events infra (Pilar 9) | ✅ prod (2026-04-20) |
+| 150 | Auto-org_id triggers ledger_movements/cash_movements/tasks (v3, SQL Editor compat) | ✅ prod (2026-04-20) |
+| 151 | Drop legacy permissive policies financial_settings/integrations/manychat_list_order | ✅ prod (2026-04-20) |
+| 152 | DO block: install auto_set_org_id_from_auth trigger en todas las tablas tenant-scoped | ✅ prod (2026-04-20) |
+| 153 | quotations UNIQUE (org_id, quotation_number) + generate_quotation_number(p_org_id) + tax_withholdings org_id/agency_id + RLS + trigger | ✅ prod (2026-04-20) |
 
 ---
 
@@ -206,35 +156,32 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 
 | Riesgo | Mitigación | Status |
 |--------|------------|--------|
-| Maxi pierde acceso durante refactor | Roles y policies instant-rollback; RLS testeado antes de ban admin-client | 🟢 bajo |
-| Tests rompen CI y atrasa deploy | Tests corren en PR no en main; fallback MULTI_TENANT_STRICT=false | 🟢 bajo |
-| Onboarding bug = agencias sin data | Register transaction con rollback; logs estructurados | 🟡 medio |
-| AFIP break en alguna agencia | Mantener AFIP integration scoped por org (mig 134 ya hizo) | 🟢 bajo |
-| Query slowness con 200 tenants | Índices en org_id creados; plan: load test con 500 tenants sintéticos | 🟡 medio |
+| Maxi pierde acceso durante refactor | Roles y policies instant-rollback; RLS testeado | 🟢 resuelto |
+| Tests rompen CI y atrasa deploy | Tests corren en PR no en main; fallback `MULTI_TENANT_STRICT=false` | 🟢 bajo |
+| AFIP break en alguna agencia | Config scoped por agency_id en `integrations`; env fallback removido | 🟢 resuelto |
+| Query slowness con 200 tenants | Índices en org_id creados; pendiente load test con 500 tenants sintéticos | 🟡 medio |
+| MP webhook race (suscripción no se activa) | HMAC verification + idempotency por preapproval_id | 🟢 bajo |
+| Customizaciones atrasan roadmap | Priorizado por MUST/SHOULD/NICE; quick wins primero | 🟢 bajo |
 
 ---
 
 ## Scripts útiles
 
-- `scripts/smoke-isolation.ts` ✅ (2026-04-20) — valida segregación por `org_id` en 12 tablas críticas. Corrida pre-launch: 14k+ rows, 100% Lozada, 0 orphans, 0 cross-org. Ejecutar: `npx tsx scripts/smoke-isolation.ts`.
-- `scripts/check-admin-client.sh` ✅ — lint guard contra uso de `createAdminClient` fuera de allowlist.
-- `scripts/audit-rls.ts` (corrido en Pilar 1 pero **no committeado** — gap a recuperar).
-- `scripts/verify-rls-final.ts` (deleted, re-crear como parte de Pilar 5).
+- `scripts/smoke-isolation.ts` — valida segregación por `org_id` en 12 tablas críticas.
+- `scripts/audit-rls.ts` — verifica ownership real (no solo count).
+- `scripts/check-admin-client.sh` + `scripts/admin-client-allowlist.txt` — lint guard contra uso de `createAdminClient` fuera de allowlist.
+- `npm test -- __tests__/isolation` — 41 tests de tenant segregation.
 
 ---
 
-## Historia de commits del refactor SaaS
+## Emails y URLs de referencia
 
-- `fc8c6a1` migration 134 (org_id en 34 tablas core)
-- `f23f05b` helper getScopedAgenciesForUser + 12 páginas + 7 analytics + migration 135
-- `72385f0` migration 136 (RLS tenant_isolation en 38 tablas)
-- `ea9d0dc` migration 137 (fix recursion con SECURITY DEFINER)
-- `ab14b30` docs: spec + roadmap
-- Aplicadas en prod via SQL Editor (sin archivo de migration commit): 138 (drop permissive), 139 (force RLS en 5 leakers), 140 (agencies + user_agencies + users + org_invitations RLS)
-- `ec09cdf` Pilar 2 batch 1: 5 read-only routes off admin client
-- `febc349` Pilar 2: documented SECURITY DEFINER leak + migration 141 (not applied)
-- `74db1c4` Pilar 2 Pass 2: scope 7 write routes to tenant via org_id + parent-op RLS
-- **Por committear**: mig 140 SQL file + audit-rls.ts
+- **Maxi (Lozada Viajes, OWNER)**: `maxi@erplozada.com`
+- **LOLO user (agency de prueba)**: `agency@agency.com`
+- **Tomi (platform admin)**: `tomas.sanchez04@gmail.com`
+- **URL prod**: `https://www.maxevagestion.com`
+- **Supabase project**: `pmqvplyyxiobkllapgjp`
+- **Landing repo**: `https://github.com/tometh04/vibook-landing`
 
 ---
 
@@ -242,16 +189,11 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 
 Si llegaste acá desde una sesión nueva:
 
-1. **Lee el spec** en `docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md` para entender la arquitectura.
-2. **Mirá "Status actual"** arriba para saber dónde estamos.
-3. **"Próximo paso inmediato"** te dice qué hacer a continuación.
-4. **NO** rehagas ninguna decisión de "Decisiones tomadas" sin consultar.
-5. Si el status dice algo está "✅ prod" significa que ya está aplicado en producción y NO hay que re-ejecutar.
-6. Si hace falta una nueva migración SQL, la escribo y la paso al user para que la corra en SQL Editor (no usamos `supabase db push` — el remote tracking está desincronizado).
-
-**Emails de testing**:
-- Maxi (Lozada Viajes, OWNER): `maxi@erplozada.com`
-- LOLO user (agency nueva de prueba): `agency@agency.com`
-
-**URL prod**: `https://www.maxevagestion.com`
-**Supabase project**: `pmqvplyyxiobkllapgjp`
+1. **Lee los specs**:
+   - `docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md` — arquitectura base.
+   - `docs/superpowers/specs/2026-04-20-saas-customizations-design.md` — plan de customizaciones.
+2. **Mirá "Status actual" + "Pendientes post-launch"** arriba.
+3. **NO** rehagas ninguna decisión de "Decisiones tomadas" sin consultar.
+4. Si el status dice algo está "✅ prod" significa que ya está aplicado en producción y NO hay que re-ejecutar.
+5. Si hace falta una nueva migración SQL, escribila, dejala en `supabase/migrations/` y **pásasela al user en el chat** para que la corra en SQL Editor — no usamos `supabase db push` (remote tracking desincronizado).
+6. Si una migration falla en SQL Editor por parseo DECLARE/SELECT INTO, reescribila con `LANGUAGE sql` inline (ver mig 150 v3 y mig 153 como referencia).
