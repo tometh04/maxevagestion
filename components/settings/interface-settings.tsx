@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Palette, Image, Building2, Upload, X, Pencil, Trash2, FileText } from "lucide-react"
+import { Palette, Image, Building2, Upload, X, Pencil, Trash2, FileText, Scale } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -95,6 +95,10 @@ async function loadAllSettings(): Promise<Record<string, string>> {
     "legajo",
     "instagram",
     "pdf_terms_text",
+    "policy_payment_terms_days",
+    "policy_deposit_retention_percent",
+    "policy_refund_window_days",
+    "policy_cancellation_text",
   ]
   for (const k of keys) {
     const v = localStorage.getItem(k)
@@ -173,6 +177,13 @@ export function InterfaceSettings() {
   })
   const [pdfTermsText, setPdfTermsText] = useState("")
   const [savingTerms, setSavingTerms] = useState(false)
+  const [policies, setPolicies] = useState({
+    payment_terms_days: "",
+    deposit_retention_percent: "",
+    refund_window_days: "",
+    cancellation_text: "",
+  })
+  const [savingPolicies, setSavingPolicies] = useState(false)
   const [savingCompany, setSavingCompany] = useState(false)
   const [logoHover, setLogoHover] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -197,8 +208,31 @@ export function InterfaceSettings() {
         instagram: settings.instagram || settings.company_instagram || "",
       }))
       if (settings.pdf_terms_text) setPdfTermsText(settings.pdf_terms_text)
+      setPolicies({
+        payment_terms_days: settings.policy_payment_terms_days || "",
+        deposit_retention_percent: settings.policy_deposit_retention_percent || "",
+        refund_window_days: settings.policy_refund_window_days || "",
+        cancellation_text: settings.policy_cancellation_text || "",
+      })
     })
   }, [])
+
+  const handleSavePolicies = useCallback(async () => {
+    setSavingPolicies(true)
+    try {
+      await Promise.all([
+        saveSetting("policy_payment_terms_days", policies.payment_terms_days.trim()),
+        saveSetting("policy_deposit_retention_percent", policies.deposit_retention_percent.trim()),
+        saveSetting("policy_refund_window_days", policies.refund_window_days.trim()),
+        saveSetting("policy_cancellation_text", policies.cancellation_text.trim()),
+      ])
+      toast.success("Políticas guardadas")
+    } catch {
+      toast.error("No se pudieron guardar las políticas")
+    } finally {
+      setSavingPolicies(false)
+    }
+  }, [policies])
 
   const handleSavePdfTerms = useCallback(async () => {
     setSavingTerms(true)
@@ -499,6 +533,100 @@ export function InterfaceSettings() {
         <div className="flex justify-end">
           <Button onClick={handleSavePdfTerms} disabled={savingTerms}>
             {savingTerms ? "Guardando..." : "Guardar Términos"}
+          </Button>
+        </div>
+      </div>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* Section: Políticas Comerciales */}
+      {/* ----------------------------------------------------------------- */}
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+            <Scale className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <span className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">
+            Políticas Comerciales
+          </span>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          Políticas que se aplican a toda la agencia. Los recordatorios de pago usan el plazo
+          de pago. La política de cancelación aparece en cotizaciones y emails transaccionales
+          cuando corresponda.
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="policy_payment_terms_days" className="text-xs">
+              Plazo de pago (días)
+            </Label>
+            <Input
+              id="policy_payment_terms_days"
+              type="number"
+              min="0"
+              max="180"
+              value={policies.payment_terms_days}
+              onChange={(e) =>
+                setPolicies((p) => ({ ...p, payment_terms_days: e.target.value }))
+              }
+              placeholder="p.ej. 7"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy_deposit_retention_percent" className="text-xs">
+              Retención por cancelación (%)
+            </Label>
+            <Input
+              id="policy_deposit_retention_percent"
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={policies.deposit_retention_percent}
+              onChange={(e) =>
+                setPolicies((p) => ({ ...p, deposit_retention_percent: e.target.value }))
+              }
+              placeholder="p.ej. 30"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="policy_refund_window_days" className="text-xs">
+              Ventana de reembolso (días)
+            </Label>
+            <Input
+              id="policy_refund_window_days"
+              type="number"
+              min="0"
+              max="365"
+              value={policies.refund_window_days}
+              onChange={(e) =>
+                setPolicies((p) => ({ ...p, refund_window_days: e.target.value }))
+              }
+              placeholder="p.ej. 15"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="policy_cancellation_text" className="text-xs">
+            Política de cancelación (texto para cliente)
+          </Label>
+          <Textarea
+            id="policy_cancellation_text"
+            rows={4}
+            value={policies.cancellation_text}
+            onChange={(e) =>
+              setPolicies((p) => ({ ...p, cancellation_text: e.target.value }))
+            }
+            placeholder={`Ej: "Cancelaciones con 15+ días de anticipación: reembolso del 70%. Entre 15 y 7 días: 50%. Menos de 7 días: sin reembolso. Condiciones sujetas al operador mayorista."`}
+            className="text-sm"
+          />
+        </div>
+
+        <div className="flex justify-end">
+          <Button onClick={handleSavePolicies} disabled={savingPolicies}>
+            {savingPolicies ? "Guardando..." : "Guardar Políticas"}
           </Button>
         </div>
       </div>
