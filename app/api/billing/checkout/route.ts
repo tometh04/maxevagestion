@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Tenant sin billing_email configurado" }, { status: 400 })
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.maxevagestion.com"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
   const backUrl = `${appUrl}/settings/subscription?checkout=done`
 
   let preapproval

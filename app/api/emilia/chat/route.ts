@@ -128,8 +128,8 @@ export async function POST(request: Request) {
             headers: {
                 "X-API-Key": EMILIA_API_KEY,
                 "Content-Type": "application/json",
-                "User-Agent": "Emilia-API-Client/1.0 (https://www.maxevagestion.com)",
-                "Origin": "https://www.maxevagestion.com",
+                "User-Agent": "Emilia-API-Client/1.0 (https://app.vibook.ai)",
+                "Origin": "https://app.vibook.ai",
             },
             body: JSON.stringify(apiPayload),
         })

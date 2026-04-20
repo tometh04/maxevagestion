@@ -107,7 +107,7 @@ async function fixWebhook() {
   console.log("🗑️  Eliminando webhooks incorrectos...")
   const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/api/trello/webhook`
-    : "https://www.maxevagestion.com/api/trello/webhook"
+    : "https://app.vibook.ai/api/trello/webhook"
 
   for (const webhook of webhooks) {
     // Eliminar si:

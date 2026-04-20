@@ -12,7 +12,7 @@
  *   npx tsx scripts/reset-and-sync-trello-production.ts <WEBHOOK_URL_PRODUCTION>
  * 
  * Ejemplo:
- *   npx tsx scripts/reset-and-sync-trello-production.ts https://www.maxevagestion.com
+ *   npx tsx scripts/reset-and-sync-trello-production.ts https://app.vibook.ai
  */
 
 import { createClient } from "@supabase/supabase-js"
@@ -588,7 +588,7 @@ async function main() {
     console.error("  npx tsx scripts/reset-and-sync-trello-production.ts <WEBHOOK_URL>")
     console.error("")
     console.error("Ejemplo:")
-    console.error("  npx tsx scripts/reset-and-sync-trello-production.ts https://www.maxevagestion.com")
+    console.error("  npx tsx scripts/reset-and-sync-trello-production.ts https://app.vibook.ai")
     process.exit(1)
   }
   

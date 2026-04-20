@@ -9,7 +9,7 @@ let vapidConfigured = false
 function ensureVapidConfigured() {
   if (vapidConfigured) return true
 
-  const vapidEmail = process.env.VAPID_EMAIL || "mailto:maxi@maxevagestion.com"
+  const vapidEmail = process.env.VAPID_EMAIL || "mailto:soporte@vibook.ai"
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ""
   const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || ""
 

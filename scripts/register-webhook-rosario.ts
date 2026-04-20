@@ -18,7 +18,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-const WEBHOOK_URL = "https://www.maxevagestion.com/api/trello/webhook"
+const WEBHOOK_URL = "https://app.vibook.ai/api/trello/webhook"
 
 async function registerWebhookRosario() {
   console.log("🚀 Registrando Webhook de Trello para Rosario")

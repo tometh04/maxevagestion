@@ -10,7 +10,7 @@
  * Env vars requeridas (tomi las setea en Vercel):
  *   MP_ACCESS_TOKEN       — Access token de la cuenta MP (Bearer).
  *   MP_WEBHOOK_SECRET     — Secret para verificar webhooks (desde panel MP).
- *   NEXT_PUBLIC_APP_URL   — URL base de la app (ej: https://www.maxevagestion.com)
+ *   NEXT_PUBLIC_APP_URL   — URL base de la app (ej: https://app.vibook.ai)
  *                           usada para back_url del preapproval.
  */
 

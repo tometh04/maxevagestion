@@ -89,7 +89,7 @@ export async function sendEmail(options: EmailOptions): Promise<SendEmailResult>
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: options.from || process.env.RESEND_FROM_EMAIL || "Maxeva Gestión <noreply@maxevagestion.com>",
+        from: options.from || process.env.RESEND_FROM_EMAIL || "Vibook <noreply@vibook.ai>",
         to: Array.isArray(options.to) ? options.to : [options.to],
         subject: options.subject,
         html: options.html,

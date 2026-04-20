@@ -76,7 +76,7 @@ export default async function PaywallPage() {
         <div className="text-center text-sm text-muted-foreground space-y-1">
           <p>
             ¿Necesitás otra opción?{" "}
-            <Link href="mailto:hola@maxevagestion.com" className="underline">Escribinos</Link>
+            <Link href="mailto:hola@vibook.ai" className="underline">Escribinos</Link>
           </p>
           <p>
             <Link href="/logout" className="underline">Cerrar sesión</Link>
