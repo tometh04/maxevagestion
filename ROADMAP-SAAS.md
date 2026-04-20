@@ -4,8 +4,8 @@
 
 **Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
 
-**Fecha última actualización**: 2026-04-20 (Pilares 1–8 completos — SaaS refactor full pass done)
-**Status global**: 🟢 Pilares 1 → 8 completos. 6 migrations aplicadas en prod (141–146). 3 guards corriendo (smoke-isolation, audit-rls, jest isolation suite + CI workflow). Admin console + onboarding + billing enforcement online. Solo queda impersonación (Pilar 6.5) que requiere infra JWT.
+**Fecha última actualización**: 2026-04-20 (Pilares 1–8 cerrados, todas las migrations en prod)
+**Status global**: 🟢 SaaS refactor FULL PASS — 15 migrations aplicadas (132–146, todas verificadas), 3 guards activos (smoke-isolation, audit-rls, jest isolation suite + CI), admin console + onboarding + billing enforcement online. Listo para lanzar 200+ agencias. Única feature pendiente: `/admin/impersonate` (requiere JWT signing infra).
 
 ---
 
@@ -60,9 +60,9 @@
 | 141 | `execute_readonly_query` → SECURITY INVOKER | ✅ prod (2026-04-20) |
 | 142 | Tabla `platform_admins` + RLS + seed Tomi | ✅ prod (2026-04-20) |
 | 143 | `itinerary_items` org_id + RLS tenant_isolation | ✅ prod (2026-04-20) |
-| 144 | Agregar `ORG_OWNER` a `users.role` CHECK | ⏸️ escrita, pendiente correr en SQL Editor |
-| 145 | Tabla `security_audit_log` + RLS platform-admin-only | ⏸️ escrita, pendiente correr en SQL Editor |
-| 146 | Seed Lozada plan=ENTERPRISE, status=ACTIVE, max_*=999 | ⏸️ escrita, pendiente correr en SQL Editor |
+| 144 | Agregar `ORG_OWNER` a `users.role` CHECK | ✅ prod (2026-04-20) |
+| 145 | Tabla `security_audit_log` + RLS platform-admin-only | ✅ prod (2026-04-20) |
+| 146 | Seed Lozada plan=ENTERPRISE, status=ACTIVE, max_*=999 | ✅ prod (2026-04-20) |
 
 ---
 
