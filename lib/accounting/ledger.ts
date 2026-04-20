@@ -119,6 +119,56 @@ export interface CreateLedgerMovementParams {
   affects_balance?: boolean
   /** Fecha efectiva del movimiento (puede ser retroactiva). Si no se provee, usa NOW(). */
   movement_date?: string | Date | null
+  /**
+   * SaaS tenant id. Si no se provee, se deriva de (en orden):
+   *   1. operation_id → operations.org_id
+   *   2. lead_id → leads.org_id
+   *   3. created_by → users.org_id
+   * Sin poder resolver ninguno, el insert falla (la RLS policy
+   * `org_id IN user_org_ids()` rechaza NULL).
+   */
+  org_id?: string | null
+}
+
+/**
+ * Deriva el org_id del contexto del movimiento cuando el caller no lo pasa.
+ * Se usa dentro de createLedgerMovement y en variantes internas (operator
+ * payments, commissions, FX) que insertan directo en ledger_movements.
+ */
+async function resolveOrgIdForLedger(
+  params: CreateLedgerMovementParams,
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  if (params.org_id) return params.org_id
+
+  if (params.operation_id) {
+    const { data } = await (supabase.from("operations") as any)
+      .select("org_id")
+      .eq("id", params.operation_id)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  if (params.lead_id) {
+    const { data } = await (supabase.from("leads") as any)
+      .select("org_id")
+      .eq("id", params.lead_id)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  if (params.created_by) {
+    const { data } = await (supabase.from("users") as any)
+      .select("org_id")
+      .eq("id", params.created_by)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  return null
 }
 
 /**
@@ -145,6 +195,15 @@ export async function createLedgerMovement(
     throw new Error(`amount_ars_equivalent inválido: ${params.amount_ars_equivalent}`)
   }
 
+  // SaaS tenant: resolver org_id si el caller no lo pasó. Sin él, la RLS
+  // policy (`org_id IN user_org_ids()`) rechaza el INSERT con 42501.
+  const orgId = await resolveOrgIdForLedger(params, supabase)
+  if (!orgId) {
+    throw new Error(
+      "createLedgerMovement: no se pudo resolver org_id (faltan params.org_id, operation_id, lead_id o created_by válidos)"
+    )
+  }
+
   const ledgerTable = supabase.from("ledger_movements") as any
 
   const { data, error } = await ledgerTable
@@ -165,6 +224,7 @@ export async function createLedgerMovement(
       notes: params.notes || null,
       created_by: params.created_by || null,
       affects_balance: params.affects_balance ?? true,
+      org_id: orgId,
       // Fecha efectiva del movimiento: puede ser retroactiva (ej. 13/02).
       // Si no se provee, usa la fecha actual como fallback.
       movement_date: params.movement_date
