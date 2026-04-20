@@ -49,12 +49,14 @@ DROP POLICY IF EXISTS "itinerary_delete" ON itinerary_items;
 ALTER TABLE itinerary_items FORCE ROW LEVEL SECURITY;
 
 -- 7. Policy de tenant_isolation — un único policy para todas las operaciones.
--- user_org_ids() devuelve el array de orgs del caller (ver mig 137).
+-- user_org_ids() retorna SETOF uuid, por eso se usa IN (SELECT ...) y NO
+-- = ANY (user_org_ids()) que PostgreSQL rechaza con 0A000.
+-- Este patrón es el mismo que usan las otras tenant_isolation policies.
 DROP POLICY IF EXISTS "itinerary_items_tenant_isolation" ON itinerary_items;
 CREATE POLICY "itinerary_items_tenant_isolation" ON itinerary_items
   FOR ALL TO authenticated
-  USING (org_id = ANY (user_org_ids()))
-  WITH CHECK (org_id = ANY (user_org_ids()));
+  USING (org_id IN (SELECT user_org_ids()))
+  WITH CHECK (org_id IN (SELECT user_org_ids()));
 
 COMMENT ON COLUMN itinerary_items.org_id IS
   'SaaS tenant isolation. Backfill desde operations.org_id en mig 143.';
