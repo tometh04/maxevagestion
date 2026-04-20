@@ -12,15 +12,9 @@ import { createServerClient } from "@/lib/supabase/server"
  */
 export async function POST(request: Request) {
   try {
-    // Verificar autorización
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
-    const vercelCronSecret = request.headers.get("x-vercel-cron-secret")
-
-    const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
-    const hasValidToken = authHeader === `Bearer ${cronSecret}`
-
-    if (!isVercelCron && !hasValidToken) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
