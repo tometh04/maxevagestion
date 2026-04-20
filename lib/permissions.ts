@@ -4,7 +4,11 @@
  * Define qué puede ver/hacer cada rol en cada módulo del sistema
  */
 
-export type UserRole = "SUPER_ADMIN" | "ADMIN" | "CONTABLE" | "SELLER" | "VIEWER"
+// SaaS Pilar 4: ORG_OWNER es el nombre canónico para owners de tenants en el
+// modelo SaaS. SUPER_ADMIN queda como alias legacy con permisos idénticos
+// — eso permite introducir ORG_OWNER sin refactorizar 94 comparaciones
+// distribuidas por todo el código. Ambos resuelven a la misma RolePermissions.
+export type UserRole = "SUPER_ADMIN" | "ORG_OWNER" | "ADMIN" | "CONTABLE" | "SELLER" | "VIEWER"
 
 export type Module =
   | "dashboard"
@@ -37,22 +41,25 @@ type RolePermissions = Record<Module, ModulePermissions>
 /**
  * Matriz de permisos por rol y módulo
  */
+const SUPER_ADMIN_PERMS: RolePermissions = {
+  dashboard: { read: true, write: true, delete: true, export: true },
+  leads: { read: true, write: true, delete: true, export: true },
+  operations: { read: true, write: true, delete: true, export: true },
+  customers: { read: true, write: true, delete: true, export: true },
+  operators: { read: true, write: true, delete: true, export: true },
+  cash: { read: true, write: true, delete: true, export: true },
+  accounting: { read: true, write: true, delete: true, export: true },
+  alerts: { read: true, write: true, delete: true, export: true },
+  reports: { read: true, write: true, delete: true, export: true },
+  commissions: { read: true, write: true, delete: true, export: true },
+  settings: { read: true, write: true, delete: true, export: true },
+  documents: { read: true, write: true, delete: true, export: true },
+  tasks: { read: true, write: true, delete: true, export: true },
+}
+
 const PERMISSIONS: Record<UserRole, RolePermissions> = {
-  SUPER_ADMIN: {
-    dashboard: { read: true, write: true, delete: true, export: true },
-    leads: { read: true, write: true, delete: true, export: true },
-    operations: { read: true, write: true, delete: true, export: true },
-    customers: { read: true, write: true, delete: true, export: true },
-    operators: { read: true, write: true, delete: true, export: true },
-    cash: { read: true, write: true, delete: true, export: true },
-    accounting: { read: true, write: true, delete: true, export: true },
-    alerts: { read: true, write: true, delete: true, export: true },
-    reports: { read: true, write: true, delete: true, export: true },
-    commissions: { read: true, write: true, delete: true, export: true },
-    settings: { read: true, write: true, delete: true, export: true },
-    documents: { read: true, write: true, delete: true, export: true },
-    tasks: { read: true, write: true, delete: true, export: true },
-  },
+  SUPER_ADMIN: SUPER_ADMIN_PERMS,
+  ORG_OWNER: SUPER_ADMIN_PERMS, // alias — ver nota en UserRole
   ADMIN: {
     dashboard: { read: true, write: true, delete: false, export: true },
     leads: { read: true, write: true, delete: false, export: true },

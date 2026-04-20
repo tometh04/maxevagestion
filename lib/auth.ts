@@ -105,6 +105,7 @@ export function hasRole(userRole: string, requiredRole: string): boolean {
     SELLER: 2,
     ADMIN: 3,
     SUPER_ADMIN: 4,
+    ORG_OWNER: 4, // SaaS Pilar 4 — alias de SUPER_ADMIN a nivel de jerarquía.
   }
 
   return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0)
