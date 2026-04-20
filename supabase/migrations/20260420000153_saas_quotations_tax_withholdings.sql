@@ -125,20 +125,11 @@ CREATE TRIGGER trg_auto_org_id_tax_withholdings
   BEFORE INSERT ON tax_withholdings
   FOR EACH ROW EXECUTE FUNCTION auto_set_org_id_from_auth();
 
--- =====================================================
--- 4. commission_rules default para tenants que no tengan ninguna
--- =====================================================
--- Bug #1: LOLO creó una venta y no se generó comisión. Root cause:
--- commission_rules solo tenía reglas de Lozada; LOLO no tenía ninguna,
--- así que getSellerPercentage() devolvía 0 y no se creaba commission_record.
---
--- Seedeamos una regla generic de SELLER 10% para cada org que no tenga
--- ninguna. El owner puede ajustarla/eliminarla en Settings → Comisiones.
-INSERT INTO commission_rules (
-  org_id, agency_id, seller_id, type, basis, value, destination_region, valid_from, valid_to
-)
-SELECT o.id, NULL, NULL, 'SELLER', 'MARGIN', 10, NULL, CURRENT_DATE, NULL
-FROM organizations o
-WHERE NOT EXISTS (
-  SELECT 1 FROM commission_rules cr WHERE cr.org_id = o.id
-);
+-- NOTA sobre el bug #1 (comisión no generada):
+-- Root cause: `getSellerPercentage()` devuelve 0 cuando un tenant no
+-- tiene `commission_rules` cargadas. En una versión anterior de esta
+-- migración seedeaba una regla default 10% para cada org — lo sacamos
+-- porque genera data contable arbitraria (no todas las agencias pagan
+-- 10%, algunas no pagan comisión, etc). En vez, el frontend muestra un
+-- warning cuando no hay reglas configuradas. Cada tenant configura sus
+-- propias reglas en Settings → Comisiones.

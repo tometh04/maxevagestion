@@ -100,25 +100,12 @@ export async function POST(request: Request) {
     })
     .throwOnError?.()
 
-  // Seed default commission rule para el tenant. Sin esto, las ventas
-  // no generan comisión (getSellerPercentage devuelve 0 si no hay regla).
-  // 10% es un placeholder razonable; el owner puede editarlo en Settings.
-  try {
-    await admin.from("commission_rules").insert({
-      org_id: org.id,
-      agency_id: null,
-      seller_id: null,
-      type: "SELLER",
-      basis: "MARGIN",
-      value: 10,
-      destination_region: null,
-      valid_from: new Date().toISOString().split("T")[0],
-      valid_to: null,
-    })
-  } catch (seedErr) {
-    console.error("onboarding: no se pudo seedear commission_rule default:", seedErr)
-    // No rollbackeamos por esto — el tenant puede crear la regla manualmente.
-  }
+  // Nota: NO seedeamos commission_rules default acá. Si lo hiciéramos,
+  // cualquier tenant nuevo empezaría a generar comisiones automáticas
+  // con un valor arbitrario (ej. 10%), lo que mezcla la contabilidad
+  // para agencias que pagan otro porcentaje, que pagan montos fijos, o
+  // que directamente no pagan comisión. La UI muestra un warning cuando
+  // no hay reglas configuradas y el owner arma las suyas en Settings.
 
   logSecurityEvent({
     eventType: "TENANT_CREATED",
