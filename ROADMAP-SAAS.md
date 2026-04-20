@@ -69,10 +69,22 @@ Descubiertos cuando LOLO (tenant nuevo) reportó leaks y errores. Todos fixeados
 - [ ] Si la agencia no tiene WSFE habilitado en su AFIP real, mostrar instrucciones claras (ya implementado UI side, validar copy).
 
 ### 2. Landing / marketing (prioridad alta)
-- [x] Landing actualizada con 2 planes (PRO ARS $119.000 con trial 7d / Enterprise "Consultar" con bot ads→CRM). Commit `cbb3855` en `vibook-landing`.
-- [ ] **DNS/Domains**: apuntar `vibook.ai` → Vercel landing, `app.vibook.ai` → ERP. `maxevagestion.com` → redirect 301 a `app.vibook.ai` (o mantener ambos dominios activos).
+- [x] Landing actualizada con 2 planes (PRO ARS $119.000 con trial 7d / Enterprise "Consultar" con bot ads→CRM) en `vibook-landing`.
+- [x] Páginas legales (Términos, Privacidad, Cookies) live en `vibook-landing/legal/*`. Placeholders de entidad pendientes de completar.
 - [ ] **ERP: handle `?plan=pro`** en `/register`. Al terminar signup, si el query param está presente, saltear onboarding wizard y redirigir directo a `/api/billing/checkout` para preapproval MP. Status queda `TRIAL` con preapproval pre-aprobado. Si no viene, flow actual (onboarding wizard).
-- [ ] **Email `hola@vibook.ai`** debe estar funcionando — el CTA de Enterprise en el landing apunta ahí (`mailto:hola@vibook.ai?subject=Vibook Enterprise`).
+- [ ] **ERP: checkbox de aceptación de legales** en `/register` (bloqueante) + guardar `accepted_version` + `accepted_at` en DB.
+- [ ] **Email `hola@vibook.ai`** debe estar funcionando — el CTA de Enterprise en el landing apunta ahí.
+
+### 2b. Migración a Vibook (NUEVO — doc detallado escrito)
+Plan completo en `docs/superpowers/specs/2026-04-20-migracion-a-vibook.md`. Resumen:
+- [ ] **Fase 1**: DNS en Cloudflare (`vibook.ai`, `app.vibook.ai`) + dominios en Vercel + DKIM/SPF/DMARC de Resend. Sin tocar `maxevagestion.com`.
+- [ ] **Fase 2**: actualizar Supabase Auth (Site URL), MercadoPago (webhook), Trello webhooks, Manychat, env vars en Vercel, limpiar ~15 hardcodes de `maxevagestion.com` en código, coordinar con Emilia por Origin header.
+- [ ] **Fase 3**: flip primary domain en Vercel + redirect 301 de viejo a nuevo.
+- [ ] **Fase 4** (6 meses): retirar `maxevagestion.com`.
+- Requiere confirmar: acceso a Cloudflare `vibook.ai`, Resend, nombre proyecto Vercel del ERP, Supabase dashboard, MP dashboard, Trello API tokens, Manychat.
+- Downtime esperado: **cero** si seguimos la secuencia.
+- Riesgos altos identificados: Trello webhooks, Supabase Site URL, Resend DNS.
+- **No ejecutar hasta que Tomi dé el OK**. Primero cerrar pendientes del roadmap.
 
 ### 3. MercadoPago real-world test (prioridad alta)
 - [ ] Crear cuenta MP sandbox test y cuenta MP productiva del owner.
