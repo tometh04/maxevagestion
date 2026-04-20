@@ -44,38 +44,34 @@ ALTER TABLE quotations
 -- =====================================================
 -- 2. generate_quotation_number: org-scoped
 -- =====================================================
--- Aceptamos un org_id explícito; si no viene, lo resolvemos de auth.uid().
--- Además numeramos solo dentro de ese tenant (LOLO puede reiniciar en
--- COT-2026-0001 aunque Lozada ya esté en 0500).
+-- LANGUAGE sql (no plpgsql) — evita el bug del SQL Editor de Supabase
+-- que rechaza DECLARE local vars con 42P01. Todo se resuelve con
+-- subqueries inline. Aceptamos p_org_id; si no viene, resolvemos desde
+-- auth.uid(). Numeramos sólo dentro del tenant.
 CREATE OR REPLACE FUNCTION generate_quotation_number(p_org_id UUID DEFAULT NULL)
 RETURNS TEXT
-LANGUAGE plpgsql
+LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $body$
-DECLARE
-  year_part TEXT;
-  sequence_num INTEGER;
-  new_number TEXT;
-  effective_org UUID;
-BEGIN
-  year_part := TO_CHAR(NOW(), 'YYYY');
-  effective_org := p_org_id;
-
-  IF effective_org IS NULL AND auth.uid() IS NOT NULL THEN
-    SELECT u.org_id INTO effective_org
-    FROM users u WHERE u.auth_id = auth.uid() LIMIT 1;
-  END IF;
-
-  SELECT COALESCE(MAX(CAST(SUBSTRING(quotation_number FROM '[0-9]+$') AS INTEGER)), 0) + 1
-  INTO sequence_num
-  FROM quotations
-  WHERE quotation_number LIKE 'COT-' || year_part || '-%'
-    AND (effective_org IS NULL OR org_id = effective_org);
-
-  new_number := 'COT-' || year_part || '-' || LPAD(sequence_num::TEXT, 4, '0');
-  RETURN new_number;
-END;
+  SELECT 'COT-' || TO_CHAR(NOW(), 'YYYY') || '-' || LPAD(
+    (COALESCE((
+      SELECT MAX(CAST(SUBSTRING(q.quotation_number FROM '[0-9]+$') AS INTEGER))
+      FROM quotations q
+      WHERE q.quotation_number LIKE 'COT-' || TO_CHAR(NOW(), 'YYYY') || '-%'
+        AND (
+          COALESCE(
+            p_org_id,
+            (SELECT u.org_id FROM users u WHERE u.auth_id = auth.uid() LIMIT 1)
+          ) IS NULL
+          OR q.org_id = COALESCE(
+            p_org_id,
+            (SELECT u.org_id FROM users u WHERE u.auth_id = auth.uid() LIMIT 1)
+          )
+        )
+    ), 0) + 1)::TEXT,
+    4, '0'
+  )
 $body$;
 
 -- =====================================================
