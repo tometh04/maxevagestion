@@ -24,6 +24,7 @@ const registerSchema = z.object({
   legalAccepted: z.boolean().refine((v) => v === true, {
     message: "Tenés que aceptar los términos para continuar",
   }),
+  seedDefaultLists: z.boolean(),
 })
 
 type RegisterFormValues = z.infer<typeof registerSchema>
@@ -50,6 +51,9 @@ export function RegisterForm({
       email: "",
       password: "",
       legalAccepted: false,
+      // Default checked: la mayoría de agencias argentinas tiene estas 5 regiones.
+      // Si no las quieren, desmarcan el checkbox o las borran del CRM después.
+      seedDefaultLists: true,
     },
   })
 
@@ -68,6 +72,7 @@ export function RegisterForm({
           password: data.password,
           legalAccepted: data.legalAccepted,
           legalVersion: LEGAL_VERSION,
+          seedDefaultLists: data.seedDefaultLists,
         }),
       })
 
@@ -111,6 +116,7 @@ export function RegisterForm({
   }
 
   const legalAcceptedValue = form.watch("legalAccepted")
+  const seedDefaultListsValue = form.watch("seedDefaultLists")
 
   return (
     <form
@@ -190,6 +196,26 @@ export function RegisterForm({
           {form.formState.errors.password && (
             <p className="text-sm text-destructive">{form.formState.errors.password.message}</p>
           )}
+        </Field>
+        <Field>
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="seedDefaultLists"
+              checked={!!seedDefaultListsValue}
+              onCheckedChange={(v) =>
+                form.setValue("seedDefaultLists", v === true)
+              }
+              disabled={loading}
+              className="mt-0.5"
+            />
+            <label
+              htmlFor="seedDefaultLists"
+              className="text-sm leading-relaxed text-muted-foreground cursor-pointer"
+            >
+              Crear listas CRM sugeridas por destino (Argentina, Caribe, Europa, USA, Varios).
+              Las podés editar o borrar después desde el CRM.
+            </label>
+          </div>
         </Field>
         <Field>
           <div className="flex items-start gap-3">

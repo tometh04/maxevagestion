@@ -8,7 +8,19 @@ type RegisterBody = {
   companyName: string
   legalAccepted: boolean
   legalVersion: string
+  seedDefaultLists: boolean
 }
+
+// Listas CRM sugeridas por destino. Cubren la mayoría de las agencias argentinas.
+// Si el user las acepta en el signup, se crean en manychat_list_order. Si no,
+// empieza con el CRM vacío.
+const DEFAULT_CRM_LISTS = [
+  "Argentina",
+  "Caribe",
+  "Europa",
+  "USA",
+  "Varios",
+]
 
 function slugify(input: string): string {
   return input
@@ -33,6 +45,7 @@ export async function POST(req: Request) {
     const companyName = body.companyName?.trim()
     const legalAccepted = body.legalAccepted === true
     const legalVersion = body.legalVersion?.trim()
+    const seedDefaultLists = body.seedDefaultLists === true
 
     if (!email || !password || !name || !companyName) {
       return NextResponse.json(
@@ -184,6 +197,22 @@ export async function POST(req: Request) {
       user_id: userRow.id,
       agency_id: agency.id,
     })
+
+    // 9. (Opcional) Seed de listas CRM default. El user puede optar por esto
+    //    en el form de signup para no arrancar con el CRM completamente vacío.
+    //    Si falla, no es blocker — el tenant puede crearlas manualmente después.
+    if (seedDefaultLists) {
+      const listRows = DEFAULT_CRM_LISTS.map((listName, index) => ({
+        agency_id: agency.id,
+        list_name: listName,
+        position: index,
+      }))
+      const { error: listError } = await (admin.from("manychat_list_order") as any)
+        .insert(listRows)
+      if (listError) {
+        console.warn(`[register] Seed de listas CRM falló para org ${org.id}:`, listError.message)
+      }
+    }
 
     return NextResponse.json({
       success: true,

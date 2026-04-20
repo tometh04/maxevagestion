@@ -13,6 +13,7 @@ import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
 import { PendingTasksCard } from "./pending-tasks-card"
 import { BirthdaysTodayCard } from "./birthdays-today-card"
+import { KpiCustomizer, type DashboardKpiId } from "./kpi-customizer"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
@@ -106,6 +107,29 @@ export function DashboardPageClient({
   const [destinationsData, setDestinationsData] = useState<any[]>([])
   const [destinationsAllData, setDestinationsAllData] = useState<any[]>([])
   const [cashflowData, setCashflowData] = useState<any[]>([])
+  const [hiddenKpis, setHiddenKpis] = useState<Set<DashboardKpiId>>(new Set())
+
+  // Carga de preferencias de KPIs ocultos (organization_settings.dashboard_hidden_kpis).
+  // Usa el mismo endpoint que el resto de settings. Silenciosamente cae en
+  // "mostrar todos" si la key no existe (tenants nuevos).
+  useEffect(() => {
+    async function loadHiddenKpis() {
+      try {
+        const res = await fetch("/api/settings/organization?key=dashboard_hidden_kpis")
+        if (!res.ok) return
+        const json = await res.json()
+        const setting = Array.isArray(json.data) ? json.data[0] : null
+        if (!setting?.value) return
+        const ids = JSON.parse(setting.value) as string[]
+        setHiddenKpis(new Set(ids.filter((id): id is DashboardKpiId =>
+          ["sales", "margin", "debtors", "debt"].includes(id)
+        )))
+      } catch {
+        // silent — default empty Set (all visible)
+      }
+    }
+    loadHiddenKpis()
+  }, [])
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
@@ -244,7 +268,20 @@ export function DashboardPageClient({
       />
 
       {/* KPIs - Stripe style */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="flex items-center justify-between -mb-1">
+        <div className="text-xs text-muted-foreground uppercase tracking-wide">Indicadores</div>
+        <KpiCustomizer hiddenKpis={hiddenKpis} onChange={setHiddenKpis} />
+      </div>
+      <div className={`grid gap-3 ${
+        4 - hiddenKpis.size <= 1
+          ? "grid-cols-1"
+          : 4 - hiddenKpis.size === 2
+            ? "grid-cols-1 md:grid-cols-2"
+            : 4 - hiddenKpis.size === 3
+              ? "grid-cols-2 md:grid-cols-3"
+              : "grid-cols-2 md:grid-cols-4"
+      }`}>
+        {!hiddenKpis.has("sales") && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1">
@@ -269,7 +306,9 @@ export function DashboardPageClient({
             <p className="text-xs text-muted-foreground mt-1">{kpis.operationsCount} operaciones</p>
           )}
         </Card>
+        )}
 
+        {!hiddenKpis.has("margin") && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1">
@@ -294,7 +333,9 @@ export function DashboardPageClient({
             <p className="text-xs text-muted-foreground mt-1">{kpis.avgMarginPercent.toFixed(1)}% promedio</p>
           )}
         </Card>
+        )}
 
+        {!hiddenKpis.has("debtors") && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1">
@@ -318,7 +359,9 @@ export function DashboardPageClient({
             <p className="text-xs text-muted-foreground mt-1">Por ventas</p>
           )}
         </Card>
+        )}
 
+        {!hiddenKpis.has("debt") && (
         <Card className="p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-1">
@@ -342,6 +385,7 @@ export function DashboardPageClient({
             <p className="text-xs text-muted-foreground mt-1">A operadores</p>
           )}
         </Card>
+        )}
       </div>
 
       {/* Cumpleaños del día */}
