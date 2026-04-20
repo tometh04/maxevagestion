@@ -38,6 +38,7 @@ import {
   AlertCircle,
   Info,
   Circle,
+  ExternalLink,
 } from "lucide-react"
 
 // Schema fijo con cuit y password como strings (pueden estar vacíos).
@@ -85,6 +86,20 @@ interface SystemConfig {
   cuitMasked: string | null
 }
 
+interface PointOfSale {
+  numero: number
+  tipo: string
+}
+
+interface PosStatus {
+  checking: boolean
+  // null = aún no chequeado, true = habilitados, false = ninguno habilitado
+  has_ws_points: boolean | null
+  points: PointOfSale[]
+  // Error "técnico" (no la ausencia de POS). Ej. cert inválido, timeout.
+  error: string | null
+}
+
 interface AfipSettingsProps {
   agencies: Array<{ id: string; name: string }>
   defaultAgencyId: string | null
@@ -122,10 +137,16 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const [isLoadingStatus, setIsLoadingStatus] = useState(false)
   const [showReconfigureForm, setShowReconfigureForm] = useState(false)
   const [selectedAgencyId, setSelectedAgencyId] = useState(defaultAgencyId || agencies[0]?.id || "")
-  const [setupError, setSetupError] = useState<{ message: string } | null>(null)
+  const [setupError, setSetupError] = useState<{ message: string; isWsfe?: boolean } | null>(null)
   const [setupStep, setSetupStep] = useState<SetupStep>(null)
   const [certStepDone, setCertStepDone] = useState(false)
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null)
+  const [posStatus, setPosStatus] = useState<PosStatus>({
+    checking: false,
+    has_ws_points: null,
+    points: [],
+    error: null,
+  })
 
   // Cargar estado AFIP del tenant para la agencia seleccionada.
   // Antes: endpoint global devolvía info de env vars de Lozada → todos los
@@ -141,11 +162,6 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       .then(setSystemConfig)
       .catch(() => setSystemConfig({ cuitConfigured: false, passwordConfigured: false, cuitMasked: null }))
   }, [selectedAgencyId])
-
-  // Cada tenant siempre tiene que ingresar su propio CUIT y clave fiscal.
-  // (Pre-Pilar 9: con un env var de plataforma se omitían esos campos.)
-  const needsCuit = true
-  const needsPassword = true
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),
@@ -174,6 +190,48 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     }
   }, [])
 
+  // Chequea puntos de venta habilitados para WSFE contra AFIP (via SDK).
+  // Llamarlo cuando la agencia tenga cert instalado. Resultado determina si
+  // mostramos el banner-tutorial "habilitá WSFE en afip.gob.ar" o el estado
+  // "Activo".
+  const checkPointsOfSale = useCallback(async (agencyId: string) => {
+    if (!agencyId) return
+    setPosStatus(prev => ({ ...prev, checking: true, error: null }))
+    try {
+      const res = await fetch(`/api/invoices/points-of-sale?agencyId=${agencyId}`)
+      const data = await res.json()
+      if (!res.ok) {
+        setPosStatus({
+          checking: false,
+          has_ws_points: null,
+          points: [],
+          error: data.error || `Error ${res.status}`,
+        })
+        return
+      }
+      const agencyData = ((data.pointsOfSale as any[]) || []).find(
+        (p: any) => p.agency_id === agencyId
+      )
+      if (!agencyData) {
+        setPosStatus({ checking: false, has_ws_points: null, points: [], error: null })
+        return
+      }
+      setPosStatus({
+        checking: false,
+        has_ws_points: !!agencyData.has_ws_points,
+        points: (agencyData.points_of_sale || []) as PointOfSale[],
+        error: agencyData._debug_error || null,
+      })
+    } catch (err: any) {
+      setPosStatus({
+        checking: false,
+        has_ws_points: null,
+        points: [],
+        error: err?.message || "Error de red al chequear puntos de venta",
+      })
+    }
+  }, [])
+
   useEffect(() => {
     if (selectedAgencyId) {
       loadStatus(selectedAgencyId)
@@ -181,13 +239,27 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     }
   }, [selectedAgencyId, loadStatus, form])
 
+  // Auto-chequear POS cuando la agencia ya tiene cert instalado. Si el tenant
+  // cerró la pestaña entre "setup" y "habilitar WSFE en afip.gob.ar", al volver
+  // vemos configured=true pero sin POS WSFE → mostramos el banner-tutorial.
+  useEffect(() => {
+    if (
+      selectedAgencyId &&
+      afipStatus?.configured &&
+      afipStatus?.has_cert &&
+      !showReconfigureForm
+    ) {
+      checkPointsOfSale(selectedAgencyId)
+    }
+  }, [selectedAgencyId, afipStatus?.configured, afipStatus?.has_cert, showReconfigureForm, checkPointsOfSale])
+
   const onSubmit = async (values: AfipFormValues) => {
-    // Validación runtime de campos requeridos según env vars del sistema
-    if (needsCuit && !values.cuit?.trim()) {
+    // Validación runtime de campos requeridos (siempre, post-SaaS)
+    if (!values.cuit?.trim()) {
       form.setError("cuit", { message: "El CUIT es requerido" })
       return
     }
-    if (needsPassword && !values.password?.trim()) {
+    if (!values.password?.trim()) {
       form.setError("password", { message: "La Clave Fiscal es requerida" })
       return
     }
@@ -196,9 +268,8 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
     setSetupError(null)
     setCertStepDone(false)
 
-    // Si el CUIT viene del env var lo enviamos vacío (el backend usa el env var)
-    const cuitForParams = needsCuit ? (values.cuit || "").replace(/\D/g, "") : ""
-    const alias = `cert${cuitForParams || "maxeva"}`.replace(/[^a-zA-Z0-9]/g, "")
+    const cuitForParams = (values.cuit || "").replace(/\D/g, "")
+    const alias = `cert${cuitForParams}`.replace(/[^a-zA-Z0-9]/g, "")
     const certType = values.environment === "sandbox" ? "create-cert-dev" : "create-cert-prod"
     const authType =
       values.environment === "sandbox" ? "auth-web-service-dev" : "auth-web-service-prod"
@@ -258,7 +329,21 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       setSetupStep("waiting_auth")
       const authResult = await pollAutomation(authStart.automation_id)
       if (!authResult.success) {
-        throw new Error(authResult.error || "Error al autorizar WSFE en AFIP")
+        // Si AFIP devuelve un error relacionado a WSFE (servicio no adherido,
+        // permisos faltantes), mostramos el banner-tutorial para que la agencia
+        // lo habilite en afip.gob.ar y vuelva con "Volver a chequear".
+        const errMsg = authResult.error || "Error al autorizar WSFE en AFIP"
+        const isWsfeIssue = /wsfe|web\s*service|servicio|autoriz|adher|relaci|permiso/i.test(errMsg)
+        if (isWsfeIssue) {
+          setSetupError({ message: errMsg, isWsfe: true })
+          // Simulamos estado "cert creado pero WSFE pendiente" para que el
+          // banner-tutorial se renderice igual que cuando la pestaña se cierra
+          // y se vuelve. Guardamos la config parcial (sin cert del WS aún no
+          // se puede facturar, pero el tenant ve el estado correcto).
+          setPosStatus({ checking: false, has_ws_points: false, points: [], error: null })
+          return
+        }
+        throw new Error(errMsg)
       }
 
       // ── PASO 5: Guardar config en DB ─────────────────────────────────
@@ -292,40 +377,10 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       form.reset()
       await loadStatus(values.agency_id)
 
-      // SaaS: tras configurar, detectamos qué puntos de venta tiene el CUIT
-      // habilitados para Web Service (CAE / CAEA / RECE). Si no hay ninguno,
-      // mostramos el instructivo para habilitarlos en afip.gob.ar — sin
-      // esto la agencia no puede facturar electrónicamente.
-      try {
-        const posRes = await fetch(`/api/invoices/points-of-sale?agencyId=${values.agency_id}`)
-        if (posRes.ok) {
-          const posData = await posRes.json()
-          const agencyData = ((posData.pointsOfSale as any[]) || []).find(
-            (p: any) => p.agency_id === values.agency_id
-          )
-          if (agencyData) {
-            if (agencyData.has_ws_points && agencyData.points_of_sale.length > 0) {
-              const nums = agencyData.points_of_sale
-                .map((p: any) => `#${p.numero} (${p.tipo})`)
-                .join(", ")
-              toast({
-                title: `${agencyData.points_of_sale.length} punto(s) de venta habilitado(s)`,
-                description: `Listos para facturar: ${nums}.`,
-              })
-            } else {
-              toast({
-                title: "⚠️ No hay puntos de venta habilitados para Web Service",
-                description:
-                  "Tu CUIT todavía no tiene un punto de venta habilitado para WSFE (facturación electrónica). Entrá a https://www.afip.gob.ar → Administrador de Relaciones → Adherir servicio → 'Administración de Puntos de Venta y Domicilios' → Alta y seleccioná 'Facturación Electrónica - Web Service'. Cuando esté dado de alta, volvé acá y tocá el botón 'Probar Conexión' para verificar.",
-                variant: "destructive",
-                duration: 15000,
-              })
-            }
-          }
-        }
-      } catch (posErr) {
-        console.error("[AFIP Setup] Error detectando puntos de venta:", posErr)
-      }
+      // Post-setup: chequear POS habilitados. Si no hay ninguno WSFE, el
+      // banner-tutorial se encarga de guiar al tenant a afip.gob.ar — es
+      // el mismo componente que se muestra al volver de habilitar WSFE.
+      await checkPointsOfSale(values.agency_id)
     } catch (err: any) {
       setSetupError({ message: err.message || "Error desconocido" })
     } finally {
@@ -357,7 +412,13 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
 
   // Cert is needed if configured but has_cert is explicitly false
   const needsRecert = afipStatus?.configured && afipStatus?.has_cert === false && !showReconfigureForm
-  const showForm = !afipStatus?.configured || showReconfigureForm
+  // WSFE pendiente = cert listo en nuestra DB pero el CUIT no tiene punto de venta
+  // habilitado para Web Service en AFIP. El tenant tiene que habilitarlo en
+  // afip.gob.ar y después tocar "Volver a chequear".
+  const needsWsfe =
+    (afipStatus?.configured && afipStatus?.has_cert && posStatus.has_ws_points === false) ||
+    (setupError?.isWsfe === true)
+  const showForm = (!afipStatus?.configured || showReconfigureForm) && !needsWsfe
 
   return (
     <div className="space-y-6">
@@ -417,6 +478,21 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             <span className="text-sm">Verificando configuración...</span>
           </div>
         </div>
+      ) : needsWsfe ? (
+        <WsfePendingBanner
+          cuit={afipStatus?.config?.cuit || form.getValues("cuit") || ""}
+          errorHint={setupError?.isWsfe ? setupError.message : posStatus.error}
+          checking={posStatus.checking}
+          onRecheck={() => {
+            setSetupError(null)
+            checkPointsOfSale(selectedAgencyId)
+          }}
+          onReconfigure={() => {
+            setSetupError(null)
+            setPosStatus({ checking: false, has_ws_points: null, points: [], error: null })
+            setShowReconfigureForm(true)
+          }}
+        />
       ) : afipStatus?.configured && !showReconfigureForm ? (
         <div className={`rounded-xl border p-4 space-y-4 ${needsRecert
           ? "border-warning bg-warning/10"
@@ -466,21 +542,43 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 </p>
               </div>
             </div>
+            {/* Lista de puntos de venta WSFE detectados en AFIP (cuando los hay) */}
+            {posStatus.has_ws_points && posStatus.points.length > 0 && (
+              <div className="text-xs text-muted-foreground">
+                <span className="font-medium">Puntos de venta WSFE detectados: </span>
+                {posStatus.points.map(p => `#${p.numero} (${p.tipo})`).join(", ")}
+              </div>
+            )}
             <div className="flex gap-2 pt-1">
               {!needsRecert && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTestConnection}
-                  disabled={isTesting}
-                >
-                  {isTesting ? (
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                  )}
-                  Probar Conexión
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestConnection}
+                    disabled={isTesting}
+                  >
+                    {isTesting ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Probar Conexión
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => checkPointsOfSale(selectedAgencyId)}
+                    disabled={posStatus.checking}
+                  >
+                    {posStatus.checking ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    Re-chequear puntos de venta
+                  </Button>
+                </>
               )}
               <Button
                 variant={needsRecert ? "default" : "ghost"}
@@ -506,9 +604,7 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             </h4>
           </div>
           <p className="text-sm text-muted-foreground">
-            {needsCuit || needsPassword
-              ? "Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena."
-              : "Seleccioná el punto de venta y entorno para esta agencia."}
+            Ingresá los datos de AFIP. La Clave Fiscal se usa solo para crear el certificado y no se almacena.
           </p>
             <Alert className="mb-6 border-info bg-info/10">
               <Info className="h-4 w-4 text-info" />
@@ -583,23 +679,20 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                 />
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {/* CUIT — solo si no está en env vars */}
-                  {needsCuit && (
-                    <FormField
-                      control={form.control}
-                      name="cuit"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>CUIT de la Empresa</FormLabel>
-                          <FormControl>
-                            <Input {...field} placeholder="20-12345678-9" className="font-mono" />
-                          </FormControl>
-                          <FormDescription>11 dígitos sin guiones</FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
+                  <FormField
+                    control={form.control}
+                    name="cuit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>CUIT de la Empresa</FormLabel>
+                        <FormControl>
+                          <Input {...field} placeholder="20-12345678-9" className="font-mono" />
+                        </FormControl>
+                        <FormDescription>11 dígitos sin guiones</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   {/* Punto de Venta */}
                   <FormField
@@ -618,44 +711,42 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
                   />
                 </div>
 
-                {/* Clave Fiscal — solo si no está en env vars */}
-                {needsPassword && (
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Clave Fiscal AFIP</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              {...field}
-                              type={showPassword ? "text" : "password"}
-                              placeholder="Tu clave fiscal de AFIP"
-                              className="pr-10"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => setShowPassword(!showPassword)}
-                              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                            >
-                              {showPassword ? (
-                                <EyeOff className="h-4 w-4" />
-                              ) : (
-                                <Eye className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormDescription className="flex items-center gap-1">
-                          <Shield className="h-3 w-3" />
-                          Solo se usa para crear el certificado. No se almacena.
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
+                {/* Clave Fiscal */}
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Clave Fiscal AFIP</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            {...field}
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Tu clave fiscal de AFIP"
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : (
+                              <Eye className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormDescription className="flex items-center gap-1">
+                        <Shield className="h-3 w-3" />
+                        Solo se usa para crear el certificado. No se almacena.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 {/* Entorno */}
                 <FormField
@@ -707,20 +798,106 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
         </div>
       )}
 
-      {/* Info adicional */}
-      {!showForm && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="text-sm">
-            Para usar la facturación, asegurate de que el Punto de Venta esté habilitado en AFIP
-            bajo{" "}
-            <strong>
-              Mis aplicaciones y accesorios → Administrador de relaciones de clave fiscal → WSFE
-            </strong>
-            .
-          </AlertDescription>
-        </Alert>
+    </div>
+  )
+}
+
+/**
+ * Banner persistente para cuando el cert está listo pero falta habilitar un
+ * punto de venta WSFE en afip.gob.ar. Sustituye al toast efímero anterior: el
+ * tenant puede cerrar la pestaña, ir a AFIP (puede tardar minutos), volver, y
+ * este banner sigue acá con los pasos + botón "Volver a chequear".
+ */
+interface WsfePendingBannerProps {
+  cuit: string
+  errorHint: string | null
+  checking: boolean
+  onRecheck: () => void
+  onReconfigure: () => void
+}
+
+function WsfePendingBanner({
+  cuit,
+  errorHint,
+  checking,
+  onRecheck,
+  onReconfigure,
+}: WsfePendingBannerProps) {
+  return (
+    <div className="rounded-xl border border-warning bg-warning/10 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-5 w-5 text-warning" />
+          <h4 className="text-sm font-semibold text-warning">
+            Falta habilitar WSFE en AFIP
+          </h4>
+        </div>
+        <Badge variant="outline" className="border-warning text-warning">
+          Paso 2 de 2
+        </Badge>
+      </div>
+
+      <p className="text-sm text-foreground/80">
+        El certificado digital se creó correctamente. Para poder facturar, tu CUIT{" "}
+        {cuit && <span className="font-mono font-medium">{cuit}</span>} necesita tener un
+        <strong> punto de venta habilitado para Web Services (WSFE)</strong> en AFIP.
+        Seguí estos pasos y después volvé acá.
+      </p>
+
+      {errorHint && (
+        <div className="text-xs bg-destructive/5 border border-destructive/30 rounded p-2 text-destructive font-mono break-all">
+          {errorHint}
+        </div>
       )}
+
+      <ol className="space-y-3 text-sm list-decimal ml-5 marker:text-warning marker:font-semibold">
+        <li>
+          Entrá a{" "}
+          <a
+            href="https://auth.afip.gob.ar/contribuyente_/login.xhtml"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-primary underline inline-flex items-center gap-1"
+          >
+            auth.afip.gob.ar <ExternalLink className="h-3 w-3" />
+          </a>{" "}
+          con tu CUIT y Clave Fiscal.
+        </li>
+        <li>
+          Si no lo adheriste nunca: <strong>Administrador de Relaciones de Clave Fiscal</strong>{" "}
+          → <strong>Nueva Relación</strong> → buscá y adherí{" "}
+          <em>&quot;Administración de Puntos de Venta y Domicilios&quot;</em>.
+        </li>
+        <li>
+          Entrá al servicio <strong>Administración de Puntos de Venta y Domicilios</strong>,
+          seleccioná tu empresa y hacé clic en <strong>A/B/M de Puntos de Venta</strong>.
+        </li>
+        <li>
+          <strong>Agregar</strong> → elegí un tipo que incluya &quot;Web Services&quot; (p.ej.{" "}
+          <em>&quot;RECE para aplicativo y web services&quot;</em> o{" "}
+          <em>&quot;Factura Electrónica Monotributo - Web Services&quot;</em> según tu régimen).
+          Completá los datos del domicilio fiscal y confirmá.
+        </li>
+        <li>
+          Volvé acá y tocá <strong>Volver a chequear</strong>. Si el punto de venta aparece,
+          la agencia ya puede facturar.
+        </li>
+      </ol>
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <Button onClick={onRecheck} disabled={checking}>
+          {checking ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Volver a chequear
+        </Button>
+        <Button variant="ghost" onClick={onReconfigure} disabled={checking}>
+          <Settings2 className="h-4 w-4 mr-2" />
+          Reconfigurar desde cero
+        </Button>
+      </div>
     </div>
   )
 }
