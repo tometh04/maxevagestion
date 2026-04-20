@@ -334,6 +334,11 @@ export async function autoCreateWithholdings(
     status: "PENDING",
     notes: params.notes || `Cálculo automático – ${w.type} ${w.rate}%`,
     created_by: params.created_by || null,
+    // SaaS: siempre inyectar agency_id. El org_id lo resuelve el trigger
+    // auto-org_id (mig 153) desde agency/operation/user/auth.uid() aunque
+    // el caller no lo pase. Explicit agency_id ayuda al dashboard a
+    // filtrar por agencia dentro de la misma org.
+    agency_id: params.agency_id || null,
   }))
 
   // 4. Insert

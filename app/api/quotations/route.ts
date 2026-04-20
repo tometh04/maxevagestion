@@ -130,8 +130,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Se requiere al menos una opción válida" }, { status: 400 })
     }
 
-    // Generar número de cotización
-    const { data: quotationNumber } = await supabase.rpc("generate_quotation_number")
+    // Generar número de cotización (scoped por org — LOLO puede tener
+    // COT-2026-0001 aunque Lozada esté en 0500, cada tenant numera aparte).
+    const orgIdForNumber = (user as any).org_id as string | null | undefined
+    const { data: quotationNumber } = await (supabase as any).rpc(
+      "generate_quotation_number",
+      orgIdForNumber ? { p_org_id: orgIdForNumber } : {}
+    )
 
     // Calcular vencimiento (24hs desde ahora)
     const validUntil = new Date()
