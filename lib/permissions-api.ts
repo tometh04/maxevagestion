@@ -435,47 +435,44 @@ export async function getUserAgencyIds(
   userId: string,
   userRole: UserRole
 ): Promise<string[]> {
-  const { unstable_cache } = await import('next/cache')
+  // Nota (2026-04-20): removimos `unstable_cache` porque producía falsos
+  // positivos tras deploys — si una primera llamada tras migraciones
+  // RLS o cambios de auth devolvía `[]`, Next.js cacheaba esa lista
+  // vacía por 5 min, rompiendo endpoints como /api/analytics/pending-balances
+  // que dependen de esta lista para filtrar (`.in("agency_id", [])` devuelve 0
+  // rows). El costo de 2-3 SELECTs simples por request es despreciable y vale
+  // la pena por la consistencia.
 
-  return unstable_cache(
-    async () => {
-      // Buscar el org_id del usuario (nullable: usuarios pre-SaaS pueden no tenerlo)
-      const { data: userRow } = await supabase
-        .from('users')
-        .select('org_id')
-        .eq('id', userId)
-        .maybeSingle()
-      const orgId = (userRow as any)?.org_id as string | null | undefined
+  // Buscar el org_id del usuario (nullable: usuarios pre-SaaS pueden no tenerlo)
+  const { data: userRow } = await supabase
+    .from('users')
+    .select('org_id')
+    .eq('id', userId)
+    .maybeSingle()
+  const orgId = (userRow as any)?.org_id as string | null | undefined
 
-      if (userRole === 'SUPER_ADMIN' || userRole === 'CONTABLE') {
-        let q = supabase.from('agencies').select('id')
-        if (orgId) q = q.eq('org_id', orgId)
-        const { data: agencies } = await q
-        return (agencies || []).map((a: any) => a.id)
-      }
+  if (userRole === 'SUPER_ADMIN' || userRole === 'ORG_OWNER' || userRole === 'CONTABLE') {
+    let q = supabase.from('agencies').select('id')
+    if (orgId) q = q.eq('org_id', orgId)
+    const { data: agencies } = await q
+    return (agencies || []).map((a: any) => a.id)
+  }
 
-      // Roles con alcance limitado: intersección de user_agencies con agencias de la org
-      const { data: userAgencies } = await supabase
-        .from('user_agencies')
-        .select('agency_id')
-        .eq('user_id', userId)
-      const assignedIds = (userAgencies || []).map((ua: any) => ua.agency_id as string)
+  // Roles con alcance limitado: intersección de user_agencies con agencias de la org
+  const { data: userAgencies } = await supabase
+    .from('user_agencies')
+    .select('agency_id')
+    .eq('user_id', userId)
+  const assignedIds = (userAgencies || []).map((ua: any) => ua.agency_id as string)
 
-      if (!orgId || assignedIds.length === 0) return assignedIds
+  if (!orgId || assignedIds.length === 0) return assignedIds
 
-      const { data: orgAgencies } = await supabase
-        .from('agencies')
-        .select('id')
-        .eq('org_id', orgId)
-        .in('id', assignedIds)
-      return (orgAgencies || []).map((a: any) => a.id)
-    },
-    [`user-agencies-${userId}-${userRole}`],
-    {
-      revalidate: 5 * 60,
-      tags: [`user-agencies-${userId}`],
-    }
-  )()
+  const { data: orgAgencies } = await supabase
+    .from('agencies')
+    .select('id')
+    .eq('org_id', orgId)
+    .in('id', assignedIds)
+  return (orgAgencies || []).map((a: any) => a.id)
 }
 
 /**

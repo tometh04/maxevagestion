@@ -31,7 +31,12 @@ export async function GET(request: Request) {
     let accountsReceivableTotal = 0
 
     try {
-      // Obtener todas las operaciones con clientes
+      // Obtener todas las operaciones con clientes.
+      // Multi-tenant scope (2026-04-20): filtrar por org_id del user (defense-in-depth
+      // encima de RLS) y solo acotar por agencyIds si el role no es admin/owner —
+      // alineado con /api/analytics/sales. Sin este match, un SUPER_ADMIN/ORG_OWNER
+      // con `agencyIds = []` (por cualquier motivo) obtenía 0 rows y el KPI mostraba $0.
+      const userOrgId = (user as any).org_id as string | null
       let operationsQuery = supabase
         .from("operations")
         .select(`
@@ -43,7 +48,11 @@ export async function GET(request: Request) {
           created_at,
           agency_id
         `)
-        .in("agency_id", agencyIds)
+      if (userOrgId) operationsQuery = operationsQuery.eq("org_id", userOrgId)
+      const isAdminRole = user.role === "SUPER_ADMIN" || (user.role as string) === "ORG_OWNER"
+      if (agencyIds.length > 0 && !isAdminRole) {
+        operationsQuery = operationsQuery.in("agency_id", agencyIds)
+      }
 
       // Filtrar por rango de fechas usando created_at (fecha de venta/carga, consistente con KPIs de ventas)
       if (dateFrom) {
