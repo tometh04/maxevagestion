@@ -50,8 +50,12 @@ export async function GET(request: Request) {
     if (dateFrom) dateFilter += ` AND movement_date >= '${startOfDayAR(dateFrom)}'`
     if (dateTo) dateFilter += ` AND movement_date <= '${endOfDayAR(dateTo)}'`
 
-    // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles
-    const sqlQuery = `SELECT account_id, SUM(CASE WHEN type IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN type NOT IN ('INCOME','FX_GAIN') THEN amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements WHERE affects_balance = true ${accountFilter} ${dateFilter} GROUP BY account_id`
+    // SQL con aggregation — devuelve máximo N_cuentas × 2 filas en vez de miles.
+    // Fix bug monedas (2026-04-20): sumamos SOLO rows con currency = currency
+    // de la cuenta. Sin este filtro, rows con currency mismatch (p.ej.
+    // OPERATOR_PAYMENT en USD asignado a una cuenta "Costo de Operadores" en
+    // ARS) contaminan el total.
+    const sqlQuery = `SELECT lm.account_id, SUM(CASE WHEN lm.type IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as income, SUM(CASE WHEN lm.type NOT IN ('INCOME','FX_GAIN') THEN lm.amount_original::numeric ELSE 0 END) as expenses FROM ledger_movements lm INNER JOIN financial_accounts fa ON fa.id = lm.account_id WHERE lm.affects_balance = true AND lm.currency = fa.currency ${accountFilter.replace(/account_id/g, 'lm.account_id')} ${dateFilter.replace(/movement_date/g, 'lm.movement_date')} GROUP BY lm.account_id`
 
     const { data: aggData, error: aggError } = await admin.rpc("execute_readonly_query", {
       query_text: sqlQuery

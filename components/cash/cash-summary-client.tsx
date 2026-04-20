@@ -333,16 +333,22 @@ export function CashSummaryClient({ agencies, defaultDateFrom, defaultDateTo, cu
   // Prioridad: stats pre-cargados (dataset completo, sin paginación)
   const calculateAccountStats = useCallback((accountId: string) => {
     if (accountStats[accountId]) return accountStats[accountId]
-    // Fallback: calcular desde movements si están cargados
+    // Fallback: calcular desde movements si están cargados.
+    // Fix monedas (2026-04-20): filtrar por currency de la cuenta antes de
+    // sumar amount_original. Sin esto, rows con currency mismatch (p.ej. FX
+    // entries en ARS en una cuenta USD) contaminan el total mezclando monedas.
     if (accountMovements[accountId]) {
       const movements = accountMovements[accountId]
+      const account = accounts.find(a => a.id === accountId)
+      const acctCurrency = account?.currency
+      const inCurrency = (m: LedgerMovement) => !acctCurrency || m.currency === acctCurrency
       return {
-        income: movements.filter(m => m.type === "INCOME" || m.type === "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
-        expenses: movements.filter(m => m.type !== "INCOME" && m.type !== "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
+        income: movements.filter(m => inCurrency(m) && (m.type === "INCOME" || m.type === "FX_GAIN")).reduce((s, m) => s + (m.amount_original || 0), 0),
+        expenses: movements.filter(m => inCurrency(m) && m.type !== "INCOME" && m.type !== "FX_GAIN").reduce((s, m) => s + (m.amount_original || 0), 0),
       }
     }
     return { income: 0, expenses: 0 }
-  }, [accountMovements, accountStats])
+  }, [accountMovements, accountStats, accounts])
 
   const refreshAccountData = useCallback(async (accountId: string) => {
     const refreshes: Promise<unknown>[] = [
