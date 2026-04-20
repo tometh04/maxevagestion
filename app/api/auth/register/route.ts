@@ -6,6 +6,8 @@ type RegisterBody = {
   password: string
   name: string
   companyName: string
+  legalAccepted: boolean
+  legalVersion: string
 }
 
 function slugify(input: string): string {
@@ -29,6 +31,8 @@ export async function POST(req: Request) {
     const password = body.password
     const name = body.name?.trim()
     const companyName = body.companyName?.trim()
+    const legalAccepted = body.legalAccepted === true
+    const legalVersion = body.legalVersion?.trim()
 
     if (!email || !password || !name || !companyName) {
       return NextResponse.json(
@@ -39,6 +43,15 @@ export async function POST(req: Request) {
     if (password.length < 8) {
       return NextResponse.json(
         { error: "La contraseña debe tener al menos 8 caracteres" },
+        { status: 400 }
+      )
+    }
+    // Server-side gate: no aceptamos signup sin aceptación explícita de legales.
+    // El checkbox del form es bloqueante, pero revalidamos acá por si alguien
+    // postea directo al endpoint.
+    if (!legalAccepted || !legalVersion) {
+      return NextResponse.json(
+        { error: "Debés aceptar los términos para crear la cuenta" },
         { status: 400 }
       )
     }
@@ -143,6 +156,8 @@ export async function POST(req: Request) {
         email,
         role: "SUPER_ADMIN",
         is_active: true,
+        legal_accepted_at: new Date().toISOString(),
+        legal_version: legalVersion,
       })
       .select()
       .single()

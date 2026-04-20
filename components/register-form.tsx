@@ -1,22 +1,29 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { supabase } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+
+const LANDING_BASE = process.env.NEXT_PUBLIC_LANDING_URL || "https://vibook.ai"
+const LEGAL_VERSION = "2026-04-20"
 
 const registerSchema = z.object({
   name: z.string().min(2, "Ingresá tu nombre completo"),
   companyName: z.string().min(2, "Ingresá el nombre de la empresa"),
   email: z.string().email("Email inválido"),
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
+  legalAccepted: z.boolean().refine((v) => v === true, {
+    message: "Tenés que aceptar los términos para continuar",
+  }),
 })
 
 type RegisterFormValues = z.infer<typeof registerSchema>
@@ -26,12 +33,24 @@ export function RegisterForm({
   ...props
 }: React.ComponentProps<"form">) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // `?plan=pro` viene del CTA de la landing. Si está, tras el signup lanzamos
+  // el checkout MP inmediatamente. Si no, flow normal al dashboard.
+  const requestedPlan = (searchParams?.get("plan") || "").toUpperCase()
+  const wantsPro = requestedPlan === "PRO"
+
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: "", companyName: "", email: "", password: "" },
+    defaultValues: {
+      name: "",
+      companyName: "",
+      email: "",
+      password: "",
+      legalAccepted: false,
+    },
   })
 
   const onSubmit = async (data: RegisterFormValues) => {
@@ -42,7 +61,14 @@ export function RegisterForm({
       const res = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.name,
+          companyName: data.companyName,
+          email: data.email,
+          password: data.password,
+          legalAccepted: data.legalAccepted,
+          legalVersion: LEGAL_VERSION,
+        }),
       })
 
       const payload = await res.json()
@@ -55,6 +81,26 @@ export function RegisterForm({
       })
       if (signInErr) throw new Error(signInErr.message)
 
+      if (wantsPro) {
+        // Viene del CTA PRO: lanzamos preapproval MP y mandamos al init_point.
+        const checkoutRes = await fetch("/api/billing/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan: "PRO" }),
+        })
+        const checkoutPayload = await checkoutRes.json().catch(() => ({}))
+        if (checkoutRes.ok && checkoutPayload?.init_point) {
+          window.location.href = checkoutPayload.init_point
+          return
+        }
+        // Soft fail: dejamos al user en el dashboard con banner de pending.
+        // Puede reintentar el checkout desde Settings → Subscription.
+        console.error("checkout init failed", checkoutPayload)
+        router.refresh()
+        router.push("/dashboard?checkout=pending")
+        return
+      }
+
       router.refresh()
       router.push("/dashboard")
     } catch (err) {
@@ -63,6 +109,8 @@ export function RegisterForm({
       setLoading(false)
     }
   }
+
+  const legalAcceptedValue = form.watch("legalAccepted")
 
   return (
     <form
@@ -74,7 +122,9 @@ export function RegisterForm({
         <div className="flex flex-col items-center gap-1 text-center">
           <h1 className="text-2xl font-bold">Crear cuenta</h1>
           <p className="text-muted-foreground text-sm text-balance">
-            Probá MAXEVA gratis 7 días. Sin tarjeta.
+            {wantsPro
+              ? "Probá Vibook PRO 7 días gratis. Conectás MercadoPago al terminar."
+              : "Probá Vibook 7 días gratis. Sin cobro anticipado."}
           </p>
         </div>
         {error && (
@@ -142,8 +192,63 @@ export function RegisterForm({
           )}
         </Field>
         <Field>
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="legalAccepted"
+              checked={!!legalAcceptedValue}
+              onCheckedChange={(v) =>
+                form.setValue("legalAccepted", v === true, { shouldValidate: true })
+              }
+              disabled={loading}
+              className="mt-0.5"
+            />
+            <label
+              htmlFor="legalAccepted"
+              className="text-sm leading-relaxed text-muted-foreground cursor-pointer"
+            >
+              Acepto los{" "}
+              <a
+                href={`${LANDING_BASE}/legal/terminos`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline"
+              >
+                Términos y Condiciones
+              </a>
+              , la{" "}
+              <a
+                href={`${LANDING_BASE}/legal/privacidad`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline"
+              >
+                Política de Privacidad
+              </a>{" "}
+              y la{" "}
+              <a
+                href={`${LANDING_BASE}/legal/cookies`}
+                target="_blank"
+                rel="noreferrer"
+                className="text-primary underline"
+              >
+                Política de Cookies
+              </a>
+              .
+            </label>
+          </div>
+          {form.formState.errors.legalAccepted && (
+            <p className="text-sm text-destructive">
+              {form.formState.errors.legalAccepted.message}
+            </p>
+          )}
+        </Field>
+        <Field>
           <Button type="submit" disabled={loading} className="w-full">
-            {loading ? "Creando cuenta..." : "Crear cuenta"}
+            {loading
+              ? "Creando cuenta..."
+              : wantsPro
+                ? "Crear cuenta y conectar MercadoPago"
+                : "Crear cuenta"}
           </Button>
         </Field>
         <p className="text-center text-sm text-muted-foreground">

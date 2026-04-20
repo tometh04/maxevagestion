@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import { GalleryVerticalEnd, Plane, Globe, MapPin } from "lucide-react"
 import Link from "next/link"
 
@@ -15,8 +16,10 @@ export default function RegisterPage() {
             </div>
           </div>
           <div>
-            <h1 className="text-4xl font-bold tracking-tight">MAXEVA GESTION</h1>
-            <p className="mt-3 text-lg text-blue-200">Tu ERP de agencia de viajes, listo en 1 minuto</p>
+            <h1 className="text-4xl font-bold tracking-tight">Vibook</h1>
+            <p className="mt-3 text-lg text-blue-200">
+              Tu ERP de agencia de viajes, listo en 1 minuto
+            </p>
           </div>
           <div className="flex justify-center gap-8 text-blue-300">
             <div className="flex flex-col items-center gap-2">
@@ -41,10 +44,13 @@ export default function RegisterPage() {
               <div className="bg-primary text-primary-foreground flex size-8 items-center justify-center rounded-md">
                 <GalleryVerticalEnd className="size-5" />
               </div>
-              MAXEVA GESTION
+              Vibook
             </Link>
           </div>
-          <RegisterForm />
+          {/* Suspense requerido por useSearchParams en el form (Next 15+). */}
+          <Suspense fallback={null}>
+            <RegisterForm />
+          </Suspense>
         </div>
       </div>
     </div>
