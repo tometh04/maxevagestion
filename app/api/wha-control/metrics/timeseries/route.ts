@@ -52,22 +52,21 @@ export async function GET(request: Request) {
   const fromDate = dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined
   const toDate = dateTo ? `${dateTo}T23:59:59.999Z` : undefined
 
-  // Get device IDs to filter
+  // Get device IDs to filter — acotado al tenant del caller.
   let deviceIds: string[] | null = null
   if (deviceId && deviceId !== "all") {
-    // Validate device belongs to selected agency if both are specified
+    let devLookup = supabase
+      .from("wa_devices")
+      .select("id")
+      .eq("id", deviceId)
+      .eq("org_id", auth.orgId)
+      .eq("is_active", true)
     if (agencyId && agencyId !== "all") {
-      const { data: dev } = await supabase
-        .from("wa_devices")
-        .select("id")
-        .eq("id", deviceId)
-        .eq("agency_id", agencyId)
-        .eq("is_active", true)
-        .single()
-
-      if (!dev) {
-        return NextResponse.json({ timeseries: [] })
-      }
+      devLookup = devLookup.eq("agency_id", agencyId)
+    }
+    const { data: dev } = await devLookup.single()
+    if (!dev) {
+      return NextResponse.json({ timeseries: [] })
     }
     deviceIds = [deviceId]
   } else {
@@ -75,6 +74,7 @@ export async function GET(request: Request) {
       .from("wa_devices")
       .select("id")
       .eq("is_active", true)
+      .eq("org_id", auth.orgId)
     if (agencyId && agencyId !== "all") {
       devQuery = devQuery.eq("agency_id", agencyId)
     }

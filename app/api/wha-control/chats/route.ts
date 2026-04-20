@@ -16,13 +16,24 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "deviceId is required" }, { status: 400 })
   }
 
-
   const supabase = createAdminClient() as any
+
+  // SaaS: el device debe pertenecer a la org del caller.
+  const { data: device } = await supabase
+    .from("wa_devices")
+    .select("id")
+    .eq("id", deviceId)
+    .eq("org_id", auth.orgId)
+    .maybeSingle()
+  if (!device) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
+  }
 
   let query = supabase
     .from("wa_chats")
     .select("*")
     .eq("device_id", deviceId)
+    .eq("org_id", auth.orgId)
     .order("last_message_at", { ascending: false, nullsFirst: false })
     .range(offset, offset + limit - 1)
 

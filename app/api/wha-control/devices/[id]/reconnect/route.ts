@@ -14,11 +14,23 @@ export async function POST(
 
   const supabase = createAdminClient() as any
 
+  // SaaS: verificar pertenencia antes de tocar.
+  const { data: device } = await supabase
+    .from("wa_devices")
+    .select("id")
+    .eq("id", id)
+    .eq("org_id", auth.orgId)
+    .maybeSingle()
+  if (!device) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
+  }
+
   // Mark as reconnecting before calling connector
   await supabase
     .from("wa_devices")
     .update({ status: "RECONNECTING" })
     .eq("id", id)
+    .eq("org_id", auth.orgId)
 
   const result = await callConnector(`/devices/${id}/start`, "POST")
 
@@ -28,6 +40,7 @@ export async function POST(
       .from("wa_devices")
       .update({ status: "DISCONNECTED" })
       .eq("id", id)
+      .eq("org_id", auth.orgId)
 
     return NextResponse.json(
       { ok: false, error: result.error },

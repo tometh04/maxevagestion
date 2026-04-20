@@ -17,6 +17,7 @@ export async function GET(
     .from("wa_devices")
     .select("qr_value, status, phone_number")
     .eq("id", id)
+    .eq("org_id", auth.orgId) // SaaS tenant scope
     .single()
 
   if (error) {

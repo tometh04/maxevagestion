@@ -12,14 +12,27 @@ export async function POST(
 
   const { id } = await params
 
+  const supabase = createAdminClient() as any
+
+  // SaaS: verificar pertenencia antes de tocar.
+  const { data: device } = await supabase
+    .from("wa_devices")
+    .select("id")
+    .eq("id", id)
+    .eq("org_id", auth.orgId)
+    .maybeSingle()
+  if (!device) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
+  }
+
   const result = await callConnector(`/devices/${id}/stop`, "POST")
 
-  // Always update DB status regardless of connector response
-  const supabase = createAdminClient() as any
+  // Always update DB status regardless of connector response (acotado por org)
   await supabase
     .from("wa_devices")
     .update({ status: "DISCONNECTED" })
     .eq("id", id)
+    .eq("org_id", auth.orgId)
 
   if (!result.ok) {
     // Device is marked disconnected in DB even if connector failed

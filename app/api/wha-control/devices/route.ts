@@ -15,6 +15,7 @@ export async function GET(request: Request) {
   let devicesQuery = supabase
     .from("wa_devices")
     .select("*, agencies:agency_id(id, name)")
+    .eq("org_id", auth.orgId) // SaaS: acotar al tenant del caller
     .order("created_at", { ascending: false })
 
   if (!includeInactive) {
@@ -77,8 +78,12 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient() as any
 
-  // Create device record
-  const insertData: any = { display_name: displayName.trim(), status: "PENDING_QR" }
+  // Create device record (SaaS: inyecta org_id del caller)
+  const insertData: any = {
+    display_name: displayName.trim(),
+    status: "PENDING_QR",
+    org_id: auth.orgId,
+  }
   if (agencyId) insertData.agency_id = agencyId
 
   const { data: device, error } = await supabase
@@ -118,11 +123,12 @@ export async function DELETE(request: Request) {
   // Stop connector socket first (best effort)
   await callConnector(`/devices/${id}/stop`, "POST")
 
-  // Soft delete
+  // Soft delete (acotado por org_id del caller — defensa contra IDs ajenos)
   const { error } = await supabase
     .from("wa_devices")
     .update({ is_active: false, status: "DISCONNECTED" })
     .eq("id", id)
+    .eq("org_id", auth.orgId)
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })

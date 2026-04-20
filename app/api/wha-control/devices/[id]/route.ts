@@ -13,25 +13,37 @@ export async function DELETE(
   const { id } = await params
   const supabase = createAdminClient() as any
 
+  // SaaS: verificar que el device pertenece al tenant del caller.
+  const { data: device } = await supabase
+    .from("wa_devices")
+    .select("id")
+    .eq("id", id)
+    .eq("org_id", auth.orgId)
+    .maybeSingle()
+  if (!device) {
+    return NextResponse.json({ error: "Device no encontrado" }, { status: 404 })
+  }
+
   // Stop connector socket first (best effort)
   await callConnector(`/devices/${id}/stop`, "POST")
 
   // Delete associated data: messages first (FK to chats), then chats
-  const { error: msgErr } = await supabase.from("wa_messages").delete().eq("device_id", id)
+  const { error: msgErr } = await supabase.from("wa_messages").delete().eq("device_id", id).eq("org_id", auth.orgId)
   if (msgErr) {
     return NextResponse.json({ error: `Error eliminando mensajes: ${msgErr.message}` }, { status: 500 })
   }
 
-  const { error: chatErr } = await supabase.from("wa_chats").delete().eq("device_id", id)
+  const { error: chatErr } = await supabase.from("wa_chats").delete().eq("device_id", id).eq("org_id", auth.orgId)
   if (chatErr) {
     return NextResponse.json({ error: `Error eliminando chats: ${chatErr.message}` }, { status: 500 })
   }
 
-  // Soft delete the device itself
+  // Soft delete the device itself (acotado por org_id)
   const { error: devErr } = await supabase
     .from("wa_devices")
     .update({ is_active: false, status: "DISCONNECTED" })
     .eq("id", id)
+    .eq("org_id", auth.orgId)
 
   if (devErr) {
     return NextResponse.json({ error: `Error eliminando dispositivo: ${devErr.message}` }, { status: 500 })

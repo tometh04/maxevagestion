@@ -31,6 +31,7 @@ export async function GET(
   let query = supabase
     .from("wa_messages")
     .select("id, direction, message_type, body_text, sent_at, from_me, participant_jid, raw_payload")
+    .eq("org_id", auth.orgId) // SaaS tenant scope
 
   // Use .in() for multiple chat IDs, .eq() for single
   if (allChatIds.length === 1) {
