@@ -127,16 +127,25 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const [certStepDone, setCertStepDone] = useState(false)
   const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null)
 
-  // Cargar config del sistema (qué env vars están configuradas)
+  // Cargar estado AFIP del tenant para la agencia seleccionada.
+  // Antes: endpoint global devolvía info de env vars de Lozada → todos los
+  // tenants veían "Credenciales del sistema configuradas" con el CUIT de Maxi.
+  // Ahora el endpoint es por agencia (lee la tabla `integrations` con RLS).
   useEffect(() => {
-    fetch("/api/settings/afip/system")
+    if (!selectedAgencyId) {
+      setSystemConfig({ cuitConfigured: false, passwordConfigured: false, cuitMasked: null })
+      return
+    }
+    fetch(`/api/settings/afip/system?agencyId=${selectedAgencyId}`)
       .then(r => r.json())
       .then(setSystemConfig)
       .catch(() => setSystemConfig({ cuitConfigured: false, passwordConfigured: false, cuitMasked: null }))
-  }, [])
+  }, [selectedAgencyId])
 
-  const needsCuit = !systemConfig?.cuitConfigured
-  const needsPassword = !systemConfig?.passwordConfigured
+  // Cada tenant siempre tiene que ingresar su propio CUIT y clave fiscal.
+  // (Pre-Pilar 9: con un env var de plataforma se omitían esos campos.)
+  const needsCuit = true
+  const needsPassword = true
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),

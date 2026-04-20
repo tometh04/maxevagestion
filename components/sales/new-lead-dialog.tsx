@@ -450,12 +450,17 @@ export function NewLeadDialog({
                               </SelectItem>
                             ))
                           ) : (
-                            // Fallback: mostrar listas por defecto si no hay listas configuradas
-                            Object.values(REGION_TO_LIST).map((listName) => (
-                              <SelectItem key={listName} value={listName}>
-                                {listName}
-                              </SelectItem>
-                            ))
+                            // Nota (2026-04-20): antes había un fallback a
+                            // Object.values(REGION_TO_LIST) que mostraba 7 listas
+                            // hardcoded de Lozada (Argentina/Caribe/etc). En un
+                            // SaaS multi-tenant esas listas no deben filtrarse
+                            // al UI del resto de orgs. Si el tenant todavía no
+                            // creó su lista, mostramos un placeholder claro.
+                            <div className="px-3 py-4 text-xs text-muted-foreground">
+                              Aún no creaste ninguna lista.<br />
+                              Cerrá este diálogo y creá una lista desde el botón
+                              “+ Nueva Lista” arriba a la derecha del CRM.
+                            </div>
                           )}
                         </SelectContent>
                       </Select>
