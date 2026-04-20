@@ -55,3 +55,11 @@ app/api/wha-control/metrics/summary/route.ts                             # WHA_C
 app/api/wha-control/metrics/timeseries/route.ts                          # WHA_CONTROL — tablas no existen en prod.
 
 app/(dashboard)/operations/[id]/page.tsx                                 # LEGACY_PAGE — server component, migrar en Pilar 3.
+
+# PLATFORM_ADMIN — pages/routes bajo /admin/* son consola de plataforma.
+# Acceso cross-org por diseño; protegido por isPlatformAdmin() guard.
+app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
+app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
+app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
+app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
+app/api/admin/orgs/[id]/route.ts                                         # PLATFORM_ADMIN — plan/status update cross-org.
