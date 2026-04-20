@@ -250,7 +250,7 @@ export function AppSidebar({ userRole, user, ...props }: AppSidebarProps) {
                 ) : (
                   <>
                     <GalleryVerticalEnd className="!size-5" />
-                    <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">{companyName || "Lozada Rosario"}</span>
+                    <span className="text-xs font-semibold tracking-wide uppercase text-muted-foreground">{companyName || "Mi Agencia"}</span>
                   </>
                 )}
               </a>

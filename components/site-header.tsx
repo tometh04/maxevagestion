@@ -41,7 +41,11 @@ const getPageTitle = (pathname: string): string => {
     }
   }
 
-  return "Lozada Rosario"
+  // Fallback neutro: si la ruta no matchea ninguna mapping, no mostramos título
+  // (antes había hardcoded "Lozada Rosario", que en el SaaS multi-tenant hacía
+  // que todas las agencias vieran el nombre de la agencia madrina en rutas
+  // no mapeadas).
+  return ""
 }
 
 export function SiteHeader() {

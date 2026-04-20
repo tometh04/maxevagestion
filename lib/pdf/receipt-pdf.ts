@@ -263,14 +263,14 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
       }
     | null = null
 
-  for (const logoCandidate of [data.brandLogo, "/lozada-logo.png"]) {
-    if (!logoCandidate) continue
-
+  // Logo del tenant. Antes había un fallback a "/lozada-logo.png" hardcoded
+  // que aparecía en recibos de TODAS las agencias si no tenían su propio logo.
+  // En SaaS multi-tenant eso es un leak de marca → eliminado.
+  if (data.brandLogo) {
     try {
-      logoData = await loadPdfImageData(logoCandidate)
-      break
+      logoData = await loadPdfImageData(data.brandLogo)
     } catch {
-      // Keep fallback chain simple; if none loads, we render text only.
+      // Si falla la carga del logo del tenant, el recibo se renderiza solo con texto.
     }
   }
 

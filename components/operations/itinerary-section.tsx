@@ -108,6 +108,16 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
   const [uploadingImage, setUploadingImage] = useState(false)
   const [formData, setFormData] = useState<Record<string, any>>({})
   const [servicesTotalSale, setServicesTotalSale] = useState(0)
+  // Logo del tenant (levantado por BrandProvider en localStorage). Si el tenant
+  // no subió un logo, no renderizamos nada — antes caía a /lozada-logo.png
+  // hardcoded, que se veía como "Lozada Viajes" en el itinerario de todas las
+  // orgs que usaban el sistema.
+  const [brandLogo, setBrandLogo] = useState<string | null>(null)
+  const [companyName, setCompanyName] = useState<string | null>(null)
+  useEffect(() => {
+    setBrandLogo(localStorage.getItem("brand_logo"))
+    setCompanyName(localStorage.getItem("company_name"))
+  }, [])
 
   const fetchItems = useCallback(async () => {
     try {
@@ -326,8 +336,10 @@ export function ItinerarySection({ operationId, operation }: ItinerarySectionPro
               </p>
             )}
           </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/lozada-logo.png" alt="Lozada Viajes" className="h-10 object-contain" />
+          {brandLogo && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={brandLogo} alt={companyName || "Logo agencia"} className="h-10 object-contain" />
+          )}
         </div>
 
         {/* Items */}

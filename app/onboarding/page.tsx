@@ -68,7 +68,7 @@ export default function OnboardingPage() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full mt-1 border rounded px-3 py-2 bg-background"
-                placeholder="p.ej. Lozada Viajes"
+                placeholder="p.ej. Turismo ABC"
                 autoFocus
               />
             </label>
