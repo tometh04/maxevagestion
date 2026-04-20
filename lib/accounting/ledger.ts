@@ -15,19 +15,18 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
 /**
- * Helper interno: devuelve el admin client (SERVICE_ROLE_KEY) para bypasear RLS.
- * Si no está disponible, cae al cliente anónimo recibido como parámetro.
- * Se usa para TODOS los SELECT/INSERT/UPDATE sobre ledger_movements.
+ * SaaS Pilar 2c (2026-04-20): este módulo YA NO obtiene un admin client
+ * internamente. Cada función recibe `supabase` y lo usa tal cual.
+ *
+ * - Si el caller pasa un server client (JWT del user), RLS tenant_isolation
+ *   aplica y la operación queda acotada a la org del user — correcto.
+ * - Si el caller pasa un admin client legítimo (cron, webhook, auth/register),
+ *   RLS no aplica y la operación es global — el caller es responsable de
+ *   inyectar `org_id` al insertar.
+ *
+ * Combinado con migration 141 (`execute_readonly_query` SECURITY INVOKER),
+ * la RPC también respeta RLS cuando el caller es authenticated.
  */
-async function getAdminClient(fallback: any): Promise<any> {
-  try {
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    return createAdminClient()
-  } catch {
-    console.warn("⚠️ ledger: SERVICE_ROLE_KEY no disponible, usando cliente anon (puede fallar por RLS)")
-    return fallback
-  }
-}
 
 /**
  * Obtener el nombre del pasajero principal de una operación
@@ -123,11 +122,14 @@ export interface CreateLedgerMovementParams {
 }
 
 /**
- * Crear un movimiento en el ledger
+ * Crear un movimiento en el ledger.
  *
- * IMPORTANTE: Para bypasear RLS se usa el admin client (service role) cuando está disponible.
- * Si `supabase` es el cliente anon, los inserts pueden fallar por políticas RLS en producción.
- * Usar siempre createAdminClient() desde los API routes al llamar a esta función.
+ * El caller debe pasar el cliente apropiado:
+ * - Server client (JWT user): RLS tenant_isolation aplica; el INSERT debe
+ *   incluir `org_id` si el caller lo conoce (por ejemplo `user.org_id`),
+ *   aunque RLS lo rechazará sin él.
+ * - Admin client (cron/webhook/auth): RLS no aplica. El caller es
+ *   responsable de que `org_id` vaya seteado en los params si corresponde.
  */
 export async function createLedgerMovement(
   params: CreateLedgerMovementParams,
@@ -143,17 +145,7 @@ export async function createLedgerMovement(
     throw new Error(`amount_ars_equivalent inválido: ${params.amount_ars_equivalent}`)
   }
 
-  // Intentar con admin client primero para bypasear RLS (si las env vars están disponibles)
-  let clientToUse = supabase
-  try {
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    clientToUse = createAdminClient() as any
-  } catch {
-    // Si no hay service role key disponible, usar el cliente proporcionado
-    console.warn("⚠️ createLedgerMovement: usando cliente anon (puede fallar por RLS)")
-  }
-
-  const ledgerTable = clientToUse.from("ledger_movements") as any
+  const ledgerTable = supabase.from("ledger_movements") as any
 
   const { data, error } = await ledgerTable
     .insert({
@@ -266,10 +258,9 @@ export async function getAccountBalance(
     subcategory = chartAccountFull?.subcategory || null
   }
 
-  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
-  // Usamos admin client para bypasear RLS en el SELECT (mismo fix que para INSERT)
-  const adminClient = await getAdminClient(supabase)
-  const { data: movements, error: movementsError } = await (adminClient
+  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria.
+  // Usa el client que recibe: si es server client, RLS acota por org_id del user.
+  const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
     .select("type, amount_original, amount_ars_equivalent, debit_amount, credit_amount")
     .eq("account_id", accountId)
@@ -406,7 +397,6 @@ export async function getAccountBalancesBatch(
   // Obtener sumas agrupadas por account_id y type usando SQL aggregation
   // En vez de traer TODOS los movimientos individuales, traemos máximo N_cuentas × 6 filas
   const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
-  const adminClient = await getAdminClient(supabase)
 
   const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
   // IMPORTANTE: la agrupación separa movements "legacy" (sin debit/credit seteados) de
@@ -414,7 +404,10 @@ export async function getAccountBalancesBatch(
   // y eso descartaba los legacy cuando cualquier movement del mismo tipo tenía d/c,
   // desapareciendo plata del balance (~$227M en Caja ARS era el síntoma visible).
   // Ahora las dos subpoblaciones se suman por separado y se combinan aditivamente.
-  const { data: aggregatedData, error: aggError } = await adminClient.rpc("execute_readonly_query", {
+  //
+  // Post-mig 141: execute_readonly_query es SECURITY INVOKER, así que respeta RLS
+  // del caller — cada org ve solo sus rows. Con esto los balances son per-tenant.
+  const { data: aggregatedData, error: aggError } = await (supabase as any).rpc("execute_readonly_query", {
     query_text: `SELECT account_id, type,
       SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_original::numeric ELSE 0 END) AS legacy_original,
       SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_ars_equivalent::numeric ELSE 0 END) AS legacy_ars,
@@ -521,8 +514,7 @@ export async function transferLeadToOperation(
   operationId: string,
   supabase: SupabaseClient<Database>
 ): Promise<{ transferred: number }> {
-  const adminClient = await getAdminClient(supabase)
-  const ledgerTable = adminClient.from("ledger_movements") as any
+  const ledgerTable = supabase.from("ledger_movements") as any
 
   // Actualizar todos los movimientos con lead_id para que tengan operation_id
   const { data, error } = await ledgerTable
@@ -571,8 +563,7 @@ export async function getLeadMovements(
   leadId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const adminClient = await getAdminClient(supabase)
-  const { data, error } = await (adminClient.from("ledger_movements") as any)
+  const { data, error } = await (supabase.from("ledger_movements") as any)
     .select("*")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false })
@@ -591,8 +582,7 @@ export async function getOperationMovements(
   operationId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const adminClient = await getAdminClient(supabase)
-  const { data, error } = await (adminClient.from("ledger_movements") as any)
+  const { data, error } = await (supabase.from("ledger_movements") as any)
     .select("*")
     .eq("operation_id", operationId)
     .order("created_at", { ascending: false })
@@ -629,8 +619,7 @@ export async function getLedgerMovements(
   const limit = filters.limit ?? 1000
   const offset = filters.offset ?? 0
 
-  const adminClientForLedger = await getAdminClient(supabase)
-  let query = (adminClientForLedger.from("ledger_movements") as any)
+  let query = (supabase.from("ledger_movements") as any)
     .select(
       `
       *,

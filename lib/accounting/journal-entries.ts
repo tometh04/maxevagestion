@@ -9,17 +9,10 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 import { isDebitNaturalAccount, ACCOUNT_CODES } from "./account-codes"
 
-/**
- * Helper: obtiene admin client para bypass de RLS
- */
-async function getAdminClient(fallback: any): Promise<any> {
-  try {
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    return createAdminClient()
-  } catch {
-    return fallback
-  }
-}
+// SaaS Pilar 2c (2026-04-20): eliminado el helper getAdminClient interno.
+// Cada función usa el `supabase` que recibe; si es un server client, RLS
+// tenant_isolation acota por org del user. Ver lib/accounting/ledger.ts
+// para contexto completo.
 
 export type JournalEntrySource =
   | "MANUAL"
@@ -148,7 +141,8 @@ export async function createJournalEntry(
     }
   }
 
-  const adminClient = await getAdminClient(supabase)
+  // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
 
   // 1. Crear el journal_entry
   const { data: journalEntry, error: jeError } = await (adminClient.from("journal_entries") as any)
@@ -299,7 +293,8 @@ export async function getJournalEntryWithLines(
   journalEntryId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const adminClient = await getAdminClient(supabase)
+  // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
 
   const { data: entry, error: entryError } = await (adminClient.from("journal_entries") as any)
     .select("*")
@@ -357,7 +352,8 @@ export async function listJournalEntries(
   const limit = filters.limit ?? 50
   const offset = filters.offset ?? 0
 
-  const adminClient = await getAdminClient(supabase)
+  // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
 
   let query = (adminClient.from("journal_entries") as any)
     .select("*, users:created_by(id, name)", { count: "exact" })
@@ -440,7 +436,8 @@ export async function annotatePaymentAsJournalEntry(
   supabase: SupabaseClient<Database>
 ): Promise<string | null> {
   try {
-    const adminClient = await getAdminClient(supabase)
+    // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
 
     // Buscar chart_account_id de la cuenta financiera
     const { data: finAccount } = await (adminClient.from("financial_accounts") as any)
@@ -675,7 +672,8 @@ export async function createSaleJournalEntry(
   supabase: SupabaseClient<Database>
 ): Promise<string | null> {
   try {
-    const adminClient = await getAdminClient(supabase)
+    // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
     const saleAmount = Number(operation.sale_amount_total) || 0
     if (saleAmount <= 0) return null
 
@@ -758,7 +756,8 @@ export async function createCostJournalEntry(
   supabase: SupabaseClient<Database>
 ): Promise<string | null> {
   try {
-    const adminClient = await getAdminClient(supabase)
+    // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
 
     // Si no hay operadores con costo, intentar con operator_cost general
     let effectiveOperators = operators.filter(op => Number(op.cost) > 0)
@@ -879,7 +878,8 @@ export async function createCommissionJournalEntry(
   supabase: SupabaseClient<Database>
 ): Promise<string | null> {
   try {
-    const adminClient = await getAdminClient(supabase)
+    // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
+  const adminClient = supabase
     if (commissionData.totalCommission <= 0) return null
 
     // Idempotencia

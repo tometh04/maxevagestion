@@ -25,9 +25,7 @@
 
 lib/supabase/server.ts                                                   # DEFINITION — export de la función.
 
-lib/accounting/ledger.ts                                                 # LIB — getAdminClient interno, eliminar en Pilar 2c.
-lib/accounting/journal-entries.ts                                        # LIB — idem Pilar 2c.
-lib/accounting/audit.ts                                                  # LIB — idem Pilar 2c.
+lib/accounting/audit.ts                                                  # LIB — audit log fire-and-forget sin caller context. Legítimo.
 
 app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
 
