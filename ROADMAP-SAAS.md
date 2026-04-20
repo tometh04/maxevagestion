@@ -55,15 +55,24 @@ Descubiertos cuando LOLO (tenant nuevo) reportó leaks y errores. Todos fixeados
 
 **Antes de customizaciones, resolver estos issues operacionales**:
 
+### 0. Documentos legales (prioridad crítica, pre-landing)
+- [ ] Términos y Condiciones de Uso.
+- [ ] Política de Privacidad (énfasis en aislamiento de datos y no-explotación comercial — target son dueños de agencia vendiendo a otros dueños, alta suspicacia de robo de datos).
+- [ ] Política de Cookies.
+- [ ] Integración en signup (`/register`) con checkbox bloqueante + versión de aceptación guardada en DB.
+- [ ] Links en landing (repo `vibook-landing`).
+- [ ] Spec: pendiente de escribir en `docs/superpowers/specs/YYYY-MM-DD-legal-docs-design.md`.
+
 ### 1. AFIP end-to-end validation (prioridad alta)
 - [ ] Desde LOLO, completar el flujo completo de AFIP: setup → ver points of sale detectados → activar automation → emitir 1 factura de prueba.
 - [ ] Verificar que Lozada (Maxi) siga facturando sin regresión.
 - [ ] Si la agencia no tiene WSFE habilitado en su AFIP real, mostrar instrucciones claras (ya implementado UI side, validar copy).
 
 ### 2. Landing / marketing (prioridad alta)
-- [ ] Integrar `vibook-landing` (repo: https://github.com/tometh04/vibook-landing) al dominio principal.
-- [ ] Flow: landing → /signup → /onboarding → dashboard.
-- [ ] CTA de pricing conectado a `/api/billing/checkout` (Pilar 9).
+- [x] Landing actualizada con 2 planes (PRO ARS $119.000 con trial 7d / Enterprise "Consultar" con bot ads→CRM). Commit `cbb3855` en `vibook-landing`.
+- [ ] **DNS/Domains**: apuntar `vibook.ai` → Vercel landing, `app.vibook.ai` → ERP. `maxevagestion.com` → redirect 301 a `app.vibook.ai` (o mantener ambos dominios activos).
+- [ ] **ERP: handle `?plan=pro`** en `/register`. Al terminar signup, si el query param está presente, saltear onboarding wizard y redirigir directo a `/api/billing/checkout` para preapproval MP. Status queda `TRIAL` con preapproval pre-aprobado. Si no viene, flow actual (onboarding wizard).
+- [ ] **Email `hola@vibook.ai`** debe estar funcionando — el CTA de Enterprise en el landing apunta ahí (`mailto:hola@vibook.ai?subject=Vibook Enterprise`).
 
 ### 3. MercadoPago real-world test (prioridad alta)
 - [ ] Crear cuenta MP sandbox test y cuenta MP productiva del owner.
@@ -104,6 +113,9 @@ Ver `docs/superpowers/specs/2026-04-20-saas-customizations-design.md` para anál
 
 ### 6. Feature deferida
 - [ ] `/admin/impersonate` (Pilar 6.5) — requiere JWT signing con Supabase secret. Diferido hasta que esté disponible la infra.
+
+### 7. Branding: fallback secundario para tab title
+- [ ] En `generateMetadata()` de `app/layout.tsx`, si `organization_settings.company_name` está vacío, caer a `agencies.name` del primer agency del org antes del neutro "MAXEVA Gestión". Para tenants que no completaron Mi Empresa pero ya tienen agencias cargadas. 5 min de código.
 
 ---
 
