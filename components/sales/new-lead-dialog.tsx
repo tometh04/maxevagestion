@@ -216,14 +216,15 @@ export function NewLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Nuevo Lead</DialogTitle>
           <DialogDescription>Crear un nuevo lead manualmente</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
+            <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
             {/* Contacto */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
               <div className="flex items-center gap-1.5">
@@ -670,6 +671,7 @@ export function NewLeadDialog({
               )}
             </div>
 
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                 Cancelar
