@@ -29,6 +29,7 @@ lib/accounting/audit.ts                                                  # LIB �
 lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
 
 app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
+app/api/onboarding/route.ts                                              # AUTH — crea org/tenant antes de que el user tenga org_id (Pilar 7).
 
 app/api/accounting/ledger/stats/route.ts                                 # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
 app/api/cash/daily-balance/route.ts                                      # RPC_BLOCKED — Pilar 2c fix junto con mig 141.

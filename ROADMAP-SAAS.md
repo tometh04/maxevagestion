@@ -4,8 +4,8 @@
 
 **Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
 
-**Fecha última actualización**: 2026-04-19 (Pilar 2 Batch 1 + Pass 2 writes completos)
-**Status global**: 🟡 Pilar 2 ~80% — 5 routes read-only migrados + 7 routes write reforzados con org_id explícito y validación por parent-org vía RLS. 2 leaks conocidos diferidos a Pilar 2c post-launch (RPC SECURITY DEFINER + gap de `itinerary_items` sin org_id).
+**Fecha última actualización**: 2026-04-20 (Pilares 1–8 completos — SaaS refactor full pass done)
+**Status global**: 🟢 Pilares 1 → 8 completos. 6 migrations aplicadas en prod (141–146). 3 guards corriendo (smoke-isolation, audit-rls, jest isolation suite + CI workflow). Admin console + onboarding + billing enforcement online. Solo queda impersonación (Pilar 6.5) que requiere infra JWT.
 
 ---
 
@@ -19,10 +19,16 @@
 
 ## Status actual (TL;DR)
 
-- ✅ **Pilar 1 COMPLETO** (2026-04-19). 42 tablas tenant-scoped verificadas vía `scripts/audit-rls.ts`. Cero cross-org leaks. Maxi (Lozada) ve todo lo suyo. LOLO (tenant nuevo) ve únicamente sus propios rows.
-- ⏸️ Pendiente: Pilar 2 (ban createAdminClient para lecturas), P3 (scoped-client helper), P4 (PLATFORM_ADMIN), P5 (tests CI), P6 (admin console), P7 (onboarding+billing), P8 (monitoring).
+- ✅ **Pilar 1** (2026-04-19) — 42 tablas tenant-scoped verificadas.
+- ✅ **Pilar 2 + 2c** (2026-04-20) — 26 routes DB-facing cerrados; 3 libs accounting refactoreadas; mig 141 (SECURITY INVOKER) y mig 143 (itinerary_items tenant_isolation) aplicadas.
+- ✅ **Pilar 3** (2026-04-20) — `getScopedContext()` + middleware onboarding redirect.
+- ✅ **Pilar 4** (2026-04-20) — `platform_admins` table + seed Tomi + `ORG_OWNER` role alias (mig 142, 144).
+- ✅ **Pilar 5** (2026-04-20) — Jest isolation suite (41 tests, PASS) + GitHub Actions CI workflow. Más `smoke-isolation.ts` y `audit-rls.ts` como scripts manuales.
+- ✅ **Pilar 6** (2026-04-20) — `/admin/*` console (orgs list, org detail, metrics, audit log reader). Impersonación deferida (requiere JWT signing infra).
+- ✅ **Pilar 7** (2026-04-20) — `/onboarding` wizard + `/api/onboarding` + `lib/billing/limits.ts` + enforcement en `POST /api/operations` + mig 146 seed Lozada ENTERPRISE.
+- ✅ **Pilar 8** (2026-04-20) — `security_audit_log` table + `logSecurityEvent()` + `assertNoCrossOrgLeak()` + `MULTI_TENANT_STRICT` kill switch.
 
-**Próximo paso inmediato**: **Pilar 2 Pass 2** — migrar los 7 routes con writes admin-client (itinerary, leads, expenses) agregando `org_id` explícito en INSERTs y `.eq('org_id', user.org_id)` en UPDATE/DELETE. Fix de SECURITY DEFINER diferido a Pilar 2c post-launch (ver detalle abajo).
+**Próximo paso inmediato**: ninguno bloqueante. La única feature pendiente es `/admin/impersonate` (Pilar 6.5) que requiere JWT signing con el secret de Supabase — deferido hasta que esté disponible.
 
 ---
 
@@ -51,12 +57,12 @@
 | 138 | Drop policies viejas permisivas (`qual = true`) | ✅ prod |
 | 139 | Force RLS + re-create policy en iva_sales/iva_purchases/commission_records/customers/operators | ✅ prod |
 | 140 | RLS en agencies + user_agencies + users + organization_invitations | ✅ prod |
+| 141 | `execute_readonly_query` → SECURITY INVOKER | ✅ prod (2026-04-20) |
 | 142 | Tabla `platform_admins` + RLS + seed Tomi | ✅ prod (2026-04-20) |
-
-**Migraciones escritas pendientes de aplicar**:
-| Mig | Archivo | Qué hace | Status |
-|-----|---------|----------|--------|
-| 141 | `20260419000141_saas_fix_rpc_security_invoker.sql` | Cambia `execute_readonly_query` de SECURITY DEFINER a INVOKER. **BLOQUEADA** hasta refactor de `lib/accounting/ledger.ts` (ver Pilar 2c). Aplicar juntas o se rompen todos los balances de la app. | ⏸️ no aplicar aún |
+| 143 | `itinerary_items` org_id + RLS tenant_isolation | ✅ prod (2026-04-20) |
+| 144 | Agregar `ORG_OWNER` a `users.role` CHECK | ⏸️ escrita, pendiente correr en SQL Editor |
+| 145 | Tabla `security_audit_log` + RLS platform-admin-only | ⏸️ escrita, pendiente correr en SQL Editor |
+| 146 | Seed Lozada plan=ENTERPRISE, status=ACTIVE, max_*=999 | ⏸️ escrita, pendiente correr en SQL Editor |
 
 ---
 
