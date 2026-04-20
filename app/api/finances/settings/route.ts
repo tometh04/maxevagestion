@@ -54,6 +54,9 @@ const financialSettingsSchema = z.object({
     rate: z.number().min(0).max(100),
     coeficiente: z.number().min(0).max(1),
   })).optional(),
+  // Master toggle para desactivar todas las retenciones/percepciones automáticas
+  // (p.ej. agencias monotributistas o de prueba que no retienen).
+  withholdings_enabled: z.boolean().optional(),
 })
 
 // GET - Obtener configuración financiera

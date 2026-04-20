@@ -41,6 +41,7 @@ interface FinancialSettings {
   iibb_jurisdiction: string
   iibb_rate: number
   iibb_convenio_multilateral: boolean
+  withholdings_enabled: boolean
 }
 
 export function FinancesSettingsPageClient() {
@@ -58,6 +59,7 @@ export function FinancesSettingsPageClient() {
     iibb_jurisdiction: "SANTA_FE",
     iibb_rate: 3.5,
     iibb_convenio_multilateral: false,
+    withholdings_enabled: true,
   })
 
   useEffect(() => {
@@ -315,11 +317,36 @@ export function FinancesSettingsPageClient() {
 
           <Card className="rounded-xl border-border/40">
             <CardHeader>
-              <CardTitle>Retenciones</CardTitle>
-              <CardDescription>Configuración de retenciones al pagar a operadores</CardDescription>
+              <CardTitle>Retenciones y Percepciones</CardTitle>
+              <CardDescription>
+                Configuración de retenciones al pagar a operadores y percepciones al cobrar a
+                clientes.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              {/* Master toggle — desactiva todas las retenciones/percepciones automáticas */}
+              <div className="flex items-start justify-between gap-4 rounded-lg border border-border/40 bg-muted/10 p-4">
+                <div className="space-y-1">
+                  <Label htmlFor="withholdings_enabled" className="text-sm font-medium">
+                    Aplicar retenciones y percepciones automáticas
+                  </Label>
+                  <p className="text-xs text-muted-foreground max-w-xl">
+                    Si lo desactivás, la agencia no genera retenciones (Ganancias, IVA, IIBB) ni
+                    percepciones (IVA, IIBB, RG 5617, RG 3819) automáticas en pagos. Útil para
+                    monotributistas o agencias que no retienen. Las reglas individuales se
+                    preservan para cuando lo reactives.
+                  </p>
+                </div>
+                <Switch
+                  id="withholdings_enabled"
+                  checked={settings.withholdings_enabled}
+                  onCheckedChange={(v) =>
+                    setSettings({ ...settings, withholdings_enabled: v })
+                  }
+                />
+              </div>
+
+              <div className={`grid grid-cols-2 gap-4 ${!settings.withholdings_enabled ? "opacity-50 pointer-events-none" : ""}`}>
                 <div>
                   <Label>% Retención Ganancias</Label>
                   <p className="text-xs text-muted-foreground mb-1">
@@ -338,6 +365,7 @@ export function FinancesSettingsPageClient() {
                         retention_ganancias_rate: parseFloat(e.target.value) || 0,
                       })
                     }
+                    disabled={!settings.withholdings_enabled}
                   />
                 </div>
                 <div>
@@ -358,6 +386,7 @@ export function FinancesSettingsPageClient() {
                         retention_iva_rate: parseFloat(e.target.value) || 0,
                       })
                     }
+                    disabled={!settings.withholdings_enabled}
                   />
                 </div>
               </div>

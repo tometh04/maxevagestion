@@ -233,6 +233,10 @@ export function calculateWithholdings(
 /**
  * Fetch withholding rules from the `financial_settings` table.
  * Falls back to `DEFAULT_WITHHOLDING_RULES` when none are stored.
+ *
+ * Master toggle: si financial_settings.withholdings_enabled = false,
+ * devuelve un array vacío → el motor no genera ninguna retención/percepción.
+ * Útil para agencias monotributistas o de prueba.
  */
 export async function loadWithholdingRules(
   supabase: SupabaseClient,
@@ -240,7 +244,7 @@ export async function loadWithholdingRules(
 ): Promise<WithholdingRule[]> {
   try {
     let query = (supabase.from("financial_settings") as any).select(
-      "withholding_rules"
+      "withholding_rules, withholdings_enabled"
     )
 
     if (agencyId) {
@@ -252,6 +256,12 @@ export async function loadWithholdingRules(
     if (error) {
       console.error("Error loading withholding rules:", error)
       return DEFAULT_WITHHOLDING_RULES
+    }
+
+    // Master toggle — si está explícitamente en false, no se aplica ninguna regla.
+    // null/undefined (setting viejo sin columna) = true por default.
+    if (data?.withholdings_enabled === false) {
+      return []
     }
 
     if (data?.withholding_rules && Array.isArray(data.withholding_rules)) {
