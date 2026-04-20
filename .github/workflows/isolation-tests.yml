@@ -1,0 +1,43 @@
+name: tenant-isolation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app/api/**"
+      - "lib/supabase/**"
+      - "lib/accounting/**"
+      - "lib/auth.ts"
+      - "lib/permissions*"
+      - "middleware.ts"
+      - "supabase/migrations/**"
+      - "scripts/admin-client-allowlist.txt"
+      - "scripts/check-admin-client.sh"
+      - "__tests__/isolation/**"
+      - ".github/workflows/isolation-tests.yml"
+  workflow_dispatch: {}
+
+jobs:
+  isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Admin-client allowlist guard
+        run: npm run check:admin-client
+
+      - name: Tenant isolation test suite
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run test:isolation
