@@ -26,6 +26,7 @@
 lib/supabase/server.ts                                                   # DEFINITION — export de la función.
 
 lib/accounting/audit.ts                                                  # LIB — audit log fire-and-forget sin caller context. Legítimo.
+lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
 
 app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
 
