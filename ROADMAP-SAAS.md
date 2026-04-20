@@ -22,7 +22,7 @@
 - ✅ **Pilar 1 COMPLETO** (2026-04-19). 42 tablas tenant-scoped verificadas vía `scripts/audit-rls.ts`. Cero cross-org leaks. Maxi (Lozada) ve todo lo suyo. LOLO (tenant nuevo) ve únicamente sus propios rows.
 - ⏸️ Pendiente: Pilar 2 (ban createAdminClient para lecturas), P3 (scoped-client helper), P4 (PLATFORM_ADMIN), P5 (tests CI), P6 (admin console), P7 (onboarding+billing), P8 (monitoring).
 
-**Próximo paso inmediato**: **Pilar 2** — auditar los 39 routes con `createAdminClient`, convertir read-only a `createServerClient` (RLS los protege), mantener admin client solo en `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*`.
+**Próximo paso inmediato**: **Pilar 2 Pass 2** — migrar los 7 routes con writes admin-client (itinerary, leads, expenses) agregando `org_id` explícito en INSERTs y `.eq('org_id', user.org_id)` en UPDATE/DELETE. Fix de SECURITY DEFINER diferido a Pilar 2c post-launch (ver detalle abajo).
 
 ---
 
@@ -52,7 +52,12 @@
 | 139 | Force RLS + re-create policy en iva_sales/iva_purchases/commission_records/customers/operators | ✅ prod |
 | 140 | RLS en agencies + user_agencies + users + organization_invitations | ✅ prod |
 
-**Próxima migración prevista (141)**: `platform_admins` table + fix role rename Maxi.
+**Migraciones escritas pendientes de aplicar**:
+| Mig | Archivo | Qué hace | Status |
+|-----|---------|----------|--------|
+| 141 | `20260419000141_saas_fix_rpc_security_invoker.sql` | Cambia `execute_readonly_query` de SECURITY DEFINER a INVOKER. **BLOQUEADA** hasta refactor de `lib/accounting/ledger.ts` (ver Pilar 2c). Aplicar juntas o se rompen todos los balances de la app. | ⏸️ no aplicar aún |
+
+**Próxima migración nueva prevista (142)**: `platform_admins` table + fix role rename Maxi (Pilar 4).
 
 ---
 
@@ -114,13 +119,25 @@ Hecho durante la sesión previa al spec:
 - [ ] `app/api/quotations/upload-flight-screenshot/route.ts` (defer — Storage)
 - [ ] `app/api/operations/[id]/itinerary/upload-image/route.ts` (defer — Storage)
 
-**🔴 Bloqueante crítico — RPC `execute_readonly_query` SECURITY DEFINER**:
-Dos routes (`accounting/ledger/stats`, `cash/daily-balance`) usan SQL crudo vía la RPC `execute_readonly_query`. Esa función es `SECURITY DEFINER` → corre como superuser y **bypasa RLS**. Cualquier tenant puede leer agregados de cualquier otro.
+**🔴 Leak conocido — RPC `execute_readonly_query` SECURITY DEFINER** (diferido a post-launch):
 
-**Fix posible** (elegir uno):
-1. Agregar `AND org_id = '<user.org_id>'` al SQL crudo en ambos routes (quick, defensivo).
-2. Reescribir los 2 routes usando `.select()` de PostgREST con RLS nativo (más limpio, posiblemente menos performante).
-3. Modificar la RPC para que respete `auth.uid()` / tenant — romper AI Companion requiere cuidado.
+La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superuser y **bypasa RLS**. Cualquier user autenticado con permiso accounting/cash puede agregar (SUM/GROUP BY) datos cross-org.
+
+**Callers afectados**:
+- `app/api/accounting/ledger/stats/route.ts`
+- `app/api/cash/daily-balance/route.ts`
+- `lib/accounting/ledger.ts` (6 llamadas internas — `getAccountBalancesBatch`, etc.)
+- `app/api/ai/route.ts` (AI Companion — ya filtra manualmente por org en tools)
+
+**Severidad real**: leak de agregados (totales), no rows individuales. Requiere user autenticado con permiso. No expone datos de passengers, customers, ni operaciones individuales.
+
+**Fix correcto (Pilar 2c — post-launch, próxima semana)**:
+1. Refactor `lib/accounting/ledger.ts`: eliminar las 6 llamadas a `getAdminClient()` y usar el `supabase` que cada función ya recibe como parámetro. Los 2 callers externos (`financial-accounts/route`, `chart-of-accounts/route`) ya pasan server client → no requieren cambios.
+2. Aplicar migration `20260419000141_saas_fix_rpc_security_invoker.sql` (ya escrita, no aplicada) vía SQL Editor.
+3. Verificar balances end-to-end con Maxi + LOLO: las cifras deben ser idénticas en Lozada y correctas en LOLO.
+4. El AI Companion queda scoped automáticamente (usa `supabase.rpc()` en `app/api/ai/route.ts:721`).
+
+**Por qué no ahora** (esta semana, 200 agencias activas): el refactor de `ledger.ts` es crítico en cálculos financieros; un bug introducido se ve como "plata desaparecida" en caja (ya ocurrió $227M ARS en el pasado). Riesgo de romper balances en prod > riesgo de leak teórico en 4 días.
 
 **Lint rule (pendiente)**:
 - [ ] ESLint rule o grep pre-commit: fallar si `createAdminClient` aparece fuera de `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*` y la whitelist de Storage uploads.
@@ -201,7 +218,8 @@ Dos routes (`accounting/ledger/stats`, `cash/daily-balance`) usan SQL crudo vía
 - `ea9d0dc` migration 137 (fix recursion con SECURITY DEFINER)
 - `ab14b30` docs: spec + roadmap
 - Aplicadas en prod via SQL Editor (sin archivo de migration commit): 138 (drop permissive), 139 (force RLS en 5 leakers), 140 (agencies + user_agencies + users + org_invitations RLS)
-- **Por committear**: mig 140 SQL file + audit-rls.ts + updated roadmap
+- `ec09cdf` Pilar 2 batch 1: 5 read-only routes off admin client
+- **Por committear**: mig 140 SQL file + audit-rls.ts
 
 ---
 
