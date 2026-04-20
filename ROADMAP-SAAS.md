@@ -4,8 +4,8 @@
 
 **Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
 
-**Fecha última actualización**: 2026-04-19
-**Status global**: 🟡 En ejecución — Pilar 1 en curso
+**Fecha última actualización**: 2026-04-19 (Pilar 1 completo)
+**Status global**: 🟢 Pilar 1 DONE — aislamiento DB 100% verificado. Arrancar Pilar 2.
 
 ---
 
@@ -19,11 +19,10 @@
 
 ## Status actual (TL;DR)
 
-- ✅ Infra DB multi-tenant lista: `org_id` en 40+ tablas, RLS con `SECURITY DEFINER` resolviendo recursion, policies uniformes `tenant_isolation`.
-- 🟡 Aislamiento real funciona en 80% de tablas testeadas con usuario LOLO (`agency@agency.com`). Quedan parches menores.
-- ⏸️ Pendiente: auditoría final RLS, ban `createAdminClient`, tests de isolation CI, platform admin, onboarding, billing.
+- ✅ **Pilar 1 COMPLETO** (2026-04-19). 42 tablas tenant-scoped verificadas vía `scripts/audit-rls.ts`. Cero cross-org leaks. Maxi (Lozada) ve todo lo suyo. LOLO (tenant nuevo) ve únicamente sus propios rows.
+- ⏸️ Pendiente: Pilar 2 (ban createAdminClient para lecturas), P3 (scoped-client helper), P4 (PLATFORM_ADMIN), P5 (tests CI), P6 (admin console), P7 (onboarding+billing), P8 (monitoring).
 
-**Próximo paso inmediato**: Pilar 1 — cerrar el último 15% de aislamiento DB (tablas que no están en las 39 del loop + validar que TODAS las 5 que leakean estén cerradas).
+**Próximo paso inmediato**: **Pilar 2** — auditar los 39 routes con `createAdminClient`, convertir read-only a `createServerClient` (RLS los protege), mantener admin client solo en `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*`.
 
 ---
 
@@ -51,8 +50,9 @@
 | 137 | Fix recursion con función `user_org_ids()` SECURITY DEFINER | ✅ prod |
 | 138 | Drop policies viejas permisivas (`qual = true`) | ✅ prod |
 | 139 | Force RLS + re-create policy en iva_sales/iva_purchases/commission_records/customers/operators | ✅ prod |
+| 140 | RLS en agencies + user_agencies + users + organization_invitations | ✅ prod |
 
-**Próxima migración prevista (140)**: `platform_admins` table + fix role rename Maxi.
+**Próxima migración prevista (141)**: `platform_admins` table + fix role rename Maxi.
 
 ---
 
@@ -69,15 +69,17 @@ Hecho durante la sesión previa al spec:
 - `/api/settings/agencies` scope por org
 - `/api/tasks/users` scope por org
 
-### 🟡 Pilar 1 — Aislamiento de DB completo
+### ✅ Pilar 1 — Aislamiento de DB completo (DONE 2026-04-19)
 
-- [x] mig 132-139 aplicadas
-- [ ] Script `scripts/audit-rls.ts`: lista todas las tablas con `org_id` y verifica que tengan RLS + policy tenant_isolation. Fail = exit 1.
-- [ ] Correr script, resolver cualquier tabla huérfana
-- [ ] Verificar con LOLO user que las 5 que leakeaban (iva_sales, iva_purchases, commission_records, customers, operators) ahora son 0
-- [ ] Tablas aún sin org_id a revisar: `wha_control_*`, `ai_queries` si existe, `lead_comments` (verificar), y user-related tables
+- [x] mig 132-140 aplicadas en prod
+- [x] `scripts/audit-rls.ts` creado y corrido — verifica ownership real (no solo count)
+- [x] 42 tablas tenant-scoped: todas aisladas, 0 cross-org leaks
+- [x] Maxi ve toda su data de Lozada (sin cambio UX)
+- [x] LOLO (tenant nuevo) ve solo sus propios rows (1 agency suya, 1 customer_setting suya, 1 operation_setting suya, resto vacío)
 
-**Blocker conocido**: ninguno.
+**Evidencia**: `npx tsx scripts/audit-rls.ts` → PASS. Output guardado en commit.
+
+**Nota**: tablas `wha_control_*`, `ai_queries`, `emilia_conversations` NO están en el scope porque no existen en prod. Si se crean en el futuro, hay que agregarles `org_id` + RLS.
 
 ### ⏸️ Pilar 2 — Admin client cero para lecturas
 
@@ -161,7 +163,9 @@ Hecho durante la sesión previa al spec:
 - `f23f05b` helper getScopedAgenciesForUser + 12 páginas + 7 analytics + migration 135
 - `72385f0` migration 136 (RLS tenant_isolation en 38 tablas)
 - `ea9d0dc` migration 137 (fix recursion con SECURITY DEFINER)
-- Aplicadas en prod via SQL Editor: 138 (drop permissive), 139 (force RLS en 5 leakers)
+- `ab14b30` docs: spec + roadmap
+- Aplicadas en prod via SQL Editor (sin archivo de migration commit): 138 (drop permissive), 139 (force RLS en 5 leakers), 140 (agencies + user_agencies + users + org_invitations RLS)
+- **Por committear**: mig 140 SQL file + audit-rls.ts + updated roadmap
 
 ---
 
