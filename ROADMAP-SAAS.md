@@ -51,12 +51,12 @@
 | 138 | Drop policies viejas permisivas (`qual = true`) | ✅ prod |
 | 139 | Force RLS + re-create policy en iva_sales/iva_purchases/commission_records/customers/operators | ✅ prod |
 | 140 | RLS en agencies + user_agencies + users + organization_invitations | ✅ prod |
+| 142 | Tabla `platform_admins` + RLS + seed Tomi | ✅ prod (2026-04-20) |
 
 **Migraciones escritas pendientes de aplicar**:
 | Mig | Archivo | Qué hace | Status |
 |-----|---------|----------|--------|
 | 141 | `20260419000141_saas_fix_rpc_security_invoker.sql` | Cambia `execute_readonly_query` de SECURITY DEFINER a INVOKER. **BLOQUEADA** hasta refactor de `lib/accounting/ledger.ts` (ver Pilar 2c). Aplicar juntas o se rompen todos los balances de la app. | ⏸️ no aplicar aún |
-| 142 | `20260419000142_saas_platform_admins.sql` | Crea tabla `platform_admins` + RLS + seed Tomi (Pilar 4). Segura de aplicar — no afecta a Maxi ni el resto de users. | ✅ correr en SQL Editor cuando quieras |
 
 ---
 
@@ -153,12 +153,17 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 
 ### 🟡 Pilar 4 — PLATFORM_ADMIN separado (parcial)
 
-- [x] Migration 142: tabla `platform_admins` + RLS + seed de Tomi (pendiente correr en Supabase SQL Editor).
+- [x] Migration 142: tabla `platform_admins` + RLS + seed de Tomi (✅ aplicada en prod 2026-04-20).
 - [x] Helper `lib/auth/platform.ts` → `isPlatformAdmin(supabase, userId)`.
 - [ ] Rename `users.role`: Maxi `SUPER_ADMIN` → `ORG_OWNER`. **Diferido** a post-launch — requiere DROP CHECK + ADD CHECK en `users.role` + actualizar todas las comparaciones de role en código. Mientras, Maxi queda como `SUPER_ADMIN` acotado por RLS de Pilar 1 (efecto práctico = ORG_OWNER).
 - [ ] Ruta guard para `/admin/*` — redirect si no es platform admin (Pilar 6).
 
-### ⏸️ Pilar 5 — Tests de isolation (CI bloqueante)
+### 🟡 Pilar 5 — Tests de isolation (parcial pre-launch)
+
+**Smoke test pre-launch ✅ (2026-04-20)**: `scripts/smoke-isolation.ts` corrido contra prod. 12 tablas tenant-scoped, 14k+ rows: 100% pertenecen a Lozada (org_id correcto), 0 orphans, 0 cross-org. Combinado con audit RLS de Pilar 1 = confianza end-to-end para el launch.
+
+**Pendiente (post-launch)**:
+
 
 - [ ] `__tests__/isolation/setup.ts` — crea 2 tenants sintéticos con data seed
 - [ ] `__tests__/isolation/<module>.test.ts` — 1 archivo por área (customers, operations, payments, accounting, cash, reports, etc)
@@ -205,9 +210,10 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 
 ## Scripts útiles
 
-- `scripts/audit-rls.ts` (pendiente) — verifica que todas las tablas org_id tienen RLS
-- `scripts/verify-rls-final.ts` (deleted, re-crear) — testa isolation con 2 users reales
-- Migration 140 (pendiente) — `platform_admins` + Maxi role rename
+- `scripts/smoke-isolation.ts` ✅ (2026-04-20) — valida segregación por `org_id` en 12 tablas críticas. Corrida pre-launch: 14k+ rows, 100% Lozada, 0 orphans, 0 cross-org. Ejecutar: `npx tsx scripts/smoke-isolation.ts`.
+- `scripts/check-admin-client.sh` ✅ — lint guard contra uso de `createAdminClient` fuera de allowlist.
+- `scripts/audit-rls.ts` (corrido en Pilar 1 pero **no committeado** — gap a recuperar).
+- `scripts/verify-rls-final.ts` (deleted, re-crear como parte de Pilar 5).
 
 ---
 
