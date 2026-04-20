@@ -31,11 +31,15 @@ export async function POST(request: Request) {
       )
     }
 
-    // Usar env var AFIP_CUIT si está disponible, sino el valor del body
-    const rawCuit = process.env.AFIP_CUIT || bodyCuit
+    // SaaS: CUIT viene EXCLUSIVAMENTE del body del tenant. Antes había un
+    // fallback a `process.env.AFIP_CUIT` — eso hacía que todas las agencias
+    // heredaran el CUIT global de Maxi (Lozada), lo que en un SaaS multi-tenant
+    // mezclaba facturación entre orgs y era el bug reportado: LOLO veía el
+    // CUIT de Lozada configurado como suyo.
+    const rawCuit = bodyCuit
     if (!rawCuit) {
       return NextResponse.json(
-        { error: "CUIT no configurado. Agregá AFIP_CUIT a las variables de entorno." },
+        { error: "CUIT requerido. Ingresá el CUIT de tu agencia." },
         { status: 400 }
       )
     }

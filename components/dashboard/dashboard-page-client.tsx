@@ -145,21 +145,33 @@ export function DashboardPageClient({
         cache: "no-store" as RequestCache
       }
       
-      // Agregar agencyId y fechas al endpoint de pending-balances
-      const pendingBalancesSearchParams = new URLSearchParams()
-      pendingBalancesSearchParams.set("dateFrom", filters.dateFrom)
-      pendingBalancesSearchParams.set("dateTo", filters.dateTo)
-      if (filters.agencyId && filters.agencyId !== "ALL") {
-        pendingBalancesSearchParams.set("agencyId", filters.agencyId)
+      // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales
+      // (mismo que la página Contabilidad → Deudores) y sumamos totalDebt en
+      // cliente. Así garantizamos que el KPI coincida siempre con la tabla
+      // que el user ya usa. /api/analytics/pending-balances queda solo para
+      // accountsPayable (deuda a operadores).
+      const debtsSalesSearchParams = new URLSearchParams()
+      debtsSalesSearchParams.set("dateFrom", filters.dateFrom)
+      debtsSalesSearchParams.set("dateTo", filters.dateTo)
+      if (filters.sellerId && filters.sellerId !== "ALL") {
+        debtsSalesSearchParams.set("sellerId", filters.sellerId)
       }
-      
-      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, pendingBalancesRes, prevSalesRes] = await Promise.all([
+
+      const operatorsDebtParams = new URLSearchParams()
+      operatorsDebtParams.set("dateFrom", filters.dateFrom)
+      operatorsDebtParams.set("dateTo", filters.dateTo)
+      if (filters.agencyId && filters.agencyId !== "ALL") {
+        operatorsDebtParams.set("agencyId", filters.agencyId)
+      }
+
+      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsSalesRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/pending-balances?${pendingBalancesSearchParams.toString()}`, fetchOptions),
+        fetch(`/api/accounting/debts-sales?${debtsSalesSearchParams.toString()}`, fetchOptions),
+        fetch(`/api/analytics/pending-balances?${operatorsDebtParams.toString()}`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
@@ -168,16 +180,14 @@ export function DashboardPageClient({
       const destinationsData = destinationsRes.ok ? await destinationsRes.json() : { destinations: [] }
       const destinationsAllData = destinationsAllRes.ok ? await destinationsAllRes.json() : { destinations: [] }
       const cashflowData = cashflowRes.ok ? await cashflowRes.json() : { cashflow: [] }
-      const pendingBalancesData = pendingBalancesRes.ok ? await pendingBalancesRes.json() : { accountsReceivable: 0, accountsPayable: 0 }
+      const debtsSalesData = debtsSalesRes.ok ? await debtsSalesRes.json() : { debtors: [] }
+      const operatorsDebtData = operatorsDebtRes.ok ? await operatorsDebtRes.json() : { accountsPayable: 0 }
       const prevSalesData = prevSalesRes.ok ? await prevSalesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0 }
 
-      console.log("[Dashboard] salesRes.status:", salesRes.status, "ok:", salesRes.ok)
-      console.log("[Dashboard] salesData:", JSON.stringify(salesData))
-      console.log("[Dashboard] pendingBalancesRes.status:", pendingBalancesRes.status, "ok:", pendingBalancesRes.ok)
-      console.log("[Dashboard] pendingBalancesData:", JSON.stringify(pendingBalancesData))
-      console.log("[Dashboard] params:", params.toString())
+      // Sumar la deuda total por ventas desde debts-sales (en USD)
+      const customerDebtUsd = ((debtsSalesData.debtors || []) as any[])
+        .reduce((sum: number, d: any) => sum + (Number(d.totalDebt) || 0), 0)
 
-      // Guardar datos del período anterior para comparativa
       setPreviousKpis({
         totalSales: prevSalesData.totalSales || 0,
         totalMargin: prevSalesData.totalMargin || 0,
@@ -189,8 +199,8 @@ export function DashboardPageClient({
         totalMargin: salesData.totalMargin || 0,
         operationsCount: salesData.operationsCount || 0,
         avgMarginPercent: salesData.avgMarginPercent || 0,
-        pendingCustomerPayments: pendingBalancesData.accountsReceivable || 0,
-        pendingOperatorPayments: pendingBalancesData.accountsPayable || 0,
+        pendingCustomerPayments: customerDebtUsd,
+        pendingOperatorPayments: operatorsDebtData.accountsPayable || 0,
       })
 
       setSellersData(sellersData.sellers || [])
