@@ -1,31 +1,41 @@
 import { NextResponse } from "next/server"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canPerformAction, getUserAgencyIds } from "@/lib/permissions-api"
+import { canPerformAction } from "@/lib/permissions-api"
 
 /**
- * Valida que el item de itinerario pertenece a una operacion de la agencia del user.
- * Retorna null si OK, o NextResponse con 404 si el item no es accesible para el user.
+ * SaaS Pilar 2: itinerary_items tiene RLS permisiva (USING true) y no tiene
+ * org_id (gap de Pilar 1 — ver Pilar 2c). La defensa va por código: al
+ * recibir itemId, leemos el item (sin RLS útil), luego verificamos que la
+ * operation parent esté en la org del user (operations sí tiene RLS).
+ * Si la operation no es visible con el server client → item no es del user.
  */
-async function verifyItemBelongsToUserOrg(
+async function verifyItemBelongsToUser(
+  supabase: any,
   adminDb: any,
-  itemId: string,
-  user: any
-): Promise<NextResponse | null> {
+  itemId: string
+): Promise<{ ok: true } | { ok: false; response: NextResponse }> {
   const { data: item } = await adminDb
     .from("itinerary_items")
-    .select("id, operation_id, operations:operation_id(agency_id)")
+    .select("id, operation_id")
     .eq("id", itemId)
     .maybeSingle()
+
   if (!item) {
-    return NextResponse.json({ error: "Item no encontrado" }, { status: 404 })
+    return { ok: false, response: NextResponse.json({ error: "Item no encontrado" }, { status: 404 }) }
   }
-  const itemAgencyId = (item as any).operations?.agency_id
-  const userAgencyIds = await getUserAgencyIds(adminDb, user.id, user.role as any)
-  if (userAgencyIds.length > 0 && itemAgencyId && !userAgencyIds.includes(itemAgencyId)) {
-    return NextResponse.json({ error: "Item no encontrado" }, { status: 404 })
+
+  const { data: operation } = await supabase
+    .from("operations")
+    .select("id")
+    .eq("id", item.operation_id)
+    .maybeSingle()
+
+  if (!operation) {
+    return { ok: false, response: NextResponse.json({ error: "Item no encontrado" }, { status: 404 }) }
   }
-  return null
+
+  return { ok: true }
 }
 
 export async function PATCH(
@@ -41,12 +51,12 @@ export async function PATCH(
 
     const { itemId } = await params
     const body = await request.json()
+    const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
-    const ownershipError = await verifyItemBelongsToUserOrg(adminDb, itemId, user)
-    if (ownershipError) return ownershipError
+    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId)
+    if (!check.ok) return check.response
 
-    // Remove fields that shouldn't be updated directly
     const { id, operation_id, created_at, ...updateData } = body
     updateData.updated_at = new Date().toISOString()
 
@@ -79,10 +89,11 @@ export async function DELETE(
     }
 
     const { itemId } = await params
+    const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
-    const ownershipError = await verifyItemBelongsToUserOrg(adminDb, itemId, user)
-    if (ownershipError) return ownershipError
+    const check = await verifyItemBelongsToUser(supabase, adminDb, itemId)
+    if (!check.ok) return check.response
 
     const { error } = await adminDb
       .from("itinerary_items")

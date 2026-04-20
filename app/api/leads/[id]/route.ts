@@ -60,9 +60,13 @@ export async function DELETE(
       )
     }
 
-    // Delete lead — usar admin client para bypassear RLS
+    // Delete lead — admin client para cascada sobre FKs, pero acotado por
+    // org_id conocido (SaaS Pilar 2: defensa-en-profundidad, cierra race
+    // conditions donde el lead podría mutar de org entre el SELECT y el DELETE).
     const adminClient = createAdminClient()
-    const { error } = await (adminClient.from("leads") as any).delete().eq("id", id)
+    let deleteQuery = (adminClient.from("leads") as any).delete().eq("id", id)
+    if (lead.org_id) deleteQuery = deleteQuery.eq("org_id", lead.org_id)
+    const { error } = await deleteQuery
 
     if (error) {
       console.error("Error deleting lead:", error)
@@ -170,11 +174,14 @@ export async function PATCH(
       updateData.deposit_account_id = null
     }
 
-    // Usar admin client para bypassear RLS — cualquier usuario con permiso puede editar cualquier lead
+    // SaaS Pilar 2: admin client para cross-org read after write, pero
+    // acotado por org_id conocido del lead que ya validamos via RLS arriba.
     const adminClient = createAdminClient()
-    const { error } = await (adminClient.from("leads") as any)
+    let updateQuery = (adminClient.from("leads") as any)
       .update(updateData)
       .eq("id", id)
+    if (lead.org_id) updateQuery = updateQuery.eq("org_id", lead.org_id)
+    const { error } = await updateQuery
 
     if (error) {
       console.error("Error updating lead:", error)

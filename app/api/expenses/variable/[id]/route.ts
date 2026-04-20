@@ -24,9 +24,10 @@ export async function PATCH(
     const adminDb = createAdminClient() as any
     const body = await request.json()
 
-    // Verify expense exists
+    // SaaS Pilar 2: fetch via server client — RLS sobre cash_movements filtra
+    // por org del user; si el id apunta a otra org, existing = null → 404.
     const { data: existing, error: fetchError } = await (supabase.from("cash_movements") as any)
-      .select("id, type, financial_account_id, ledger_movement_id")
+      .select("id, type, financial_account_id, ledger_movement_id, org_id")
       .eq("id", id)
       .eq("type", "EXPENSE")
       .single()
@@ -46,11 +47,13 @@ export async function PATCH(
       return NextResponse.json({ error: "No hay campos para actualizar" }, { status: 400 })
     }
 
-    // Update cash_movement
-    const { error: updateError } = await adminDb
+    // Update cash_movement — acotado por el org_id ya validado
+    let updateQuery = adminDb
       .from("cash_movements")
       .update(updateData)
       .eq("id", id)
+    if (existing.org_id) updateQuery = updateQuery.eq("org_id", existing.org_id)
+    const { error: updateError } = await updateQuery
 
     if (updateError) {
       console.error("Error updating expense:", updateError)
@@ -60,10 +63,12 @@ export async function PATCH(
     // Also update ledger_movement concept if category changed
     if (body.category && existing.ledger_movement_id) {
       const concept = `Gasto: ${body.category}`
-      await adminDb
+      let ledgerUpdateQuery = adminDb
         .from("ledger_movements")
         .update({ concept, notes: body.notes || null })
         .eq("id", existing.ledger_movement_id)
+      if (existing.org_id) ledgerUpdateQuery = ledgerUpdateQuery.eq("org_id", existing.org_id)
+      await ledgerUpdateQuery
     }
 
     return NextResponse.json({ success: true })
@@ -92,9 +97,9 @@ export async function DELETE(
     const supabase = await createServerClient()
     const adminDb = createAdminClient() as any
 
-    // Verify expense exists
+    // SaaS Pilar 2: fetch via server client — si apunta a otra org, 404.
     const { data: existing, error: fetchError } = await (supabase.from("cash_movements") as any)
-      .select("id, type, financial_account_id, ledger_movement_id")
+      .select("id, type, financial_account_id, ledger_movement_id, org_id")
       .eq("id", id)
       .eq("type", "EXPENSE")
       .single()
@@ -118,16 +123,17 @@ export async function DELETE(
       }
     }
 
-    // Delete ledger movement if exists
+    // Delete ledger movement if exists (acotado por org_id validado)
     if (existing.ledger_movement_id) {
-      await adminDb.from("ledger_movements").delete().eq("id", existing.ledger_movement_id)
+      let lmDelete = adminDb.from("ledger_movements").delete().eq("id", existing.ledger_movement_id)
+      if (existing.org_id) lmDelete = lmDelete.eq("org_id", existing.org_id)
+      await lmDelete
     }
 
-    // Delete the cash_movement
-    const { error: deleteError } = await adminDb
-      .from("cash_movements")
-      .delete()
-      .eq("id", id)
+    // Delete the cash_movement (acotado por org_id validado)
+    let cmDelete = adminDb.from("cash_movements").delete().eq("id", id)
+    if (existing.org_id) cmDelete = cmDelete.eq("org_id", existing.org_id)
+    const { error: deleteError } = await cmDelete
 
     if (deleteError) {
       console.error("Error deleting expense:", deleteError)

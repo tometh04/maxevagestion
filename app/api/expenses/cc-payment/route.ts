@@ -146,12 +146,16 @@ export async function POST(request: Request) {
       exchangeRate = Number(userExchangeRate)
     }
 
+    // SaaS Pilar 2: inyectar org_id en el group para que quede tenant-scoped.
+    const userOrgId = (user as any).org_id || null
+
     // Create cc_payment_groups record
     const { data: group, error: groupError } = await adminDb
       .from("cc_payment_groups")
       .insert({
         credit_card_account_id,
         source_account_id,
+        org_id: userOrgId,
         total_amount: totalNum,
         currency,
         exchange_rate: exchangeRate,
@@ -200,9 +204,10 @@ export async function POST(request: Request) {
 
       const concept = `Pago TC: ${item.description} (${classLabel})`
 
-      // Create cash_movement
+      // Create cash_movement (tenant-scoped via org_id)
       const movementData: Record<string, any> = {
         user_id: user.id,
+        org_id: userOrgId,
         type: "EXPENSE",
         category: categoryName,
         category_id: item.category_id || null,

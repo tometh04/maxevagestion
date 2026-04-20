@@ -3,6 +3,24 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 
+/**
+ * SaaS Pilar 2: itinerary_items tiene RLS permisiva (USING true) y no tiene
+ * org_id — un agregado de Pilar 2c. Hasta que se migre la tabla, la defensa
+ * está en código: validamos vía server client que la operation parent
+ * pertenece al user (operations SÍ tiene RLS tenant_isolation).
+ */
+async function verifyOperationBelongsToUser(
+  supabase: any,
+  operationId: string
+): Promise<boolean> {
+  const { data: operation } = await supabase
+    .from("operations")
+    .select("id")
+    .eq("id", operationId)
+    .maybeSingle()
+  return !!operation
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -16,6 +34,10 @@ export async function GET(
 
     const { id: operationId } = await params
     const supabase = await createServerClient()
+
+    if (!(await verifyOperationBelongsToUser(supabase, operationId))) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
 
     const { data: items, error } = await (supabase.from("itinerary_items") as any)
       .select("*")
@@ -45,6 +67,12 @@ export async function POST(
 
     const { id: operationId } = await params
     const body = await request.json()
+    const supabase = await createServerClient()
+
+    if (!(await verifyOperationBelongsToUser(supabase, operationId))) {
+      return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+    }
+
     const adminDb = createAdminClient() as any
 
     // Get max sort_order for this operation

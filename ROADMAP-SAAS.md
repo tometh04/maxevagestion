@@ -4,8 +4,8 @@
 
 **Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
 
-**Fecha última actualización**: 2026-04-19 (Pilar 2 en curso — batch read-only migrado)
-**Status global**: 🟡 Pilar 2 en curso. Batch 1 (5 routes read-only) migrado a `createServerClient`. 2 issues bloqueantes descubiertos (RPC SECURITY DEFINER). Writes pendientes para Batch 2.
+**Fecha última actualización**: 2026-04-19 (Pilar 2 Batch 1 + Pass 2 writes completos)
+**Status global**: 🟡 Pilar 2 ~80% — 5 routes read-only migrados + 7 routes write reforzados con org_id explícito y validación por parent-org vía RLS. 2 leaks conocidos diferidos a Pilar 2c post-launch (RPC SECURITY DEFINER + gap de `itinerary_items` sin org_id).
 
 ---
 
@@ -108,16 +108,20 @@ Hecho durante la sesión previa al spec:
 - [x] `app/api/accounting/iibb/route.ts`
 - [x] `app/api/expenses/monthly/route.ts`
 
-**Batch 2 (write routes — Pass 2, agregar `org_id` explícito)**:
-- [ ] `app/api/operations/[id]/itinerary/route.ts` (POST)
-- [ ] `app/api/operations/[id]/itinerary/[itemId]/route.ts` (PATCH/DELETE)
-- [ ] `app/api/expenses/variable/route.ts` (POST — inserta cash_movements + ledger_movement)
-- [ ] `app/api/expenses/variable/[id]/route.ts` (PATCH/DELETE)
-- [ ] `app/api/expenses/cc-payment/route.ts` (POST)
-- [ ] `app/api/expenses/cc-payment/[id]/route.ts` (DELETE)
-- [ ] `app/api/leads/[id]/route.ts` (PATCH/DELETE — incluye depósito ledger_movement)
-- [ ] `app/api/quotations/upload-flight-screenshot/route.ts` (defer — Storage)
-- [ ] `app/api/operations/[id]/itinerary/upload-image/route.ts` (defer — Storage)
+**Batch 2 ✅ (Pass 2 — writes con org_id explícito + validación parent-org)**:
+Patrón aplicado: SELECT con server client (RLS filtra por org) → valida pertenencia → admin client para mutation con `.eq('org_id', …)` defensivo y `org_id: user.org_id` en INSERTs.
+- [x] `app/api/operations/[id]/itinerary/route.ts` (GET/POST — valida via `verifyOperationBelongsToUser`)
+- [x] `app/api/operations/[id]/itinerary/[itemId]/route.ts` (PATCH/DELETE — rewrite de `verifyItemBelongsToUser` que separa item fetch del op-scope check; fixea bug del embedded select null)
+- [x] `app/api/expenses/variable/route.ts` (POST — inyecta `org_id`)
+- [x] `app/api/expenses/variable/[id]/route.ts` (PATCH/DELETE — acota por `existing.org_id`)
+- [x] `app/api/expenses/cc-payment/route.ts` (POST — inyecta `org_id` en group + items)
+- [x] `app/api/expenses/cc-payment/[id]/route.ts` (DELETE — acota cascada por `group.org_id`)
+- [x] `app/api/leads/[id]/route.ts` (PATCH/DELETE — acota por `lead.org_id`)
+- [ ] `app/api/quotations/upload-flight-screenshot/route.ts` (defer — solo Storage upload)
+- [ ] `app/api/operations/[id]/itinerary/upload-image/route.ts` (defer — solo Storage upload)
+
+**🟠 Gap secundario descubierto — `itinerary_items` sin tenant isolation**:
+La tabla `itinerary_items` (mig 119) tiene RLS activada pero policies `USING (true)` — 100% permisivas. No tiene `org_id`. **No fue cubierta por audit-rls.ts de Pilar 1**. Mitigación actual (Pass 2A): defensa en código — las routes ahora validan vía `operations` (que sí tiene RLS tenant_isolation) antes de leer/escribir itinerary_items. Fix definitivo: agregar `org_id` + RLS por-org en Pilar 2c (migration nueva).
 
 **🔴 Leak conocido — RPC `execute_readonly_query` SECURITY DEFINER** (diferido a post-launch):
 

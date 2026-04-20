@@ -94,8 +94,11 @@ export async function POST(request: Request) {
       : `Gasto: ${description}`
 
     // Create cash_movement
+    // SaaS Pilar 2: inyectar org_id desde el user para que el row nuevo
+    // caiga en la org correcta (RLS sino lo marca inaccesible en lecturas).
     const movementData: Record<string, any> = {
       user_id: user.id,
+      org_id: (user as any).org_id || null,
       type: "EXPENSE",
       category: categoryName,
       category_id: category_id || null,
@@ -142,7 +145,7 @@ export async function POST(request: Request) {
       supabase
     )
     if (!balanceCheck.valid) {
-      // Rollback cash_movement
+      // Rollback cash_movement (acotar por id — el row lo acabamos de crear)
       await adminDb.from("cash_movements").delete().eq("id", movement.id)
       return NextResponse.json(
         { error: balanceCheck.error || "Saldo insuficiente en cuenta" },
