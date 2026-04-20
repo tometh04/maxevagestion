@@ -80,12 +80,6 @@ interface AfipStatus {
   }
 }
 
-interface SystemConfig {
-  cuitConfigured: boolean
-  passwordConfigured: boolean
-  cuitMasked: string | null
-}
-
 interface PointOfSale {
   numero: number
   tipo: string
@@ -140,28 +134,12 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
   const [setupError, setSetupError] = useState<{ message: string; isWsfe?: boolean } | null>(null)
   const [setupStep, setSetupStep] = useState<SetupStep>(null)
   const [certStepDone, setCertStepDone] = useState(false)
-  const [systemConfig, setSystemConfig] = useState<SystemConfig | null>(null)
   const [posStatus, setPosStatus] = useState<PosStatus>({
     checking: false,
     has_ws_points: null,
     points: [],
     error: null,
   })
-
-  // Cargar estado AFIP del tenant para la agencia seleccionada.
-  // Antes: endpoint global devolvía info de env vars de Lozada → todos los
-  // tenants veían "Credenciales del sistema configuradas" con el CUIT de Maxi.
-  // Ahora el endpoint es por agencia (lee la tabla `integrations` con RLS).
-  useEffect(() => {
-    if (!selectedAgencyId) {
-      setSystemConfig({ cuitConfigured: false, passwordConfigured: false, cuitMasked: null })
-      return
-    }
-    fetch(`/api/settings/afip/system?agencyId=${selectedAgencyId}`)
-      .then(r => r.json())
-      .then(setSystemConfig)
-      .catch(() => setSystemConfig({ cuitConfigured: false, passwordConfigured: false, cuitMasked: null }))
-  }, [selectedAgencyId])
 
   const form = useForm<AfipFormValues>({
     resolver: zodResolver(afipSchema),
@@ -452,22 +430,6 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
             </SelectContent>
           </Select>
         </div>
-      )}
-
-      {/* Credenciales pre-configuradas (env vars) */}
-      {systemConfig && (systemConfig.cuitConfigured || systemConfig.passwordConfigured) && (
-        <Alert className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/20">
-          <Shield className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-700 dark:text-green-400 text-sm space-y-1">
-            <p className="font-medium">Credenciales del sistema configuradas:</p>
-            <div className="flex gap-4 text-xs mt-1">
-              {systemConfig.cuitConfigured && (
-                <span>✓ CUIT: <span className="font-mono">{systemConfig.cuitMasked}</span></span>
-              )}
-              {systemConfig.passwordConfigured && <span>✓ Clave Fiscal</span>}
-            </div>
-          </AlertDescription>
-        </Alert>
       )}
 
       {/* Estado actual */}
