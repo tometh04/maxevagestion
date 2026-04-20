@@ -154,9 +154,12 @@ export function NewLeadDialog({
         const data = await response.json()
 
         if (data.listNames && Array.isArray(data.listNames) && data.listNames.length > 0) {
-          // Filtrar solo listas que empiecen con "Leads - " (excluir las viejas de Trello)
-          const validLists = data.listNames.filter((name: string) => name.startsWith("Leads - "))
-          setCrmLists(validLists)
+          // Antes filtrábamos por `name.startsWith("Leads - ")` para dejar
+          // afuera listas legacy de Trello. En el SaaS multi-tenant cada
+          // tenant nombra sus listas como quiera, así que ahora aceptamos
+          // cualquiera. Si querés filtrar, hacelo por tabla (p.ej. no
+          // mostrar listas con source = trello) no por prefijo de nombre.
+          setCrmLists(data.listNames as string[])
         } else {
           setCrmLists([])
         }
