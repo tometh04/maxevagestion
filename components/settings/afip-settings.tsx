@@ -291,6 +291,41 @@ export function AfipSettings({ agencies, defaultAgencyId }: AfipSettingsProps) {
       setShowReconfigureForm(false)
       form.reset()
       await loadStatus(values.agency_id)
+
+      // SaaS: tras configurar, detectamos qué puntos de venta tiene el CUIT
+      // habilitados para Web Service (CAE / CAEA / RECE). Si no hay ninguno,
+      // mostramos el instructivo para habilitarlos en afip.gob.ar — sin
+      // esto la agencia no puede facturar electrónicamente.
+      try {
+        const posRes = await fetch(`/api/invoices/points-of-sale?agencyId=${values.agency_id}`)
+        if (posRes.ok) {
+          const posData = await posRes.json()
+          const agencyData = ((posData.pointsOfSale as any[]) || []).find(
+            (p: any) => p.agency_id === values.agency_id
+          )
+          if (agencyData) {
+            if (agencyData.has_ws_points && agencyData.points_of_sale.length > 0) {
+              const nums = agencyData.points_of_sale
+                .map((p: any) => `#${p.numero} (${p.tipo})`)
+                .join(", ")
+              toast({
+                title: `${agencyData.points_of_sale.length} punto(s) de venta habilitado(s)`,
+                description: `Listos para facturar: ${nums}.`,
+              })
+            } else {
+              toast({
+                title: "⚠️ No hay puntos de venta habilitados para Web Service",
+                description:
+                  "Tu CUIT todavía no tiene un punto de venta habilitado para WSFE (facturación electrónica). Entrá a https://www.afip.gob.ar → Administrador de Relaciones → Adherir servicio → 'Administración de Puntos de Venta y Domicilios' → Alta y seleccioná 'Facturación Electrónica - Web Service'. Cuando esté dado de alta, volvé acá y tocá el botón 'Probar Conexión' para verificar.",
+                variant: "destructive",
+                duration: 15000,
+              })
+            }
+          }
+        }
+      } catch (posErr) {
+        console.error("[AFIP Setup] Error detectando puntos de venta:", posErr)
+      }
     } catch (err: any) {
       setSetupError({ message: err.message || "Error desconocido" })
     } finally {
