@@ -223,6 +223,8 @@ La función `execute_readonly_query` es `SECURITY DEFINER` → corre como superu
 - `ab14b30` docs: spec + roadmap
 - Aplicadas en prod via SQL Editor (sin archivo de migration commit): 138 (drop permissive), 139 (force RLS en 5 leakers), 140 (agencies + user_agencies + users + org_invitations RLS)
 - `ec09cdf` Pilar 2 batch 1: 5 read-only routes off admin client
+- `febc349` Pilar 2: documented SECURITY DEFINER leak + migration 141 (not applied)
+- `74db1c4` Pilar 2 Pass 2: scope 7 write routes to tenant via org_id + parent-op RLS
 - **Por committear**: mig 140 SQL file + audit-rls.ts
 
 ---
