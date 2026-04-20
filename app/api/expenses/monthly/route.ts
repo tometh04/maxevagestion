@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
-import { createAdminClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canPerformAction } from "@/lib/permissions-api"
 import { roundMoney } from "@/lib/currency"
@@ -23,8 +22,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para ver egresos" }, { status: 403 })
     }
 
+    // SaaS Pilar 2: RLS acota ledger_movements y cash_movements por org_id del JWT.
     const supabase = await createServerClient()
-    const adminDb = createAdminClient()
     const { searchParams } = new URL(request.url)
 
     const dateFrom = searchParams.get("dateFrom")
@@ -36,7 +35,7 @@ export async function GET(request: Request) {
 
     // 1. RECURRING EXPENSES (paid): from ledger_movements
     if (!typeFilter || typeFilter === "recurring") {
-      let recQuery = (adminDb.from("ledger_movements") as any)
+      let recQuery = (supabase.from("ledger_movements") as any)
         .select(`
           id, type, concept, currency, amount_original,
           movement_date, created_at, account_id, notes, receipt_number,

@@ -4,8 +4,8 @@
 
 **Spec de referencia**: [docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md](docs/superpowers/specs/2026-04-19-saas-multitenant-architecture.md)
 
-**Fecha última actualización**: 2026-04-19 (Pilar 1 completo)
-**Status global**: 🟢 Pilar 1 DONE — aislamiento DB 100% verificado. Arrancar Pilar 2.
+**Fecha última actualización**: 2026-04-19 (Pilar 2 en curso — batch read-only migrado)
+**Status global**: 🟡 Pilar 2 en curso. Batch 1 (5 routes read-only) migrado a `createServerClient`. 2 issues bloqueantes descubiertos (RPC SECURITY DEFINER). Writes pendientes para Batch 2.
 
 ---
 
@@ -81,13 +81,49 @@ Hecho durante la sesión previa al spec:
 
 **Nota**: tablas `wha_control_*`, `ai_queries`, `emilia_conversations` NO están en el scope porque no existen en prod. Si se crean en el futuro, hay que agregarles `org_id` + RLS.
 
-### ⏸️ Pilar 2 — Admin client cero para lecturas
+### 🟡 Pilar 2 — Admin client cero para lecturas (en curso)
 
-- [ ] Lista los 39 routes con `createAdminClient` (ya la tenemos del audit previo)
-- [ ] Por cada uno: clasificar (read-only → migrar, write-critical → mantener + filtrar)
-- [ ] Migrar read-only routes a `createServerClient` (protegido por RLS)
-- [ ] Para mantenidos: agregar filtro explícito `.eq('org_id', user.org_id)`
-- [ ] Lint rule: bloquea PR si `createAdminClient` fuera de `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*`
+**Inventario**: 26 route files en `app/api/` con `createAdminClient` (58 usos totales).
+
+**Clasificación hecha (2026-04-19)**:
+
+| Clase | Count | Acción | Status |
+|-------|-------|--------|--------|
+| A. Auth whitelist | 1 | Mantener admin (pre-sesión) | `auth/register` → keep |
+| B. Read-only, DB | 5 | `createServerClient` + RLS | ✅ batch 1 done |
+| C. Write + admin (tenant-scoped) | 9 | Pass 2: agregar `org_id` al insert + `.eq('org_id')` en update/delete | ⏸️ pending |
+| D. Storage uploads | 2 | Admin OK por ahora (bucket policies son separadas) | ⏸️ defer |
+| E. RPC SECURITY DEFINER (bypasa RLS!) | 2 | Fix SQL crudo con `org_id` explícito, o reescribir | 🔴 bloqueante |
+| F. WhatsApp (tablas no existen en prod) | 10 | Defer — crear con `org_id` + RLS desde cero | ⏸️ defer |
+
+**Batch 1 ✅ (migrado a createServerClient + RLS)**:
+- [x] `app/api/accounting/ledger/route.ts` (piloto)
+- [x] `app/api/accounting/ledger/[id]/route.ts`
+- [x] `app/api/accounting/ganancias/route.ts`
+- [x] `app/api/accounting/iibb/route.ts`
+- [x] `app/api/expenses/monthly/route.ts`
+
+**Batch 2 (write routes — Pass 2, agregar `org_id` explícito)**:
+- [ ] `app/api/operations/[id]/itinerary/route.ts` (POST)
+- [ ] `app/api/operations/[id]/itinerary/[itemId]/route.ts` (PATCH/DELETE)
+- [ ] `app/api/expenses/variable/route.ts` (POST — inserta cash_movements + ledger_movement)
+- [ ] `app/api/expenses/variable/[id]/route.ts` (PATCH/DELETE)
+- [ ] `app/api/expenses/cc-payment/route.ts` (POST)
+- [ ] `app/api/expenses/cc-payment/[id]/route.ts` (DELETE)
+- [ ] `app/api/leads/[id]/route.ts` (PATCH/DELETE — incluye depósito ledger_movement)
+- [ ] `app/api/quotations/upload-flight-screenshot/route.ts` (defer — Storage)
+- [ ] `app/api/operations/[id]/itinerary/upload-image/route.ts` (defer — Storage)
+
+**🔴 Bloqueante crítico — RPC `execute_readonly_query` SECURITY DEFINER**:
+Dos routes (`accounting/ledger/stats`, `cash/daily-balance`) usan SQL crudo vía la RPC `execute_readonly_query`. Esa función es `SECURITY DEFINER` → corre como superuser y **bypasa RLS**. Cualquier tenant puede leer agregados de cualquier otro.
+
+**Fix posible** (elegir uno):
+1. Agregar `AND org_id = '<user.org_id>'` al SQL crudo en ambos routes (quick, defensivo).
+2. Reescribir los 2 routes usando `.select()` de PostgREST con RLS nativo (más limpio, posiblemente menos performante).
+3. Modificar la RPC para que respete `auth.uid()` / tenant — romper AI Companion requiere cuidado.
+
+**Lint rule (pendiente)**:
+- [ ] ESLint rule o grep pre-commit: fallar si `createAdminClient` aparece fuera de `/api/auth/*`, `/api/cron/*`, `/api/webhooks/*` y la whitelist de Storage uploads.
 
 ### ⏸️ Pilar 3 — Helpers y tipos
 

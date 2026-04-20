@@ -25,17 +25,10 @@ export async function GET(request: Request) {
     const accountId = searchParams.get("accountId") || undefined
     const operationId = searchParams.get("operationId") || undefined
 
-    // Admin client para bypassear RLS
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    let adminSupabase: any
-    try {
-      adminSupabase = await createAdminClient()
-    } catch {
-      adminSupabase = supabase
-    }
-
-    // Query liviana — solo campos necesarios para la vista de Caja
-    let query = adminSupabase
+    // SaaS Pilar 2: RLS tenant_isolation en ledger_movements acota por org_id
+    // del JWT. No necesitamos admin client — el server client respeta la
+    // policy y el agency-filter post-query queda como defensa adicional.
+    let query = supabase
       .from("ledger_movements")
       .select(
         `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, seller_id, operation_id, affects_balance,
@@ -73,7 +66,7 @@ export async function GET(request: Request) {
     // Multi-tenant: movements con operation_id deben ser de agencias accesibles por el user.
     // Movements sin operation_id (journal entries manuales, cash movements puros) se dejan
     // pasar — su aislamiento efectivo requiere org_id en financial_accounts (pending P0).
-    const userAgencyIds = await getUserAgencyIds(adminSupabase, user.id, user.role as any)
+    const userAgencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
     if (userAgencyIds.length > 0) {
       filteredMovements = filteredMovements.filter((m: any) => {
         const opAgencyId = m.operations?.agency_id
