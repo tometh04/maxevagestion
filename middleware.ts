@@ -111,8 +111,10 @@ export async function middleware(req: NextRequest) {
   )
 
   // Refresh session if expired - required for Server Components
+  let authUserId: string | null = null
   try {
-    await supabase.auth.getUser()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    authUserId = authUser?.id ?? null
   } catch (error: unknown) {
     // Silenciar errores de refresh token inválido/no encontrado (normal cuando no hay sesión)
     const message = error instanceof Error ? error.message : ""
@@ -120,11 +122,46 @@ export async function middleware(req: NextRequest) {
     if (message.includes('Refresh Token') ||
         message.includes('JWT') ||
         status === 401) {
-      // No hacer nada, es normal cuando no hay sesión activa
       return response
     }
-    // Para otros errores, loguear como warning
     console.warn('Middleware auth error:', error)
+  }
+
+  // SaaS Pilar 3 — onboarding gate.
+  //
+  // Si el user autenticado todavía no tiene org_id, lo mandamos a
+  // /onboarding para completar el setup del tenant. Excepciones:
+  //   - la propia página /onboarding y sus endpoints
+  //   - /login, /auth, /api/auth (ciclo de auth)
+  //   - webhooks/public (ya excluidos arriba)
+  //
+  // Esto evita el edge case donde un user registrado queda sin tenant y
+  // llega a la app rompiendo queries que asumen org_id no-null.
+  const pathname = req.nextUrl.pathname
+  const isOnboardingAllowed =
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/api/onboarding") ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/api/auth") ||
+    pathname === "/logout"
+
+  if (authUserId && !isOnboardingAllowed) {
+    // Hacemos la verificación con el mismo client (hereda la sesión del JWT
+    // vía cookies). RLS sobre `users` permite al propio user leer su row.
+    const { data: userRow } = await (supabase.from("users") as any)
+      .select("org_id, is_active")
+      .eq("auth_id", authUserId)
+      .maybeSingle()
+
+    const orgId = (userRow as any)?.org_id as string | null | undefined
+    const isActive = (userRow as any)?.is_active !== false
+
+    if (isActive && userRow && !orgId) {
+      const url = req.nextUrl.clone()
+      url.pathname = "/onboarding"
+      return NextResponse.redirect(url)
+    }
   }
 
   return response
