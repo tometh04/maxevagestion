@@ -239,7 +239,7 @@ export function MarkPaidDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CheckCircle className="h-5 w-5 text-green-500" />
@@ -254,7 +254,8 @@ export function MarkPaidDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
+            <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
             {/* Resumen del pago */}
             <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
               <div className="grid grid-cols-2 gap-2 text-sm">
@@ -458,10 +459,11 @@ export function MarkPaidDialog({
               />
             </div>
 
+            </div>
             <DialogFooter>
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={() => onOpenChange(false)}
               >
                 Cancelar
