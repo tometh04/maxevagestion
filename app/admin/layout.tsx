@@ -16,7 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="min-h-screen">
       <header className="border-b bg-background">
         <div className="flex items-center gap-6 px-6 py-3">
-          <div className="font-semibold text-sm">MAXEVA Platform</div>
+          <div className="font-semibold text-sm">Vibook Platform</div>
           <nav className="flex items-center gap-4 text-sm">
             <Link href="/admin/orgs" className="hover:underline">Organizaciones</Link>
             <Link href="/admin/metrics" className="hover:underline">Métricas</Link>

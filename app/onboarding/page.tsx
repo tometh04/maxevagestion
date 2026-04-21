@@ -53,7 +53,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-6">
       <div className="w-full max-w-xl bg-background border rounded-lg p-6 space-y-6">
         <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">Bienvenido a MAXEVA</h1>
+          <h1 className="text-2xl font-semibold">Bienvenido a Vibook</h1>
           <p className="text-sm text-muted-foreground">
             Paso {step} de 2 — configuramos tu agencia en un minuto.
           </p>

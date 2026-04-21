@@ -2,7 +2,7 @@ import { Metadata } from "next"
 import { IntegrationsPageClient } from "@/components/integrations/integrations-page-client"
 
 export const metadata: Metadata = {
-  title: "Integraciones - MAXEVA GESTION",
+  title: "Integraciones - Vibook",
   description: "Gestiona las integraciones con servicios externos",
 }
 

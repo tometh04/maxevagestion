@@ -192,7 +192,7 @@ export default function AcceptInviteClient() {
           <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
             <CheckCircle2 className="h-6 w-6 text-primary" />
           </div>
-          <CardTitle className="text-2xl">¡Bienvenido a MAXEVA!</CardTitle>
+          <CardTitle className="text-2xl">¡Bienvenido a Vibook!</CardTitle>
           <CardDescription>
             {userName ? `Hola ${userName}, c` : "C"}rea tu contraseña para acceder al sistema
           </CardDescription>

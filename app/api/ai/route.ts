@@ -383,7 +383,7 @@ GROUP BY fa.currency
 10. **Tipo de Operación ASSISTANCE:** Se agregó 'ASSISTANCE' (Asistencia al Viajero) como tipo de operación válido
 `
 
-const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de MAXEVA GESTION para agencias de viajes.
+const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de Vibook para agencias de viajes.
 
 🎯 TU PROPÓSITO:
 Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del sistema mediante consultas SQL directas.

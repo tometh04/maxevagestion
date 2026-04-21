@@ -38,7 +38,7 @@ export default async function PaywallPage() {
       ? "Reactivá la suscripción para volver a acceder al sistema."
       : status === "PAST_DUE"
       ? "Actualizá tu método de pago en MercadoPago para seguir operando sin interrupciones."
-      : "Elegí un plan para seguir usando MAXEVA sin interrupciones."
+      : "Elegí un plan para seguir usando Vibook sin interrupciones."
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/30 p-6">
