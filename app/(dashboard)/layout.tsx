@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/sidebar"
 import { BrandProvider } from "@/components/brand-provider"
 import { assertSubscriptionActive } from "@/lib/billing/guard"
+import { SubscriptionBanner } from "@/components/billing/subscription-banner"
+import { createAdminClient } from "@/lib/supabase/server"
 
 export default async function DashboardLayout({
   children,
@@ -27,6 +29,15 @@ export default async function DashboardLayout({
     id: ua.agency_id,
     name: ua.agencies?.name || "Sin nombre",
   }))
+
+  // Banner de suscripción (TRIALING / PAST_DUE / CANCELLED con acceso).
+  // Reutiliza la query del guard pero fetcheamos fresh para tener trial_ends_at.
+  const admin = createAdminClient() as any
+  const { data: orgBanner } = await admin
+    .from("organizations")
+    .select("subscription_status, current_period_ends_at, trial_ends_at")
+    .eq("id", user.org_id)
+    .maybeSingle()
 
   return (
     <BrandProvider>
@@ -50,6 +61,7 @@ export default async function DashboardLayout({
         />
         <SidebarInset className="min-w-0">
           <SiteHeader />
+          {orgBanner && <SubscriptionBanner {...orgBanner} />}
           <TrialBanner orgId={user.org_id ?? null} />
           {process.env.DISABLE_AUTH === "true" && (
             <div className="bg-yellow-500 text-yellow-950 text-center text-xs py-1 px-4 font-medium">
