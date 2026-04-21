@@ -24,7 +24,7 @@ export default async function OnboardingBillingPage() {
   return (
     <div className="min-h-screen flex flex-col">
       <header className="flex items-center justify-between p-6 max-w-6xl mx-auto w-full">
-        <Image src="/vibook-logo.jpeg" alt="Vibook" width={140} height={42} priority />
+        <Image src="/vibook-logo.png" alt="Vibook" width={140} height={32} priority className="h-auto w-auto max-h-10 object-contain" />
         <form action="/api/auth/logout" method="POST">
           <button className="text-sm text-muted-foreground hover:underline">
             Cerrar sesión
