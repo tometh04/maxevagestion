@@ -79,8 +79,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Tenant sin billing_email configurado" }, { status: 400 })
   }
 
-  // Normalizar APP_URL con https:// si falta
-  const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  // Normalizar APP_URL: trim (Railway a veces deja espacios) + agregar https:// si falta
+  const rawAppUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai").trim()
   const appUrl = /^https?:\/\//i.test(rawAppUrl) ? rawAppUrl : `https://${rawAppUrl}`
   const backUrl = `${appUrl}/onboarding/billing/return`
 
