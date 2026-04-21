@@ -47,9 +47,17 @@ function daysBetween(from: Date, to: Date): number {
   return Math.ceil((to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24))
 }
 
-export default async function SubscriptionPage() {
+export default async function SubscriptionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ checkout?: string; error?: string }>
+}) {
   const { user } = await getCurrentUser()
   if (!user) redirect("/login")
+
+  const { checkout, error: errorParam } = await searchParams
+  const checkoutFailed = checkout === "failed"
+  const checkoutError = errorParam ? decodeURIComponent(errorParam) : null
 
   if (!user.org_id) {
     return (
@@ -96,6 +104,27 @@ export default async function SubscriptionPage() {
         <h1 className="text-2xl font-semibold tracking-tight">Suscripción</h1>
         <p className="text-sm text-muted-foreground">Gestioná tu plan y facturación</p>
       </div>
+
+      {checkoutFailed && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="py-4">
+            <div className="flex items-start gap-3">
+              <div className="text-red-600 mt-0.5">⚠️</div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-red-900">
+                  El checkout con MercadoPago falló
+                </p>
+                {checkoutError && (
+                  <p className="text-xs text-red-700 break-words">{checkoutError}</p>
+                )}
+                <p className="text-xs text-red-700">
+                  Tu cuenta está activa con 7 días de prueba. Elegí un plan abajo para reintentar el pago y activar la suscripción.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

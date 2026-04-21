@@ -53,13 +53,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Tenant sin billing_email configurado" }, { status: 400 })
   }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  // NEXT_PUBLIC_APP_URL debe ser una URL absoluta. Si Railway la tiene sin
+  // esquema (ej. "app.vibook.ai"), MP rechaza con "Invalid value for back_url".
+  // Normalizamos agregando https:// si falta.
+  const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
+  const appUrl = /^https?:\/\//i.test(rawAppUrl) ? rawAppUrl : `https://${rawAppUrl}`
   // back_url de MP preapproval: usamos la raíz del dominio. MP valida que la
   // URL sea pública y accesible; paths con auth-middleware (ej.
   // /settings/subscription) pueden devolver 307→/login y MP los rechaza con
   // "Invalid value for back_url, must be a valid URL". La raíz redirige via
   // middleware a /login → /dashboard si hay sesión, sin bouncing de MP.
   const backUrl = appUrl
+
+  // Fail-fast si backUrl no es una URL válida — mejor que empujar basura a MP
+  // y recibir un 400 genérico.
+  try {
+    const parsed = new URL(backUrl)
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error(`protocol inválido: ${parsed.protocol}`)
+    }
+  } catch (err: any) {
+    console.error("checkout: backUrl inválido", { rawAppUrl, backUrl, err: err?.message })
+    return NextResponse.json(
+      { error: `Configuración inválida: NEXT_PUBLIC_APP_URL debe ser URL absoluta (recibido: "${rawAppUrl}")` },
+      { status: 500 }
+    )
+  }
+
+  console.log("[checkout] MP preapproval request", {
+    orgId,
+    plan,
+    payerEmail,
+    backUrl,
+    rawAppUrl,
+  })
 
   let preapproval
   try {
@@ -70,9 +97,12 @@ export async function POST(request: Request) {
       backUrl,
     })
   } catch (err: any) {
-    console.error("checkout: MP createPreapproval failed", err?.message || err)
+    const mpMsg = err?.message || String(err)
+    console.error("checkout: MP createPreapproval failed", mpMsg)
+    // Bubble-up el mensaje real de MP para que no haya que mirar logs de Railway
+    // para cada debug. Incluye el status + body que MP devolvió.
     return NextResponse.json(
-      { error: "No se pudo iniciar el checkout con MercadoPago" },
+      { error: `MercadoPago rechazó el checkout: ${mpMsg}` },
       { status: 502 }
     )
   }

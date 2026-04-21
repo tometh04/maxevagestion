@@ -98,11 +98,13 @@ export function RegisterForm({
           window.location.href = checkoutPayload.init_point
           return
         }
-        // Soft fail: dejamos al user en el dashboard con banner de pending.
-        // Puede reintentar el checkout desde Settings → Subscription.
+        // Soft fail: mandamos al user directo al paywall (Settings → Suscripción)
+        // con el error real de MP visible. Ahí ve los planes y puede reintentar
+        // el botón "Elegir este plan" sin salir del sistema.
         console.error("checkout init failed", checkoutPayload)
+        const errMsg = checkoutPayload?.error || "No se pudo iniciar el checkout con MercadoPago"
         router.refresh()
-        router.push("/dashboard?checkout=pending")
+        router.push(`/settings/subscription?checkout=failed&error=${encodeURIComponent(errMsg)}`)
         return
       }
 
