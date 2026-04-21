@@ -123,5 +123,11 @@ export function formatArs(amount: number): string {
   })
 }
 
-/** URL de contacto comercial para planes Enterprise/custom. */
-export const SALES_CONTACT_URL = "mailto:hola@vibook.ai?subject=Vibook%20Enterprise"
+/**
+ * URL de contacto comercial para planes Enterprise/custom.
+ * WhatsApp con mensaje prellenado. Usa el formato wa.me/<numero>?text=<encoded>.
+ * El número es el del responsable comercial — si cambia, actualizar acá.
+ */
+export const SALES_CONTACT_URL =
+  "https://wa.me/5492954602920?text=" +
+  encodeURIComponent("Hola! Quiero más información sobre el plan Enterprise de Vibook")

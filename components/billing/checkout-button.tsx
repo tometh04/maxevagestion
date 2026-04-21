@@ -9,11 +9,13 @@ export function CheckoutButton({ plan }: { plan: PlanId }) {
   const [error, setError] = useState<string | null>(null)
   const planDef = PLANS[plan]
 
-  // Enterprise / contact-sales → mailto directo en vez de checkout MP.
+  // Enterprise / contact-sales → WhatsApp directo en vez de checkout MP.
   if (planDef?.contactSalesOnly) {
     return (
       <Button asChild className="w-full">
-        <a href={SALES_CONTACT_URL}>Hablar con ventas</a>
+        <a href={SALES_CONTACT_URL} target="_blank" rel="noopener noreferrer">
+          Hablar por WhatsApp
+        </a>
       </Button>
     )
   }
