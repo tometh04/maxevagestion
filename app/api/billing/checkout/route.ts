@@ -54,7 +54,11 @@ export async function POST(request: Request) {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
-  const backUrl = `${appUrl}/settings/subscription?checkout=done`
+  // MP rechaza back_urls con query strings en preapproval API ("Invalid value
+  // for back_url, must be a valid URL"). Mandamos la URL limpia; la detección
+  // del estado de la suscripción tras el retorno la hace el webhook MP, no
+  // la redirect.
+  const backUrl = `${appUrl}/settings/subscription`
 
   let preapproval
   try {
