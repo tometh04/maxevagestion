@@ -7,11 +7,13 @@
  *     a la que redirige al comprador).
  *   - verifyWebhookSignature: valida el header x-signature del webhook.
  *
- * Env vars requeridas (tomi las setea en Vercel):
- *   MP_ACCESS_TOKEN       — Access token de la cuenta MP (Bearer).
- *   MP_WEBHOOK_SECRET     — Secret para verificar webhooks (desde panel MP).
- *   NEXT_PUBLIC_APP_URL   — URL base de la app (ej: https://app.vibook.ai)
- *                           usada para back_url del preapproval.
+ * Env vars requeridas (Railway / Vercel):
+ *   MERCADOPAGO_ACCESS_TOKEN   — Access token de la cuenta MP (Bearer).
+ *     Alias legacy soportado: MP_ACCESS_TOKEN.
+ *   MERCADOPAGO_WEBHOOK_SECRET — Secret para verificar firma del webhook.
+ *     Alias legacy soportado: MP_WEBHOOK_SECRET.
+ *   NEXT_PUBLIC_APP_URL        — URL base de la app (ej: https://app.vibook.ai)
+ *                                usada para back_url del preapproval.
  */
 
 import { createHmac, timingSafeEqual } from "node:crypto"
@@ -20,10 +22,24 @@ import { PLANS } from "./plans"
 
 const MP_API = "https://api.mercadopago.com"
 
-function mustEnv(key: string): string {
-  const v = process.env[key]
-  if (!v) throw new Error(`Env var ${key} requerida para MercadoPago`)
+/**
+ * Access token de MP. Railway lo tiene como MERCADOPAGO_ACCESS_TOKEN;
+ * code antiguo lo referenciaba como MP_ACCESS_TOKEN. Aceptamos ambos
+ * para no depender del nombre que use el host.
+ */
+function mpAccessToken(): string {
+  const v = process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN
+  if (!v) {
+    throw new Error(
+      "Env var MERCADOPAGO_ACCESS_TOKEN (o alias MP_ACCESS_TOKEN) requerida para MercadoPago"
+    )
+  }
   return v
+}
+
+/** Secret opcional del webhook MP. Undefined si no está seteado. */
+function mpWebhookSecret(): string | undefined {
+  return process.env.MERCADOPAGO_WEBHOOK_SECRET || process.env.MP_WEBHOOK_SECRET || undefined
 }
 
 export interface CreatePreapprovalParams {
@@ -64,7 +80,7 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
   const res = await fetch(`${MP_API}/preapproval`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${mustEnv("MP_ACCESS_TOKEN")}`,
+      Authorization: `Bearer ${mpAccessToken()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(body),
@@ -79,7 +95,7 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
 
 export async function fetchPreapproval(preapprovalId: string): Promise<any> {
   const res = await fetch(`${MP_API}/preapproval/${preapprovalId}`, {
-    headers: { Authorization: `Bearer ${mustEnv("MP_ACCESS_TOKEN")}` },
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
   })
   if (!res.ok) {
     const text = await res.text()
@@ -92,7 +108,7 @@ export async function cancelPreapproval(preapprovalId: string): Promise<void> {
   const res = await fetch(`${MP_API}/preapproval/${preapprovalId}`, {
     method: "PUT",
     headers: {
-      Authorization: `Bearer ${mustEnv("MP_ACCESS_TOKEN")}`,
+      Authorization: `Bearer ${mpAccessToken()}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ status: "cancelled" }),
@@ -116,9 +132,11 @@ export function verifyWebhookSignature(params: {
   xRequestId: string | null
   dataId: string | null
 }): boolean {
-  const secret = process.env.MP_WEBHOOK_SECRET
+  const secret = mpWebhookSecret()
   if (!secret) {
-    console.warn("MP_WEBHOOK_SECRET no configurado — aceptando webhook sin verificar")
+    console.warn(
+      "MERCADOPAGO_WEBHOOK_SECRET (o alias MP_WEBHOOK_SECRET) no configurado — aceptando webhook sin verificar"
+    )
     return true
   }
   if (!params.xSignature || !params.dataId) return false
