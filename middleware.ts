@@ -153,17 +153,17 @@ export async function middleware(req: NextRequest) {
 
   const isPaywallAllowed =
     isOnboardingAllowed ||
-    pathname.startsWith("/paywall") ||
+    pathname.startsWith("/onboarding/billing") ||
+    pathname.startsWith("/paywall") || // legacy route, mantener por compat
     pathname.startsWith("/settings/subscription") ||
     pathname.startsWith("/api/billing") ||
-    // Platform admins (Tomi) nunca quedan bloqueados — pueden diagnosticar
-    // la org suspendida.
+    pathname.startsWith("/api/webhooks") ||
+    pathname.startsWith("/legal") ||
+    // Platform admins (Tomi) nunca quedan bloqueados
     pathname.startsWith("/admin") ||
     pathname.startsWith("/api/admin")
 
   if (authUserId && !isOnboardingAllowed) {
-    // Hacemos la verificación con el mismo client (hereda la sesión del JWT
-    // vía cookies). RLS sobre `users` permite al propio user leer su row.
     const { data: userRow } = await (supabase.from("users") as any)
       .select("org_id, is_active")
       .eq("auth_id", authUserId)
@@ -172,10 +172,7 @@ export async function middleware(req: NextRequest) {
     const orgId = (userRow as any)?.org_id as string | null | undefined
     const isActive = (userRow as any)?.is_active !== false
 
-    if (!isActive) {
-      // User desactivado — dejamos pasar al logout y login, el resto redirige.
-      return response
-    }
+    if (!isActive) return response
 
     if (userRow && !orgId) {
       const url = req.nextUrl.clone()
@@ -183,21 +180,33 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(url)
     }
 
-    // Gate de paywall: consultamos el estado de la sub del tenant.
+    // Paywall gate — lógica debe mantenerse alineada con lib/billing/guard.ts.
+    // No podemos importarla acá (middleware es Edge / no puede hacer I/O
+    // complejo o importar server-side code), así que duplicamos la regla.
     if (orgId && !isPaywallAllowed) {
       const { data: orgRow } = await (supabase.from("organizations") as any)
-        .select("subscription_status, trial_ends_at")
+        .select("subscription_status, current_period_ends_at, trial_ends_at")
         .eq("id", orgId)
         .maybeSingle()
 
       const status = (orgRow as any)?.subscription_status as string | undefined
-      const trialEndsAt = (orgRow as any)?.trial_ends_at as string | null | undefined
-      const trialExpired = status === "TRIAL" && trialEndsAt && new Date(trialEndsAt) < new Date()
-      const blocked = status === "SUSPENDED" || status === "CANCELLED" || trialExpired
+      const periodEnds = (orgRow as any)?.current_period_ends_at as string | null | undefined
+      const trialEnds = (orgRow as any)?.trial_ends_at as string | null | undefined
+      const now = Date.now()
+
+      let blocked = false
+      if (status === "SUSPENDED" || status === "PENDING_PAYMENT") {
+        blocked = true
+      } else if (status === "CANCELLED") {
+        blocked = !periodEnds || new Date(periodEnds).getTime() <= now
+      } else if (status === "TRIAL") {
+        // Legacy pre-mig157
+        blocked = !trialEnds || new Date(trialEnds).getTime() <= now
+      }
 
       if (blocked) {
         const url = req.nextUrl.clone()
-        url.pathname = "/paywall"
+        url.pathname = "/onboarding/billing"
         return NextResponse.redirect(url)
       }
     }

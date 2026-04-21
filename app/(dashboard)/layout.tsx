@@ -9,12 +9,17 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { BrandProvider } from "@/components/brand-provider"
+import { assertSubscriptionActive } from "@/lib/billing/guard"
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // Capa B del defense-in-depth: bloquea acceso si no hay suscripción activa.
+  // Independiente del middleware (que puede bypassearse via CVE-2025-29927).
+  await assertSubscriptionActive()
+
   const { user } = await getCurrentUser()
   const userAgencies = await getUserAgencies(user.id)
 
