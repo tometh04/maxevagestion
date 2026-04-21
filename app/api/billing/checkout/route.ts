@@ -7,11 +7,16 @@ import { PLANS } from "@/lib/billing/plans"
 
 /**
  * POST /api/billing/checkout
- * Body: { plan: "STARTER" | "PRO" | "ENTERPRISE" }
+ * Body: { plan: "STARTER" | "PRO" | "ENTERPRISE", reactivate?: boolean }
  *
- * Crea una preapproval (suscripción mensual) en MP para la org del user
- * y devuelve `init_point` (URL a la que redirigir para completar el pago).
- * Loguea el checkout en billing_events.
+ * Crea una preapproval (suscripción mensual) en MP para la org del user y
+ * devuelve `init_point` (URL a la que redirigir para completar el pago).
+ *
+ * - Si la org ya tiene has_used_trial=false → MP con free_trial 7 días
+ * - Si has_used_trial=true y no es reactivación → no incluye trial
+ * - Si reactivate=true → permite re-checkout para orgs CANCELLED, con
+ *   start_date calculado para no cobrar doble si current_period_ends_at es futuro
+ * - 409 si ya hay un preapproval activo y no es reactivación
  */
 export async function POST(request: Request) {
   const { user } = await getCurrentUser()
@@ -22,13 +27,12 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({}))
   const plan = body.plan as PlanId
+  const isReactivation = body.reactivate === true
+
   if (!plan || !PLANS[plan]) {
     return NextResponse.json({ error: "plan inválido" }, { status: 400 })
   }
 
-  // Planes contact-sales-only (Enterprise) no pasan por MP: se contactan por
-  // mailto desde la UI. Rechazamos el request para evitar un createPreapproval
-  // con priceArsMonthly null.
   const planDef = PLANS[plan]
   if (planDef.contactSalesOnly || planDef.priceArsMonthly === null) {
     return NextResponse.json(
@@ -40,7 +44,10 @@ export async function POST(request: Request) {
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
-    .select("id, name, billing_email, plan, subscription_status, mp_preapproval_id")
+    .select(
+      "id, name, billing_email, plan, subscription_status, " +
+      "mp_preapproval_id, has_used_trial, current_period_ends_at"
+    )
     .eq("id", orgId)
     .single()
 
@@ -48,25 +55,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Organización no encontrada" }, { status: 404 })
   }
 
+  // Guard: ya hay preapproval activo (salvo que sea reactivación)
+  if (isReactivation) {
+    if (org.subscription_status !== "CANCELLED") {
+      return NextResponse.json(
+        { error: "Solo se puede reactivar una suscripción cancelada" },
+        { status: 400 }
+      )
+    }
+    // mp_preapproval_id viejo lo ignoramos — MP ya lo cerró
+  } else if (org.mp_preapproval_id) {
+    return NextResponse.json(
+      {
+        error: "Ya tenés una suscripción activa. Gestionala desde Settings > Suscripción.",
+        existing_preapproval: true,
+      },
+      { status: 409 }
+    )
+  }
+
   const payerEmail = org.billing_email || user.email
   if (!payerEmail) {
     return NextResponse.json({ error: "Tenant sin billing_email configurado" }, { status: 400 })
   }
 
-  // NEXT_PUBLIC_APP_URL debe ser una URL absoluta. Si Railway la tiene sin
-  // esquema (ej. "app.vibook.ai"), MP rechaza con "Invalid value for back_url".
-  // Normalizamos agregando https:// si falta.
+  // Normalizar APP_URL con https:// si falta
   const rawAppUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
   const appUrl = /^https?:\/\//i.test(rawAppUrl) ? rawAppUrl : `https://${rawAppUrl}`
-  // back_url de MP preapproval: usamos la raíz del dominio. MP valida que la
-  // URL sea pública y accesible; paths con auth-middleware (ej.
-  // /settings/subscription) pueden devolver 307→/login y MP los rechaza con
-  // "Invalid value for back_url, must be a valid URL". La raíz redirige via
-  // middleware a /login → /dashboard si hay sesión, sin bouncing de MP.
-  const backUrl = appUrl
+  const backUrl = `${appUrl}/onboarding/billing/return`
 
-  // Fail-fast si backUrl no es una URL válida — mejor que empujar basura a MP
-  // y recibir un 400 genérico.
   try {
     const parsed = new URL(backUrl)
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
@@ -75,17 +92,25 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error("checkout: backUrl inválido", { rawAppUrl, backUrl, err: err?.message })
     return NextResponse.json(
-      { error: `Configuración inválida: NEXT_PUBLIC_APP_URL debe ser URL absoluta (recibido: "${rawAppUrl}")` },
+      { error: `Configuración inválida: NEXT_PUBLIC_APP_URL debe ser URL absoluta` },
       { status: 500 }
     )
   }
 
+  // Calcular start_date para reactivaciones (no cobrar doble)
+  let startDate: string | undefined = undefined
+  if (isReactivation && org.current_period_ends_at) {
+    const periodEnd = new Date(org.current_period_ends_at)
+    if (periodEnd.getTime() > Date.now()) {
+      // Todavía tiene período pagado — MP arranca a cobrar después del end.
+      const startDateObj = new Date(periodEnd.getTime() + 86_400_000) // +1 día
+      startDate = startDateObj.toISOString()
+    }
+  }
+
+  const includeFreeTrial = !org.has_used_trial
   console.log("[checkout] MP preapproval request", {
-    orgId,
-    plan,
-    payerEmail,
-    backUrl,
-    rawAppUrl,
+    orgId, plan, payerEmail, backUrl, isReactivation, includeFreeTrial, startDate,
   })
 
   let preapproval
@@ -95,20 +120,19 @@ export async function POST(request: Request) {
       plan,
       payerEmail,
       backUrl,
+      includeFreeTrial,
+      startDate,
     })
   } catch (err: any) {
     const mpMsg = err?.message || String(err)
     console.error("checkout: MP createPreapproval failed", mpMsg)
-    // Bubble-up el mensaje real de MP para que no haya que mirar logs de Railway
-    // para cada debug. Incluye el status + body que MP devolvió.
     return NextResponse.json(
       { error: `MercadoPago rechazó el checkout: ${mpMsg}` },
       { status: 502 }
     )
   }
 
-  // Log del intento para reconciliación futura (no actualizamos plan todavía —
-  // eso lo hace el webhook cuando MP confirma el primer pago).
+  // Log del intento para auditoría
   await admin.from("billing_events").insert({
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
@@ -121,14 +145,26 @@ export async function POST(request: Request) {
       init_point: preapproval.init_point,
       payer_email: payerEmail,
       initiated_by_user_id: user.id,
+      included_free_trial: includeFreeTrial,
+      is_reactivation: isReactivation,
+      start_date: startDate,
     },
   })
 
-  // Guardamos el preapproval_id en la org para correlación futura.
-  await admin
-    .from("organizations")
-    .update({ mp_preapproval_id: preapproval.id })
-    .eq("id", orgId)
+  // Update org. Marcamos has_used_trial=true siempre (aunque el user no complete)
+  // para prevenir exploit de cancel+re-trial. Si es reactivación, reseteamos a
+  // PENDING_PAYMENT hasta que MP confirme.
+  const orgUpdates: Record<string, any> = {
+    mp_preapproval_id: preapproval.id,
+    has_used_trial: true,
+  }
+  if (isReactivation) {
+    orgUpdates.subscription_status = "PENDING_PAYMENT"
+  }
+  await admin.from("organizations").update(orgUpdates).eq("id", orgId)
 
-  return NextResponse.json({ init_point: preapproval.init_point, preapproval_id: preapproval.id })
+  return NextResponse.json({
+    init_point: preapproval.init_point,
+    preapproval_id: preapproval.id,
+  })
 }

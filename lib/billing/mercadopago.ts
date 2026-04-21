@@ -28,6 +28,12 @@ const MP_API = "https://api.mercadopago.com"
  * para no depender del nombre que use el host.
  */
 function mpAccessToken(): string {
+  const useSandbox = process.env.MP_USE_SANDBOX === "true"
+  if (useSandbox) {
+    const v = process.env.MERCADOPAGO_ACCESS_TOKEN_SANDBOX
+    if (!v) throw new Error("MP_USE_SANDBOX=true pero MERCADOPAGO_ACCESS_TOKEN_SANDBOX no está seteado")
+    return v
+  }
   const v = process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN
   if (!v) {
     throw new Error(
@@ -48,6 +54,10 @@ export interface CreatePreapprovalParams {
   payerEmail: string
   /** URL absoluta a la que redirigir después del pago. */
   backUrl: string
+  /** Si true, incluye free_trial 7 días. Default true para flow estándar. */
+  includeFreeTrial?: boolean
+  /** Opcional: start_date ISO para reactivaciones. MP no cobra antes de esta fecha. */
+  startDate?: string
 }
 
 export interface PreapprovalResult {
@@ -63,17 +73,27 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
   }
 
+  const includeFreeTrial = params.includeFreeTrial ?? true
+
+  const autoRecurring: any = {
+    frequency: 1,
+    frequency_type: "months",
+    transaction_amount: plan.priceArsMonthly,
+    currency_id: "ARS",
+  }
+  if (includeFreeTrial) {
+    autoRecurring.free_trial = { frequency: 7, frequency_type: "days" }
+  }
+  if (params.startDate) {
+    autoRecurring.start_date = params.startDate
+  }
+
   const body = {
     reason: `Vibook — plan ${plan.name}`,
     external_reference: params.orgId,
     payer_email: params.payerEmail,
     back_url: params.backUrl,
-    auto_recurring: {
-      frequency: 1,
-      frequency_type: "months",
-      transaction_amount: plan.priceArsMonthly,
-      currency_id: "ARS",
-    },
+    auto_recurring: autoRecurring,
     status: "pending",
   }
 
@@ -104,7 +124,7 @@ export async function fetchPreapproval(preapprovalId: string): Promise<any> {
   return await res.json()
 }
 
-export async function cancelPreapproval(preapprovalId: string): Promise<void> {
+export async function cancelPreapproval(preapprovalId: string): Promise<any> {
   const res = await fetch(`${MP_API}/preapproval/${preapprovalId}`, {
     method: "PUT",
     headers: {
@@ -117,6 +137,8 @@ export async function cancelPreapproval(preapprovalId: string): Promise<void> {
     const text = await res.text()
     throw new Error(`MP cancel preapproval failed (${res.status}): ${text}`)
   }
+  if (res.status === 404) return null
+  return await res.json()
 }
 
 /**
@@ -134,8 +156,14 @@ export function verifyWebhookSignature(params: {
 }): boolean {
   const secret = mpWebhookSecret()
   if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "MP webhook rejected: MERCADOPAGO_WEBHOOK_SECRET no configurado en producción"
+      )
+      return false
+    }
     console.warn(
-      "MERCADOPAGO_WEBHOOK_SECRET (o alias MP_WEBHOOK_SECRET) no configurado — aceptando webhook sin verificar"
+      "MERCADOPAGO_WEBHOOK_SECRET (o alias MP_WEBHOOK_SECRET) no configurado — dev mode, aceptando sin verificar"
     )
     return true
   }

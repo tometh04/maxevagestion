@@ -86,30 +86,14 @@ export function RegisterForm({
       })
       if (signInErr) throw new Error(signInErr.message)
 
+      // Siempre al paywall: el user elige el plan ahí. Si wantsPro venía del CTA
+      // de la landing, lo usamos solo para telemetría/UX (futuro). El checkout
+      // real lo lanza el user al apretar "Elegir este plan" en /onboarding/billing.
       if (wantsPro) {
-        // Viene del CTA PRO: lanzamos preapproval MP y mandamos al init_point.
-        const checkoutRes = await fetch("/api/billing/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plan: "PRO" }),
-        })
-        const checkoutPayload = await checkoutRes.json().catch(() => ({}))
-        if (checkoutRes.ok && checkoutPayload?.init_point) {
-          window.location.href = checkoutPayload.init_point
-          return
-        }
-        // Soft fail: mandamos al user directo al paywall (Settings → Suscripción)
-        // con el error real de MP visible. Ahí ve los planes y puede reintentar
-        // el botón "Elegir este plan" sin salir del sistema.
-        console.error("checkout init failed", checkoutPayload)
-        const errMsg = checkoutPayload?.error || "No se pudo iniciar el checkout con MercadoPago"
-        router.refresh()
-        router.push(`/settings/subscription?checkout=failed&error=${encodeURIComponent(errMsg)}`)
-        return
+        console.log("[register] wantsPro=true, redirigiendo a paywall")
       }
-
       router.refresh()
-      router.push("/dashboard")
+      router.push("/onboarding/billing")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al registrar")
     } finally {
