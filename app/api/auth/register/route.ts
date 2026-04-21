@@ -121,7 +121,11 @@ export async function POST(req: Request) {
       slug = `${baseSlug}-${attempt}`
     }
 
-    // 4. Crear organization (STARTER, TRIAL 7 dias)
+    // 4. Crear organization (PRO, TRIAL 7 días — alineado con landing).
+    // La landing promete "PRO $119.000 con 7 días gratis", así que los
+    // nuevos signups arrancan directamente en PRO con trial. Al día 8
+    // MP cobra el primer ciclo (preapproval que creó el flow ?plan=pro
+    // del register-form). Límites unlimited durante trial y después.
     const trialEndsAt = new Date()
     trialEndsAt.setDate(trialEndsAt.getDate() + 7)
 
@@ -130,13 +134,13 @@ export async function POST(req: Request) {
         name: companyName,
         slug,
         owner_id: authData.user.id,
-        plan: "STARTER",
+        plan: "PRO",
         subscription_status: "TRIAL",
         trial_ends_at: trialEndsAt.toISOString(),
         billing_email: email,
-        max_users: 5,
-        max_agencies: 2,
-        max_operations_per_month: 200,
+        max_users: 999,
+        max_agencies: 99,
+        max_operations_per_month: 99999,
       })
       .select()
       .single()

@@ -43,9 +43,12 @@ export interface PreapprovalResult {
 export async function createPreapproval(params: CreatePreapprovalParams): Promise<PreapprovalResult> {
   const plan = PLANS[params.plan]
   if (!plan) throw new Error(`Plan inválido: ${params.plan}`)
+  if (plan.priceArsMonthly === null || plan.contactSalesOnly) {
+    throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
+  }
 
   const body = {
-    reason: `MAXEVA — plan ${plan.name}`,
+    reason: `Vibook — plan ${plan.name}`,
     external_reference: params.orgId,
     payer_email: params.payerEmail,
     back_url: params.backUrl,

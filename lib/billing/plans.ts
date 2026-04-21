@@ -4,8 +4,12 @@
  * Fuente única de verdad para precios, límites y features por plan.
  * La tabla `organizations.plan` referencia uno de estos `id`.
  *
- * Los precios están en ARS (MercadoPago opera en moneda local). Cualquier
- * cambio acá se refleja en la UI de /settings/subscription y en el checkout.
+ * Alineado con la pricing de la landing (vibook.ai). Dos planes visibles:
+ *   - PRO — $119.000 ARS/mes, 7 días trial gratis (cobro por MercadoPago).
+ *   - Enterprise — a consultar, incluye bot de ads → CRM.
+ *
+ * STARTER queda en el catálogo solo por backward compat con orgs antiguos
+ * que tengan ese valor en `plan`. No se ofrece como opción de compra.
  */
 
 export type PlanId = "STARTER" | "PRO" | "ENTERPRISE"
@@ -14,23 +18,32 @@ export interface PlanDefinition {
   id: PlanId
   name: string
   description: string
-  /** Precio mensual en ARS (pesos completos, la integración MP lo usa como es). */
-  priceArsMonthly: number
+  /**
+   * Precio mensual en ARS. `null` para planes contact-sales-only (Enterprise).
+   * MP opera en ARS, así que este valor va tal cual al createPreapproval.
+   */
+  priceArsMonthly: number | null
+  /** Texto mostrado cuando `priceArsMonthly` es null. */
+  priceLabel?: string
+  /** Días de trial al arrancar. `null` = sin trial. */
+  trialDays?: number | null
   limits: {
     maxUsers: number
     maxAgencies: number
     maxOperationsPerMonth: number
   }
   features: string[]
-  /** Si `true`, el plan no se puede comprar self-serve (contacto comercial). */
+  /** Si `true`, la UI muestra "Hablar con ventas" (mailto) en vez del checkout MP. */
   contactSalesOnly?: boolean
+  /** Si `true`, no se ofrece en `/settings/subscription` (legacy). */
+  hidden?: boolean
 }
 
 export const PLANS: Record<PlanId, PlanDefinition> = {
   STARTER: {
     id: "STARTER",
     name: "Starter",
-    description: "Para agencias que recién empiezan.",
+    description: "Plan legacy — no disponible para nuevos signups.",
     priceArsMonthly: 29900,
     limits: {
       maxUsers: 3,
@@ -41,50 +54,61 @@ export const PLANS: Record<PlanId, PlanDefinition> = {
       "Hasta 3 usuarios",
       "1 agencia",
       "50 operaciones/mes",
-      "CRM + operaciones + contabilidad básica",
-      "Soporte por email",
     ],
+    hidden: true,
   },
   PRO: {
     id: "PRO",
-    name: "Pro",
-    description: "Para agencias consolidadas con varias sucursales.",
-    priceArsMonthly: 79900,
-    limits: {
-      maxUsers: 10,
-      maxAgencies: 3,
-      maxOperationsPerMonth: 500,
-    },
-    features: [
-      "Hasta 10 usuarios",
-      "3 agencias",
-      "500 operaciones/mes",
-      "Integración AFIP, facturación electrónica",
-      "WhatsApp Control (1 número)",
-      "Soporte prioritario",
-    ],
-  },
-  ENTERPRISE: {
-    id: "ENTERPRISE",
-    name: "Enterprise",
-    description: "Operaciones de gran volumen con necesidades a medida.",
-    priceArsMonthly: 199900,
+    name: "PRO",
+    description: "Todo lo que necesitás para operar una agencia.",
+    priceArsMonthly: 119000,
+    trialDays: 7,
     limits: {
       maxUsers: 999,
       maxAgencies: 99,
       maxOperationsPerMonth: 99999,
     },
     features: [
-      "Usuarios, agencias y operaciones ilimitados (en la práctica)",
-      "WhatsApp Control multi-número",
-      "Integraciones a medida",
-      "Soporte dedicado + SLA",
+      "Usuarios ilimitados",
+      "Operaciones y clientes ilimitados",
+      "CRM con pipeline Kanban",
+      "Facturación electrónica AFIP self-serve",
+      "Emilia IA — cotizaciones automáticas",
+      "WhatsApp integrado (multi-dispositivo)",
+      "Dashboard multi-agencia",
+      "Contabilidad automática + reportes",
+      "Comisiones de vendedores configurables",
+      "Alertas automáticas de pagos y viajes",
+      "Exportación total de tus datos",
+      "Soporte prioritario",
     ],
-    contactSalesOnly: false,
+  },
+  ENTERPRISE: {
+    id: "ENTERPRISE",
+    name: "Enterprise",
+    description: "Para agencias que necesitan automatización total.",
+    priceArsMonthly: null,
+    priceLabel: "Consultar",
+    limits: {
+      maxUsers: 999,
+      maxAgencies: 99,
+      maxOperationsPerMonth: 99999,
+    },
+    features: [
+      "Todo lo de PRO",
+      "Bot de automatización Meta/Google Ads → CRM",
+      "Webhook dedicado para tus fuentes de leads",
+      "Onboarding 1-a-1 y migración asistida",
+      "SLA garantizado + soporte 24/7",
+      "Roles y permisos a medida",
+      "API completa para integraciones custom",
+    ],
+    contactSalesOnly: true,
   },
 }
 
-export const PLAN_ORDER: PlanId[] = ["STARTER", "PRO", "ENTERPRISE"]
+/** Orden visual en /settings/subscription. STARTER queda oculto (plan legacy). */
+export const PLAN_ORDER: PlanId[] = ["PRO", "ENTERPRISE"]
 
 export function getPlan(id: string | null | undefined): PlanDefinition | null {
   if (!id) return null
@@ -98,3 +122,6 @@ export function formatArs(amount: number): string {
     maximumFractionDigits: 0,
   })
 }
+
+/** URL de contacto comercial para planes Enterprise/custom. */
+export const SALES_CONTACT_URL = "mailto:hola@vibook.ai?subject=Vibook%20Enterprise"

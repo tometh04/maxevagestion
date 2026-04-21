@@ -2,11 +2,21 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import type { PlanId } from "@/lib/billing/plans"
+import { PLANS, SALES_CONTACT_URL, type PlanId } from "@/lib/billing/plans"
 
 export function CheckoutButton({ plan }: { plan: PlanId }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const planDef = PLANS[plan]
+
+  // Enterprise / contact-sales → mailto directo en vez de checkout MP.
+  if (planDef?.contactSalesOnly) {
+    return (
+      <Button asChild className="w-full">
+        <a href={SALES_CONTACT_URL}>Hablar con ventas</a>
+      </Button>
+    )
+  }
 
   async function go() {
     setLoading(true)

@@ -59,8 +59,9 @@ export default async function PaywallPage() {
                 <div>
                   <h3 className="text-lg font-semibold">{plan.name}</h3>
                   <div className="text-2xl font-bold mt-1">
-                    {formatArs(plan.priceArsMonthly)}
-                    <span className="text-sm font-normal text-muted-foreground"> / mes</span>
+                    {plan.priceArsMonthly !== null
+                      ? <>{formatArs(plan.priceArsMonthly)}<span className="text-sm font-normal text-muted-foreground"> / mes</span></>
+                      : plan.priceLabel || "Consultar"}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
                 </div>

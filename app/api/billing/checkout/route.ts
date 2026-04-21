@@ -26,6 +26,17 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "plan inválido" }, { status: 400 })
   }
 
+  // Planes contact-sales-only (Enterprise) no pasan por MP: se contactan por
+  // mailto desde la UI. Rechazamos el request para evitar un createPreapproval
+  // con priceArsMonthly null.
+  const planDef = PLANS[plan]
+  if (planDef.contactSalesOnly || planDef.priceArsMonthly === null) {
+    return NextResponse.json(
+      { error: "Plan no disponible para checkout self-serve. Contactanos a hola@vibook.ai" },
+      { status: 400 }
+    )
+  }
+
   const admin = createAdminClient() as any
   const { data: org } = await admin
     .from("organizations")
@@ -67,7 +78,7 @@ export async function POST(request: Request) {
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
     external_id: preapproval.id,
-    amount_cents: PLANS[plan].priceArsMonthly * 100,
+    amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
     currency: "ARS",
     status: preapproval.status,
     payload: {

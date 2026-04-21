@@ -148,7 +148,7 @@ export default async function SubscriptionPage() {
 
       <div>
         <h2 className="text-lg font-semibold mb-3">Planes disponibles</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-4xl">
           {PLAN_ORDER.map((planId) => {
             const plan = PLANS[planId]
             const isCurrent = org.plan === planId && org.subscription_status === "ACTIVE"
@@ -157,10 +157,16 @@ export default async function SubscriptionPage() {
                 <CardHeader>
                   <CardTitle>{plan.name}</CardTitle>
                   <div className="text-2xl font-bold mt-2">
-                    {formatArs(plan.priceArsMonthly)}
-                    <span className="text-sm font-normal text-muted-foreground"> / mes</span>
+                    {plan.priceArsMonthly !== null
+                      ? <>{formatArs(plan.priceArsMonthly)}<span className="text-sm font-normal text-muted-foreground"> / mes</span></>
+                      : plan.priceLabel || "Consultar"}
                   </div>
-                  <p className="text-xs text-muted-foreground">{plan.description}</p>
+                  {plan.trialDays ? (
+                    <p className="text-xs text-green-600 mt-1">
+                      {plan.trialDays} días de prueba gratuita · sin cobro anticipado
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground mt-1">{plan.description}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <ul className="text-sm space-y-1 list-disc list-inside">
