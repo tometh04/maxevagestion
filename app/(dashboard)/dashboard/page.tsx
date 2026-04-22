@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic"
 import { DashboardFiltersState } from "@/components/dashboard/dashboard-filters"
+import { ImportBanner } from "@/components/dashboard/import-banner"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -79,12 +80,15 @@ export default async function DashboardPage() {
   }
 
   return (
-    <DashboardPageClient
-      agencies={agencies}
-      sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))}
-      defaultFilters={defaultFilters}
-      userRole={userRole}
-    />
+    <>
+      <ImportBanner />
+      <DashboardPageClient
+        agencies={agencies}
+        sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))}
+        defaultFilters={defaultFilters}
+        userRole={userRole}
+      />
+    </>
   )
 }
 
