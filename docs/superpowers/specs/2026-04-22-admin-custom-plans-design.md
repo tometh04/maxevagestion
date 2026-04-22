@@ -106,7 +106,9 @@ Con Manual, el admin registra cada pago en `manual_payments`. La fecha `covers_t
 
 ## 4. Modelo de datos
 
-### 4.1 Migration `150_custom_plans.sql`
+**Numeración:** la última migration aplicada es `20260421000157_saas_billing_hardening.sql`. Las nuevas llevan timestamps `20260422000158`, `159`, `160`.
+
+### 4.1 Migration `20260422000158_custom_plans.sql`
 
 ```sql
 CREATE TABLE custom_plans (
@@ -152,7 +154,7 @@ CREATE TRIGGER custom_plans_updated_at
   EXECUTE FUNCTION trigger_set_updated_at();
 ```
 
-### 4.2 Migration `151_manual_payments.sql`
+### 4.2 Migration `20260422000159_manual_payments.sql`
 
 ```sql
 CREATE TABLE manual_payments (
@@ -185,7 +187,7 @@ CREATE POLICY manual_payments_admin_all ON manual_payments
   );
 ```
 
-### 4.3 Migration `152_organizations_custom_plan_id.sql`
+### 4.3 Migration `20260422000160_organizations_custom_plan_id.sql`
 
 ```sql
 ALTER TABLE organizations
@@ -196,19 +198,7 @@ CREATE INDEX organizations_custom_plan_id_idx
   WHERE custom_plan_id IS NOT NULL;
 ```
 
-### 4.4 Migration `153_subscription_status_pending.sql`
-
-Expandir CHECK de `organizations.subscription_status` para admitir `PENDING_CUSTOM_PAYMENT`:
-
-```sql
-ALTER TABLE organizations DROP CONSTRAINT IF EXISTS organizations_subscription_status_check;
-ALTER TABLE organizations ADD CONSTRAINT organizations_subscription_status_check
-  CHECK (subscription_status IN (
-    'TRIAL','ACTIVE','PAST_DUE','SUSPENDED','CANCELLED','PENDING_CUSTOM_PAYMENT'
-  ));
-```
-
-### 4.5 Tipos de eventos de audit
+### 4.4 Tipos de eventos de audit
 
 Agregar a `security_audit_log.event_type` (columna libre TEXT, no CHECK — los eventos nuevos van directo):
 
@@ -239,8 +229,9 @@ Server:
   1. effective = base × (1 - discount/100)
   2. discount_ends_at = NOW() + interval 'N months' (si discount > 0)
   3. INSERT custom_plans
-  4. UPDATE organizations SET custom_plan_id = :id,
-                              subscription_status = 'PENDING_CUSTOM_PAYMENT'
+  4. UPDATE organizations SET custom_plan_id = :id.
+     Status NO se toca al crear — queda lo que estaba (TRIAL/ACTIVE/etc).
+     Detección "custom plan sin pago" = custom_plan_id NOT NULL AND status IN ('TRIAL','PENDING_PAYMENT').
   5. Si billing_method = 'MP':
        createPreapproval({ plan: 'CUSTOM', customAmount: effective, ... })
        → guardar mp_preapproval_id en organizations
@@ -371,26 +362,28 @@ Dos bloques:
 
 ## 9. Paywall / máquina de estados
 
-Transiciones completas:
+Reusamos el set existente de `subscription_status` (`TRIAL`, `ACTIVE`, `PAST_DUE`, `SUSPENDED`, `CANCELLED`, `PENDING_PAYMENT`). No agregamos status nuevos — el middleware ya los entiende. La detección de "custom plan sin pago aún" se deriva de `custom_plan_id IS NOT NULL AND subscription_status IN ('TRIAL','PENDING_PAYMENT')`.
+
+Transiciones relevantes al sprint:
 
 ```
-TRIAL ──(custom_plan creado con billing_method=MP)──→ PENDING_CUSTOM_PAYMENT
-TRIAL ──(custom_plan creado con billing_method=MANUAL)──→ PENDING_CUSTOM_PAYMENT
-PENDING_CUSTOM_PAYMENT ──(webhook MP authorized)──→ ACTIVE
-PENDING_CUSTOM_PAYMENT ──(manual_payment registrado)──→ ACTIVE
-PENDING_CUSTOM_PAYMENT ──(trial_ends_at vencido, no pagó)──→ SUSPENDED
+TRIAL (con custom_plan_id) ──(webhook MP authorized)──→ ACTIVE
+TRIAL (con custom_plan_id) ──(manual_payment registrado)──→ ACTIVE
+TRIAL (con custom_plan_id) ──(trial_ends_at vencido, no pagó)──→ PENDING_PAYMENT (blocked)
 ACTIVE ──(MP falla cobro)──→ PAST_DUE ──(grace 7d)──→ SUSPENDED
-ACTIVE ──(manual_payment.covers_to vencido + 7d grace)──→ PAST_DUE → SUSPENDED
+ACTIVE (manual) ──(manual_payment.covers_to vencido + 7d grace)──→ PAST_DUE → SUSPENDED
 ACTIVE ──(admin cancela)──→ CANCELLED
 SUSPENDED ──(admin unsuspend)──→ <previo>
 CANCELLED → terminal
 ```
 
-Middleware `/paywall` tratamiento por status:
-- `TRIAL`, `ACTIVE`, `PENDING_CUSTOM_PAYMENT` (si `trial_ends_at > now`) → acceso OK.
-- `PENDING_CUSTOM_PAYMENT` (si trial vencido) → redirect `/paywall/subscribe` con CTA obligatorio.
-- `PAST_DUE` → banner warning pero acceso OK hasta que termine grace.
-- `SUSPENDED`, `CANCELLED` → redirect `/paywall/blocked`.
+Middleware `/paywall` tratamiento por status (ya implementado, sin cambios):
+- `TRIAL` (si `trial_ends_at > now`) → acceso OK.
+- `ACTIVE` → acceso OK.
+- `PAST_DUE` → banner warning + acceso OK hasta grace.
+- `SUSPENDED`, `CANCELLED`, `PENDING_PAYMENT` → redirect `/onboarding/billing`.
+
+**Cambio para custom plans:** cuando la org tenga `custom_plan_id`, el redirect a `/onboarding/billing` debe en su lugar ir a `/settings/subscription` (donde el owner ve su plan custom con CTA de pago). Modificación localizada en middleware.ts.
 
 ---
 
