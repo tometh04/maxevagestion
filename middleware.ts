@@ -149,7 +149,10 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth") ||
     pathname.startsWith("/api/auth") ||
-    pathname === "/logout"
+    pathname === "/logout" ||
+    // Platform admins no pertenecen a una org — no les forzamos onboarding.
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/api/admin")
 
   const isPaywallAllowed =
     isOnboardingAllowed ||
