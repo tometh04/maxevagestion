@@ -1,6 +1,6 @@
 # Roadmap Vibook — Próxima sesión
 
-**Contexto:** Sesión anterior validó paywall MP E2E completo. Ver `docs/superpowers/specs/2026-04-21-paywall-mercadopago-design.md` para el spec del paywall y `docs/superpowers/plans/2026-04-21-paywall-e2e-testing.md` para los resultados del E2E.
+**Contexto:** Sesión anterior validó paywall MP E2E completo. Ver `/Users/tomiisanchezz/Desktop/Repos/erplozada/docs/superpowers/specs/2026-04-21-paywall-mercadopago-design.md` para el spec del paywall y `/Users/tomiisanchezz/Desktop/Repos/erplozada/docs/superpowers/plans/2026-04-21-paywall-e2e-testing.md` para los resultados del E2E.
 
 **Instrucciones de arranque de sesión:**
 
@@ -132,7 +132,7 @@ Sin esto, Tomi está volando a ciegas. Este dashboard vive probablemente dentro 
 
 ```
 Activá /superpowers:brainstorming modo CEO SaaS AR.
-Lee docs/superpowers/specs/2026-04-22-roadmap-next-session.md
+Lee /Users/tomiisanchezz/Desktop/Repos/erplozada/docs/superpowers/specs/2026-04-22-roadmap-next-session.md
 y arranquemos por Prioridad 1 (Admin Panel + planes custom + extender trial).
 ```
 
