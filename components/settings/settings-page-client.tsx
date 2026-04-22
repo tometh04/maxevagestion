@@ -10,7 +10,6 @@ import { CommissionsSettings } from "@/components/settings/commissions-settings"
 import { AISettings } from "@/components/settings/ai-settings"
 import { SeedMockData } from "@/components/settings/seed-mock-data"
 import { MigrateHistoricalAccounting } from "@/components/settings/migrate-historical-accounting"
-import { ImportSettings } from "@/components/settings/import-settings"
 import { DestinationRequirementsClient } from "@/components/settings/destination-requirements-client"
 import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
@@ -129,9 +128,6 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       </TabsContent>
       <TabsContent value="ai" className="mt-6">
         <AISettings />
-      </TabsContent>
-      <TabsContent value="import" className="mt-6">
-        <ImportSettings />
       </TabsContent>
       {/* End hidden tab contents */}
       <TabsContent value="requirements" className="mt-6">
