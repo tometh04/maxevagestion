@@ -185,13 +185,14 @@ export async function middleware(req: NextRequest) {
     // complejo o importar server-side code), así que duplicamos la regla.
     if (orgId && !isPaywallAllowed) {
       const { data: orgRow } = await (supabase.from("organizations") as any)
-        .select("subscription_status, current_period_ends_at, trial_ends_at")
+        .select("subscription_status, current_period_ends_at, trial_ends_at, custom_plan_id")
         .eq("id", orgId)
         .maybeSingle()
 
       const status = (orgRow as any)?.subscription_status as string | undefined
       const periodEnds = (orgRow as any)?.current_period_ends_at as string | null | undefined
       const trialEnds = (orgRow as any)?.trial_ends_at as string | null | undefined
+      const customPlanId = (orgRow as any)?.custom_plan_id as string | null | undefined
       const now = Date.now()
 
       let blocked = false
@@ -206,7 +207,7 @@ export async function middleware(req: NextRequest) {
 
       if (blocked) {
         const url = req.nextUrl.clone()
-        url.pathname = "/onboarding/billing"
+        url.pathname = customPlanId ? "/settings/subscription" : "/onboarding/billing"
         return NextResponse.redirect(url)
       }
     }
