@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import Image from "next/image"
-import { Building2, BarChart3, ScrollText, ArrowLeft, LogOut } from "lucide-react"
+import { Building2, BarChart3, ScrollText, LogOut } from "lucide-react"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
@@ -40,13 +40,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </nav>
 
         <div className="px-3 py-4 border-t border-slate-800/60 space-y-1">
-          <Link
-            href="/dashboard"
-            className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/40 hover:text-slate-100 transition"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver al ERP
-          </Link>
           <Link
             href="/logout"
             className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-slate-400 hover:bg-slate-800/40 hover:text-slate-100 transition"

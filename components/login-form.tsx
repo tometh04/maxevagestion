@@ -100,9 +100,10 @@ export function LoginForm({
           throw new Error("Tu cuenta está desactivada. Contacta al administrador.")
         }
 
-        // Refresh to ensure cookies are set
+        // Refresh to ensure cookies are set. Redirect a /post-login que
+        // decide server-side: platform admin → /admin/orgs, resto → /dashboard.
         router.refresh()
-        router.push("/dashboard")
+        router.push("/post-login")
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al iniciar sesión")
