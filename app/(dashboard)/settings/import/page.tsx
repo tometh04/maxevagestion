@@ -1,113 +1,218 @@
 "use client"
 
 import { useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { ImportSection } from "@/components/settings/import-section"
-import { Users, CreditCard, Building2, Wallet, FileSpreadsheet } from "lucide-react"
-
-const importTypes = [
-  {
-    id: "customers",
-    name: "Clientes",
-    description: "Importar clientes/pasajeros con sus datos personales",
-    icon: Users,
-    fields: ["first_name", "last_name", "phone", "email", "document_type", "document_number", "date_of_birth", "nationality"],
-    requiredFields: ["first_name", "last_name", "phone"],
-    template: "clientes_template.csv",
-  },
-  {
-    id: "operators",
-    name: "Operadores",
-    description: "Importar operadores/proveedores mayoristas",
-    icon: Building2,
-    fields: ["name", "contact_name", "contact_email", "contact_phone", "credit_limit"],
-    requiredFields: ["name"],
-    template: "operadores_template.csv",
-  },
-  {
-    id: "operations",
-    name: "Operaciones",
-    description: "Importar ventas/operaciones históricas",
-    icon: FileSpreadsheet,
-    fields: ["file_code", "customer_email", "destination", "departure_date", "return_date", "adults", "children", "sale_amount", "operator_cost", "currency", "status", "seller_email", "operator_name"],
-    requiredFields: ["destination", "departure_date", "sale_amount", "operator_cost"],
-    template: "operaciones_template.csv",
-  },
-  {
-    id: "payments",
-    name: "Pagos",
-    description: "Importar pagos de clientes o a operadores",
-    icon: CreditCard,
-    fields: ["operation_file_code", "amount", "currency", "date_due", "date_paid", "status", "direction", "payer_type", "method", "reference"],
-    requiredFields: ["operation_file_code", "amount", "currency", "date_due", "direction"],
-    template: "pagos_template.csv",
-  },
-  {
-    id: "cash_movements",
-    name: "Movimientos de Caja",
-    description: "Importar movimientos históricos de caja",
-    icon: Wallet,
-    fields: ["date", "type", "amount", "currency", "account_name", "category", "notes"],
-    requiredFields: ["date", "type", "amount", "currency"],
-    template: "movimientos_template.csv",
-  },
-]
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { EntityPanel } from "@/components/import/entity-panel"
+import { StatusChips } from "@/components/import/status-chips"
+import { agenciesSchema, agenciesCsvHeaders } from "@/lib/import/schemas/agencies"
+import { financialAccountsSchema, financialAccountsCsvHeaders } from "@/lib/import/schemas/financial-accounts"
+import { customersSchema, customersCsvHeaders } from "@/lib/import/schemas/customers"
+import { operatorsSchema, operatorsCsvHeaders } from "@/lib/import/schemas/operators"
+import { usersSchema, usersCsvHeaders } from "@/lib/import/schemas/users"
+import { operationsSchema, operationsCsvHeaders } from "@/lib/import/schemas/operations"
+import { paymentsSchema, paymentsCsvHeaders } from "@/lib/import/schemas/payments"
+import { cashMovementsSchema, cashMovementsCsvHeaders } from "@/lib/import/schemas/cash-movements"
 
 export default function ImportPage() {
-  const [activeTab, setActiveTab] = useState("customers")
+  const [confirmUsersOpen, setConfirmUsersOpen] = useState(false)
+  const [resolveUsers, setResolveUsers] = useState<((v: boolean) => void) | null>(null)
+  const [confirmAccountsOpen, setConfirmAccountsOpen] = useState(false)
+  const [resolveAccounts, setResolveAccounts] = useState<((v: boolean) => void) | null>(null)
+
+  function askUsersConfirm(): Promise<boolean> {
+    return new Promise((res) => {
+      setResolveUsers(() => res)
+      setConfirmUsersOpen(true)
+    })
+  }
+  function askAccountsConfirm(): Promise<boolean> {
+    return new Promise((res) => {
+      setResolveAccounts(() => res)
+      setConfirmAccountsOpen(true)
+    })
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Importación de Datos</h1>
-        <p className="text-muted-foreground">
-          Importa datos masivos desde archivos CSV usando nuestras plantillas
+        <h1 className="text-2xl font-semibold tracking-tight">Importación de datos</h1>
+        <p className="text-sm text-slate-500">
+          Cargá tus datos preexistentes desde CSV. Cada entidad tiene su plantilla estricta — descargala, completala, y subila.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Instrucciones</CardTitle>
-          <CardDescription>
-            Sigue estos pasos para importar datos correctamente
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-            <li><strong>Descarga la plantilla</strong> del tipo de dato que quieres importar</li>
-            <li><strong>Completa el archivo</strong> con tus datos (no modifiques los encabezados)</li>
-            <li><strong>Guarda como CSV</strong> con codificación UTF-8</li>
-            <li><strong>Sube el archivo</strong> y revisa la vista previa</li>
-            <li><strong>Confirma la importación</strong> si los datos son correctos</li>
-          </ol>
-        </CardContent>
-      </Card>
+      <StatusChips items={[]} />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          {importTypes.map((type) => (
-            <TabsTrigger key={type.id} value={type.id} className="flex items-center gap-2">
-              <type.icon className="h-4 w-4" />
-              <span className="hidden sm:inline">{type.name}</span>
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {importTypes.map((type) => (
-          <TabsContent key={type.id} value={type.id}>
-            <ImportSection
-              type={type.id}
-              name={type.name}
-              description={type.description}
-              fields={type.fields}
-              requiredFields={type.requiredFields}
-              templateName={type.template}
+      <Accordion type="multiple" className="space-y-2">
+        <AccordionItem value="agencies">
+          <AccordionTrigger>Agencias</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="agencies"
+              title="Agencias"
+              description="Sub-agencias del tenant."
+              schema={agenciesSchema}
+              headers={agenciesCsvHeaders}
+              templatePath="/templates/agencies.csv"
+              endpoint="/api/import/agencies"
             />
-          </TabsContent>
-        ))}
-      </Tabs>
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="financial-accounts">
+          <AccordionTrigger>Cuentas financieras (caja, bancos)</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="financial-accounts"
+              title="Cuentas financieras"
+              description="Caja, bancos, tarjetas, billeteras virtuales."
+              schema={financialAccountsSchema}
+              headers={financialAccountsCsvHeaders}
+              templatePath="/templates/financial-accounts.csv"
+              endpoint="/api/import/financial-accounts"
+              deps={["agencies"]}
+              onConfirm={askAccountsConfirm}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="customers">
+          <AccordionTrigger>Clientes</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="customers"
+              title="Clientes"
+              description="Base de clientes/pasajeros."
+              schema={customersSchema}
+              headers={customersCsvHeaders}
+              templatePath="/templates/customers.csv"
+              endpoint="/api/import/customers"
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="operators">
+          <AccordionTrigger>Operadores</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="operators"
+              title="Operadores"
+              description="Proveedores mayoristas."
+              schema={operatorsSchema}
+              headers={operatorsCsvHeaders}
+              templatePath="/templates/operators.csv"
+              endpoint="/api/import/operators"
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="users">
+          <AccordionTrigger>Vendedores</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="users"
+              title="Vendedores"
+              description="Equipo comercial. Se les manda email de invitación."
+              schema={usersSchema}
+              headers={usersCsvHeaders}
+              templatePath="/templates/users.csv"
+              endpoint="/api/import/users"
+              deps={["agencies"]}
+              onConfirm={askUsersConfirm}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="operations">
+          <AccordionTrigger>Operaciones (histórico)</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="operations"
+              title="Operaciones"
+              description="Histórico de operaciones. Opcional."
+              schema={operationsSchema}
+              headers={operationsCsvHeaders}
+              templatePath="/templates/operations.csv"
+              endpoint="/api/import/operations"
+              deps={["customers", "operators", "users", "agencies"]}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="payments">
+          <AccordionTrigger>Pagos (histórico)</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="payments"
+              title="Pagos"
+              description="Pagos de clientes o a operadores. Opcional."
+              schema={paymentsSchema}
+              headers={paymentsCsvHeaders}
+              templatePath="/templates/payments.csv"
+              endpoint="/api/import/payments"
+              deps={["operations"]}
+            />
+          </AccordionContent>
+        </AccordionItem>
+
+        <AccordionItem value="cash-movements">
+          <AccordionTrigger>Movimientos de caja (histórico)</AccordionTrigger>
+          <AccordionContent>
+            <EntityPanel
+              entityKey="cash-movements"
+              title="Movimientos de caja"
+              description="Histórico de movimientos de caja. Opcional."
+              schema={cashMovementsSchema}
+              headers={cashMovementsCsvHeaders}
+              templatePath="/templates/cash-movements.csv"
+              endpoint="/api/import/cash-movements"
+              deps={["financial-accounts"]}
+            />
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+
+      <Dialog open={confirmUsersOpen} onOpenChange={setConfirmUsersOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar invitación de vendedores</DialogTitle>
+            <DialogDescription>
+              A cada email listado se le va a mandar un link de invitación con reset de contraseña.
+              No hay vuelta atrás — los emails se envían inmediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmUsersOpen(false); resolveUsers?.(false) }}>
+              Cancelar
+            </Button>
+            <Button onClick={() => { setConfirmUsersOpen(false); resolveUsers?.(true) }}>
+              Enviar invitaciones
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmAccountsOpen} onOpenChange={setConfirmAccountsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Saldos iniciales</DialogTitle>
+            <DialogDescription>
+              Los saldos iniciales de las cuentas van a ser registrados como saldos de apertura.
+              Asegurate que los montos sean correctos — después de importar no se pueden editar fácilmente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmAccountsOpen(false); resolveAccounts?.(false) }}>
+              Cancelar
+            </Button>
+            <Button onClick={() => { setConfirmAccountsOpen(false); resolveAccounts?.(true) }}>
+              Confirmar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
