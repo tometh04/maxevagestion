@@ -18,6 +18,31 @@
 - **Papaparse** ya está instalado (verificar `package.json`); si no, `npm install papaparse @types/papaparse`.
 - **Zod** ya está instalado.
 
+## Correcciones aplicadas en Task 1 — usar estos nombres en TODAS las tasks siguientes
+
+Durante la implementación de Task 1 se encontraron mismatches entre el plan original y el schema real. El archivo de migration SQL ya fue corregido; las tasks 4-9 (schemas Zod + endpoints) deben usar los nombres CORRECTOS:
+
+| Entidad | Plan original decía | Usar en realidad |
+|---|---|---|
+| operators | `cuit` (no existía) | `cuit` (ahora existe tras ALTER en mig 161) |
+| users | `commission_percentage` | DB col: `default_commission_percentage`. CSV header: `commission_percentage` (user-facing). |
+| operations | `seller_primary_id` | `seller_id` |
+| operations | `customer_id` directo | NO existe. Relación via `operation_customers` M2M (`operation_id + customer_id + role='primary'`). |
+| operations | — | `type` REQUIRED: default `'package'`. CSV header opcional. |
+| operations | — | `margin_amount` + `margin_percentage` REQUIRED: computados server-side (`margin = sale - cost`, `% = margin*100/sale`). No van en CSV. |
+| operations | — | `operation_date` REQUIRED: default = `departure_date` si vacío. |
+| payments | `payment_method` | `method` |
+| payments | `reference_number` | `reference` |
+| payments | `financial_account_id` | NO existe — dropped del plan. Relación account↔payment via `ledger_movements`. |
+| payments | — | `payer_type` REQUIRED: derivado de direction (INCOME→customer, EXPENSE→operator). No va en CSV. |
+| cash_movements | `reference_number` | NO existe — dropped. Dedupe usa `notes` en su lugar. |
+| cash_movements | — | `user_id` REQUIRED: pasado como `p_user_id` al RPC (user autenticado). No va en CSV. |
+| cash_movements | `category` opcional | `category` REQUIRED (DB constraint). |
+
+**Regla para subagents**: antes de escribir Zod schema o INSERT/RPC call, hacer `Grep` sobre `lib/supabase/types.ts` para verificar que la columna existe con el nombre exacto. Si hay mismatch, escalar (NEEDS_CONTEXT) en vez de asumir.
+
+**Firma RPC para `bulk_import_cash_movements`**: `(p_org_id uuid, p_user_id uuid, p_rows jsonb)` — 3 params, no 2. Es la única RPC de las 8 que toma user_id separado.
+
 ---
 
 ## Task 1: Migration 161 — RPCs `bulk_import_*` + UNIQUE constraints
