@@ -8,6 +8,8 @@ import { PaymentMethodCard } from "@/components/billing/payment-method-card"
 import { BillingHistoryTable } from "@/components/billing/billing-history-table"
 import { CancelDialog } from "@/components/billing/cancel-dialog"
 import { ReactivateDialog } from "@/components/billing/reactivate-dialog"
+import { CustomPlanOwnerView } from "@/components/subscription/custom-plan-owner-view"
+import { fetchPreapproval } from "@/lib/billing/mercadopago"
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Pendiente de pago",
@@ -65,6 +67,42 @@ export default async function SubscriptionPage({
 
   if (!org) {
     return <div className="p-6">Organización no encontrada.</div>
+  }
+
+  // Si la org tiene custom_plan_id, renderizamos la vista de plan custom
+  // (oculta los planes públicos y muestra solo el acordado con ventas).
+  if (org.custom_plan_id) {
+    const { data: customPlan } = await admin
+      .from("custom_plans")
+      .select("*")
+      .eq("id", org.custom_plan_id)
+      .maybeSingle()
+
+    if (customPlan) {
+      let checkoutUrl: string | null = null
+      if (
+        customPlan.billing_method === "MP" &&
+        org.subscription_status !== "ACTIVE" &&
+        org.mp_preapproval_id
+      ) {
+        try {
+          const mp = await fetchPreapproval(org.mp_preapproval_id)
+          if (mp?.init_point && mp?.status !== "authorized") {
+            checkoutUrl = mp.init_point
+          }
+        } catch {
+          // Si MP no responde, el owner puede reintentar recargando la página.
+        }
+      }
+
+      return (
+        <CustomPlanOwnerView
+          plan={customPlan as any}
+          org={org as any}
+          checkoutUrl={checkoutUrl}
+        />
+      )
+    }
   }
 
   const { data: events } = await admin
