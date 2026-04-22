@@ -45,8 +45,21 @@ export async function applyPriceChange(
     return { action: "UPDATED_IN_PLACE" }
   }
 
-  await cancelPreapproval(input.preapprovalId)
+  // Invertido: create primero, cancel después. Si createPreapproval falla,
+  // el preapproval viejo sigue activo y el caller puede reintentar.
+  // Si cancelPreapproval falla después del create, quedan 2 preapprovals
+  // transitorios — logueamos warning pero devolvemos éxito porque el
+  // fresh ya tiene init_point y el caller puede continuar (el cancel
+  // viejo se puede re-intentar desde admin).
   const fresh = await createPreapproval(input.recreateParams)
+  try {
+    await cancelPreapproval(input.preapprovalId)
+  } catch (err) {
+    console.warn(
+      `applyPriceChange: createPreapproval OK pero cancelPreapproval(${input.preapprovalId}) falló — hay 2 preapprovals activos transitoriamente:`,
+      err
+    )
+  }
   return {
     action: "REAUTH_REQUIRED",
     newPreapprovalId: fresh.id,

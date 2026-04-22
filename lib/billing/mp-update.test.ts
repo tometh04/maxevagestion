@@ -65,6 +65,25 @@ describe("applyPriceChange", () => {
     expect(mp.createPreapproval).toHaveBeenCalled()
   })
 
+  it("create OK + cancel falla → REAUTH_REQUIRED (warning, no throw)", async () => {
+    mp.fetchPreapproval.mockResolvedValue({
+      auto_recurring: { transaction_amount: 100000 },
+    })
+    mp.createPreapproval.mockResolvedValue({ id: "pre_new", init_point: "https://mp/x", status: "pending" })
+    mp.cancelPreapproval.mockRejectedValue(new Error("MP 500"))
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {})
+    const result = await applyPriceChange({
+      preapprovalId: "pre_old",
+      currentAmount: 100000,
+      newAmount: 200000,
+      recreateParams: { orgId: "o", plan: "CUSTOM", customAmount: 200000, customReason: "r", payerEmail: "a@b.c", backUrl: "u" } as any,
+    })
+    expect(result.action).toBe("REAUTH_REQUIRED")
+    expect(result.newPreapprovalId).toBe("pre_new")
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+
   it("bajada (delta < 0) → UPDATED_IN_PLACE", async () => {
     mp.fetchPreapproval.mockResolvedValue({
       auto_recurring: { transaction_amount: 100000 },
