@@ -24,7 +24,7 @@ export function ImportBanner() {
       <AlertDescription className="flex items-center justify-between gap-4">
         <span>
           ¿Traés datos de otro sistema? Importá tu histórico desde CSV en{" "}
-          <Link href="/settings/import" className="underline font-medium">Settings → Importación</Link>.
+          <Link href="/settings?tab=import" className="underline font-medium">Settings → Importación</Link>.
         </span>
         <Button
           variant="ghost"
