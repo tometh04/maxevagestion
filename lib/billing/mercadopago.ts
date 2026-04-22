@@ -75,13 +75,13 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
   let reason: string
 
   if (params.plan === "CUSTOM") {
-    if (!params.customAmount || params.customAmount <= 0) {
+    if (!Number.isFinite(params.customAmount) || (params.customAmount as number) <= 0) {
       throw new Error("customAmount requerido y > 0 para plan CUSTOM")
     }
-    if (!params.customReason) {
+    if (!params.customReason?.trim()) {
       throw new Error("customReason requerido para plan CUSTOM")
     }
-    amount = params.customAmount
+    amount = params.customAmount as number
     reason = params.customReason
   } else {
     const plan = PLANS[params.plan]
