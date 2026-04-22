@@ -135,15 +135,23 @@ ALTER TABLE custom_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE custom_plans FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY custom_plans_tenant_read ON custom_plans
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (org_id IN (SELECT user_org_ids()));
 
 CREATE POLICY custom_plans_admin_all ON custom_plans
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM platform_admins pa
-      WHERE pa.auth_id = auth.uid()
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM platform_admins pa
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
     )
   );
 
@@ -177,13 +185,24 @@ ALTER TABLE manual_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE manual_payments FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY manual_payments_tenant_read ON manual_payments
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (org_id IN (SELECT user_org_ids()));
 
 CREATE POLICY manual_payments_admin_all ON manual_payments
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
-    EXISTS (SELECT 1 FROM platform_admins pa WHERE pa.auth_id = auth.uid())
+    EXISTS (
+      SELECT 1 FROM platform_admins pa
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM platform_admins pa
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
+    )
   );
 ```
 
