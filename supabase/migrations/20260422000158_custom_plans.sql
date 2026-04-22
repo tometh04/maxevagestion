@@ -26,16 +26,24 @@ ALTER TABLE custom_plans FORCE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS custom_plans_tenant_read ON custom_plans;
 CREATE POLICY custom_plans_tenant_read ON custom_plans
-  FOR SELECT
+  FOR SELECT TO authenticated
   USING (org_id IN (SELECT user_org_ids()));
 
 DROP POLICY IF EXISTS custom_plans_admin_all ON custom_plans;
 CREATE POLICY custom_plans_admin_all ON custom_plans
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM platform_admins pa
-      WHERE pa.user_id = (SELECT id FROM users WHERE auth_id = auth.uid() LIMIT 1)
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM platform_admins pa
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
     )
   );
 
