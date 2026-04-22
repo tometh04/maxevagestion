@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
+import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * SaaS Pilar 4 — helpers de platform admin.
@@ -12,15 +13,21 @@ import type { Database } from "@/lib/supabase/types"
  *   const supabase = await createServerClient()
  *   if (!(await isPlatformAdmin(supabase, user.id))) return 403
  *
- * La policy RLS de platform_admins permite que el propio user vea su entry;
- * un no-admin simplemente ve la tabla vacía y el helper retorna false.
+ * Implementación: usamos `createAdminClient()` internamente para bypassear RLS.
+ * Si usáramos el `supabase` del caller autenticado como el propio platform admin,
+ * la policy RLS de `platform_admins` tiene que permitir que el user vea su entry
+ * y cualquier inconsistencia de policy (ej. filtrar por auth_id vs user_id) hace
+ * que el helper retorne false aunque la fila exista. El parámetro `supabase` se
+ * mantiene para no romper callers, pero no se usa.
  */
 
 export async function isPlatformAdmin(
-  supabase: SupabaseClient<Database>,
+  _supabase: SupabaseClient<Database>,
   userId: string
 ): Promise<boolean> {
-  const { data } = await (supabase.from("platform_admins") as any)
+  const admin = createAdminClient() as any
+  const { data } = await admin
+    .from("platform_admins")
     .select("user_id")
     .eq("user_id", userId)
     .maybeSingle()
