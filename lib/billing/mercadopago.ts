@@ -97,8 +97,6 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     status: "pending",
   }
 
-  console.log("[mp] createPreapproval body:", JSON.stringify(body))
-
   const res = await fetch(`${MP_API}/preapproval`, {
     method: "POST",
     headers: {
@@ -110,7 +108,6 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
 
   if (!res.ok) {
     const text = await res.text()
-    console.error("[mp] createPreapproval FAILED", res.status, text, "body was:", JSON.stringify(body))
     throw new Error(`MP preapproval failed (${res.status}): ${text}`)
   }
   return (await res.json()) as PreapprovalResult
