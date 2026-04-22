@@ -1,3 +1,4 @@
+npm warn exec The following package was not found and will be installed: supabase@2.93.1
 export type Json =
   | string
   | number
@@ -4488,6 +4489,7 @@ export type Database = {
           contact_phone: string | null
           created_at: string | null
           credit_limit: number | null
+          cuit: string | null
           id: string
           name: string
           org_id: string
@@ -4499,6 +4501,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string | null
           credit_limit?: number | null
+          cuit?: string | null
           id?: string
           name: string
           org_id: string
@@ -4510,6 +4513,7 @@ export type Database = {
           contact_phone?: string | null
           created_at?: string | null
           credit_limit?: number | null
+          cuit?: string | null
           id?: string
           name?: string
           org_id?: string
@@ -7886,6 +7890,42 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _bulk_import_result: {
+        Args: { conflicts_arr: Json[]; inserted_count: number }
+        Returns: Json
+      }
+      bulk_import_agencies: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_cash_movements: {
+        Args: { p_org_id: string; p_rows: Json; p_user_id: string }
+        Returns: Json
+      }
+      bulk_import_customers: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_financial_accounts: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_operations: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_operators: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_payments: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
+      bulk_import_users: {
+        Args: { p_org_id: string; p_rows: Json }
+        Returns: Json
+      }
       calculate_cash_box_balance: { Args: { box_id: string }; Returns: number }
       cleanup_old_integration_logs: {
         Args: { days_to_keep?: number }
