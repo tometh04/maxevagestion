@@ -47,14 +47,28 @@ export async function POST(
     .single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Mover status a ACTIVE y setear current_period_ends_at al covers_to
-  // para que middleware/guard lo respete.
+  // Cargar status actual — no queremos levantar suspensiones o cancelaciones por política
+  // con un pago manual. Si el admin suspendió por razones no-de-pago, tiene que desuspender
+  // explícitamente antes de que el manual payment surta efecto en el status.
+  const { data: orgCurr } = await admin
+    .from("organizations")
+    .select("subscription_status")
+    .eq("id", orgId)
+    .maybeSingle()
+
+  const currentStatus = orgCurr?.subscription_status as string | null
+  const skipStatusChange = currentStatus === "SUSPENDED" || currentStatus === "CANCELLED"
+
+  const orgUpdatePatch: Record<string, unknown> = {
+    current_period_ends_at: new Date(covers_to).toISOString(),
+  }
+  if (!skipStatusChange) {
+    orgUpdatePatch.subscription_status = "ACTIVE"
+  }
+
   const { error: orgErr } = await admin
     .from("organizations")
-    .update({
-      subscription_status: "ACTIVE",
-      current_period_ends_at: new Date(covers_to).toISOString(),
-    })
+    .update(orgUpdatePatch)
     .eq("id", orgId)
   if (orgErr) console.error("manual-payment: org update failed:", orgErr)
 
@@ -69,5 +83,9 @@ export async function POST(
     details: { payment },
   })
 
-  return NextResponse.json({ ok: true, payment })
+  return NextResponse.json({
+    ok: true,
+    payment,
+    status_preserved: skipStatusChange ? currentStatus : null,
+  })
 }

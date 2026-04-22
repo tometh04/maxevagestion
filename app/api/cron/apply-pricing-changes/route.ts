@@ -55,10 +55,16 @@ export async function POST(request: Request) {
         })
       }
 
-      await admin
+      const { error: cpUpdateErr } = await admin
         .from("custom_plans")
         .update({ discount_percent: 0, discount_ends_at: null })
         .eq("id", cp.id)
+      if (cpUpdateErr) {
+        // Si esto falla, el próximo run del cron reintentará sobre el mismo row
+        // — pero el MP preapproval ya fue actualizado/recreado, causando doble cobro.
+        // Levantamos el error para que el caller (Railway cron) lo vea.
+        throw new Error(`custom_plans update failed para cp=${cp.id}: ${cpUpdateErr.message}`)
+      }
 
       if (mpResult?.action === "REAUTH_REQUIRED" && mpResult.newPreapprovalId) {
         await admin

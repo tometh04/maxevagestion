@@ -334,8 +334,17 @@ export async function DELETE(
     .eq("id", orgId)
   if (orgUpdateErr) {
     console.error("DELETE: org update failed after plan deletion", orgUpdateErr)
-    // No devolvemos 500: el row ya se borró, ON DELETE SET NULL de la FK
-    // debería haber nulleado custom_plan_id automáticamente. Logueamos para alerting.
+    logSecurityEvent({
+      eventType: "CUSTOM_PLAN_DELETE_ORG_UPDATE_FAILED",
+      severity: "WARN",
+      actorUserId: user.id,
+      actorAuthId: (user as any).auth_id,
+      targetOrgId: orgId,
+      targetEntity: "organizations",
+      targetEntityId: orgId,
+      details: { error: orgUpdateErr.message, stale_mp_preapproval_id: org.mp_preapproval_id },
+    })
+    // Seguimos — el custom_plans row ya se borró. Admin puede limpiar mp_preapproval_id manualmente.
   }
 
   logSecurityEvent({
