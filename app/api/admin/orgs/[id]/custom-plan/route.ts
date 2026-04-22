@@ -88,7 +88,8 @@ export async function POST(
   let checkoutUrl: string | null = null
   if (billingMethod === "MP") {
     if (!org.billing_email) {
-      await admin.from("custom_plans").delete().eq("id", created.id)
+      const { error: rbErr } = await admin.from("custom_plans").delete().eq("id", created.id)
+      if (rbErr) console.error("POST rollback delete failed:", rbErr)
       return NextResponse.json(
         { error: "Org sin billing_email — no se puede crear preapproval MP" },
         { status: 400 }
@@ -109,7 +110,8 @@ export async function POST(
       updateOrgData.mp_preapproval_id = mp.id
       checkoutUrl = mp.init_point
     } catch (err: any) {
-      await admin.from("custom_plans").delete().eq("id", created.id)
+      const { error: rbErr } = await admin.from("custom_plans").delete().eq("id", created.id)
+      if (rbErr) console.error("POST rollback delete failed:", rbErr)
       return NextResponse.json({ error: `MP error: ${err.message}` }, { status: 502 })
     }
   }
@@ -156,81 +158,123 @@ export async function PATCH(
     .eq("id", org.custom_plan_id)
     .single()
 
-  const update: Record<string, unknown> = {}
-  for (const k of ["display_name", "features", "limits", "notes", "billing_method"] as const) {
-    if (body[k] !== undefined) update[k] = body[k]
+  // Calcular valores candidatos ANTES de tocar DB
+  const candidate = {
+    display_name: body.display_name ?? current.display_name,
+    base_price_ars:
+      body.base_price_ars !== undefined ? body.base_price_ars : Number(current.base_price_ars),
+    discount_percent:
+      body.discount_percent !== undefined ? body.discount_percent : current.discount_percent,
+    discount_ends_at: current.discount_ends_at,
+    features: body.features ?? current.features,
+    limits: body.limits ?? current.limits,
+    billing_method: body.billing_method ?? current.billing_method,
+    notes: body.notes ?? current.notes,
   }
-  let priceChanged = false
-  if (body.base_price_ars !== undefined && body.base_price_ars !== Number(current.base_price_ars)) {
-    update.base_price_ars = body.base_price_ars
-    priceChanged = true
+
+  // Validar PATCH body
+  if (body.base_price_ars !== undefined && body.base_price_ars <= 0) {
+    return NextResponse.json({ error: "base_price_ars debe ser > 0" }, { status: 400 })
   }
-  if (
-    body.discount_percent !== undefined &&
-    body.discount_percent !== current.discount_percent
-  ) {
-    update.discount_percent = body.discount_percent
-    priceChanged = true
+  if (body.discount_percent !== undefined && (body.discount_percent < 0 || body.discount_percent > 100)) {
+    return NextResponse.json({ error: "discount_percent debe estar entre 0 y 100" }, { status: 400 })
+  }
+
+  // Recalcular discount_ends_at si cambió el descuento
+  if (body.discount_percent !== undefined && body.discount_percent !== current.discount_percent) {
     if (body.discount_percent > 0 && body.discount_duration_months) {
-      update.discount_ends_at = new Date(
+      candidate.discount_ends_at = new Date(
         Date.now() + body.discount_duration_months * 30 * 24 * 60 * 60 * 1000
       ).toISOString()
     } else if (body.discount_percent === 0) {
-      update.discount_ends_at = null
+      candidate.discount_ends_at = null
     }
   }
 
-  const { data: updated } = await admin
-    .from("custom_plans")
-    .update(update)
-    .eq("id", current.id)
-    .select("*")
-    .single()
+  const priceChanged =
+    candidate.base_price_ars !== Number(current.base_price_ars) ||
+    candidate.discount_percent !== current.discount_percent
 
+  // Si cambió el precio Y método=MP Y hay preapproval → llamar MP PRIMERO
   let mpAction: any = null
-  if (priceChanged && updated.billing_method === "MP" && org.mp_preapproval_id) {
-    const newEffective = calculateEffectivePrice(
-      Number(updated.base_price_ars),
-      updated.discount_percent
-    )
+  let mpReauth: { preapprovalId: string; checkoutUrl: string } | null = null
+  if (priceChanged && candidate.billing_method === "MP" && org.mp_preapproval_id) {
     const currentEffective = calculateEffectivePrice(
       Number(current.base_price_ars),
       current.discount_percent
     )
+    const newEffective = calculateEffectivePrice(
+      candidate.base_price_ars,
+      candidate.discount_percent
+    )
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.vibook.ai"
-    mpAction = await applyPriceChange({
-      preapprovalId: org.mp_preapproval_id,
-      currentAmount: currentEffective,
-      newAmount: newEffective,
-      recreateParams: {
-        orgId,
-        plan: "CUSTOM",
-        payerEmail: org.billing_email!,
-        backUrl: `${appUrl}/settings/subscription?custom=ok`,
-        customAmount: newEffective,
-        customReason: `Vibook — ${updated.display_name}`,
-        includeFreeTrial: false,
-      },
-    })
-    if (mpAction.action === "REAUTH_REQUIRED" && mpAction.newPreapprovalId) {
-      await admin
-        .from("organizations")
-        .update({
-          mp_preapproval_id: mpAction.newPreapprovalId,
-          subscription_status: "PAST_DUE",
-        })
-        .eq("id", orgId)
-      logSecurityEvent({
-        eventType: "CUSTOM_PLAN_MP_REAUTH_REQUIRED",
-        severity: "WARN",
-        actorUserId: user.id,
-        actorAuthId: (user as any).auth_id,
-        targetOrgId: orgId,
-        targetEntity: "custom_plans",
-        targetEntityId: current.id,
-        details: { currentEffective, newEffective, checkoutUrl: mpAction.checkoutUrl },
+
+    try {
+      mpAction = await applyPriceChange({
+        preapprovalId: org.mp_preapproval_id,
+        currentAmount: currentEffective,
+        newAmount: newEffective,
+        recreateParams: {
+          orgId,
+          plan: "CUSTOM",
+          payerEmail: org.billing_email!,
+          backUrl: `${appUrl}/settings/subscription?custom=ok`,
+          customAmount: newEffective,
+          customReason: `Vibook — ${candidate.display_name}`,
+          includeFreeTrial: false,
+        },
       })
+    } catch (err: any) {
+      // MP falló — NO tocamos DB, devolvemos error. Estado DB/MP queda consistente.
+      return NextResponse.json({ error: `MP error: ${err.message}` }, { status: 502 })
     }
+
+    if (mpAction.action === "REAUTH_REQUIRED" && mpAction.newPreapprovalId) {
+      mpReauth = {
+        preapprovalId: mpAction.newPreapprovalId,
+        checkoutUrl: mpAction.checkoutUrl ?? "",
+      }
+    }
+  }
+
+  // Ahora sí, persistir en DB
+  const { data: updated, error: updateErr } = await admin
+    .from("custom_plans")
+    .update({
+      display_name: candidate.display_name,
+      base_price_ars: candidate.base_price_ars,
+      discount_percent: candidate.discount_percent,
+      discount_ends_at: candidate.discount_ends_at,
+      features: candidate.features,
+      limits: candidate.limits,
+      billing_method: candidate.billing_method,
+      notes: candidate.notes,
+    })
+    .eq("id", current.id)
+    .select("*")
+    .single()
+  if (updateErr) {
+    return NextResponse.json({ error: updateErr.message }, { status: 500 })
+  }
+
+  if (mpReauth) {
+    await admin
+      .from("organizations")
+      .update({
+        mp_preapproval_id: mpReauth.preapprovalId,
+        subscription_status: "PAST_DUE",
+      })
+      .eq("id", orgId)
+    logSecurityEvent({
+      eventType: "CUSTOM_PLAN_MP_REAUTH_REQUIRED",
+      severity: "WARN",
+      actorUserId: user.id,
+      actorAuthId: (user as any).auth_id,
+      targetOrgId: orgId,
+      targetEntity: "custom_plans",
+      targetEntityId: current.id,
+      details: { checkoutUrl: mpReauth.checkoutUrl },
+    })
   }
 
   logSecurityEvent({
@@ -279,8 +323,20 @@ export async function DELETE(
     }
   }
 
-  await admin.from("custom_plans").delete().eq("id", cp.id)
-  await admin.from("organizations").update({ custom_plan_id: null, mp_preapproval_id: null }).eq("id", orgId)
+  const { error: deleteErr } = await admin.from("custom_plans").delete().eq("id", cp.id)
+  if (deleteErr) {
+    return NextResponse.json({ error: `Delete custom_plan failed: ${deleteErr.message}` }, { status: 500 })
+  }
+
+  const { error: orgUpdateErr } = await admin
+    .from("organizations")
+    .update({ custom_plan_id: null, mp_preapproval_id: null })
+    .eq("id", orgId)
+  if (orgUpdateErr) {
+    console.error("DELETE: org update failed after plan deletion", orgUpdateErr)
+    // No devolvemos 500: el row ya se borró, ON DELETE SET NULL de la FK
+    // debería haber nulleado custom_plan_id automáticamente. Logueamos para alerting.
+  }
 
   logSecurityEvent({
     eventType: "CUSTOM_PLAN_DELETED",
