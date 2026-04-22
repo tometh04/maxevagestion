@@ -1,0 +1,3 @@
+name,type,currency,initial_balance,agency_name,bank_name,account_number
+Caja ARS Rosario,CAJA,ARS,0,Rosario,,
+Cuenta BBVA ARS,BANCO,ARS,500000,Rosario,BBVA,123-456-789
