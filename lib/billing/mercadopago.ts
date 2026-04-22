@@ -50,7 +50,7 @@ function mpWebhookSecret(): string | undefined {
 
 export interface CreatePreapprovalParams {
   orgId: string
-  plan: PlanId
+  plan: PlanId | "CUSTOM"
   payerEmail: string
   /** URL absoluta a la que redirigir después del pago. */
   backUrl: string
@@ -58,6 +58,10 @@ export interface CreatePreapprovalParams {
   includeFreeTrial?: boolean
   /** Opcional: start_date ISO para reactivaciones. MP no cobra antes de esta fecha. */
   startDate?: string
+  /** Requerido si plan === 'CUSTOM'. Monto en ARS. */
+  customAmount?: number
+  /** Requerido si plan === 'CUSTOM'. Aparece como "reason" en MP. */
+  customReason?: string
 }
 
 export interface PreapprovalResult {
@@ -67,10 +71,26 @@ export interface PreapprovalResult {
 }
 
 export async function createPreapproval(params: CreatePreapprovalParams): Promise<PreapprovalResult> {
-  const plan = PLANS[params.plan]
-  if (!plan) throw new Error(`Plan inválido: ${params.plan}`)
-  if (plan.priceArsMonthly === null || plan.contactSalesOnly) {
-    throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
+  let amount: number
+  let reason: string
+
+  if (params.plan === "CUSTOM") {
+    if (!params.customAmount || params.customAmount <= 0) {
+      throw new Error("customAmount requerido y > 0 para plan CUSTOM")
+    }
+    if (!params.customReason) {
+      throw new Error("customReason requerido para plan CUSTOM")
+    }
+    amount = params.customAmount
+    reason = params.customReason
+  } else {
+    const plan = PLANS[params.plan]
+    if (!plan) throw new Error(`Plan inválido: ${params.plan}`)
+    if (plan.priceArsMonthly === null || plan.contactSalesOnly) {
+      throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
+    }
+    amount = plan.priceArsMonthly
+    reason = `Vibook — plan ${plan.name}`
   }
 
   const includeFreeTrial = params.includeFreeTrial ?? true
@@ -78,7 +98,7 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
   const autoRecurring: any = {
     frequency: 1,
     frequency_type: "months",
-    transaction_amount: plan.priceArsMonthly,
+    transaction_amount: amount,
     currency_id: "ARS",
   }
   if (includeFreeTrial) {
@@ -89,7 +109,7 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
   }
 
   const body = {
-    reason: `Vibook — plan ${plan.name}`,
+    reason,
     external_reference: params.orgId,
     payer_email: params.payerEmail,
     back_url: params.backUrl,
@@ -186,4 +206,40 @@ export function verifyWebhookSignature(params: {
   } catch {
     return false
   }
+}
+
+/**
+ * Actualiza transaction_amount de un preapproval existente.
+ * MP permite cambios in-place hasta cierto margen; si el delta supera
+ * el threshold, MP puede pedir re-autorización del usuario. Ver
+ * shouldRequireMpReauth() en custom-plans.ts — la lógica de decisión
+ * queda fuera de este módulo (este solo ejecuta el PUT).
+ */
+export async function updatePreapproval(
+  preapprovalId: string,
+  patch: { transaction_amount?: number; status?: string; start_date?: string }
+): Promise<any> {
+  const body: any = {}
+  if (patch.transaction_amount !== undefined) {
+    body.auto_recurring = { transaction_amount: patch.transaction_amount }
+  }
+  if (patch.status !== undefined) body.status = patch.status
+  if (patch.start_date !== undefined) {
+    body.auto_recurring = { ...(body.auto_recurring ?? {}), start_date: patch.start_date }
+  }
+
+  const res = await fetch(`${MP_API}/preapproval/${preapprovalId}`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${mpAccessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP update preapproval failed (${res.status}): ${text}`)
+  }
+  return await res.json()
 }
