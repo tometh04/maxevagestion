@@ -117,6 +117,12 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     status: "pending",
   }
 
+  // Logging verbose temporal para debug del 500 intermitente (quitar post-fix).
+  const tokenPresent = !!(process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN)
+  const tokenLen = (process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN || "").length
+  console.log("[mp.createPreapproval] POST body:", JSON.stringify(body))
+  console.log("[mp.createPreapproval] token present:", tokenPresent, "len:", tokenLen)
+
   const res = await fetch(`${MP_API}/preapproval`, {
     method: "POST",
     headers: {
@@ -126,11 +132,20 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
     body: JSON.stringify(body),
   })
 
+  const rawText = await res.text()
+  console.log(
+    "[mp.createPreapproval] response status:",
+    res.status,
+    "x-request-id:",
+    res.headers.get("x-request-id"),
+    "body:",
+    rawText.slice(0, 2000)
+  )
+
   if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`MP preapproval failed (${res.status}): ${text}`)
+    throw new Error(`MP preapproval failed (${res.status}): ${rawText}`)
   }
-  return (await res.json()) as PreapprovalResult
+  return JSON.parse(rawText) as PreapprovalResult
 }
 
 export async function fetchPreapproval(preapprovalId: string): Promise<any> {
