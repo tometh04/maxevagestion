@@ -36,6 +36,26 @@ Status prod: **LIVE** en `admin.vibook.ai/admin` y `app.vibook.ai/admin`.
 
 ---
 
+## 🚨 BLOCKER — MP checkout tira 500
+
+**Prioridad máxima — bloquea venta de PRO ($119k/mes) y por ende el revenue principal.**
+
+Síntoma: en `/onboarding/billing` al clickear "Elegir este plan" PRO, MP devuelve:
+```
+MercadoPago rechazó el checkout: MP preapproval failed (500):
+{"message":"Internal server error","status":500}
+```
+
+Reproducible hoy 2026-04-22 tarde post-deploy. No es bug de nuestro código — 500 viene del API de MP. Causas probables (chequear en ese orden):
+
+1. **Env var `MERCADOPAGO_ACCESS_TOKEN` en Railway** — validar que esté presente, no truncada, de producción (no sandbox), no expirada. Comparar contra lo que hay en dashboard MP. Es el sospechoso más probable.
+2. **Preapproval huérfano con mismo `external_reference`** — si la org (Lozada en el test) tuvo un intento previo cancelado, MP puede estar rechazando. Buscar en MP dashboard preapprovals con `external_reference = 1b326d20-d133-4112-a798-f54b5af7e7cb` y cancelarlos.
+3. **Payload del request** — ver Railway logs del POST a `/api/billing/checkout` para ver qué body estamos mandando a MP. Loguear la response completa de MP puede dar más pistas.
+
+**Fix estimado:** 30 min a 2 hs dependiendo de la causa. Hacer esto ANTES de I1-I6.
+
+---
+
 ## 🔥 Pendientes infra / cleanup post-sprint
 
 **Prioridad: antes de abrir primer Enterprise custom.**
