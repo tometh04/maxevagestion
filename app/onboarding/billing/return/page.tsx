@@ -1,26 +1,44 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 
 const POLL_INTERVAL_MS = 2000
 const MAX_POLL_MS = 30_000
 
+// Necesario en Next 15: useSearchParams() fuerza dynamic rendering.
+export const dynamic = "force-dynamic"
+
 /**
  * Landing post-MP.
  *
- * Flow preferido (sync activo):
- *   1. MP redirige con ?preapproval_id=<id> (+ ?status=, ?external_reference=...)
- *   2. Llamamos POST /api/billing/sync con ese id → cierra el loop.
- *   3. Si 200 → redirect /dashboard.
- *
- * Fallback (sin preapproval_id, p.ej. vuelta manual): polling a
- * /api/billing/status hasta que el webhook haga su trabajo.
- *
- * En ambos casos, si tras 30s no hay éxito, mostramos mensaje con botón
- * manual y link de soporte.
+ * Flow:
+ *   1. MP redirige a esta page (a veces con ?preapproval_id=, a veces sin).
+ *   2. Llamamos POST /api/billing/sync. Si viene preapproval_id en query lo
+ *      pasamos; si no, el endpoint lo resuelve vía CHECKOUT_INITIATED + MP
+ *      search.
+ *   3. Si sync responde TRIALING/ACTIVE → redirect /dashboard.
+ *   4. Reintentamos cada 2s hasta 30s. Si el preapproval aún no está
+ *      authorized en MP (status 202), seguimos reintentando.
+ *   5. Tras timeout, mensaje de soporte + botón manual.
  */
 export default function OnboardingBillingReturnPage() {
+  return (
+    <Suspense fallback={<SpinnerCard />}>
+      <ReturnClient />
+    </Suspense>
+  )
+}
+
+function SpinnerCard() {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="mx-auto w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+function ReturnClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [timedOut, setTimedOut] = useState(false)
