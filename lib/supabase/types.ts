@@ -1782,6 +1782,57 @@ export type Database = {
           },
         ]
       }
+      destination_requirements: {
+        Row: {
+          created_at: string | null
+          days_before_trip: number | null
+          description: string | null
+          destination_code: string
+          destination_name: string
+          id: string
+          is_active: boolean | null
+          is_required: boolean | null
+          requirement_name: string
+          requirement_type: string
+          updated_at: string | null
+          url: string | null
+          valid_from: string | null
+          valid_to: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          days_before_trip?: number | null
+          description?: string | null
+          destination_code: string
+          destination_name: string
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          requirement_name: string
+          requirement_type: string
+          updated_at?: string | null
+          url?: string | null
+          valid_from?: string | null
+          valid_to?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          days_before_trip?: number | null
+          description?: string | null
+          destination_code?: string
+          destination_name?: string
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          requirement_name?: string
+          requirement_type?: string
+          updated_at?: string | null
+          url?: string | null
+          valid_from?: string | null
+          valid_to?: string | null
+        }
+        Relationships: []
+      }
       destinations: {
         Row: {
           country: string | null
@@ -1888,6 +1939,53 @@ export type Database = {
           {
             foreignKeyName: "documents_uploaded_by_user_id_fkey"
             columns: ["uploaded_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      exchange_rates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          from_currency: string
+          id: string
+          notes: string | null
+          rate: number
+          rate_date: string
+          source: string | null
+          to_currency: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          from_currency: string
+          id?: string
+          notes?: string | null
+          rate: number
+          rate_date: string
+          source?: string | null
+          to_currency: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          from_currency?: string
+          id?: string
+          notes?: string | null
+          rate?: number
+          rate_date?: string
+          source?: string | null
+          to_currency?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exchange_rates_created_by_fkey"
+            columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -7978,6 +8076,14 @@ export type Database = {
       generate_quotation_number:
         | { Args: never; Returns: string }
         | { Args: { p_org_id?: string }; Returns: string }
+      get_exchange_rate: {
+        Args: {
+          p_date: string
+          p_from_currency?: string
+          p_to_currency?: string
+        }
+        Returns: number
+      }
       get_org_role: {
         Args: { p_org_id: string; p_user_auth_id: string }
         Returns: string
