@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { createPreapproval } from "@/lib/billing/mercadopago"
+import { ensureMpPlan } from "@/lib/billing/mp-plans"
 import type { PlanId } from "@/lib/billing/plans"
 import { PLANS } from "@/lib/billing/plans"
 
@@ -109,53 +109,55 @@ export async function POST(request: Request) {
   }
 
   const includeFreeTrial = !org.has_used_trial
-  console.log("[checkout] MP preapproval request", {
-    orgId, plan, payerEmail, backUrl, isReactivation, includeFreeTrial, startDate,
+  console.log("[checkout] MP preapproval_plan request", {
+    orgId, plan, backUrl, isReactivation, includeFreeTrial, startDate,
   })
 
-  let preapproval
+  let mpPlan
   try {
-    preapproval = await createPreapproval({
-      orgId,
+    const reason = `Vibook ${planDef.name}` // ASCII only
+    mpPlan = await ensureMpPlan(admin, {
       plan,
-      payerEmail,
+      reason,
+      amount: planDef.priceArsMonthly,
       backUrl,
       includeFreeTrial,
-      startDate,
     })
   } catch (err: any) {
     const mpMsg = err?.message || String(err)
-    console.error("checkout: MP createPreapproval failed", mpMsg)
+    console.error("checkout: MP ensureMpPlan failed", mpMsg)
     return NextResponse.json(
       { error: `MercadoPago rechazó el checkout: ${mpMsg}` },
       { status: 502 }
     )
   }
 
-  // Log del intento para auditoría
+  // Log del intento para auditoría. mp_preapproval_id NO se guarda acá —
+  // lo hará el webhook subscription_preapproval.created cuando el user
+  // complete el checkout en el init_point (puede usar cualquier cuenta MP).
   await admin.from("billing_events").insert({
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
-    external_id: preapproval.id,
+    external_id: mpPlan.mp_preapproval_plan_id,
     amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
     currency: "ARS",
-    status: preapproval.status,
+    status: "pending",
     payload: {
       plan,
-      init_point: preapproval.init_point,
-      payer_email: payerEmail,
+      plan_key: mpPlan.plan_key,
+      init_point: mpPlan.init_point,
+      payer_email: payerEmail, // informativo solo
       initiated_by_user_id: user.id,
       included_free_trial: includeFreeTrial,
       is_reactivation: isReactivation,
       start_date: startDate,
+      cached_plan: mpPlan.cached,
     },
   })
 
-  // Update org. Marcamos has_used_trial=true siempre (aunque el user no complete)
-  // para prevenir exploit de cancel+re-trial. Si es reactivación, reseteamos a
-  // PENDING_PAYMENT hasta que MP confirme.
+  // Marcamos has_used_trial=true siempre (aunque el user no complete)
+  // para prevenir exploit de cancel+re-trial.
   const orgUpdates: Record<string, any> = {
-    mp_preapproval_id: preapproval.id,
     has_used_trial: true,
   }
   if (isReactivation) {
@@ -163,8 +165,15 @@ export async function POST(request: Request) {
   }
   await admin.from("organizations").update(orgUpdates).eq("id", orgId)
 
+  // Agregamos external_reference=<orgId> al init_point para que el webhook
+  // subscription_preapproval.created sepa a qué org pertenece la preapproval
+  // que acaba de crear MP.
+  const initPointWithRef = new URL(mpPlan.init_point)
+  initPointWithRef.searchParams.set("external_reference", orgId)
+
   return NextResponse.json({
-    init_point: preapproval.init_point,
-    preapproval_id: preapproval.id,
+    init_point: initPointWithRef.toString(),
+    plan_key: mpPlan.plan_key,
+    mp_preapproval_plan_id: mpPlan.mp_preapproval_plan_id,
   })
 }
