@@ -122,6 +122,12 @@ export async function POST(request: Request) {
   const updates: Record<string, any> = {
     subscription_status: transition.subscription_status,
     mp_last_synced_at: preapproval.last_modified,
+    // Persistir mp_preapproval_id desde MP (source of truth). Necesario para el
+    // flow nuevo preapproval_plan donde el checkout NO guarda el id — el user
+    // lo genera al aceptar, y MP nos notifica acá. Usamos preapproval.id (el real)
+    // en vez de resolvedId porque en subscription_authorized_payment resolvedId
+    // es el payment_id, no el preapproval_id.
+    mp_preapproval_id: preapproval.id,
   }
   if (transition.current_period_ends_at !== undefined) {
     updates.current_period_ends_at = transition.current_period_ends_at
