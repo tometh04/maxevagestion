@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { autoUpdateExchangeRate } from "@/lib/accounting/bcra-exchange-rates"
 
 /**
  * Endpoint para cron jobs - Actualizar tipo de cambio oficial desde BCRA
  * Protegido con CRON_SECRET token
  * Debe ejecutarse diariamente (ej: 08:00 Argentina time)
+ *
+ * Usa adminClient (service_role) porque el cron corre sin sesión de user
+ * — el anon client queda bloqueado por RLS al intentar insertar en
+ * exchange_rates.
  */
 export async function POST(request: Request) {
   try {
@@ -15,9 +19,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServerClient()
+    const supabase = createAdminClient() as any
 
-    // Usar un usuario del sistema o el primer SUPER_ADMIN
     const { data: adminUser } = await supabase
       .from("users")
       .select("id")
