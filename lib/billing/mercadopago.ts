@@ -90,7 +90,8 @@ export async function createPreapproval(params: CreatePreapprovalParams): Promis
       throw new Error(`Plan ${params.plan} es contact-sales-only, no se puede crear preapproval`)
     }
     amount = plan.priceArsMonthly
-    reason = `Vibook — plan ${plan.name}`
+    // ASCII-only: em-dash (—) a veces rompe la API de MP con 500 genérico.
+    reason = `Vibook - plan ${plan.name}`
   }
 
   const includeFreeTrial = params.includeFreeTrial ?? true
@@ -255,6 +256,91 @@ export async function updatePreapproval(
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`MP update preapproval failed (${res.status}): ${text}`)
+  }
+  return await res.json()
+}
+
+export interface CreatePreapprovalPlanParams {
+  /** Nombre humano del plan (ej "Vibook PRO"). ASCII-only para evitar 500 raros de MP. */
+  reason: string
+  /** Monto ARS por mes. */
+  amount: number
+  /** URL absoluta de retorno post-pago. */
+  backUrl: string
+  /** Si true incluye free_trial 7 días. */
+  includeFreeTrial: boolean
+}
+
+export interface PreapprovalPlanResult {
+  id: string
+  init_point: string
+  status: string
+}
+
+/**
+ * Crea un preapproval_plan (template de suscripción) — versión SaaS del
+ * preapproval. Devuelve un init_point genérico al que cualquier user puede
+ * entrar con cualquier cuenta MP. No requiere payer_email al crear.
+ *
+ * Cuando un user se suscribe vía el init_point, MP crea automáticamente
+ * un preapproval asociado y dispara webhook subscription_preapproval.created
+ * con el preapproval_id + payer info.
+ */
+export async function createPreapprovalPlan(
+  params: CreatePreapprovalPlanParams
+): Promise<PreapprovalPlanResult> {
+  const autoRecurring: any = {
+    frequency: 1,
+    frequency_type: "months",
+    transaction_amount: params.amount,
+    currency_id: "ARS",
+  }
+  if (params.includeFreeTrial) {
+    autoRecurring.free_trial = { frequency: 7, frequency_type: "days" }
+  }
+
+  const body = {
+    reason: params.reason,
+    auto_recurring: autoRecurring,
+    back_url: params.backUrl,
+    // Nota: NO payer_email. Cualquier user puede usar el plan.
+  }
+
+  console.log("[mp.createPreapprovalPlan] POST body:", JSON.stringify(body))
+
+  const res = await fetch(`${MP_API}/preapproval_plan`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${mpAccessToken()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  })
+
+  const rawText = await res.text()
+  console.log(
+    "[mp.createPreapprovalPlan] response status:",
+    res.status,
+    "x-request-id:",
+    res.headers.get("x-request-id"),
+    "body:",
+    rawText.slice(0, 2000)
+  )
+
+  if (!res.ok) {
+    throw new Error(`MP preapproval_plan failed (${res.status}): ${rawText}`)
+  }
+  return JSON.parse(rawText) as PreapprovalPlanResult
+}
+
+/** Fetch preapproval_plan existente (GET). Útil para cache/reuso. */
+export async function fetchPreapprovalPlan(planId: string): Promise<any> {
+  const res = await fetch(`${MP_API}/preapproval_plan/${planId}`, {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP fetch preapproval_plan failed (${res.status}): ${text}`)
   }
   return await res.json()
 }
