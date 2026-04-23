@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
-import { fetchPreapproval, verifyWebhookSignature } from "@/lib/billing/mercadopago"
+import {
+  fetchPayment,
+  fetchPreapproval,
+  searchPreapprovalsByPayerEmail,
+  verifyWebhookSignature,
+} from "@/lib/billing/mercadopago"
 import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib/billing/state-machine"
 
 /**
@@ -14,6 +19,9 @@ import { transitionFromMP, type MPPaymentEvent, type MPPreapproval } from "@/lib
  * Tipos que procesamos:
  *  - subscription_preapproval: cambios de estado del preapproval
  *  - subscription_authorized_payment: cobros individuales (approved/rejected)
+ *  - payment: pagos sueltos. MP los envía para trials y primeros cobros de
+ *    preapproval_plan. No traen preapproval_id directamente, así que
+ *    matcheamos por payer_email.
  *
  * MP reintenta hasta recibir 2xx. Persistimos el raw event primero y respondemos
  * 200 incluso si el procesamiento posterior falla — así no perdemos el mensaje
@@ -74,7 +82,6 @@ export async function POST(request: Request) {
   let paymentEvent: MPPaymentEvent | undefined
   try {
     if (type === "subscription_authorized_payment") {
-      // dataId es el payment_id. Necesitamos el preapproval_id para reconciliar.
       const preapprovalId = body?.preapproval_id || body?.data?.preapproval_id
       if (!preapprovalId) {
         console.warn("mp-webhook: subscription_authorized_payment sin preapproval_id")
@@ -85,6 +92,30 @@ export async function POST(request: Request) {
         type: "subscription_authorized_payment",
         status: body?.status || "pending",
       }
+    } else if (type === "payment") {
+      // MP no linkea el payment al preapproval directamente. Estrategia:
+      // fetchear el payment → tomar payer.email → buscar preapproval de ese payer.
+      const payment = await fetchPayment(String(resolvedId))
+      const payerEmail = payment?.payer?.email
+      if (!payerEmail) {
+        return NextResponse.json({ ok: true, warning: "payment sin payer.email" })
+      }
+      const found = await searchPreapprovalsByPayerEmail(payerEmail, 5)
+      // Elegir la más recientemente modificada.
+      const candidate = [...found].sort((a, b) => {
+        const ta = a.last_modified ? new Date(a.last_modified).getTime() : 0
+        const tb = b.last_modified ? new Date(b.last_modified).getTime() : 0
+        return tb - ta
+      })[0]
+      if (!candidate) {
+        return NextResponse.json({ ok: true, warning: "no preapproval para payer_email" })
+      }
+      preapproval = candidate
+      paymentEvent = {
+        type: "subscription_authorized_payment",
+        status: payment.status || "pending",
+        transaction_amount: payment.transaction_amount ?? undefined,
+      }
     } else {
       preapproval = await fetchPreapproval(String(resolvedId))
     }
@@ -93,9 +124,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, warning: "fetch failed" })
   }
 
-  const orgId = preapproval?.external_reference as string | undefined
+  // Resolver orgId:
+  //  a) preapproval.external_reference (caso ideal — flow /preapproval clásico)
+  //  b) organizations.mp_preapproval_id = preapproval.id (webhooks posteriores
+  //     al sync inicial hecho por /api/billing/sync — cubre el flow
+  //     preapproval_plan donde external_reference nunca se propaga)
+  let orgId = preapproval?.external_reference as string | undefined
+  if (!orgId && preapproval?.id) {
+    const { data: byId } = await admin
+      .from("organizations")
+      .select("id")
+      .eq("mp_preapproval_id", preapproval.id)
+      .maybeSingle()
+    if (byId) orgId = byId.id
+  }
   if (!orgId) {
-    return NextResponse.json({ ok: true, warning: "no external_reference" })
+    // Primer webhook del flow preapproval_plan — la org aún no tiene el id
+    // persistido. Lo hará /api/billing/sync cuando el user vuelva al back_url.
+    return NextResponse.json({ ok: true, warning: "no external_reference (pending sync)" })
   }
 
   // 5. Idempotencia por last_modified
@@ -160,7 +206,8 @@ function isProcessableType(type: string | null): boolean {
   return (
     type === "preapproval" ||
     type === "subscription_preapproval" ||
-    type === "subscription_authorized_payment"
+    type === "subscription_authorized_payment" ||
+    type === "payment"
   )
 }
 
@@ -169,6 +216,7 @@ function typeToEventType(type: string | null): string {
     case "subscription_preapproval": return "MP_WEBHOOK_PREAPPROVAL"
     case "subscription_authorized_payment": return "MP_WEBHOOK_PAYMENT"
     case "preapproval": return "MP_WEBHOOK_PREAPPROVAL"
+    case "payment": return "MP_WEBHOOK_PAYMENT"
     default: return "MP_WEBHOOK"
   }
 }

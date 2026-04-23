@@ -333,6 +333,42 @@ export async function createPreapprovalPlan(
   return JSON.parse(rawText) as PreapprovalPlanResult
 }
 
+/** Fetch /v1/payments/{id} — usado por el webhook al procesar type=payment. */
+export async function fetchPayment(paymentId: string): Promise<any> {
+  const res = await fetch(`${MP_API}/v1/payments/${paymentId}`, {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP fetch payment failed (${res.status}): ${text}`)
+  }
+  return await res.json()
+}
+
+/**
+ * Busca preapprovals asociados a un payer_email. Los preapprovals hijos
+ * creados vía preapproval_plan NO traen external_reference, así que el
+ * matching se hace por payer_email cuando llega un webhook tipo "payment".
+ */
+export async function searchPreapprovalsByPayerEmail(
+  payerEmail: string,
+  limit = 10
+): Promise<Array<{ id: string; status: string; last_modified?: string; [k: string]: any }>> {
+  const url = new URL(`${MP_API}/preapproval/search`)
+  url.searchParams.set("payer_email", payerEmail)
+  url.searchParams.set("limit", String(limit))
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP search preapproval failed (${res.status}): ${text}`)
+  }
+  const data = await res.json()
+  return (data?.results as any[]) ?? []
+}
+
 /** Fetch preapproval_plan existente (GET). Útil para cache/reuso. */
 export async function fetchPreapprovalPlan(planId: string): Promise<any> {
   const res = await fetch(`${MP_API}/preapproval_plan/${planId}`, {

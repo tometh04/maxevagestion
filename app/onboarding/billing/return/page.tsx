@@ -1,40 +1,83 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 const POLL_INTERVAL_MS = 2000
 const MAX_POLL_MS = 30_000
 
 /**
- * Landing post-MP. Responde siempre 200 (incluso sin autenticación) para
- * que la validación de back_url de MP no falle.
+ * Landing post-MP.
  *
- * Si el user está autenticado: polling a /api/billing/status hasta detectar
- * TRIALING o ACTIVE, redirige a /dashboard. Si tras 30s no llega, muestra
- * mensaje conservador y botón manual.
+ * Flow preferido (sync activo):
+ *   1. MP redirige con ?preapproval_id=<id> (+ ?status=, ?external_reference=...)
+ *   2. Llamamos POST /api/billing/sync con ese id → cierra el loop.
+ *   3. Si 200 → redirect /dashboard.
+ *
+ * Fallback (sin preapproval_id, p.ej. vuelta manual): polling a
+ * /api/billing/status hasta que el webhook haga su trabajo.
+ *
+ * En ambos casos, si tras 30s no hay éxito, mostramos mensaje con botón
+ * manual y link de soporte.
  */
 export default function OnboardingBillingReturnPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [timedOut, setTimedOut] = useState(false)
 
   useEffect(() => {
     const started = Date.now()
     let cancelled = false
 
-    async function check() {
-      if (cancelled) return
+    const preapprovalId =
+      searchParams.get("preapproval_id") ||
+      searchParams.get("preapproval_plan_id") ||
+      null
+
+    async function trySync(id: string): Promise<boolean> {
+      try {
+        const res = await fetch("/api/billing/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ preapproval_id: id }),
+          cache: "no-store",
+        })
+        if (!res.ok) return false
+        const data = await res.json()
+        return data.subscription_status === "TRIALING" || data.subscription_status === "ACTIVE"
+      } catch {
+        return false
+      }
+    }
+
+    async function tryStatus(): Promise<boolean> {
       try {
         const res = await fetch("/api/billing/status", { cache: "no-store" })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.status === "TRIALING" || data.status === "ACTIVE") {
-            router.replace("/dashboard")
-            return
-          }
-        }
+        if (!res.ok) return false
+        const data = await res.json()
+        return data.status === "TRIALING" || data.status === "ACTIVE"
       } catch {
-        // retry
+        return false
+      }
+    }
+
+    async function check() {
+      if (cancelled) return
+
+      // Path A: sync activo si MP nos dio el id
+      if (preapprovalId) {
+        const ok = await trySync(preapprovalId)
+        if (ok) {
+          router.replace("/dashboard")
+          return
+        }
+      }
+
+      // Path B: polling por si el webhook llega tarde (o no hay preapprovalId)
+      const ok = await tryStatus()
+      if (ok) {
+        router.replace("/dashboard")
+        return
       }
 
       if (Date.now() - started > MAX_POLL_MS) {
@@ -46,7 +89,7 @@ export default function OnboardingBillingReturnPage() {
 
     check()
     return () => { cancelled = true }
-  }, [router])
+  }, [router, searchParams])
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
