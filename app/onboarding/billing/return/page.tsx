@@ -34,12 +34,14 @@ export default function OnboardingBillingReturnPage() {
       searchParams.get("preapproval_plan_id") ||
       null
 
-    async function trySync(id: string): Promise<boolean> {
+    async function trySync(): Promise<boolean> {
       try {
         const res = await fetch("/api/billing/sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ preapproval_id: id }),
+          // Mandamos preapproval_id si MP lo pasó en el query; si no, el
+          // endpoint resuelve vía CHECKOUT_INITIATED + MP search.
+          body: JSON.stringify(preapprovalId ? { preapproval_id: preapprovalId } : {}),
           cache: "no-store",
         })
         if (!res.ok) return false
@@ -50,31 +52,11 @@ export default function OnboardingBillingReturnPage() {
       }
     }
 
-    async function tryStatus(): Promise<boolean> {
-      try {
-        const res = await fetch("/api/billing/status", { cache: "no-store" })
-        if (!res.ok) return false
-        const data = await res.json()
-        return data.status === "TRIALING" || data.status === "ACTIVE"
-      } catch {
-        return false
-      }
-    }
-
     async function check() {
       if (cancelled) return
 
-      // Path A: sync activo si MP nos dio el id
-      if (preapprovalId) {
-        const ok = await trySync(preapprovalId)
-        if (ok) {
-          router.replace("/dashboard")
-          return
-        }
-      }
-
-      // Path B: polling por si el webhook llega tarde (o no hay preapprovalId)
-      const ok = await tryStatus()
+      // Sync activo — funciona con o sin preapproval_id en la URL.
+      const ok = await trySync()
       if (ok) {
         router.replace("/dashboard")
         return

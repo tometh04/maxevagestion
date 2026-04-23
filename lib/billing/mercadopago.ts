@@ -369,6 +369,33 @@ export async function searchPreapprovalsByPayerEmail(
   return (data?.results as any[]) ?? []
 }
 
+/**
+ * Busca preapprovals autorizados que pertenecen a un preapproval_plan
+ * específico. Usado por /api/billing/sync cuando MP no pasa preapproval_id
+ * en el back_url — caemos al más reciente authorized del plan cacheado en
+ * mp_plans + CHECKOUT_INITIATED.
+ */
+export async function searchPreapprovalsByPlanId(
+  preapprovalPlanId: string,
+  opts: { status?: string; limit?: number } = {}
+): Promise<Array<{ id: string; status: string; date_created?: string; last_modified?: string; [k: string]: any }>> {
+  const url = new URL(`${MP_API}/preapproval/search`)
+  url.searchParams.set("preapproval_plan_id", preapprovalPlanId)
+  if (opts.status) url.searchParams.set("status", opts.status)
+  url.searchParams.set("sort", "date_created:desc")
+  url.searchParams.set("limit", String(opts.limit ?? 10))
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${mpAccessToken()}` },
+  })
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`MP search preapproval (by plan) failed (${res.status}): ${text}`)
+  }
+  const data = await res.json()
+  return (data?.results as any[]) ?? []
+}
+
 /** Fetch preapproval_plan existente (GET). Útil para cache/reuso. */
 export async function fetchPreapprovalPlan(planId: string): Promise<any> {
   const res = await fetch(`${MP_API}/preapproval_plan/${planId}`, {
