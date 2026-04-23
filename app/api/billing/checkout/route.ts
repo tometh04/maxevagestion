@@ -133,18 +133,27 @@ export async function POST(request: Request) {
   }
 
   // Log del intento para auditoría. mp_preapproval_id NO se guarda acá —
-  // lo hará el webhook subscription_preapproval.created cuando el user
-  // complete el checkout en el init_point (puede usar cualquier cuenta MP).
-  await admin.from("billing_events").insert({
+  // lo hará /api/billing/sync o el webhook cuando MP notifique.
+  //
+  // IMPORTANTE: external_id=null a propósito. El mp_preapproval_plan_id es
+  // compartido entre todos los checkouts del mismo plan (cache en mp_plans),
+  // y existe un UNIQUE(external_id, event_type) WHERE external_id IS NOT NULL
+  // en billing_events (mig 157). Si guardamos el plan_id en external_id, a
+  // partir del segundo checkout del mismo plan el INSERT explota con 23505 y
+  // el CHECKOUT_INITIATED nunca llega a DB — dejando a los users sin forma
+  // de sincronizar después. Lo mandamos al payload para que /sync pueda
+  // leerlo para el fallback de MP search.
+  const { error: insertErr } = await admin.from("billing_events").insert({
     org_id: orgId,
     event_type: "CHECKOUT_INITIATED",
-    external_id: mpPlan.mp_preapproval_plan_id,
+    external_id: null,
     amount_cents: (planDef.priceArsMonthly ?? 0) * 100,
     currency: "ARS",
     status: "pending",
     payload: {
       plan,
       plan_key: mpPlan.plan_key,
+      mp_preapproval_plan_id: mpPlan.mp_preapproval_plan_id,
       init_point: mpPlan.init_point,
       payer_email: payerEmail, // informativo solo
       initiated_by_user_id: user.id,
@@ -154,6 +163,11 @@ export async function POST(request: Request) {
       cached_plan: mpPlan.cached,
     },
   })
+  if (insertErr) {
+    console.error("checkout: billing_events insert failed", insertErr)
+    // No bloqueamos el flow (el user ya está por redirigir a MP) pero el
+    // /sync posterior no va a poder resolver → queda el manual como fallback.
+  }
 
   // Marcamos has_used_trial=true siempre (aunque el user no complete)
   // para prevenir exploit de cancel+re-trial.
