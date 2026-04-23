@@ -4,8 +4,9 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
 import { calculateEffectivePrice, type CustomPlanFeatures } from "@/lib/billing/custom-plans"
-import { createPreapproval, cancelPreapproval } from "@/lib/billing/mercadopago"
+import { cancelPreapproval } from "@/lib/billing/mercadopago"
 import { applyPriceChange } from "@/lib/billing/mp-update"
+import { ensureMpPlan } from "@/lib/billing/mp-plans"
 
 type CustomPlanBody = {
   display_name?: string
@@ -87,28 +88,24 @@ export async function POST(
 
   let checkoutUrl: string | null = null
   if (billingMethod === "MP") {
-    if (!org.billing_email) {
-      const { error: rbErr } = await admin.from("custom_plans").delete().eq("id", created.id)
-      if (rbErr) console.error("POST rollback delete failed:", rbErr)
-      return NextResponse.json(
-        { error: "Org sin billing_email — no se puede crear preapproval MP" },
-        { status: 400 }
-      )
-    }
     const effective = calculateEffectivePrice(body.base_price_ars, discount)
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.vibook.ai"
     try {
-      const mp = await createPreapproval({
-        orgId,
+      // Custom plan template — reusable si el admin crea otro custom con
+      // mismo slug+amount (ej re-trials). ensureMpPlan cachea en mp_plans.
+      const mp = await ensureMpPlan(admin, {
         plan: "CUSTOM",
-        payerEmail: org.billing_email,
+        reason: `Vibook ${body.display_name}`, // ASCII only
+        amount: effective,
         backUrl: `${appUrl}/settings/subscription?custom=ok`,
-        customAmount: effective,
-        customReason: `Vibook — ${body.display_name}`,
         includeFreeTrial: false,
+        orgSlug: org.slug,
       })
-      updateOrgData.mp_preapproval_id = mp.id
-      checkoutUrl = mp.init_point
+      // mp_preapproval_id se setea en el webhook cuando el user acepta.
+      // Agregamos external_reference al init_point para tracking.
+      const initPoint = new URL(mp.init_point)
+      initPoint.searchParams.set("external_reference", orgId)
+      checkoutUrl = initPoint.toString()
     } catch (err: any) {
       const { error: rbErr } = await admin.from("custom_plans").delete().eq("id", created.id)
       if (rbErr) console.error("POST rollback delete failed:", rbErr)
@@ -196,6 +193,15 @@ export async function PATCH(
     candidate.discount_percent !== current.discount_percent
 
   // Si cambió el precio Y método=MP Y hay preapproval → llamar MP PRIMERO
+  //
+  // TODO(launch-blockers P0-1): applyPriceChange opera sobre preapprovals
+  // individuales. Con el nuevo flujo preapproval_plan (Task 4), el POST ya
+  // no crea preapprovals individuales — los crea MP cuando el user acepta.
+  // Este PATCH queda compatible hacia atrás con custom plans viejos que
+  // SÍ tienen mp_preapproval_id seteado (creados antes de la migración).
+  // Para custom plans nuevos (creados por el POST refactoreado), el
+  // workflow será: cancelar suscripción del user + crear plan nuevo + el
+  // user se re-suscribe. Refactor pendiente en sub-task futura.
   let mpAction: any = null
   let mpReauth: { preapprovalId: string; checkoutUrl: string } | null = null
   if (priceChanged && candidate.billing_method === "MP" && org.mp_preapproval_id) {
