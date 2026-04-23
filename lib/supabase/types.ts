@@ -3569,6 +3569,39 @@ export type Database = {
         }
         Relationships: []
       }
+      mp_plans: {
+        Row: {
+          amount_ars: number
+          created_at: string
+          id: string
+          include_free_trial: boolean
+          init_point: string
+          mp_preapproval_plan_id: string
+          plan_key: string
+          updated_at: string
+        }
+        Insert: {
+          amount_ars: number
+          created_at?: string
+          id?: string
+          include_free_trial?: boolean
+          init_point: string
+          mp_preapproval_plan_id: string
+          plan_key: string
+          updated_at?: string
+        }
+        Update: {
+          amount_ars?: number
+          created_at?: string
+          id?: string
+          include_free_trial?: boolean
+          init_point?: string
+          mp_preapproval_plan_id?: string
+          plan_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       non_touristic_categories: {
         Row: {
           category_type: string
