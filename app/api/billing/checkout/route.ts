@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { ensureMpPlan } from "@/lib/billing/mp-plans"
+import { mpErrorToUserMessage } from "@/lib/billing/mp-error-mapper"
 import type { PlanId } from "@/lib/billing/plans"
 import { PLANS } from "@/lib/billing/plans"
 
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
     const mpMsg = err?.message || String(err)
     console.error("checkout: MP ensureMpPlan failed", mpMsg)
     return NextResponse.json(
-      { error: `MercadoPago rechazó el checkout: ${mpMsg}` },
+      { error: mpErrorToUserMessage(mpMsg) },
       { status: 502 }
     )
   }
