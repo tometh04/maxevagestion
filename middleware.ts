@@ -143,6 +143,30 @@ export async function middleware(req: NextRequest) {
   //   - /api/billing/mp-webhook (MP llama sin auth — ya excluido por
   //     el paso de auth previo al no tener cookies)
   const pathname = req.nextUrl.pathname
+
+  // Defense-in-depth: non-admins NO entran a /admin.
+  // El admin layout ya hace este check server-side, pero agregarlo acá cierra
+  // la ventana donde un tenant user que tipea la URL manualmente ve un flash
+  // de HTML del admin antes del redirect server.
+  if (authUserId && pathname.startsWith("/admin") && !pathname.startsWith("/api/admin")) {
+    const { data: userRow } = await (supabase.from("users") as any)
+      .select("id")
+      .eq("auth_id", authUserId)
+      .maybeSingle()
+    const userId = (userRow as any)?.id as string | undefined
+    if (userId) {
+      const { data: adminRow } = await (supabase.from("platform_admins") as any)
+        .select("user_id")
+        .eq("user_id", userId)
+        .maybeSingle()
+      if (!adminRow) {
+        const url = req.nextUrl.clone()
+        url.pathname = "/dashboard"
+        return NextResponse.redirect(url)
+      }
+    }
+  }
+
   const isOnboardingAllowed =
     pathname.startsWith("/onboarding") ||
     pathname.startsWith("/api/onboarding") ||
