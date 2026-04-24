@@ -481,14 +481,19 @@ export async function getAfipServiceForOrg(
   supabase: SupabaseClient,
   orgId: string
 ): Promise<AfipService | null> {
-  const { data: integration } = await (supabase
+  // Una org puede tener múltiples integraciones AFIP (una por agencia).
+  // Todas comparten el mismo CUIT + cert — cualquiera sirve para detectar
+  // "hay AFIP configurado" y obtener el CUIT emisor. Si hay múltiples,
+  // tomamos la primera activa.
+  const { data: integrations } = await (supabase
     .from("integrations") as any)
     .select("*")
     .eq("org_id", orgId)
     .eq("integration_type", "afip")
     .eq("status", "active")
-    .maybeSingle()
+    .limit(1)
 
+  const integration = integrations?.[0]
   if (!integration || !integration.config) {
     return null
   }
