@@ -49,6 +49,43 @@ export async function POST(
       )
     }
 
+    // SP-2: Re-check margin cap (race-safe: otro POST podría haber completado
+    // mientras esta factura estaba en draft/pending)
+    if (invoice.operation_id) {
+      const { data: operation } = await (supabase.from("operations") as any)
+        .select("margin_amount")
+        .eq("id", invoice.operation_id)
+        .single()
+
+      if (operation) {
+        const { data: peers } = await (supabase.from("invoices") as any)
+          .select("imp_total")
+          .eq("operation_id", invoice.operation_id)
+          .eq("status", "authorized")
+          .neq("id", invoice.id)
+
+        const already = (peers ?? []).reduce(
+          (acc: number, i: any) => acc + Number(i.imp_total),
+          0
+        )
+        const margin = Number(operation.margin_amount)
+        const projected = already + Number(invoice.imp_total)
+
+        if (projected > margin + 0.01) {
+          await (supabase.from("invoices") as any)
+            .update({ status: "rejected" })
+            .eq("id", invoice.id)
+          return NextResponse.json(
+            {
+              error: `No se puede autorizar: otra factura completó el margen mientras este draft esperaba. Restante actual: $${(margin - already).toFixed(2)}`,
+              max_remaining: margin - already,
+            },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
     const afipService = await getAfipServiceForOrg(supabase, invoice.org_id)
     if (!afipService) {
       return NextResponse.json(

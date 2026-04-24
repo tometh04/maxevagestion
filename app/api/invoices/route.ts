@@ -162,6 +162,55 @@ export async function POST(request: Request) {
       )
     }
 
+    // SP-2: Si la factura está atada a una operación, validar que no se exceda
+    // el margen restante (suma de authorized + new <= margin_amount).
+    if (validatedData.operation_id) {
+      const { data: operation, error: opErr } = await (supabase.from("operations") as any)
+        .select("id, org_id, margin_amount")
+        .eq("id", validatedData.operation_id)
+        .single()
+
+      if (opErr || !operation) {
+        return NextResponse.json(
+          { error: "Operación no encontrada" },
+          { status: 404 }
+        )
+      }
+
+      // Cross-tenant check: la operación debe pertenecer al mismo org que la agencia
+      if (operation.org_id !== agency.org_id) {
+        return NextResponse.json(
+          { error: "La operación no pertenece a tu organización" },
+          { status: 403 }
+        )
+      }
+
+      // Sum authorized invoices de esta operación
+      const { data: existingInvoices } = await (supabase.from("invoices") as any)
+        .select("imp_total")
+        .eq("operation_id", validatedData.operation_id)
+        .eq("status", "authorized")
+
+      const alreadyInvoiced = (existingInvoices ?? []).reduce(
+        (acc: number, i: any) => acc + Number(i.imp_total),
+        0
+      )
+      const margin = Number(operation.margin_amount)
+      const remaining = Math.round((margin - alreadyInvoiced) * 100) / 100
+      const newTotal = Number(calculatedInvoice.totals.imp_total)
+
+      // Tolerancia 1 cent para float precision
+      if (newTotal > remaining + 0.01) {
+        return NextResponse.json(
+          {
+            error: `No se puede facturar $${newTotal.toFixed(2)}: el margen restante de la operación es $${remaining.toFixed(2)}`,
+            max_remaining: remaining,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Crear factura
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
