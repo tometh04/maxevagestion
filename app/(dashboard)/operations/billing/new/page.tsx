@@ -162,6 +162,8 @@ export default function NewInvoicePage() {
   const [invoiceCurrency, setInvoiceCurrency] = useState<'PES' | 'DOL'>('PES')
   const [exchangeRate, setExchangeRate] = useState<number>(1)
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
+  const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
+  const [cotizacionLoading, setCotizacionLoading] = useState(false)
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -186,6 +188,29 @@ export default function NewInvoicePage() {
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (invoiceCurrency !== 'DOL' || !formData.agency_id) {
+      setCotizacionAfip(null)
+      return
+    }
+    let cancelled = false
+    setCotizacionLoading(true)
+    const today = new Date().toISOString().split('T')[0]
+    fetch(`/api/invoices/exchange-rate?currency=DOL&date=${today}&agency_id=${formData.agency_id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d.rate && d.rate > 0) {
+          setCotizacionAfip(d.rate)
+          if (exchangeRate === 1) setExchangeRate(d.rate)
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCotizacionLoading(false) })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoiceCurrency, formData.agency_id])
 
   const loadData = async () => {
     try {
@@ -863,6 +888,7 @@ export default function NewInvoicePage() {
                     <SelectContent>
                       <SelectItem value="6">Factura B</SelectItem>
                       <SelectItem value="1">Factura A</SelectItem>
+                      <SelectItem value="11">Factura C (Monotributo)</SelectItem>
                       <SelectItem value="19">Factura E (Exportación)</SelectItem>
                     </SelectContent>
                   </Select>
@@ -1174,9 +1200,22 @@ export default function NewInvoicePage() {
                           step={0.01}
                           placeholder="Ej: 1500"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          TC del día hábil anterior (según normativa AFIP)
-                        </p>
+                        {cotizacionAfip && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Oficial AFIP hoy: <strong>{cotizacionAfip.toFixed(2)}</strong>
+                            {cotizacionLoading && " (consultando...)"}
+                          </p>
+                        )}
+                        {!cotizacionAfip && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            TC del día hábil anterior (según normativa AFIP)
+                          </p>
+                        )}
+                        {cotizacionAfip && Math.abs(exchangeRate - cotizacionAfip) / cotizacionAfip > 0.02 && (
+                          <p className="text-xs text-orange-500 mt-1">
+                            ⚠️ Tu cotización difiere más del 2% del oficial. AFIP va a rechazar (error 10119).
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
