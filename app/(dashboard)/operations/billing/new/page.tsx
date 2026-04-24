@@ -164,6 +164,7 @@ export default function NewInvoicePage() {
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
   const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
   const [cotizacionLoading, setCotizacionLoading] = useState(false)
+  const [marginRemaining, setMarginRemaining] = useState<number | null>(null)
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -484,57 +485,49 @@ export default function NewInvoicePage() {
             }))
           }
 
-          const precioOriginalUSD = fullOperation.sale_amount_total || 0
-          const precioEnARS = fullOperation.sale_currency === 'USD'
-            ? precioOriginalUSD * fetchedRate
-            : precioOriginalUSD
+          // SP-2: fetch margin summary y precargar 1 ítem único con margen restante
+          // (reemplaza la precarga vieja de 2 items: venta + costo operador)
+          const summaryRes = await fetch(`/api/operations/${operationId}/margin-summary`)
+          if (!summaryRes.ok) {
+            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar margen" }))
+            toast({
+              title: "No se puede facturar esta operación",
+              description: err.error || "Error al cargar",
+              variant: "destructive",
+            })
+            return
+          }
+          const summary = await summaryRes.json()
 
-          const montoVenta = nextInvoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD
-          
-          let costoTotal = 0
-          let costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
-          
-          if (fullOperation.operation_operators && fullOperation.operation_operators.length > 0) {
-            costoTotal = fullOperation.operation_operators.reduce((sum: number, op: any) => {
-              return sum + (parseFloat(op.cost) || 0)
-            }, 0)
-            if (fullOperation.operation_operators[0].cost_currency) {
-              costoOperadorCurrency = fullOperation.operation_operators[0].cost_currency
+          if (!summary.summary.can_invoice) {
+            const reasonText: Record<string, string> = {
+              no_margin: "La operación no tiene margen facturable",
+              no_customer: "La operación no tiene cliente asignado",
+              no_afip: "AFIP no está configurado para esta organización",
+              already_fully_invoiced: "La operación ya está facturada completa",
             }
-          } else if (fullOperation.operator_cost !== undefined) {
-            costoTotal = Number(fullOperation.operator_cost) || 0
-            costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
+            toast({
+              title: "No se puede facturar",
+              description: reasonText[summary.summary.reason_disabled] || "Operación no facturable",
+              variant: "destructive",
+            })
+            return
           }
-          
-          let costoEnARS = 0
-          if (costoOperadorCurrency === 'USD') {
-            costoEnARS = costoTotal * fetchedRate
-          } else {
-            costoEnARS = costoTotal
-          }
-          const montoCosto = nextInvoiceCurrency === 'PES' ? costoEnARS : costoTotal
+
+          // Guardar max permitido para validación UI
+          setMarginRemaining(summary.summary.remaining)
+
+          // Precargar UN solo item con el margen restante
           const taxTreatment = getDefaultTaxTreatment(formData.cbte_tipo)
-          
           const newItems: InvoiceItem[] = [
             {
-              descripcion: `Servicios turísticos - ${fullOperation.destination} (${fullOperation.file_code})`,
+              descripcion: `Comisión por intermediación turística - ${summary.operation.destination} (${summary.operation.file_code})`,
               cantidad: 1,
-              precio_unitario: montoVenta,
-              iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
+              precio_unitario: summary.summary.remaining,
+              iva_porcentaje: taxTreatment === "GRAVADO" ? 21 : 0,
               tax_treatment: taxTreatment,
-            }
+            },
           ]
-          
-          if (costoTotal > 0) {
-            newItems.push({
-              descripcion: `Costo de operador - ${fullOperation.file_code}`,
-              cantidad: 1,
-              precio_unitario: montoCosto,
-              iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
-              tax_treatment: taxTreatment,
-            })
-          }
-          
           setItems(newItems)
         }
       } catch (error) {
@@ -752,7 +745,24 @@ export default function NewInvoicePage() {
         setSaving(false)
         return
       }
-      
+
+      // SP-2: validación cliente-side del cap de margen
+      if (marginRemaining !== null) {
+        const totalFinal = items.reduce((acc, i) => acc + i.precio_unitario * i.cantidad, 0)
+        if (totalFinal > marginRemaining + 0.01) {
+          toast({
+            title: "No se puede facturar",
+            description: `Excede el margen restante (${new Intl.NumberFormat("es-AR", {
+              style: "currency",
+              currency: "ARS",
+            }).format(marginRemaining)})`,
+            variant: "destructive",
+          })
+          setSaving(false)
+          return
+        }
+      }
+
       const response = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
