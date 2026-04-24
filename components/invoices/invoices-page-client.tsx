@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle } from "lucide-react"
+import { Loader2, Plus, Send, Eye, Download, Search, Filter, User, DollarSign, ShieldCheck, AlertCircle, RefreshCw } from "lucide-react"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -104,6 +104,7 @@ export function InvoicesPageClient() {
   const [statusFilter, setStatusFilter] = useState("ALL")
   const [search, setSearch] = useState("")
   const [authorizing, setAuthorizing] = useState<string | null>(null)
+  const [verifying, setVerifying] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const selectedInvoiceHideTaxBreakdown = selectedInvoice
     ? shouldHideInvoiceTaxBreakdown({
@@ -176,6 +177,49 @@ export function InvoicesPageClient() {
       })
     } finally {
       setAuthorizing(null)
+    }
+  }
+
+  const handleVerify = async (invoiceId: string) => {
+    setVerifying(true)
+    try {
+      const res = await fetch(`/api/invoices/${invoiceId}/verify`, { method: "POST" })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const statusLabel =
+          ({
+            verified: "✓ Verificada en AFIP",
+            discrepancy: "⚠ Discrepancia detectada",
+            not_found_in_afip: "✗ No está en AFIP",
+          } as Record<string, string>)[data.verification_status as string] || data.verification_status
+        toast({
+          title: "Re-sincronizado con AFIP",
+          description: statusLabel,
+          variant: data.verification_status === "verified" ? "default" : "destructive",
+        })
+        // Refresh listing so the verification_status badge updates.
+        await loadInvoices()
+        // Reflect new status in the open dialog immediately.
+        setSelectedInvoice((prev) =>
+          prev && prev.id === invoiceId
+            ? { ...prev, verification_status: data.verification_status }
+            : prev,
+        )
+      } else {
+        toast({
+          title: "Error al re-sincronizar",
+          description: data.error || "Verificación falló",
+          variant: "destructive",
+        })
+      }
+    } catch (err: any) {
+      toast({
+        title: "Error de red",
+        description: err?.message || "No se pudo contactar AFIP",
+        variant: "destructive",
+      })
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -571,6 +615,20 @@ export function InvoicesPageClient() {
             <Button variant="outline" onClick={() => setSelectedInvoice(null)}>
               Cerrar
             </Button>
+            {selectedInvoice?.status === 'authorized' && (
+              <Button
+                variant="outline"
+                onClick={() => handleVerify(selectedInvoice.id)}
+                disabled={verifying}
+              >
+                {verifying ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Re-sincronizar con AFIP
+              </Button>
+            )}
             {selectedInvoice?.status === 'authorized' && (
               <Button
                 variant="default"
