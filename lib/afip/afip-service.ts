@@ -66,8 +66,216 @@ export class AfipService {
     this.afip = createAfipSdkInstance(config)
   }
 
-  // Métodos públicos se implementan en tasks siguientes.
-  // Por ahora solo el shell.
+  async issueVoucher(draft: any): Promise<IssueResult> {
+    const idempotencyKey = `${draft.org_id}:${draft.pto_vta}:${draft.cbte_tipo}:${draft.id}`
+
+    const payload = this.buildAfipPayload(draft)
+
+    // 1. Log 'create' request
+    const { data: createLog } = await (this.supabase
+      .from("afip_voucher_requests") as any)
+      .insert({
+        invoice_id: draft.id,
+        org_id: draft.org_id,
+        agency_id: draft.agency_id,
+        idempotency_key: idempotencyKey,
+        attempt_n: 1,
+        operation: "create",
+        request_payload: payload,
+      })
+      .select()
+      .single()
+
+    let createResponse: any
+    try {
+      createResponse = await this.afip.ElectronicBilling.createNextVoucher(payload, {
+        returnFullResponse: true,
+      })
+    } catch (err: any) {
+      // Recovery se implementa en Task 7-8. Por ahora retornamos error.
+      await this.updateRequestLog(createLog?.id, {
+        error: err?.message || String(err),
+        completed_at: new Date().toISOString(),
+      })
+      return {
+        success: false,
+        verification_status: "unverified",
+        error: err?.message || String(err),
+      }
+    }
+
+    if (!createResponse?.CAE) {
+      return {
+        success: false,
+        verification_status: "unverified",
+        error: "AFIP no devolvió CAE",
+      }
+    }
+
+    const voucherNumber = createResponse.voucherNumber ?? createResponse.CbteDesde
+
+    await this.updateRequestLog(createLog?.id, {
+      response_payload: createResponse,
+      completed_at: new Date().toISOString(),
+    })
+
+    // 2. Log 'verify' + fetch
+    const { data: verifyLog } = await (this.supabase
+      .from("afip_voucher_requests") as any)
+      .insert({
+        invoice_id: draft.id,
+        org_id: draft.org_id,
+        agency_id: draft.agency_id,
+        idempotency_key: idempotencyKey,
+        attempt_n: 1,
+        operation: "verify",
+      })
+      .select()
+      .single()
+
+    const verified = await this.afip.ElectronicBilling.getVoucherInfo(
+      voucherNumber,
+      draft.pto_vta,
+      draft.cbte_tipo
+    )
+
+    const sentFields: VoucherFields = {
+      CAE: createResponse.CAE,
+      CAEFchVto: createResponse.CAEFchVto,
+      ImpTotal: draft.imp_total,
+      ImpNeto: draft.imp_neto,
+      ImpIVA: draft.imp_iva,
+      DocNro: Number(draft.receptor_doc_nro),
+      DocTipo: draft.receptor_doc_tipo,
+      CbteFch: this.formatDate(draft.fecha_emision),
+      CbteDesde: voucherNumber,
+      CbteHasta: voucherNumber,
+    }
+
+    const receivedFields: Partial<VoucherFields> | null = verified
+      ? {
+          CAE: verified.CodAutorizacion ?? verified.CAE,
+          CAEFchVto: verified.CAEFchVto,
+          ImpTotal: verified.ImpTotal,
+          ImpNeto: verified.ImpNeto,
+          ImpIVA: verified.ImpIVA,
+          DocNro: verified.DocNro,
+          DocTipo: verified.DocTipo,
+          CbteFch: verified.CbteFch,
+          CbteDesde: verified.CbteDesde,
+          CbteHasta: verified.CbteHasta,
+        }
+      : null
+
+    const diff = diffVoucher(sentFields, receivedFields)
+
+    const verificationStatus: IssueResult["verification_status"] =
+      diff === null
+        ? "verified"
+        : diff && (diff as any)._not_found
+        ? "not_found_in_afip"
+        : "discrepancy"
+
+    await this.updateRequestLog(verifyLog?.id, {
+      verified_payload: verified,
+      verification_diff: diff,
+      completed_at: new Date().toISOString(),
+      verified_at: new Date().toISOString(),
+    })
+
+    // 3. Update invoice
+    await (this.supabase.from("invoices") as any)
+      .update({
+        cae: createResponse.CAE,
+        cae_fch_vto: createResponse.CAEFchVto,
+        cbte_nro: voucherNumber,
+        status: "authorized",
+        verification_status: verificationStatus,
+        verified_at: new Date().toISOString(),
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq("id", draft.id)
+
+    return {
+      success: true,
+      cae: createResponse.CAE,
+      cbte_nro: voucherNumber,
+      cae_fch_vto: createResponse.CAEFchVto,
+      verification_status: verificationStatus,
+      diff,
+      request_id: createLog?.id,
+    }
+  }
+
+  private async updateRequestLog(id: string | undefined, patch: any): Promise<void> {
+    if (!id) return
+    await (this.supabase.from("afip_voucher_requests") as any)
+      .update(patch)
+      .eq("id", id)
+  }
+
+  private buildAfipPayload(draft: any): any {
+    const items = draft.invoice_items || []
+    const isFacturaC = [11, 12, 13].includes(draft.cbte_tipo)
+
+    let ivaArray: any[] = []
+    if (!isFacturaC) {
+      const ivaGrouped: Record<number, { BaseImp: number; Importe: number }> = {}
+      for (const item of items) {
+        if (item.tax_treatment !== "GRAVADO" && item.iva_porcentaje === 0) continue
+        const id = item.iva_id
+        if (!ivaGrouped[id]) ivaGrouped[id] = { BaseImp: 0, Importe: 0 }
+        ivaGrouped[id].BaseImp += item.subtotal
+        ivaGrouped[id].Importe += item.iva_importe
+      }
+      ivaArray = Object.entries(ivaGrouped).map(([id, v]) => ({
+        Id: parseInt(id, 10),
+        BaseImp: Math.round(v.BaseImp * 100) / 100,
+        Importe: Math.round(v.Importe * 100) / 100,
+      }))
+    }
+
+    const payload: any = {
+      CantReg: 1,
+      PtoVta: draft.pto_vta,
+      CbteTipo: draft.cbte_tipo,
+      Concepto: draft.concepto,
+      DocTipo: draft.receptor_doc_tipo,
+      DocNro: parseInt(String(draft.receptor_doc_nro).replace(/\D/g, ""), 10),
+      CbteFch: parseInt(this.formatDate(draft.fecha_emision || new Date()), 10),
+      ImpTotal: draft.imp_total,
+      ImpTotConc: draft.imp_tot_conc || 0,
+      ImpNeto: isFacturaC ? draft.imp_total : draft.imp_neto,
+      ImpOpEx: draft.imp_op_ex || 0,
+      ImpIVA: isFacturaC ? 0 : draft.imp_iva,
+      ImpTrib: draft.imp_trib || 0,
+      MonId: draft.moneda || "PES",
+      MonCotiz: draft.cotizacion || 1,
+      CondicionIVAReceptorId: draft.receptor_condicion_iva || 5,
+    }
+    if (ivaArray.length > 0) payload.Iva = ivaArray
+
+    if (draft.concepto === 2 || draft.concepto === 3) {
+      payload.FchServDesde = this.formatDate(draft.fch_serv_desde)
+      payload.FchServHasta = this.formatDate(draft.fch_serv_hasta)
+      payload.FchVtoPago = this.formatDate(draft.fch_vto_pago || draft.fch_serv_hasta)
+    }
+
+    return payload
+  }
+
+  private formatDate(input: string | Date): string {
+    if (typeof input === "string") {
+      // Formato ISO corto YYYY-MM-DD: evitar parseo UTC que desplaza día por TZ.
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input)
+      if (m) return `${m[1]}${m[2]}${m[3]}`
+    }
+    const d = typeof input === "string" ? new Date(input) : input
+    const y = d.getFullYear()
+    const mo = String(d.getMonth() + 1).padStart(2, "0")
+    const day = String(d.getDate()).padStart(2, "0")
+    return `${y}${mo}${day}`
+  }
 }
 
 /**
