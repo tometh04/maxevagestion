@@ -176,6 +176,81 @@ describe("AfipService.issueVoucher — discrepancy path", () => {
   })
 })
 
+describe("AfipService.recoverVoucher (timeout handling)", () => {
+  it("adopts voucher when getLastVoucher === tentative", async () => {
+    const mockGetLast = jest.fn().mockResolvedValue(42)
+    const mockGetInfo = jest.fn().mockResolvedValue({
+      CodAutorizacion: "CAE_RECOVERED",
+      CAEFchVto: "20260530",
+      CbteDesde: 42,
+      CbteHasta: 42,
+    })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: {
+        getLastVoucher: mockGetLast,
+        getVoucherInfo: mockGetInfo,
+      },
+    }
+
+    const r = await (svc as any).recoverVoucher(42, 1, 6)
+    expect(r.adopted).toBe(true)
+    expect(r.voucher.CodAutorizacion).toBe("CAE_RECOVERED")
+  })
+
+  it("allows retry when getLastVoucher === tentative - 1", async () => {
+    const mockGetLast = jest.fn().mockResolvedValue(41)
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: { getLastVoucher: mockGetLast, getVoucherInfo: jest.fn() },
+    }
+
+    const r = await (svc as any).recoverVoucher(42, 1, 6)
+    expect(r.adopted).toBe(false)
+    expect(r.canRetry).toBe(true)
+  })
+
+  it("flags anomaly when getLastVoucher > tentative + 1", async () => {
+    const mockGetLast = jest.fn().mockResolvedValue(50)
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: { getLastVoucher: mockGetLast, getVoucherInfo: jest.fn() },
+    }
+
+    const r = await (svc as any).recoverVoucher(42, 1, 6)
+    expect(r.anomaly).toBe(true)
+  })
+
+  it("marks stale tentative when getLastVoucher < tentative - 1", async () => {
+    const mockGetLast = jest.fn().mockResolvedValue(38)
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: { getLastVoucher: mockGetLast, getVoucherInfo: jest.fn() },
+    }
+
+    const r = await (svc as any).recoverVoucher(42, 1, 6)
+    expect(r.canRetry).toBe(true)
+    expect(r.note).toBe("stale-tentative")
+  })
+})
+
 // Helpers ---------------------------------------------
 
 function sandboxConfig() {

@@ -214,6 +214,35 @@ export class AfipService {
       .eq("id", id)
   }
 
+  private async recoverVoucher(
+    tentativeNumber: number,
+    ptoVta: number,
+    cbteTipo: number
+  ): Promise<{
+    adopted: boolean
+    canRetry?: boolean
+    anomaly?: boolean
+    note?: string
+    voucher?: any
+  }> {
+    const last = await this.afip.ElectronicBilling.getLastVoucher(ptoVta, cbteTipo)
+
+    if (last === tentativeNumber) {
+      const voucher = await this.afip.ElectronicBilling.getVoucherInfo(
+        last, ptoVta, cbteTipo
+      )
+      return { adopted: true, voucher }
+    }
+    if (last === tentativeNumber - 1) {
+      return { adopted: false, canRetry: true }
+    }
+    if (last < tentativeNumber - 1) {
+      return { adopted: false, canRetry: true, note: "stale-tentative" }
+    }
+    // last > tentative (including > tentative + 1) is anomaly
+    return { adopted: false, anomaly: true }
+  }
+
   private buildAfipPayload(draft: any): any {
     const items = draft.invoice_items || []
     const isFacturaC = [11, 12, 13].includes(draft.cbte_tipo)
