@@ -87,20 +87,70 @@ export class AfipService {
       .single()
 
     let createResponse: any
+
     try {
       createResponse = await this.afip.ElectronicBilling.createNextVoucher(payload, {
         returnFullResponse: true,
       })
     } catch (err: any) {
-      // Recovery se implementa en Task 7-8. Por ahora retornamos error.
-      await this.updateRequestLog(createLog?.id, {
-        error: err?.message || String(err),
-        completed_at: new Date().toISOString(),
+      // Timeout o network error — intentar recovery.
+      // tentativeNumber = getLastVoucher + 1: el próximo número que AFIP
+      // asignaría si procesa nuestro draft. Si getLastVoucher ahora retorna
+      // ese mismo tentative, significa que AFIP lo tomó (adoptamos el CAE).
+      const tentativeNumber: number | undefined = await this.afip.ElectronicBilling
+        .getLastVoucher(draft.pto_vta, draft.cbte_tipo)
+        .then((n: number) => n + 1)
+        .catch(() => undefined)
+
+      if (tentativeNumber === undefined) {
+        await this.updateRequestLog(createLog?.id, {
+          error: err?.message || String(err),
+          completed_at: new Date().toISOString(),
+        })
+        return {
+          success: false,
+          verification_status: "unverified",
+          error: err?.message || String(err),
+        }
+      }
+
+      // Log 'recover' attempt
+      await (this.supabase.from("afip_voucher_requests") as any).insert({
+        invoice_id: draft.id,
+        org_id: draft.org_id,
+        agency_id: draft.agency_id,
+        idempotency_key: idempotencyKey,
+        attempt_n: 2,
+        operation: "recover",
+        request_payload: {
+          tentative: tentativeNumber,
+          pto_vta: draft.pto_vta,
+          cbte_tipo: draft.cbte_tipo,
+        },
       })
-      return {
-        success: false,
-        verification_status: "unverified",
-        error: err?.message || String(err),
+
+      const recovery = await this.recoverVoucher(
+        tentativeNumber,
+        draft.pto_vta,
+        draft.cbte_tipo
+      )
+
+      if (recovery.adopted && recovery.voucher) {
+        createResponse = {
+          CAE: recovery.voucher.CodAutorizacion ?? recovery.voucher.CAE,
+          CAEFchVto: recovery.voucher.CAEFchVto,
+          voucherNumber: recovery.voucher.CbteDesde,
+        }
+      } else {
+        await this.updateRequestLog(createLog?.id, {
+          error: `timeout + recovery: ${JSON.stringify(recovery)}`,
+          completed_at: new Date().toISOString(),
+        })
+        return {
+          success: false,
+          verification_status: "unverified",
+          error: err?.message || "timeout, AFIP no tomó el comprobante",
+        }
       }
     }
 

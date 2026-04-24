@@ -251,6 +251,91 @@ describe("AfipService.recoverVoucher (timeout handling)", () => {
   })
 })
 
+describe("AfipService.issueVoucher — timeout recovery integration", () => {
+  it("adopts CAE from getVoucherInfo when createNextVoucher times out and last voucher matches", async () => {
+    const mockCreate = jest.fn().mockRejectedValue(new Error("timeout"))
+    // 1st call (en issueVoucher): 41 → tentative = 42 (próximo que AFIP asignaría)
+    // 2nd call (en recoverVoucher): 42 → AFIP ya tomó nuestro draft → adopt
+    const mockGetLast = jest
+      .fn()
+      .mockResolvedValueOnce(41)
+      .mockResolvedValueOnce(42)
+    const mockGetInfo = jest.fn().mockResolvedValue({
+      CodAutorizacion: "CAE_RECOVERED",
+      CAEFchVto: "20260530",
+      ImpTotal: 12100,
+      ImpNeto: 10000,
+      ImpIVA: 2100,
+      DocNro: 20123456789,
+      DocTipo: 80,
+      CbteFch: "20260424",
+      CbteDesde: 42,
+      CbteHasta: 42,
+    })
+
+    const inserts: any[] = []
+    const updates: any[] = []
+    const supabase = makeInvoiceRequestsSupabase({ inserts, updates })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      supabase as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: {
+        createNextVoucher: mockCreate,
+        getLastVoucher: mockGetLast,
+        getVoucherInfo: mockGetInfo,
+      },
+    }
+
+    const result = await svc.issueVoucher({ ...sampleDraft(), pto_vta: 1, cbte_tipo: 6 })
+
+    expect(result.success).toBe(true)
+    expect(result.cae).toBe("CAE_RECOVERED")
+    expect(result.verification_status).toBe("verified")
+
+    // 'recover' operation debe aparecer en inserts
+    const ops = inserts
+      .filter((i) => i.table === "afip_voucher_requests")
+      .map((i) => i.row.operation)
+    expect(ops).toContain("recover")
+  })
+
+  it("returns error when timeout + recovery indicates no voucher exists", async () => {
+    const mockCreate = jest.fn().mockRejectedValue(new Error("timeout"))
+    // 1st call (en issueVoucher): 40 → tentative = 41
+    // 2nd call (en recoverVoucher): 40 → AFIP nunca tomó el draft → canRetry, no adopt
+    const mockGetLast = jest
+      .fn()
+      .mockResolvedValueOnce(40)
+      .mockResolvedValueOnce(40)
+
+    const inserts: any[] = []
+    const updates: any[] = []
+    const supabase = makeInvoiceRequestsSupabase({ inserts, updates })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      supabase as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: {
+        createNextVoucher: mockCreate,
+        getLastVoucher: mockGetLast,
+        getVoucherInfo: jest.fn(),
+      },
+    }
+
+    const result = await svc.issueVoucher({ ...sampleDraft(), pto_vta: 1, cbte_tipo: 6 })
+
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/timeout/i)
+  })
+})
+
 // Helpers ---------------------------------------------
 
 function sandboxConfig() {
