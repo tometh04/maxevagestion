@@ -22,14 +22,14 @@ describe("diffVoucher", () => {
   })
 
   it("detects ImpTotal difference greater than 1 cent", () => {
-    const received = { ...base, ImpTotal: 12102 }
+    const received = { ...base, ImpTotal: 12100.02 }
     expect(diffVoucher(base, received)).toEqual({
-      ImpTotal: { sent: 12100, received: 12102 },
+      ImpTotal: { sent: 12100, received: 12100.02 },
     })
   })
 
   it("tolerates ImpTotal difference of 1 cent (AFIP rounds oddly)", () => {
-    const received = { ...base, ImpTotal: 12101 }
+    const received = { ...base, ImpTotal: 12100.01 }
     expect(diffVoucher(base, received)).toBeNull()
   })
 

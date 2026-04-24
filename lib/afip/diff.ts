@@ -23,7 +23,9 @@ export type VoucherDiff =
   | Partial<Record<keyof VoucherFields, { sent: unknown; received: unknown }>>
 
 const MONEY_FIELDS: (keyof VoucherFields)[] = ["ImpTotal", "ImpNeto", "ImpIVA"]
-const MONEY_TOLERANCE = 1
+// AFIP WSFE usa pesos decimales (ej: 12100.00 = $12.100). Toleramos 1 centavo
+// de diferencia porque AFIP a veces redondea alícuotas independiente del total.
+const MONEY_TOLERANCE = 0.01
 
 export function diffVoucher(
   sent: VoucherFields,
