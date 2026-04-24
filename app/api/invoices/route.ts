@@ -149,10 +149,25 @@ export async function POST(request: Request) {
       orden: index,
     }))
 
+    // Resolver org_id desde la agencia — requerido por RLS policy invoices_tenant_isolation
+    const { data: agency } = await (supabase.from("agencies") as any)
+      .select("org_id")
+      .eq("id", validatedData.agency_id)
+      .single()
+
+    if (!agency?.org_id) {
+      return NextResponse.json(
+        { error: "Agencia sin org_id asociado — contactar soporte" },
+        { status: 400 }
+      )
+    }
+
     // Crear factura
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
         agency_id: validatedData.agency_id, // Usar la agencia del punto de venta
+        org_id: agency.org_id,               // Para RLS multi-tenant
+        verification_status: "unverified",   // Default: se verifica al autorizar
         operation_id: validatedData.operation_id || null,
         customer_id: validatedData.customer_id || null,
         cbte_tipo: validatedData.cbte_tipo,
