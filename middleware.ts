@@ -33,6 +33,15 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
 }
 
 export async function middleware(req: NextRequest) {
+  // Legacy domain redirect: maxevagestion.com → app.vibook.ai (301)
+  // Corre PRIMERO para no ejecutar auth/rate-limit/db en requests que solo
+  // necesitan ser redirigidos. Preserva path y query string.
+  const host = req.headers.get('host')?.toLowerCase() || ''
+  if (host === 'maxevagestion.com' || host === 'www.maxevagestion.com') {
+    const target = `https://app.vibook.ai${req.nextUrl.pathname}${req.nextUrl.search}`
+    return NextResponse.redirect(target, 301)
+  }
+
   // Permitir webhooks de Trello sin autenticación
   if (req.nextUrl.pathname === '/api/trello/webhook') {
     return NextResponse.next()
