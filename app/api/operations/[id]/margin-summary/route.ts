@@ -30,14 +30,18 @@ export async function GET(
       return NextResponse.json({ error: "Sin permiso" }, { status: 403 })
     }
 
-    // Fetch operation via RLS (404 si no accesible)
+    // Fetch operation via RLS (404 si no accesible).
+    // Nota: la tabla operations NO tiene columna customer_id — el link a
+    // clientes es M:N vía operation_customers. La resolución del customer
+    // MAIN se hace abajo.
     const { data: operation, error: opErr } = await (supabase
       .from("operations") as any)
-      .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, customer_id, org_id")
+      .select("id, file_code, destination, sale_amount_total, operator_cost, margin_amount, org_id")
       .eq("id", id)
       .single()
 
     if (opErr || !operation) {
+      console.error("[margin-summary] operations fetch failed:", { id, opErr })
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
@@ -49,39 +53,22 @@ export async function GET(
 
     const invoicesList = (invoices ?? []) as any[]
 
-    // Fetch customer (MAIN): primero intenta customer_id directo, después cae
-    // al M:N via operation_customers.role='MAIN' (que es el patrón usado por el sistema).
+    // Fetch customer (MAIN) via M:N operation_customers
     let customer: { id: string; name: string } | null = null
-    let resolvedCustomerId: string | null = operation.customer_id ?? null
+    let resolvedCustomerId: string | null = null
 
-    if (resolvedCustomerId) {
-      const { data: cus } = await (supabase.from("customers") as any)
-        .select("id, first_name, last_name")
-        .eq("id", resolvedCustomerId)
-        .maybeSingle()
-      if (cus) {
-        customer = {
-          id: cus.id,
-          name: `${cus.first_name || ""} ${cus.last_name || ""}`.trim(),
-        }
-      }
-    }
+    const { data: opCustomers } = await (supabase.from("operation_customers") as any)
+      .select("customer_id, role, customers(id, first_name, last_name)")
+      .eq("operation_id", id)
+      .order("role", { ascending: true }) // MAIN < COMPANION alfabéticamente
 
-    // Fallback al M:N: la mayoría de operations no tienen customer_id directo
-    if (!customer) {
-      const { data: opCustomers } = await (supabase.from("operation_customers") as any)
-        .select("customer_id, role, customers(id, first_name, last_name)")
-        .eq("operation_id", id)
-        .order("role", { ascending: true }) // MAIN < COMPANION alfabéticamente
-
-      const mainOrFirst = (opCustomers ?? []).find((oc: any) => oc.role === "MAIN")
-        ?? (opCustomers ?? [])[0]
-      if (mainOrFirst?.customers) {
-        resolvedCustomerId = mainOrFirst.customer_id
-        customer = {
-          id: mainOrFirst.customers.id,
-          name: `${mainOrFirst.customers.first_name || ""} ${mainOrFirst.customers.last_name || ""}`.trim(),
-        }
+    const mainOrFirst = (opCustomers ?? []).find((oc: any) => oc.role === "MAIN")
+      ?? (opCustomers ?? [])[0]
+    if (mainOrFirst?.customers) {
+      resolvedCustomerId = mainOrFirst.customer_id
+      customer = {
+        id: mainOrFirst.customers.id,
+        name: `${mainOrFirst.customers.first_name || ""} ${mainOrFirst.customers.last_name || ""}`.trim(),
       }
     }
 

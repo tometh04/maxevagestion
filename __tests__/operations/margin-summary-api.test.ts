@@ -23,7 +23,7 @@ jest.mock("@/lib/permissions", () => ({
 function makeMockSupabase(opts: {
   operation?: any
   invoices?: any[]
-  customer?: any
+  customer?: any  // si está set, se devuelve como MAIN en operation_customers
 }) {
   return {
     from: (table: string) => {
@@ -50,13 +50,17 @@ function makeMockSupabase(opts: {
           }),
         }
       }
-      if (table === "customers") {
+      if (table === "operation_customers") {
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({
-                data: opts.customer ?? null,
-                error: null,
+              order: () => ({
+                then: (cb: any) => cb({
+                  data: opts.customer
+                    ? [{ customer_id: opts.customer.id, role: "MAIN", customers: opts.customer }]
+                    : [],
+                  error: null,
+                }),
               }),
             }),
           }),
