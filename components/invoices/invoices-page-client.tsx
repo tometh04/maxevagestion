@@ -106,6 +106,7 @@ export function InvoicesPageClient() {
   const [authorizing, setAuthorizing] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
+  const [exporting, setExporting] = useState(false)
   const selectedInvoiceHideTaxBreakdown = selectedInvoice
     ? shouldHideInvoiceTaxBreakdown({
         amountEntryMode: selectedInvoice.amount_entry_mode,
@@ -223,6 +224,57 @@ export function InvoicesPageClient() {
     }
   }
 
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const now = new Date()
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+      const lastOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+
+      // El componente no tiene filtros de fecha locales, asi que defaulteamos
+      // al mes corriente. Sí respetamos el statusFilter activo (si no es "ALL").
+      const params = new URLSearchParams({
+        from: firstOfMonth,
+        to: lastOfMonth,
+      })
+      if (statusFilter !== "ALL") params.set("status", statusFilter)
+
+      const res = await fetch(`/api/invoices/export?${params}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Error desconocido" }))
+        toast({
+          title: "No se pudo descargar",
+          description: err.error || `HTTP ${res.status}`,
+          variant: "destructive",
+        })
+        return
+      }
+
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = `facturas-${params.get("from")}-${params.get("to")}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      toast({
+        title: "Descarga iniciada",
+        description: "El ZIP con las facturas se está descargando.",
+      })
+    } catch (err: any) {
+      toast({
+        title: "Error de red",
+        description: err?.message || "No se pudo contactar el servidor",
+        variant: "destructive",
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const { sortedData: sortedInvoices, sortConfig, requestSort } = useSortableData(invoices, { key: "created_at", direction: "desc" })
 
   const filteredInvoices = sortedInvoices.filter(inv => {
@@ -265,12 +317,28 @@ export function InvoicesPageClient() {
             Gestión de facturas electrónicas AFIP
           </p>
         </div>
-        <Button size="sm" className="h-8 rounded-full" asChild>
-          <Link href="/operations/billing/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Nueva Factura
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full"
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Descargar ZIP
+          </Button>
+          <Button size="sm" className="h-8 rounded-full" asChild>
+            <Link href="/operations/billing/new">
+              <Plus className="mr-2 h-4 w-4" />
+              Nueva Factura
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filtros */}
