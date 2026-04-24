@@ -336,6 +336,98 @@ describe("AfipService.issueVoucher — timeout recovery integration", () => {
   })
 })
 
+describe("AfipService.verifyVoucher (on-demand)", () => {
+  it("re-fetches from AFIP and updates invoice verification_status", async () => {
+    const mockGetInfo = jest.fn().mockResolvedValue({
+      CodAutorizacion: "CAE123",
+      CAEFchVto: "20260530",
+      ImpTotal: 12100,
+      ImpNeto: 10000,
+      ImpIVA: 2100,
+      DocNro: 20123456789,
+      DocTipo: 80,
+      CbteFch: "20260424",
+      CbteDesde: 42,
+      CbteHasta: 42,
+    })
+
+    const inserts: any[] = []
+    const updates: any[] = []
+    const supabase = {
+      from: (table: string) => {
+        if (table === "invoices") {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: {
+                    id: "inv-001",
+                    org_id: "org-aaa",
+                    agency_id: "ag-aaa",
+                    pto_vta: 1,
+                    cbte_tipo: 6,
+                    cbte_nro: 42,
+                    cae: "CAE123",
+                    cae_fch_vto: "20260530",
+                    imp_total: 12100,
+                    imp_neto: 10000,
+                    imp_iva: 2100,
+                    receptor_doc_tipo: 80,
+                    receptor_doc_nro: "20123456789",
+                    fecha_emision: "2026-04-24",
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+            update: (row: any) => ({
+              eq: () => {
+                updates.push({ table, row })
+                return Promise.resolve({ error: null })
+              },
+            }),
+          }
+        }
+        if (table === "afip_voucher_requests") {
+          return {
+            insert: (row: any) => {
+              inserts.push({ table, row })
+              return {
+                select: () => ({
+                  single: async () => ({ data: { id: "log-1" }, error: null }),
+                }),
+              }
+            },
+            update: () => ({
+              eq: () => Promise.resolve({ error: null }),
+            }),
+          }
+        }
+        return {}
+      },
+    }
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      supabase as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = {
+      ElectronicBilling: { getVoucherInfo: mockGetInfo },
+    }
+
+    const result = await svc.verifyVoucher("inv-001")
+
+    expect(result.verification_status).toBe("verified")
+    expect(mockGetInfo).toHaveBeenCalledWith(42, 1, 6)
+
+    const invUpdate = updates.find((u) => u.table === "invoices")
+    expect(invUpdate).toBeDefined()
+    expect(invUpdate!.row.verification_status).toBe("verified")
+    expect(invUpdate!.row.last_sync_at).toBeDefined()
+  })
+})
+
 // Helpers ---------------------------------------------
 
 function sandboxConfig() {

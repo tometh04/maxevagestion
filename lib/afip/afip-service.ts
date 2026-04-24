@@ -257,6 +257,96 @@ export class AfipService {
     }
   }
 
+  async verifyVoucher(invoiceId: string): Promise<VerifyResult> {
+    const { data: inv } = await (this.supabase
+      .from("invoices") as any)
+      .select("*")
+      .eq("id", invoiceId)
+      .single()
+
+    if (!inv) {
+      throw new Error(`Invoice ${invoiceId} not found or not accessible`)
+    }
+    if (!inv.cbte_nro) {
+      throw new Error(`Invoice ${invoiceId} has no cbte_nro — not yet authorized`)
+    }
+
+    const idempotencyKey = `${inv.org_id}:${inv.pto_vta}:${inv.cbte_tipo}:${inv.id}`
+
+    const { data: verifyLog } = await (this.supabase
+      .from("afip_voucher_requests") as any)
+      .insert({
+        invoice_id: invoiceId,
+        org_id: inv.org_id,
+        agency_id: inv.agency_id,
+        idempotency_key: idempotencyKey,
+        attempt_n: Date.now(), // secuencial único por on-demand verify
+        operation: "verify",
+      })
+      .select()
+      .single()
+
+    const verified = await this.afip.ElectronicBilling.getVoucherInfo(
+      inv.cbte_nro,
+      inv.pto_vta,
+      inv.cbte_tipo
+    )
+
+    const sentFields: VoucherFields = {
+      CAE: inv.cae,
+      CAEFchVto: inv.cae_fch_vto || "",
+      ImpTotal: inv.imp_total,
+      ImpNeto: inv.imp_neto,
+      ImpIVA: inv.imp_iva,
+      DocNro: Number(inv.receptor_doc_nro),
+      DocTipo: inv.receptor_doc_tipo,
+      CbteFch: this.formatDate(inv.fecha_emision),
+      CbteDesde: inv.cbte_nro,
+      CbteHasta: inv.cbte_nro,
+    }
+
+    const receivedFields: Partial<VoucherFields> | null = verified
+      ? {
+          CAE: verified.CodAutorizacion ?? verified.CAE,
+          CAEFchVto: verified.CAEFchVto,
+          ImpTotal: verified.ImpTotal,
+          ImpNeto: verified.ImpNeto,
+          ImpIVA: verified.ImpIVA,
+          DocNro: verified.DocNro,
+          DocTipo: verified.DocTipo,
+          CbteFch: verified.CbteFch,
+          CbteDesde: verified.CbteDesde,
+          CbteHasta: verified.CbteHasta,
+        }
+      : null
+
+    const diff = diffVoucher(sentFields, receivedFields)
+    const verification_status: VerifyResult["verification_status"] =
+      diff === null
+        ? "verified"
+        : diff && (diff as any)._not_found
+        ? "not_found_in_afip"
+        : "discrepancy"
+
+    await this.updateRequestLog(verifyLog?.id, {
+      verified_payload: verified,
+      verification_diff: diff,
+      completed_at: new Date().toISOString(),
+      verified_at: new Date().toISOString(),
+    })
+
+    const now = new Date().toISOString()
+    await (this.supabase.from("invoices") as any)
+      .update({
+        verification_status,
+        verified_at: now,
+        last_sync_at: now,
+      })
+      .eq("id", invoiceId)
+
+    return { verification_status, diff: diff ?? undefined, last_sync_at: now }
+  }
+
   private async updateRequestLog(id: string | undefined, patch: any): Promise<void> {
     if (!id) return
     await (this.supabase.from("afip_voucher_requests") as any)
