@@ -49,12 +49,15 @@ export async function GET(
 
     const invoicesList = (invoices ?? []) as any[]
 
-    // Fetch customer name (opcional)
+    // Fetch customer (MAIN): primero intenta customer_id directo, después cae
+    // al M:N via operation_customers.role='MAIN' (que es el patrón usado por el sistema).
     let customer: { id: string; name: string } | null = null
-    if (operation.customer_id) {
+    let resolvedCustomerId: string | null = operation.customer_id ?? null
+
+    if (resolvedCustomerId) {
       const { data: cus } = await (supabase.from("customers") as any)
         .select("id, first_name, last_name")
-        .eq("id", operation.customer_id)
+        .eq("id", resolvedCustomerId)
         .maybeSingle()
       if (cus) {
         customer = {
@@ -64,11 +67,34 @@ export async function GET(
       }
     }
 
+    // Fallback al M:N: la mayoría de operations no tienen customer_id directo
+    if (!customer) {
+      const { data: opCustomers } = await (supabase.from("operation_customers") as any)
+        .select("customer_id, role, customers(id, first_name, last_name)")
+        .eq("operation_id", id)
+        .order("role", { ascending: true }) // MAIN < COMPANION alfabéticamente
+
+      const mainOrFirst = (opCustomers ?? []).find((oc: any) => oc.role === "MAIN")
+        ?? (opCustomers ?? [])[0]
+      if (mainOrFirst?.customers) {
+        resolvedCustomerId = mainOrFirst.customer_id
+        customer = {
+          id: mainOrFirst.customers.id,
+          name: `${mainOrFirst.customers.first_name || ""} ${mainOrFirst.customers.last_name || ""}`.trim(),
+        }
+      }
+    }
+
     // Check AFIP config
     const afipSvc = await getAfipServiceForOrg(supabase, operation.org_id)
     const hasAfipConfig = !!afipSvc
 
-    const summary = calculateMarginSummary(operation, invoicesList, hasAfipConfig)
+    // Pasamos el customer_id resuelto (direct o M:N) a la pure function
+    const summary = calculateMarginSummary(
+      { margin_amount: operation.margin_amount, customer_id: resolvedCustomerId },
+      invoicesList,
+      hasAfipConfig
+    )
 
     return NextResponse.json({
       operation: {
