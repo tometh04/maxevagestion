@@ -1,21 +1,20 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getUserAgencyIds } from "@/lib/permissions-api"
 import { canAccessModule } from "@/lib/permissions"
-import { 
-  createInvoice, 
-  formatDate,
-} from "@/lib/afip/afip-client"
-import { getAfipConfigForAgency } from "@/lib/afip/afip-helpers"
-import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
-import { TipoComprobante, TipoDocumento, TipoIVA } from "@/lib/afip/types"
+import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 
-export const dynamic = 'force-dynamic'
-// Aumentar timeout para llamadas a AFIP (puede tomar varios segundos)
+export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-// POST - Autorizar factura en AFIP
+/**
+ * POST /api/invoices/[id]/authorize
+ *
+ * Autoriza una factura contra AFIP via AfipService.
+ * - Valida tenant access via RLS (la query fetch no devuelve si no tiene acceso)
+ * - Pre-check de cotización USD contra oficial AFIP (±2% rule)
+ * - Delega a AfipService.issueVoucher (que hace create + verify + log)
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -25,7 +24,6 @@ export async function POST(
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permiso
     if (!canAccessModule(user.role as any, "cash")) {
       return NextResponse.json(
         { error: "No tiene permiso para autorizar facturas" },
@@ -33,174 +31,91 @@ export async function POST(
       )
     }
 
-    // Obtener agencias del usuario
-    const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
-
-    // Obtener factura con items
-    const { data: invoice, error: fetchError } = await (supabase.from("invoices") as any)
-      .select(`
-        *,
-        invoice_items (*)
-      `)
+    // RLS scope: si el user no pertenece al org de la factura, no la encuentra
+    const { data: invoice, error: fetchError } = await (supabase
+      .from("invoices") as any)
+      .select(`*, invoice_items (*)`)
       .eq("id", id)
-      .in("agency_id", agencyIds)
       .single()
 
     if (fetchError || !invoice) {
-      return NextResponse.json(
-        { error: "Factura no encontrada" },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: "Factura no encontrada" }, { status: 404 })
     }
 
-    // Obtener configuración de AFIP para la agencia de la factura
-    const afipConfig = await getAfipConfigForAgency(supabase, invoice.agency_id)
-    
-    if (!afipConfig) {
-      return NextResponse.json(
-        { error: "AFIP no está configurado para esta agencia. Configure la integración en Configuración → Integraciones." },
-        { status: 400 }
-      )
-    }
-
-    // Verificar que la factura está en estado válido
-    if (invoice.status !== 'draft' && invoice.status !== 'pending') {
+    if (invoice.status !== "draft" && invoice.status !== "pending") {
       return NextResponse.json(
         { error: `No se puede autorizar una factura en estado '${invoice.status}'` },
         { status: 400 }
       )
     }
 
-    // Actualizar estado a pending
-    await (supabase.from("invoices") as any)
-      .update({ status: 'pending' })
-      .eq("id", id)
-
-    // Preparar datos para AFIP
-    const items = invoice.invoice_items || []
-    const cbteType = invoice.cbte_tipo as TipoComprobante
-
-    // Factura C (11), Nota Débito C (12), Nota Crédito C (13) → monotributistas: sin IVA discriminado
-    const isFacturaC = [11, 12, 13].includes(cbteType)
-
-    // Agrupar IVA solo sobre conceptos gravados
-    let ivaArray: Array<{ Id: TipoIVA; BaseImp: number; Importe: number }> = []
-
-    if (!isFacturaC) {
-      const ivaGrouped: Record<number, { BaseImp: number; Importe: number }> = {}
-      for (const item of items) {
-        if (normalizeTaxTreatment(item.tax_treatment, item.iva_porcentaje) !== "GRAVADO") {
-          continue
-        }
-
-        const ivaId = item.iva_id as TipoIVA
-        if (!ivaGrouped[ivaId]) {
-          ivaGrouped[ivaId] = { BaseImp: 0, Importe: 0 }
-        }
-        ivaGrouped[ivaId].BaseImp += item.subtotal
-        ivaGrouped[ivaId].Importe += item.iva_importe
-      }
-      ivaArray = Object.entries(ivaGrouped).map(([id, values]) => ({
-        Id: parseInt(id, 10) as TipoIVA,
-        BaseImp: Math.round(values.BaseImp * 100) / 100,
-        Importe: Math.round(values.Importe * 100) / 100,
-      }))
+    const afipService = await getAfipServiceForOrg(supabase, invoice.org_id)
+    if (!afipService) {
+      return NextResponse.json(
+        { error: "AFIP no configurado para esta organización. Configure en Integraciones." },
+        { status: 400 }
+      )
     }
 
-    // Para Factura C: sin IVA discriminado, pero respetando exento/no gravado si existen
-    const impNeto = isFacturaC
-      ? Math.max(
-          0,
-          Number(invoice.imp_total || 0) -
-            Number(invoice.imp_tot_conc || 0) -
-            Number(invoice.imp_op_ex || 0) -
-            Number(invoice.imp_trib || 0)
-        )
-      : invoice.imp_neto
-    const impIva = isFacturaC ? 0 : invoice.imp_iva
+    // Pre-check de cotización USD
+    if (invoice.moneda === "DOL") {
+      const oficial = await afipService.getAfipRate("DOL", new Date(invoice.fecha_emision))
+      const user_rate = Number(invoice.cotizacion) || 0
 
-    // Crear request para AFIP
-    const afipRequest = {
-      CbteTipo: cbteType,
-      PtoVta: invoice.pto_vta,
-      Concepto: invoice.concepto as 1 | 2 | 3,
-      DocTipo: invoice.receptor_doc_tipo as TipoDocumento,
-      DocNro: parseInt(invoice.receptor_doc_nro.replace(/\D/g, ''), 10),
-      CbteFch: invoice.fecha_emision
-        ? formatDate(new Date(invoice.fecha_emision))
-        : formatDate(new Date()),
-      ImpTotal: invoice.imp_total,
-      ImpTotConc: invoice.imp_tot_conc || 0,
-      ImpNeto: impNeto,
-      ImpOpEx: invoice.imp_op_ex || 0,
-      ImpIVA: impIva,
-      ImpTrib: invoice.imp_trib || 0,
-      MonId: invoice.moneda || 'PES',
-      MonCotiz: invoice.cotizacion || 1,
-      Iva: ivaArray.length > 0 ? ivaArray : undefined,
-      // Para concepto 2 (servicios) o 3 (productos y servicios), AFIP requiere fechas obligatoriamente
-      ...(invoice.concepto === 2 || invoice.concepto === 3 ? {
-        FchServDesde: invoice.fch_serv_desde
-          ? formatDate(new Date(invoice.fch_serv_desde))
-          : formatDate(new Date()), // Default: hoy
-        FchServHasta: invoice.fch_serv_hasta
-          ? formatDate(new Date(invoice.fch_serv_hasta))
-          : formatDate(new Date()), // Default: hoy
-        FchVtoPago: invoice.fecha_vto_pago
-          ? formatDate(new Date(invoice.fecha_vto_pago))
-          : formatDate(new Date(new Date().setDate(new Date().getDate() + 30))), // Default: 30 días
-      } : {}),
-      // Condición IVA del receptor: 5=Consumidor Final (default), 1=RI, 6=Monotributo
-      CondicionIVAReceptorId: invoice.receptor_condicion_iva || 5,
+      if (!user_rate || user_rate <= 1) {
+        // Si no hay cotización cargada, usar oficial
+        await (supabase.from("invoices") as any)
+          .update({ cotizacion: oficial })
+          .eq("id", id)
+        invoice.cotizacion = oficial
+      } else {
+        const delta = Math.abs(user_rate - oficial) / oficial
+        if (delta > 0.02) {
+          return NextResponse.json(
+            {
+              error: `Cotización fuera del ±2% oficial AFIP. AFIP va a rechazar (error 10119).`,
+              suggested_rate: oficial,
+              your_rate: user_rate,
+              diff_pct: (delta * 100).toFixed(2),
+            },
+            { status: 400 }
+          )
+        }
+      }
     }
 
-    // Enviar a AFIP usando la configuración de la agencia
-    const afipResponse = await createInvoice(afipConfig, afipRequest)
+    // Marcar como pending
+    await (supabase.from("invoices") as any).update({ status: "pending" }).eq("id", id)
 
-    if (afipResponse.success && afipResponse.data?.CAE) {
-      // Éxito: actualizar factura
-      const { error: updateError } = await (supabase.from("invoices") as any)
-        .update({
-          status: 'authorized',
-          cbte_nro: afipResponse.data.CbteDesde,
-          cae: afipResponse.data.CAE,
-          cae_fch_vto: afipResponse.data.CAEFchVto,
-          fecha_emision: new Date().toISOString().split('T')[0],
-          afip_response: afipResponse.data,
-        })
-        .eq("id", id)
+    // Emitir via service
+    const result = await afipService.issueVoucher(invoice)
 
-      if (updateError) {
-        console.error("Error updating invoice after AFIP:", updateError)
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: "Factura autorizada correctamente",
-        data: {
-          cae: afipResponse.data.CAE,
-          cae_fch_vto: afipResponse.data.CAEFchVto,
-          cbte_nro: afipResponse.data.CbteDesde,
-        },
-      })
-    } else {
-      // Error: actualizar estado y guardar respuesta
+    if (!result.success) {
       await (supabase.from("invoices") as any)
-        .update({
-          status: 'rejected',
-          afip_response: afipResponse,
-        })
+        .update({ status: "rejected" })
         .eq("id", id)
-
       return NextResponse.json(
         {
           success: false,
-          error: afipResponse.error || "Error al autorizar factura en AFIP",
-          details: afipResponse.data?.Errores,
+          error: result.error || "Error al autorizar factura",
+          verification_status: result.verification_status,
         },
         { status: 400 }
       )
     }
+
+    return NextResponse.json({
+      success: true,
+      message: "Factura autorizada",
+      data: {
+        cae: result.cae,
+        cae_fch_vto: result.cae_fch_vto,
+        cbte_nro: result.cbte_nro,
+        verification_status: result.verification_status,
+        diff: result.diff,
+        request_id: result.request_id,
+      },
+    })
   } catch (error: any) {
     console.error("Error in POST /api/invoices/[id]/authorize:", error)
     return NextResponse.json(
