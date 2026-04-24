@@ -561,19 +561,19 @@ function makeInvoiceRequestsSupabase(capture: {
 
 function makeMockSupabase(data: { integrations: any[] }) {
   return {
-    from: (table: string) => ({
+    from: (_table: string) => ({
       select: () => ({
-        eq: (col: string, val: string) => ({
-          eq: (c2: string, v2: string) => ({
-            eq: (c3: string, v3: string) => ({
-              maybeSingle: async () => {
-                const match = data.integrations.find(
+        eq: (_col: string, val: string) => ({
+          eq: (_c2: string, v2: string) => ({
+            eq: (_c3: string, v3: string) => ({
+              limit: async (_n: number) => {
+                const matches = data.integrations.filter(
                   (i) =>
                     i.org_id === val &&
                     i.integration_type === v2 &&
                     i.status === v3
                 )
-                return { data: match || null, error: null }
+                return { data: matches, error: null }
               },
             }),
           }),
