@@ -14,6 +14,85 @@ export type Database = {
   }
   public: {
     Tables: {
+      afip_voucher_requests: {
+        Row: {
+          agency_id: string | null
+          attempt_n: number
+          completed_at: string | null
+          error: string | null
+          error_code: string | null
+          id: string
+          idempotency_key: string
+          invoice_id: string | null
+          operation: string
+          org_id: string
+          request_payload: Json | null
+          response_payload: Json | null
+          started_at: string
+          verification_diff: Json | null
+          verified_at: string | null
+          verified_payload: Json | null
+        }
+        Insert: {
+          agency_id?: string | null
+          attempt_n?: number
+          completed_at?: string | null
+          error?: string | null
+          error_code?: string | null
+          id?: string
+          idempotency_key: string
+          invoice_id?: string | null
+          operation: string
+          org_id: string
+          request_payload?: Json | null
+          response_payload?: Json | null
+          started_at?: string
+          verification_diff?: Json | null
+          verified_at?: string | null
+          verified_payload?: Json | null
+        }
+        Update: {
+          agency_id?: string | null
+          attempt_n?: number
+          completed_at?: string | null
+          error?: string | null
+          error_code?: string | null
+          id?: string
+          idempotency_key?: string
+          invoice_id?: string | null
+          operation?: string
+          org_id?: string
+          request_payload?: Json | null
+          response_payload?: Json | null
+          started_at?: string
+          verification_diff?: Json | null
+          verified_at?: string | null
+          verified_payload?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "afip_voucher_requests_agency_id_fkey"
+            columns: ["agency_id"]
+            isOneToOne: false
+            referencedRelation: "agencies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "afip_voucher_requests_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "afip_voucher_requests_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agencies: {
         Row: {
           city: string
@@ -2473,7 +2552,7 @@ export type Database = {
           last_sync_at: string | null
           name: string
           next_sync_at: string | null
-          org_id: string | null
+          org_id: string
           permissions: Json | null
           status: string
           sync_enabled: boolean | null
@@ -2494,7 +2573,7 @@ export type Database = {
           last_sync_at?: string | null
           name: string
           next_sync_at?: string | null
-          org_id?: string | null
+          org_id: string
           permissions?: Json | null
           status?: string
           sync_enabled?: boolean | null
@@ -2515,7 +2594,7 @@ export type Database = {
           last_sync_at?: string | null
           name?: string
           next_sync_at?: string | null
-          org_id?: string | null
+          org_id?: string
           permissions?: Json | null
           status?: string
           sync_enabled?: boolean | null
@@ -2629,10 +2708,11 @@ export type Database = {
           imp_tot_conc: number | null
           imp_total: number
           imp_trib: number | null
+          last_sync_at: string | null
           moneda: string | null
           notes: string | null
           operation_id: string | null
-          org_id: string | null
+          org_id: string
           pdf_url: string | null
           pto_vta: number
           receptor_condicion_iva: number | null
@@ -2642,6 +2722,9 @@ export type Database = {
           receptor_nombre: string
           status: string
           updated_at: string | null
+          verification_error: string | null
+          verification_status: string | null
+          verified_at: string | null
         }
         Insert: {
           afip_response?: Json | null
@@ -2667,10 +2750,11 @@ export type Database = {
           imp_tot_conc?: number | null
           imp_total?: number
           imp_trib?: number | null
+          last_sync_at?: string | null
           moneda?: string | null
           notes?: string | null
           operation_id?: string | null
-          org_id?: string | null
+          org_id: string
           pdf_url?: string | null
           pto_vta: number
           receptor_condicion_iva?: number | null
@@ -2680,6 +2764,9 @@ export type Database = {
           receptor_nombre: string
           status?: string
           updated_at?: string | null
+          verification_error?: string | null
+          verification_status?: string | null
+          verified_at?: string | null
         }
         Update: {
           afip_response?: Json | null
@@ -2705,10 +2792,11 @@ export type Database = {
           imp_tot_conc?: number | null
           imp_total?: number
           imp_trib?: number | null
+          last_sync_at?: string | null
           moneda?: string | null
           notes?: string | null
           operation_id?: string | null
-          org_id?: string | null
+          org_id?: string
           pdf_url?: string | null
           pto_vta?: number
           receptor_condicion_iva?: number | null
@@ -2718,6 +2806,9 @@ export type Database = {
           receptor_nombre?: string
           status?: string
           updated_at?: string | null
+          verification_error?: string | null
+          verification_status?: string | null
+          verified_at?: string | null
         }
         Relationships: [
           {
@@ -4870,6 +4961,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      padron_cache: {
+        Row: {
+          cuit: string
+          data: Json
+          expires_at: string
+          fetched_at: string
+        }
+        Insert: {
+          cuit: string
+          data: Json
+          expires_at?: string
+          fetched_at?: string
+        }
+        Update: {
+          cuit?: string
+          data?: Json
+          expires_at?: string
+          fetched_at?: string
+        }
+        Relationships: []
       }
       partner_accounts: {
         Row: {
@@ -8259,3 +8371,5 @@ export const Constants = {
     },
   },
 } as const
+A new version of Supabase CLI is available: v2.90.0 (currently installed v2.84.2)
+We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
