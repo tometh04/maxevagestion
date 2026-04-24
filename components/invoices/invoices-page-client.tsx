@@ -68,6 +68,7 @@ interface Invoice {
   moneda?: string
   cotizacion?: number
   status: string
+  verification_status?: "unverified" | "verified" | "discrepancy" | "not_found_in_afip" | null
   fecha_emision?: string
   created_at: string
   operations?: { id: string; file_code: string; destination: string }
@@ -299,9 +300,31 @@ export function InvoicesPageClient() {
                     )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusLabels[invoice.status]?.variant || "outline"}>
-                      {statusLabels[invoice.status]?.label || invoice.status}
-                    </Badge>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <Badge variant={statusLabels[invoice.status]?.variant || "outline"}>
+                        {statusLabels[invoice.status]?.label || invoice.status}
+                      </Badge>
+                      {invoice.verification_status === 'verified' && (
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          ✓ Verificada AFIP
+                        </Badge>
+                      )}
+                      {invoice.verification_status === 'discrepancy' && (
+                        <Badge variant="destructive">
+                          ⚠ Discrepancia
+                        </Badge>
+                      )}
+                      {invoice.verification_status === 'not_found_in_afip' && (
+                        <Badge variant="destructive">
+                          ✗ No está en AFIP
+                        </Badge>
+                      )}
+                      {invoice.status === 'authorized' && (!invoice.verification_status || invoice.verification_status === 'unverified') && (
+                        <Badge variant="secondary" className="text-amber-600">
+                          Sin verificar
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>
                     {invoice.fecha_emision 
