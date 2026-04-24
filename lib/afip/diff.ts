@@ -44,7 +44,10 @@ export function diffVoucher(
     if (MONEY_FIELDS.includes(key)) {
       const sn = Number(s)
       const rn = Number(r)
-      if (Math.abs(sn - rn) > MONEY_TOLERANCE) {
+      // Redondeamos a 2 decimales antes de comparar para evitar falsos
+      // positivos por ruido de IEEE 754 (ej: 12100.01 - 12100 = 0.01000...218).
+      const delta = Math.round(Math.abs(sn - rn) * 100) / 100
+      if (delta > MONEY_TOLERANCE) {
         diff[key] = { sent: s, received: r }
       }
     } else {
