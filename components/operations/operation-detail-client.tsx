@@ -27,6 +27,7 @@ import { DocumentsSection } from "@/components/documents/documents-section"
 import { OperationAccountingSection } from "@/components/operations/operation-accounting-section"
 import { PurchaseInvoicesSection } from "@/components/operations/purchase-invoices-section"
 import { OperationSaleInvoicesSection } from "@/components/operations/operation-invoices-section"
+import { OperationFacturacionSection } from "@/components/operations/operation-facturacion-section"
 import { OperationPaymentsSection } from "@/components/operations/operation-payments-section"
 import { PassengerBalancesSection } from "@/components/operations/passenger-balances-section"
 import {
@@ -727,6 +728,7 @@ export function OperationDetailClient({
               currency={operation.currency || "USD"}
             />
             <OperationSaleInvoicesSection operationId={operation.id} />
+            <OperationFacturacionSection operationId={operation.id} />
           </TabsContent>
         )}
 
