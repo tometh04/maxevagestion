@@ -347,6 +347,30 @@ export class AfipService {
     return { verification_status, diff: diff ?? undefined, last_sync_at: now }
   }
 
+  async getAfipRate(currency: "DOL" | "PES", date?: Date): Promise<number> {
+    if (currency === "PES") return 1
+
+    const d = date ?? new Date()
+    const dateStr = this.formatDate(d)
+    const cacheKey = `${currency}:${dateStr}`
+
+    const cached = afipRateCache.get(cacheKey)
+    if (cached !== undefined) return cached
+
+    const response = await this.afip.ElectronicBilling.getExchangeRate(currency, dateStr)
+    const rate =
+      typeof response === "number"
+        ? response
+        : Number(response?.MonCotiz ?? response?.cotizacion ?? 0)
+
+    if (!rate || rate <= 0) {
+      throw new Error(`AFIP no devolvió cotización válida para ${currency} el ${dateStr}`)
+    }
+
+    afipRateCache.set(cacheKey, rate)
+    return rate
+  }
+
   private async updateRequestLog(id: string | undefined, patch: any): Promise<void> {
     if (!id) return
     await (this.supabase.from("afip_voucher_requests") as any)

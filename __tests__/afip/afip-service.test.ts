@@ -428,6 +428,54 @@ describe("AfipService.verifyVoucher (on-demand)", () => {
   })
 })
 
+describe("AfipService.getAfipRate with cache", () => {
+  beforeEach(() => {
+    // Limpiar cache singleton entre tests
+    /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+    const { afipRateCache } = require("@/lib/afip/rate-cache")
+    afipRateCache.clear()
+  })
+
+  it("hits SDK on first call, cached on second", async () => {
+    const mockRate = jest.fn().mockResolvedValue({ MonCotiz: 1415 })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = { ElectronicBilling: { getExchangeRate: mockRate } }
+
+    const first = await svc.getAfipRate("DOL", new Date("2026-04-24"))
+    const second = await svc.getAfipRate("DOL", new Date("2026-04-24"))
+
+    expect(first).toBe(1415)
+    expect(second).toBe(1415)
+    expect(mockRate).toHaveBeenCalledTimes(1)
+  })
+
+  it("caches per date — different dates hit SDK separately", async () => {
+    const mockRate = jest
+      .fn()
+      .mockResolvedValueOnce({ MonCotiz: 1415 })
+      .mockResolvedValueOnce({ MonCotiz: 1420 })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      { from: () => ({}) } as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = { ElectronicBilling: { getExchangeRate: mockRate } }
+
+    const a = await svc.getAfipRate("DOL", new Date("2026-04-24"))
+    const b = await svc.getAfipRate("DOL", new Date("2026-04-25"))
+
+    expect(a).toBe(1415)
+    expect(b).toBe(1420)
+    expect(mockRate).toHaveBeenCalledTimes(2)
+  })
+})
+
 // Helpers ---------------------------------------------
 
 function sandboxConfig() {
