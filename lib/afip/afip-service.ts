@@ -27,7 +27,7 @@ type AfipSdkInstance = {
 
 function createAfipSdkInstance(config: AfipConfig): AfipSdkInstance {
   // Evitar bundle issues con webpack — el SDK es CommonJS
-  /* eslint-disable-next-line @typescript-eslint/no-require-imports */
+  // eslint-disable-next-line
   const Afip = require("@afipsdk/afip.js")
   return new Afip({
     CUIT: Number(config.cuit),
