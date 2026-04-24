@@ -110,6 +110,72 @@ describe("AfipService.issueVoucher — happy path", () => {
   })
 })
 
+describe("AfipService.issueVoucher — discrepancy path", () => {
+  it("flags discrepancy when getVoucherInfo returns different ImpTotal", async () => {
+    const mockCreate = jest.fn().mockResolvedValue({
+      CAE: "12345678901234",
+      CAEFchVto: "20260530",
+      voucherNumber: 42,
+    })
+    const mockGetInfo = jest.fn().mockResolvedValue({
+      CodAutorizacion: "12345678901234",
+      CAEFchVto: "20260530",
+      ImpTotal: 99999, // diferente al enviado 12100
+      ImpNeto: 10000,
+      ImpIVA: 2100,
+      DocNro: 20123456789,
+      DocTipo: 80,
+      CbteFch: "20260424",
+      CbteDesde: 42,
+      CbteHasta: 42,
+    })
+
+    const inserts: any[] = []
+    const updates: any[] = []
+    const supabase = makeInvoiceRequestsSupabase({ inserts, updates })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      supabase as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = makeMockSdk({ createNext: mockCreate, getInfo: mockGetInfo })
+
+    const result = await svc.issueVoucher(sampleDraft())
+
+    expect(result.success).toBe(true)
+    expect(result.verification_status).toBe("discrepancy")
+    expect(result.diff).toHaveProperty("ImpTotal")
+
+    const invUpdate = updates.find((u) => u.table === "invoices")
+    expect(invUpdate!.row.verification_status).toBe("discrepancy")
+    expect(invUpdate!.row.status).toBe("authorized")
+  })
+
+  it("flags not_found_in_afip when getVoucherInfo returns null", async () => {
+    const mockCreate = jest.fn().mockResolvedValue({
+      CAE: "12345678901234",
+      CAEFchVto: "20260530",
+      voucherNumber: 42,
+    })
+    const mockGetInfo = jest.fn().mockResolvedValue(null)
+
+    const inserts: any[] = []
+    const updates: any[] = []
+    const supabase = makeInvoiceRequestsSupabase({ inserts, updates })
+
+    const svc = new (await import("@/lib/afip/afip-service")).AfipService(
+      sandboxConfig(),
+      supabase as any,
+      "org-aaa"
+    )
+    ;(svc as any).afip = makeMockSdk({ createNext: mockCreate, getInfo: mockGetInfo })
+
+    const result = await svc.issueVoucher(sampleDraft())
+    expect(result.verification_status).toBe("not_found_in_afip")
+  })
+})
+
 // Helpers ---------------------------------------------
 
 function sandboxConfig() {
