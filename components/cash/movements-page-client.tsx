@@ -14,6 +14,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
 import { toast } from "sonner"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const movementsDateTypes: DateTypeOption[] = [
+  { value: "MOVIMIENTO", label: "Movimiento", shortLabel: "Mov." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface MovementsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -77,7 +83,7 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
 
   return (
     <div className="space-y-6">
-      <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
+      <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} dateTypes={movementsDateTypes} />
 
       <div className="flex items-center gap-3 flex-wrap">
           <Select value={type} onValueChange={setType}>
@@ -107,6 +113,7 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
         key={refreshKey} // Forzar re-render cuando cambian los filtros
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         type={filters.type}

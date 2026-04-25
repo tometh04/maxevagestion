@@ -51,6 +51,7 @@ export default async function CashIncomePage() {
   const defaultFilters: CashFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    dateType: "CREACION",
     agencyId: "ALL",
     currency: "ALL",
   }

@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
 import { useDebounce } from "@/hooks/use-debounce"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const incomeDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+  { value: "PAGO", label: "Cobro", shortLabel: "Cobro" },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface CashIncomeClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -25,6 +32,7 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
+      if (filters.dateType) params.set("dateType", filters.dateType)
       params.set("direction", "INCOME")
       params.set("limit", "1000")
       if (filters.agencyId !== "ALL") {
@@ -65,7 +73,7 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
         <p className="text-muted-foreground">Todos los ingresos de las operaciones</p>
       </div>
 
-      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
+      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} dateTypes={incomeDateTypes} />
 
       {/* Búsqueda por nombre de cliente */}
       <div className="relative max-w-sm">
@@ -93,6 +101,7 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
       <PaymentsTable
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         direction="INCOME"

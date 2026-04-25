@@ -73,6 +73,7 @@ interface PaymentsTableProps {
   // Filtros para paginación server-side
   dateFrom?: string
   dateTo?: string
+  dateType?: string
   currency?: string
   agencyId?: string
   status?: string
@@ -88,6 +89,7 @@ export function PaymentsTable({
   emptyMessage,
   dateFrom,
   dateTo,
+  dateType,
   currency,
   agencyId,
   status,
@@ -121,6 +123,7 @@ export function PaymentsTable({
       const params = new URLSearchParams()
       if (dateFrom) params.append("dateFrom", dateFrom)
       if (dateTo) params.append("dateTo", dateTo)
+      if (dateType) params.append("dateType", dateType)
       if (currency) params.append("currency", currency)
       if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
       if (status && status !== "ALL") params.append("status", status)
@@ -145,7 +148,7 @@ export function PaymentsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, status, payerType, direction, contactName, page, limit])
+  }, [useServerPagination, dateFrom, dateTo, dateType, currency, agencyId, status, payerType, direction, contactName, page, limit])
   
   useEffect(() => {
     fetchPayments()

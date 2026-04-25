@@ -51,6 +51,7 @@ interface MovementsTableProps {
   // Filtros para paginación server-side
   dateFrom?: string
   dateTo?: string
+  dateType?: string
   currency?: string
   agencyId?: string
   type?: string
@@ -63,6 +64,7 @@ export function MovementsTable({
   emptyMessage,
   dateFrom,
   dateTo,
+  dateType,
   currency,
   agencyId,
   type,
@@ -93,6 +95,7 @@ export function MovementsTable({
       const params = new URLSearchParams()
       if (dateFrom) params.append("dateFrom", dateFrom)
       if (dateTo) params.append("dateTo", dateTo)
+      if (dateType) params.append("dateType", dateType)
       if (currency) params.append("currency", currency)
       if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
       if (type && type !== "ALL") params.append("type", type)
@@ -114,7 +117,7 @@ export function MovementsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, type, customerQuery, page, limit])
+  }, [useServerPagination, dateFrom, dateTo, dateType, currency, agencyId, type, customerQuery, page, limit])
 
   useEffect(() => {
     fetchMovements()

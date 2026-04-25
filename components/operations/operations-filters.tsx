@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/select"
 import { X } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO } from "date-fns"
 
 const standardStatusOptions = [
@@ -20,6 +21,13 @@ const standardStatusOptions = [
   { value: "CANCELLED", label: "Cancelado" },
   { value: "TRAVELLING", label: "En viaje" },
   { value: "TRAVELLED", label: "Viajado" },
+]
+
+const paymentDateTypes: DateTypeOption[] = [
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+  { value: "COBRO", label: "Cobro", shortLabel: "Cobro" },
+  { value: "PAGO", label: "Pago", shortLabel: "Pago" },
+  { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
 ]
 
 interface OperationsFiltersProps {
@@ -179,52 +187,15 @@ export function OperationsFilters({ sellers, agencies, customStatuses = [], onFi
         className="h-8 text-xs rounded-full"
       />
 
-      <Select value={paymentDateType} onValueChange={setPaymentDateType}>
-        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
-          <SelectValue placeholder="Fecha de..." />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="NONE">Ninguno</SelectItem>
-          <SelectItem value="OPERACION">Operación</SelectItem>
-          <SelectItem value="COBRO">Cobro</SelectItem>
-          <SelectItem value="PAGO">Pago</SelectItem>
-          <SelectItem value="VENCIMIENTO">Vencimiento</SelectItem>
-        </SelectContent>
-      </Select>
-
-      {paymentDateType && paymentDateType !== "NONE" && (
-        <>
-          <DateInputWithCalendar
-            value={paymentDateFrom}
-            onChange={(date) => {
-              setPaymentDateFrom(date)
-              if (date && paymentDateTo && paymentDateTo < date) {
-                setPaymentDateTo(undefined)
-              }
-            }}
-            placeholder={paymentDateType === "OPERACION" ? "Op. Desde"
-              : paymentDateType === "COBRO" ? "Cobro Desde"
-              : paymentDateType === "PAGO" ? "Pago Desde"
-              : "Venc. Desde"}
-            className="h-8 text-xs rounded-full"
-          />
-          <DateInputWithCalendar
-            value={paymentDateTo}
-            onChange={(date) => {
-              if (date && paymentDateFrom && date < paymentDateFrom) {
-                return
-              }
-              setPaymentDateTo(date)
-            }}
-            placeholder={paymentDateType === "OPERACION" ? "Op. Hasta"
-              : paymentDateType === "COBRO" ? "Cobro Hasta"
-              : paymentDateType === "PAGO" ? "Pago Hasta"
-              : "Venc. Hasta"}
-            minDate={paymentDateFrom}
-            className="h-8 text-xs rounded-full"
-          />
-        </>
-      )}
+      <DateTypeFilter
+        types={paymentDateTypes}
+        value={{ type: paymentDateType, from: paymentDateFrom, to: paymentDateTo }}
+        onChange={(v) => {
+          setPaymentDateType(v.type)
+          setPaymentDateFrom(v.from)
+          setPaymentDateTo(v.to)
+        }}
+      />
 
       <Button variant="outline" size="sm" onClick={handleApplyFilters} className="rounded-full h-8 text-xs">Aplicar Filtros</Button>
       {hasActiveFilters && (

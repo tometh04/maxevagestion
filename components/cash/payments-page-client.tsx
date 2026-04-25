@@ -14,6 +14,14 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Search, X, Plus } from "lucide-react"
 import { NewPaymentDialog } from "@/components/payments/new-payment-dialog"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const paymentsDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+  { value: "PAGO", label: "Pago", shortLabel: "Pago" },
+  { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface PaymentsPageClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -102,7 +110,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
           </SelectContent>
         </Select>
 
-        <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
+        <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} dateTypes={paymentsDateTypes} />
 
         <Button
           size="sm"
@@ -136,6 +144,7 @@ export function PaymentsPageClient({ agencies, defaultFilters }: PaymentsPageCli
         key={refreshKey}
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         status={filters.status}

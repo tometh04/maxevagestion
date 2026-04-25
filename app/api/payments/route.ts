@@ -962,6 +962,7 @@ export async function GET(request: Request) {
     const operationId = searchParams.get("operationId")
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const dateType = (searchParams.get("dateType") ?? "CREACION").toUpperCase()
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
     const direction = searchParams.get("direction")
@@ -1053,15 +1054,47 @@ export async function GET(request: Request) {
       query = query.eq("payer_type", payerType)
     }
 
-    // Filtros de fecha — usar created_at como campo principal para listado general
-    // date_due puede ser NULL en muchos pagos, lo que los excluiría silenciosamente
+    // Filtros de fecha según dateType:
+    // - CREACION (default): payments.created_at — campo siempre presente, equivale al comportamiento legacy
+    // - PAGO: payments.date_paid — pagos efectivamente realizados (rows con date_paid NULL quedan fuera)
+    // - VENCIMIENTO: payments.date_due — vencimientos (rows con date_due NULL quedan fuera)
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae en [from,to]
+    //   y restringir payments.operation_id IN (...). Pagos sin operación quedan fuera.
     // Si se filtra por una operación específica, no filtrar por fecha (mostrar todos los pagos de esa operación)
-    if (!operationId) {
-      if (dateFrom) {
-        query = query.gte("created_at", startOfDayAR(dateFrom))
-      }
-      if (dateTo) {
-        query = query.lte("created_at", endOfDayAR(dateTo))
+    if (!operationId && (dateFrom || dateTo)) {
+      if (dateType === "OPERACION") {
+        let opQuery = (supabase.from("operations") as any).select("id")
+        if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+        if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+        const { data: matchingOps } = await opQuery.limit(5000)
+        const opIds = (matchingOps || []).map((o: any) => o.id)
+        if (opIds.length === 0) {
+          return NextResponse.json({
+            payments: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+        // Intersectar con allowedOperationIds (SELLER) si existe
+        const finalIds = allowedOperationIds
+          ? opIds.filter((id: string) => (allowedOperationIds as string[]).includes(id))
+          : opIds
+        if (finalIds.length === 0) {
+          return NextResponse.json({
+            payments: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+        query = query.in("operation_id", finalIds)
+      } else if (dateType === "PAGO") {
+        if (dateFrom) query = query.gte("date_paid", dateFrom)
+        if (dateTo) query = query.lte("date_paid", dateTo)
+      } else if (dateType === "VENCIMIENTO") {
+        if (dateFrom) query = query.gte("date_due", dateFrom)
+        if (dateTo) query = query.lte("date_due", dateTo)
+      } else {
+        // CREACION (default)
+        if (dateFrom) query = query.gte("created_at", startOfDayAR(dateFrom))
+        if (dateTo) query = query.lte("created_at", endOfDayAR(dateTo))
       }
     }
 

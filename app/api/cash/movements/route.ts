@@ -214,6 +214,7 @@ export async function GET(request: Request) {
 
     const dateFrom = searchParams.get("dateFrom") ?? undefined
     const dateTo = searchParams.get("dateTo") ?? undefined
+    const dateType = (searchParams.get("dateType") ?? "MOVIMIENTO").toUpperCase()
     const typeParam = searchParams.get("type") ?? "ALL"
     const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
@@ -298,14 +299,46 @@ export async function GET(request: Request) {
         query = query.eq("financial_account_id", financialAccountId)
       }
     }
-    if (dateFrom) {
-      query = query.gte("movement_date", startOfDayAR(dateFrom))
-    }
-    if (dateTo) {
-      // Incluir el día completo hasta las 23:59:59 en hora AR (fix bug
-      // "egresos no aparecen al filtrar fechas": antes se usaba UTC y se
-      // perdían movimientos cargados después de las 21h hora local)
-      query = query.lte("movement_date", endOfDayAR(dateTo))
+    // Mapeo dateType → comportamiento de filtro:
+    // - MOVIMIENTO (default): cash_movements.movement_date
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae en [from,to]
+    //   y restringir cash_movements.operation_id IN (...). Movimientos sin operation_id quedan fuera.
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = (supabase.from("operations") as any).select("id")
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const opIds = (matchingOps || []).map((o: any) => o.id)
+      if (opIds.length === 0) {
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      // Si ya hay restricción por cliente, intersectar
+      if (restrictToOperationIds && restrictToOperationIds.length > 0) {
+        const set = new Set(opIds)
+        restrictToOperationIds = restrictToOperationIds.filter((id) => set.has(id))
+        if (restrictToOperationIds.length === 0) {
+          return NextResponse.json({
+            movements: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+      } else {
+        restrictToOperationIds = opIds
+      }
+    } else {
+      // Default MOVIMIENTO: filtrar por movement_date con timezone AR
+      if (dateFrom) {
+        query = query.gte("movement_date", startOfDayAR(dateFrom))
+      }
+      if (dateTo) {
+        // Incluir el día completo hasta las 23:59:59 en hora AR (fix bug
+        // "egresos no aparecen al filtrar fechas": antes se usaba UTC y se
+        // perdían movimientos cargados después de las 21h hora local)
+        query = query.lte("movement_date", endOfDayAR(dateTo))
+      }
     }
     if (typeParam && typeParam !== "ALL") {
       query = query.eq("type", typeParam)

@@ -26,6 +26,7 @@ export default async function CashPaymentsPage() {
   const defaultFilters: CashFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    dateType: "CREACION",
     agencyId: "ALL",
     currency: "ARS",
   }

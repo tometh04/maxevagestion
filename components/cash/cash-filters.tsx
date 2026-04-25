@@ -12,11 +12,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Search, X } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO } from "date-fns"
 
 export interface CashFiltersState {
   dateFrom: string
   dateTo: string
+  dateType?: string
   agencyId: string
   currency: string
   customerQuery?: string
@@ -27,6 +29,12 @@ interface CashFiltersProps {
   value: CashFiltersState
   defaultValue: CashFiltersState
   onChange: (filters: CashFiltersState) => void
+  /**
+   * Si se provee, reemplaza los date pickers planos por un selector de TIPO de fecha
+   * (Movimiento / Operación / Pago / etc.) con Desde/Hasta dinámicos.
+   * Si no se provee, mantiene el comportamiento legacy (Desde/Hasta sin tipo).
+   */
+  dateTypes?: DateTypeOption[]
 }
 
 const currencyOptions = [
@@ -35,7 +43,7 @@ const currencyOptions = [
   { value: "ALL", label: "Todas" },
 ]
 
-export function CashFilters({ agencies, value, defaultValue, onChange }: CashFiltersProps) {
+export function CashFilters({ agencies, value, defaultValue, onChange, dateTypes }: CashFiltersProps) {
   const [agencyId, setAgencyId] = useState(value.agencyId)
   const [currency, setCurrency] = useState(value.currency)
   const [dateFrom, setDateFrom] = useState<Date | undefined>(
@@ -44,6 +52,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   const [dateTo, setDateTo] = useState<Date | undefined>(
     value.dateTo ? parseISO(value.dateTo) : undefined
   )
+  const [dateType, setDateType] = useState<string>(value.dateType || "")
   const [customerQuery, setCustomerQuery] = useState(value.customerQuery || "")
 
   // Sync external value changes
@@ -52,6 +61,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
     setCurrency(value.currency)
     setDateFrom(value.dateFrom ? parseISO(value.dateFrom) : undefined)
     setDateTo(value.dateTo ? parseISO(value.dateTo) : undefined)
+    setDateType(value.dateType || "")
     setCustomerQuery(value.customerQuery || "")
   }, [value])
 
@@ -76,9 +86,10 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   }
 
   // Notify parent on any change
-  const emitChange = (updates: Partial<{ dateFrom: Date | undefined; dateTo: Date | undefined; agencyId: string; currency: string; customerQuery: string }>) => {
+  const emitChange = (updates: Partial<{ dateFrom: Date | undefined; dateTo: Date | undefined; dateType: string; agencyId: string; currency: string; customerQuery: string }>) => {
     const newDateFrom = updates.dateFrom !== undefined ? updates.dateFrom : dateFrom
     const newDateTo = updates.dateTo !== undefined ? updates.dateTo : dateTo
+    const newDateType = updates.dateType !== undefined ? updates.dateType : dateType
     const newAgencyId = updates.agencyId !== undefined ? updates.agencyId : agencyId
     const newCurrency = updates.currency !== undefined ? updates.currency : currency
     const newCustomerQuery = updates.customerQuery !== undefined ? updates.customerQuery : customerQuery
@@ -86,6 +97,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
     onChange({
       dateFrom: formatDateString(newDateFrom),
       dateTo: formatDateString(newDateTo),
+      dateType: newDateType || undefined,
       agencyId: newAgencyId,
       currency: newCurrency,
       customerQuery: newCustomerQuery.trim() || undefined,
@@ -95,6 +107,7 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
   const handleReset = () => {
     setDateFrom(defaultValue.dateFrom ? parseISO(defaultValue.dateFrom) : undefined)
     setDateTo(defaultValue.dateTo ? parseISO(defaultValue.dateTo) : undefined)
+    setDateType(defaultValue.dateType || "")
     setAgencyId(defaultValue.agencyId)
     setCurrency(defaultValue.currency)
     setCustomerQuery(defaultValue.customerQuery || "")
@@ -142,32 +155,48 @@ export function CashFilters({ agencies, value, defaultValue, onChange }: CashFil
         </SelectContent>
       </Select>
 
-      <DateInputWithCalendar
-        value={dateFrom}
-        onChange={(date) => {
-          setDateFrom(date)
-          if (date && dateTo && dateTo < date) {
-            setDateTo(undefined)
-            emitChange({ dateFrom: date, dateTo: undefined })
-          } else {
-            emitChange({ dateFrom: date })
-          }
-        }}
-        placeholder="Desde"
-        className="h-8 text-xs rounded-full"
-      />
+      {dateTypes ? (
+        <DateTypeFilter
+          types={dateTypes}
+          includeNone={false}
+          value={{ type: dateType, from: dateFrom, to: dateTo }}
+          onChange={(v) => {
+            setDateType(v.type)
+            setDateFrom(v.from)
+            setDateTo(v.to)
+            emitChange({ dateType: v.type, dateFrom: v.from, dateTo: v.to })
+          }}
+        />
+      ) : (
+        <>
+          <DateInputWithCalendar
+            value={dateFrom}
+            onChange={(date) => {
+              setDateFrom(date)
+              if (date && dateTo && dateTo < date) {
+                setDateTo(undefined)
+                emitChange({ dateFrom: date, dateTo: undefined })
+              } else {
+                emitChange({ dateFrom: date })
+              }
+            }}
+            placeholder="Desde"
+            className="h-8 text-xs rounded-full"
+          />
 
-      <DateInputWithCalendar
-        value={dateTo}
-        onChange={(date) => {
-          if (date && dateFrom && date < dateFrom) return
-          setDateTo(date)
-          emitChange({ dateTo: date })
-        }}
-        placeholder="Hasta"
-        minDate={dateFrom}
-        className="h-8 text-xs rounded-full"
-      />
+          <DateInputWithCalendar
+            value={dateTo}
+            onChange={(date) => {
+              if (date && dateFrom && date < dateFrom) return
+              setDateTo(date)
+              emitChange({ dateTo: date })
+            }}
+            placeholder="Hasta"
+            minDate={dateFrom}
+            className="h-8 text-xs rounded-full"
+          />
+        </>
+      )}
 
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />

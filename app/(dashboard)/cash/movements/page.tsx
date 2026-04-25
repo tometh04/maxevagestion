@@ -38,6 +38,7 @@ export default async function CashMovementsPage() {
   const defaultFilters: CashFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    dateType: "MOVIMIENTO",
     agencyId: "ALL",
     currency: "ALL",
   }
