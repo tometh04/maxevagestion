@@ -56,9 +56,22 @@ interface Props {
   operationId: string
   operators?: Operator[]
   currency?: string
+  /** agency_id del operation para filtrar reglas de percepción multi-tenant */
+  agencyId?: string | null
 }
 
-export function PurchaseInvoicesSection({ operationId, operators = [], currency = "USD" }: Props) {
+interface AppliedRule {
+  type: string
+  rate: number
+  min_amount: number
+}
+
+export function PurchaseInvoicesSection({
+  operationId,
+  operators = [],
+  currency = "USD",
+  agencyId = null,
+}: Props) {
   const { toast } = useToast()
   const [invoices, setInvoices] = useState<PurchaseInvoice[]>([])
   const [loading, setLoading] = useState(true)
@@ -67,6 +80,12 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
   const [editingInvoice, setEditingInvoice] = useState<PurchaseInvoice | null>(null)
   const [ocrProcessing, setOcrProcessing] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // SP-6.5: percepciones en modo auto vs manual
+  const [autoPerceptions, setAutoPerceptions] = useState(true)
+  const [appliedRules, setAppliedRules] = useState<AppliedRule[]>([])
+  const [masterToggleOff, setMasterToggleOff] = useState(false)
+  const [calculatingPerceptions, setCalculatingPerceptions] = useState(false)
 
   const [form, setForm] = useState({
     operator_id: "",
@@ -132,6 +151,60 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
       }
     }
   }, [form.operator_id, operators])
+
+  // SP-6.5: auto-calcular percepciones (debounced) cuando cambia operator/net.
+  // Multi-tenant: el endpoint preview filtra reglas por org (RLS) + agency_id.
+  useEffect(() => {
+    if (!autoPerceptions) return
+    if (editingInvoice) return // no recalcular en edit, respeta valores guardados
+    const net = parseFloat(form.net_amount) || 0
+    if (net <= 0 || !form.emitter_cuit) {
+      setAppliedRules([])
+      return
+    }
+
+    const handle = setTimeout(async () => {
+      setCalculatingPerceptions(true)
+      try {
+        const res = await fetch("/api/accounting/withholdings/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: net,
+            currency: form.currency,
+            type: "OPERATOR_PAYMENT",
+            counterpart_cuit: form.emitter_cuit,
+            agency_id: agencyId,
+          }),
+        })
+        if (!res.ok) return
+        const data = await res.json()
+
+        if (data.master_toggle_off) {
+          setMasterToggleOff(true)
+          setAppliedRules([])
+          return
+        }
+        setMasterToggleOff(false)
+
+        const percIva = data.withholdings?.find((w: any) => w.type === "PERCEPCION_IVA")?.amount ?? 0
+        const percIibb = data.withholdings?.find((w: any) => w.type === "PERCEPCION_IIBB")?.amount ?? 0
+
+        setForm(prev => ({
+          ...prev,
+          perception_iva: percIva.toString(),
+          perception_iibb: percIibb.toString(),
+        }))
+        setAppliedRules(data.applied_rules || [])
+      } catch (err) {
+        console.error("Error preview percepciones:", err)
+      } finally {
+        setCalculatingPerceptions(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(handle)
+  }, [form.net_amount, form.emitter_cuit, form.currency, autoPerceptions, agencyId, editingInvoice])
 
   const resetForm = () => {
     setForm({
@@ -572,22 +645,77 @@ export function PurchaseInvoicesSection({ operationId, operators = [], currency 
                 <Input type="number" step="0.01" value={form.iva_amount} readOnly className="bg-muted" />
               </div>
               <div>
-                <Label>Percepción IVA</Label>
+                <Label>
+                  Percepción IVA
+                  {autoPerceptions && !masterToggleOff && <Badge variant="secondary" className="ml-2 text-[10px]">auto</Badge>}
+                </Label>
                 <Input
                   type="number" step="0.01" placeholder="0"
                   value={form.perception_iva}
                   onChange={e => setForm(prev => ({ ...prev, perception_iva: e.target.value }))}
+                  readOnly={autoPerceptions && !masterToggleOff}
+                  className={autoPerceptions && !masterToggleOff ? "bg-muted" : ""}
                 />
               </div>
               <div>
-                <Label>Percepción IIBB</Label>
+                <Label>
+                  Percepción IIBB
+                  {autoPerceptions && !masterToggleOff && <Badge variant="secondary" className="ml-2 text-[10px]">auto</Badge>}
+                </Label>
                 <Input
                   type="number" step="0.01" placeholder="0"
                   value={form.perception_iibb}
                   onChange={e => setForm(prev => ({ ...prev, perception_iibb: e.target.value }))}
+                  readOnly={autoPerceptions && !masterToggleOff}
+                  className={autoPerceptions && !masterToggleOff ? "bg-muted" : ""}
                 />
               </div>
             </div>
+
+            {/* SP-6.5: banner percepciones automáticas */}
+            {!editingInvoice && (
+              <div className={`rounded-md border px-3 py-2 text-xs flex items-center justify-between ${
+                masterToggleOff
+                  ? "bg-muted/40 border-muted text-muted-foreground"
+                  : autoPerceptions
+                    ? "bg-blue-50 border-blue-200 text-blue-900 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-100"
+                    : "bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-100"
+              }`}>
+                <div className="flex items-center gap-2">
+                  {calculatingPerceptions && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {masterToggleOff ? (
+                    <span>Cálculo automático desactivado en Configuración → Finanzas. Cargá las percepciones manualmente.</span>
+                  ) : autoPerceptions ? (
+                    appliedRules.length > 0 ? (
+                      <span>
+                        Calculado automático según reglas de la agencia:{" "}
+                        {appliedRules.map((r, i) => (
+                          <span key={r.type}>
+                            {i > 0 && ", "}
+                            <strong>{r.type.replace("PERCEPCION_", "")} {r.rate}%</strong>
+                          </span>
+                        ))}
+                      </span>
+                    ) : parseFloat(form.net_amount) > 0 ? (
+                      <span>No aplica ninguna percepción para este monto/operador (regla mínima no alcanzada o exento).</span>
+                    ) : (
+                      <span>Las percepciones se calculan automáticamente al ingresar Neto Gravado y CUIT del emisor.</span>
+                    )
+                  ) : (
+                    <span>Modo manual — los valores no se actualizan automáticamente.</span>
+                  )}
+                </div>
+                {!masterToggleOff && (
+                  <Button
+                    type="button" variant="ghost" size="sm"
+                    className="h-6 text-xs"
+                    onClick={() => setAutoPerceptions(prev => !prev)}
+                  >
+                    {autoPerceptions ? "Editar manualmente" : "Volver a auto"}
+                  </Button>
+                )}
+              </div>
+            )}
 
             {/* Other taxes + Total */}
             <div className="grid grid-cols-2 gap-4">

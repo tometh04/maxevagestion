@@ -726,6 +726,7 @@ export function OperationDetailClient({
               operationId={operation.id}
               operators={operators}
               currency={operation.currency || "USD"}
+              agencyId={(operation as any).agency_id ?? null}
             />
             <OperationSaleInvoicesSection operationId={operation.id} />
             <OperationFacturacionSection operationId={operation.id} />
