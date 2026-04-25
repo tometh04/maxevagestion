@@ -42,6 +42,40 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(target, 301)
   }
 
+  // admin.vibook.ai — subdominio dedicado al panel platform admin.
+  // Solo permitimos rutas /admin/*, auth flow y estáticos. Todo lo demás
+  // (ej: /dashboard, /operaciones) se redirige a /admin/orgs para que el
+  // host nunca exponga el ERP. La verificación de platform_admin ocurre
+  // más abajo (guard existente) y, si el user no es admin, lo mandamos
+  // al dominio principal app.vibook.ai en vez de loopear.
+  const isAdminHost = host === 'admin.vibook.ai'
+  if (isAdminHost) {
+    const p = req.nextUrl.pathname
+    const adminHostAllowed =
+      p.startsWith('/admin') ||
+      p.startsWith('/api/admin') ||
+      p.startsWith('/login') ||
+      p.startsWith('/auth') ||
+      p.startsWith('/api/auth') ||
+      p.startsWith('/post-login') ||
+      p === '/logout' ||
+      p.startsWith('/legal') ||
+      p.startsWith('/_next') ||
+      p === '/favicon.ico' ||
+      p === '/'
+    if (!adminHostAllowed) {
+      const url = req.nextUrl.clone()
+      url.pathname = '/admin/orgs'
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+    if (p === '/') {
+      const url = req.nextUrl.clone()
+      url.pathname = '/admin/orgs'
+      return NextResponse.redirect(url)
+    }
+  }
+
   // Permitir webhooks de Trello sin autenticación
   if (req.nextUrl.pathname === '/api/trello/webhook') {
     return NextResponse.next()
@@ -169,6 +203,13 @@ export async function middleware(req: NextRequest) {
         .eq("user_id", userId)
         .maybeSingle()
       if (!adminRow) {
+        // En admin.vibook.ai mandar a /dashboard volvería a entrar al
+        // gate del admin host y loopearía. Cross-domain redirect al ERP.
+        if (isAdminHost) {
+          return NextResponse.redirect(
+            `https://app.vibook.ai${pathname}${req.nextUrl.search}`
+          )
+        }
         const url = req.nextUrl.clone()
         url.pathname = "/dashboard"
         return NextResponse.redirect(url)
