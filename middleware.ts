@@ -1,4 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createAdminSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // ============================================
@@ -157,23 +158,37 @@ export async function middleware(req: NextRequest) {
   // El admin layout ya hace este check server-side, pero agregarlo acá cierra
   // la ventana donde un tenant user que tipea la URL manualmente ve un flash
   // de HTML del admin antes del redirect server.
+  //
+  // IMPORTANTE: usamos service_role (bypass RLS) para esta verificación. La RLS
+  // policy `platform_admins_self_view` (mig 142) es recursiva contra la misma
+  // tabla y retorna 0 rows incluso para platform admins legítimos cuando se
+  // queryea desde el cliente auth-aware. `lib/auth/platform.ts::isPlatformAdmin`
+  // ya documenta este workaround para callers server-side.
   if (authUserId && pathname.startsWith("/admin") && !pathname.startsWith("/api/admin")) {
-    const { data: userRow } = await (supabase.from("users") as any)
-      .select("id")
-      .eq("auth_id", authUserId)
-      .maybeSingle()
-    const userId = (userRow as any)?.id as string | undefined
-    if (userId) {
-      const { data: adminRow } = await (supabase.from("platform_admins") as any)
-        .select("user_id")
-        .eq("user_id", userId)
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (serviceRoleKey) {
+      const adminClient = createAdminSupabaseClient(supabaseUrl, serviceRoleKey, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+      const { data: userRow } = await (adminClient.from("users") as any)
+        .select("id")
+        .eq("auth_id", authUserId)
         .maybeSingle()
-      if (!adminRow) {
-        const url = req.nextUrl.clone()
-        url.pathname = "/dashboard"
-        return NextResponse.redirect(url)
+      const userId = (userRow as any)?.id as string | undefined
+      if (userId) {
+        const { data: adminRow } = await (adminClient.from("platform_admins") as any)
+          .select("user_id")
+          .eq("user_id", userId)
+          .maybeSingle()
+        if (!adminRow) {
+          const url = req.nextUrl.clone()
+          url.pathname = "/dashboard"
+          return NextResponse.redirect(url)
+        }
       }
     }
+    // Si falta service_role key, dejamos pasar — el admin layout server-side
+    // aplica el guard real con `isPlatformAdmin()`.
   }
 
   const isOnboardingAllowed =
