@@ -3,10 +3,14 @@ import { createServerClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/push"
 
 export async function POST(request: Request) {
+  const startedAt = new Date()
+  console.log(`[task-reminders cron] STARTED at ${startedAt.toISOString()}`)
+
   try {
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
     if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+      console.warn(`[task-reminders cron] UNAUTHORIZED — missing/invalid Bearer token`)
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -20,20 +24,27 @@ export async function POST(request: Request) {
     // - status no es DONE
     const { data: tasks, error } = await (supabase as any)
       .from("tasks")
-      .select("id, title, due_date, reminder_minutes, assigned_to, operation_id, customer_id, agency_id")
+      .select("id, title, due_date, reminder_minutes, assigned_to, operation_id, customer_id, agency_id, status")
       .eq("reminder_sent", false)
       .neq("status", "DONE")
       .not("due_date", "is", null)
       .not("reminder_minutes", "is", null)
 
     if (error) {
-      console.error("Error fetching tasks for reminders:", error)
+      console.error(`[task-reminders cron] FAILED to fetch tasks:`, error)
       return NextResponse.json({ error: "Error", detail: error.message }, { status: 500 })
     }
 
-    let created = 0
+    const candidateTasks = tasks || []
+    console.log(`[task-reminders cron] candidates=${candidateTasks.length} (tareas con reminder pendiente)`)
 
-    for (const task of tasks || []) {
+    let created = 0
+    let pushSent = 0
+    let pushFailed = 0
+    let alertErrors = 0
+    const skippedFutureCount = candidateTasks.length // se decrementa por cada uno disparado
+
+    for (const task of candidateTasks) {
       const dueDate = new Date(task.due_date)
       const reminderTime = new Date(dueDate.getTime() - task.reminder_minutes * 60 * 1000)
 
@@ -60,6 +71,9 @@ export async function POST(request: Request) {
             .update({ reminder_sent: true })
             .eq("id", task.id)
           created++
+          console.log(
+            `[task-reminders cron] FIRED task=${task.id} title="${task.title}" due_date=${task.due_date} reminder_minutes=${task.reminder_minutes}`
+          )
 
           // Enviar push notification al usuario asignado
           if (task.assigned_to) {
@@ -69,24 +83,38 @@ export async function POST(request: Request) {
                 body: task.title,
                 url: "/tools/tasks",
               })
+              pushSent++
             } catch (pushError) {
-              console.error("Error enviando push para tarea:", task.id, pushError)
+              pushFailed++
+              console.error(`[task-reminders cron] PUSH FAILED for task=${task.id}:`, pushError)
             }
           }
         } else {
-          console.error("Error creating alert for task:", task.id, alertError)
+          alertErrors++
+          console.error(`[task-reminders cron] ALERT INSERT FAILED for task=${task.id}:`, alertError)
         }
       }
     }
 
+    const skipped = candidateTasks.length - created - alertErrors
+    const elapsedMs = Date.now() - startedAt.getTime()
+    console.log(
+      `[task-reminders cron] DONE in ${elapsedMs}ms — fired=${created} alertErrors=${alertErrors} pushSent=${pushSent} pushFailed=${pushFailed} skippedFuture=${skipped}`
+    )
+
     return NextResponse.json({
       success: true,
       remindersCreated: created,
-      tasksChecked: tasks?.length || 0,
+      tasksChecked: candidateTasks.length,
+      pushSent,
+      pushFailed,
+      alertErrors,
+      skippedFuture: skipped,
+      elapsedMs,
       timestamp: now.toISOString(),
     })
   } catch (error: any) {
-    console.error("Error in task reminders cron:", error)
+    console.error(`[task-reminders cron] FATAL:`, error)
     return NextResponse.json({ error: "Error", detail: error?.message }, { status: 500 })
   }
 }

@@ -34,6 +34,15 @@ import {
 } from "@/lib/invoices/calculation"
 import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Customer {
   id: string
@@ -118,6 +127,9 @@ export default function NewInvoicePage() {
   const urlSearchParams = useSearchParams()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
+  // AlertDialog persistente para cuando AFIP rechaza la autorización automática.
+  // Antes solo había un toast destructive que el user perdía al ser redirigido.
+  const [afipFailureAlert, setAfipFailureAlert] = useState<{ message: string; pendingRedirect: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const preselectedOperationId = urlSearchParams.get('operationId') || null
   
@@ -803,11 +815,15 @@ export default function NewInvoicePage() {
             title: "✅ Factura autorizada por AFIP",
             description: `Nro: ${String(formData.pto_vta).padStart(4,'0')}-${String(authData.data?.cbte_nro).padStart(8,'0')} | CAE: ${authData.data?.cae} | Vto: ${authData.data?.cae_fch_vto}`,
           })
+          router.push('/operations/billing')
         } else {
-          toast({
-            title: "Factura creada, pero error al autorizar",
-            description: authData.error || "Podés autorizarla manualmente desde el listado.",
-            variant: "destructive",
+          // AFIP rechazó la autorización. NO redirigir — mostrar AlertDialog persistente
+          // con el error completo para que el user no pierda el detalle (antes el toast
+          // se iba al redirigir y la factura quedaba en draft sin que el user supiera
+          // por qué). Cuando cierre el dialog, redirige al listado donde puede reintentar.
+          setAfipFailureAlert({
+            message: authData.error || "AFIP no pudo autorizar la factura. Podés reintentar desde el listado.",
+            pendingRedirect: true,
           })
         }
       } else {
@@ -815,9 +831,8 @@ export default function NewInvoicePage() {
           title: "Factura creada",
           description: "La factura se creó correctamente.",
         })
+        router.push('/operations/billing')
       }
-
-      router.push('/operations/billing')
     } catch (error: any) {
       toast({
         title: "Error",
@@ -1454,6 +1469,50 @@ export default function NewInvoicePage() {
           }
         }}
       />
+
+      {/* AlertDialog persistente cuando AFIP rechaza la autorización automática.
+          La factura quedó como draft pero el user necesita ver el motivo completo
+          antes de ser redirigido al listado. */}
+      <AlertDialog
+        open={afipFailureAlert !== null}
+        onOpenChange={(open) => {
+          if (!open && afipFailureAlert?.pendingRedirect) {
+            router.push('/operations/billing')
+          }
+          if (!open) setAfipFailureAlert(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              AFIP rechazó la autorización
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>La factura quedó guardada como <strong>borrador</strong>. Podés reintentar la autorización desde el listado de facturas con el botón &quot;Autorizar&quot;.</p>
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                  <p className="text-xs font-medium text-destructive mb-1">Error reportado por AFIP:</p>
+                  <p className="text-sm font-mono whitespace-pre-wrap break-words">{afipFailureAlert?.message}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Causas comunes: cotización USD fuera del rango ±2% oficial, certificado AFIP vencido, punto de venta no autorizado, o campos obligatorios faltantes según condición IVA del receptor.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => {
+              if (afipFailureAlert?.pendingRedirect) {
+                router.push('/operations/billing')
+              }
+              setAfipFailureAlert(null)
+            }}>
+              Entendido, ir al listado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
