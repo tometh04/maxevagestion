@@ -137,11 +137,12 @@ export function NewCustomerDialog({
 
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
-    // Schema base - sin email ni instagram
+    // Schema base — sin instagram. Email opcional (string vacío permitido).
     const baseFields: Record<string, z.ZodTypeAny> = {
       first_name: z.string().min(1, "Nombre es requerido"),
       last_name: z.string().min(1, "Apellido es requerido"),
       phone: z.string().min(1, "Teléfono es requerido"),
+      email: z.union([z.string().email("Email inválido"), z.literal("")]).optional(),
       document_type: z.string().optional(),
       document_number: z.string().optional(),
       procedure_number: z.string().optional(),
@@ -195,6 +196,7 @@ export function NewCustomerDialog({
         first_name: "",
         last_name: "",
         phone: "",
+        email: "",
         document_type: "",
         document_number: "",
         procedure_number: "",
@@ -407,7 +409,7 @@ export function NewCustomerDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
-          email: null, // Email eliminado del formulario
+          email: (values as any).email?.trim() || null,
           instagram_handle: null, // Instagram eliminado del formulario
           document_type: values.document_type || null,
           document_number: values.document_number || null,
@@ -547,6 +549,20 @@ export function NewCustomerDialog({
                       <FormLabel>Teléfono *</FormLabel>
                       <FormControl>
                         <Input placeholder="+54 11 1234-5678" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name={"email" as any}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="cliente@email.com" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

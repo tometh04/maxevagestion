@@ -23,6 +23,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { DollarSign, CalendarIcon, FileText, Loader2, Wallet, CheckCircle, Receipt } from "lucide-react"
 import { toast } from "sonner"
@@ -112,6 +122,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   const [searchOp, setSearchOp] = useState("")
   const [applyRg5617, setApplyRg5617] = useState(false)
   const [applyRg3819, setApplyRg3819] = useState(false)
+  // Alerta de pago duplicado (item 9 backlog Santi). Se llena cuando POST /api/payments
+  // retorna 409 con code DUPLICATE_PAYMENT. El user puede cancelar o forzar la creación.
+  const [duplicateAlert, setDuplicateAlert] = useState<{
+    duplicates: Array<{ id: string; amount: number; currency: string; date_paid: string | null; date_due: string | null; created_at: string; reference: string | null; status: string }>
+    pendingValues: PaymentFormValues
+  } | null>(null)
 
   const today = new Date().toISOString().split("T")[0]
 
@@ -286,27 +302,11 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }, [form, open, watchDirection, watchOperationId])
 
-  const onSubmit = async (values: PaymentFormValues) => {
-    if (values.payer_type === "OPERATOR" && operationOperators.length === 0) {
-      toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
-      return
-    }
-
-    if (values.payer_type === "OPERATOR" && !values.operator_id) {
-      toast.error("Debe seleccionar el operador al que corresponde el pago")
-      return
-    }
-
-    // Validar cuenta financiera si se marca como pagado
-    if (values.mark_as_paid && !values.financial_account_id) {
-      toast.error("Debe seleccionar una cuenta financiera para marcar como pagado")
-      return
-    }
-
+  const submitPayment = async (values: PaymentFormValues, opts: { force?: boolean } = {}) => {
     setIsLoading(true)
     try {
-      // 1. Crear el pago
-      const createResponse = await fetch("/api/payments", {
+      // 1. Crear el pago. Si force=true, salteamos la detección de duplicados del backend.
+      const createResponse = await fetch(`/api/payments${opts.force ? "?force=true" : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -324,7 +324,12 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
       })
 
       if (!createResponse.ok) {
-        const error = await createResponse.json()
+        const error = await createResponse.json().catch(() => ({}))
+        // 409 con code DUPLICATE_PAYMENT → mostrar alerta y dejar que el user decida.
+        if (createResponse.status === 409 && error?.code === "DUPLICATE_PAYMENT" && Array.isArray(error.duplicates)) {
+          setDuplicateAlert({ duplicates: error.duplicates, pendingValues: values })
+          return
+        }
         throw new Error(error.error || "Error al crear pago")
       }
 
@@ -366,6 +371,33 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
     }
   }
 
+  const onSubmit = async (values: PaymentFormValues) => {
+    if (values.payer_type === "OPERATOR" && operationOperators.length === 0) {
+      toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
+      return
+    }
+
+    if (values.payer_type === "OPERATOR" && !values.operator_id) {
+      toast.error("Debe seleccionar el operador al que corresponde el pago")
+      return
+    }
+
+    // Validar cuenta financiera si se marca como pagado
+    if (values.mark_as_paid && !values.financial_account_id) {
+      toast.error("Debe seleccionar una cuenta financiera para marcar como pagado")
+      return
+    }
+
+    await submitPayment(values, { force: false })
+  }
+
+  const handleConfirmDuplicate = async () => {
+    if (!duplicateAlert) return
+    const values = duplicateAlert.pendingValues
+    setDuplicateAlert(null)
+    await submitPayment(values, { force: true })
+  }
+
   const selectedOp = operations.find((o) => o.id === watchOperationId)
 
   // Perception conditions
@@ -379,6 +411,7 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
   }, [showRg5617, showRg3819])
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-lg max-h-[95vh] overflow-y-auto">
         <DialogHeader>
@@ -789,5 +822,45 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
         </Form>
       </DialogContent>
     </Dialog>
+
+    {/* Alerta de pago duplicado — el user puede confirmar y avanzar igual */}
+    <AlertDialog open={duplicateAlert !== null} onOpenChange={(open) => !open && setDuplicateAlert(null)}>
+      <AlertDialogContent className="max-w-lg">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Posible pago duplicado</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              <p>
+                Encontramos {duplicateAlert?.duplicates.length || 0} pago{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "s"} similar{(duplicateAlert?.duplicates.length || 0) === 1 ? "" : "es"} en los últimos 7 días con el mismo monto y moneda. Revisalos antes de continuar:
+              </p>
+              <div className="rounded-md border border-border/40 bg-muted/30 p-3 space-y-2 max-h-48 overflow-y-auto">
+                {duplicateAlert?.duplicates.map((d) => (
+                  <div key={d.id} className="text-xs space-y-0.5">
+                    <div className="font-medium text-foreground">
+                      {d.currency} {d.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} · {d.status}
+                    </div>
+                    <div className="text-muted-foreground">
+                      Creado {new Date(d.created_at).toLocaleString("es-AR")}
+                      {d.date_paid && ` · Pagado ${new Date(d.date_paid).toLocaleDateString("es-AR")}`}
+                      {d.reference && ` · Ref: ${d.reference}`}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-sm">
+                Si ya verificaste que este pago no es duplicado, podés crearlo igual.
+              </p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={handleConfirmDuplicate}>
+            Crear igual
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   )
 }

@@ -26,6 +26,7 @@ interface Customer {
   email: string
   document_type: string | null
   document_number: string | null
+  date_of_birth: string | null
   trips: number
   totalSpentByCurrency: Record<string, number>
   agency_id?: string
@@ -144,6 +145,22 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
               : "-"}
           </div>
         ),
+      },
+      {
+        accessorKey: "date_of_birth",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Fecha Nac." />
+        ),
+        cell: ({ row }) => {
+          const dob = row.original.date_of_birth
+          if (!dob) return <div className="text-muted-foreground">-</div>
+          try {
+            const d = new Date(dob)
+            return <div>{`${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`}</div>
+          } catch {
+            return <div className="text-muted-foreground">-</div>
+          }
+        },
       },
       {
         accessorKey: "trips",

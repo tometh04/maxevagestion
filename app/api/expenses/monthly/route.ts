@@ -30,6 +30,7 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const currencyParam = searchParams.get("currency")
     const typeFilter = searchParams.get("type") // "recurring", "variable", or null for all
+    const categoryIdFilter = searchParams.get("categoryId") // optional, applies only to variable expenses
 
     const allExpenses: any[] = []
 
@@ -94,6 +95,7 @@ export async function GET(request: Request) {
       if (dateFrom) varQuery = varQuery.gte("movement_date", startOfDayAR(dateFrom))
       if (dateTo) varQuery = varQuery.lte("movement_date", endOfDayAR(dateTo))
       if (currencyParam && currencyParam !== "ALL") varQuery = varQuery.eq("currency", currencyParam)
+      if (categoryIdFilter && categoryIdFilter !== "all") varQuery = varQuery.eq("category_id", categoryIdFilter)
       if (user.role === "SELLER") varQuery = varQuery.eq("user_id", user.id)
 
       const { data: variables, error: varError } = await varQuery

@@ -120,6 +120,10 @@ export async function POST(request: Request) {
     const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments:POST", "WRITE")
     if (rateLimitBlock) return rateLimitBlock
 
+    // Bypass de detección de duplicados cuando el user ya confirmó vía dialog
+    const url = new URL(request.url)
+    const forceCreate = url.searchParams.get("force") === "true"
+
     const body = await request.json()
 
     const {
@@ -170,6 +174,52 @@ export async function POST(request: Request) {
     // Validaciones de montos
     if (!amount || amount <= 0) {
       return NextResponse.json({ error: "El monto debe ser mayor a cero" }, { status: 400 })
+    }
+
+    // Detección de pago duplicado: pagos similares (misma op/operador, mismo monto, misma moneda,
+    // misma dirección) creados en los últimos 7 días. Si encuentra coincidencia y el caller no
+    // pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y permita confirmar.
+    if (!forceCreate) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      let dupQ = (supabase.from("payments") as any)
+        .select(
+          "id, amount, currency, direction, payer_type, status, date_paid, date_due, created_at, reference, operation_id, operator_id"
+        )
+        .eq("amount", amount)
+        .eq("currency", currency)
+        .eq("direction", direction)
+        .gte("created_at", sevenDaysAgo)
+        .neq("source", "OPERATOR_BULK")
+      if (operation_id) {
+        dupQ = dupQ.eq("operation_id", operation_id)
+      } else if (operator_id) {
+        dupQ = dupQ.eq("operator_id", operator_id).is("operation_id", null)
+      } else {
+        // Sin operation_id ni operator_id no hay forma de detectar duplicados (caso raro). Skip.
+        dupQ = null
+      }
+      if (dupQ) {
+        const { data: duplicates } = await dupQ.limit(5)
+        if (duplicates && duplicates.length > 0) {
+          return NextResponse.json(
+            {
+              error: "Posible pago duplicado detectado",
+              code: "DUPLICATE_PAYMENT",
+              duplicates: duplicates.map((d: any) => ({
+                id: d.id,
+                amount: Number(d.amount),
+                currency: d.currency,
+                date_paid: d.date_paid,
+                date_due: d.date_due,
+                created_at: d.created_at,
+                reference: d.reference,
+                status: d.status,
+              })),
+            },
+            { status: 409 }
+          )
+        }
+      }
     }
 
     // SELLER: verificar que la operación le pertenece

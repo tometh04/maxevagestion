@@ -38,6 +38,12 @@ interface Expense {
   users: { id: string; name: string } | null
 }
 
+interface Category {
+  id: string
+  name: string
+  color: string
+}
+
 interface Totals {
   ars: number
   usd: number
@@ -65,12 +71,15 @@ export function MonthlyExpensesTab() {
   })
   const [currencyFilter, setCurrencyFilter] = useState("ALL")
   const [typeFilter, setTypeFilter] = useState("ALL")
+  const [categoryFilter, setCategoryFilter] = useState("all")
+  const [categories, setCategories] = useState<Category[]>([])
 
   const fetchExpenses = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ dateFrom, dateTo })
       if (currencyFilter !== "ALL") params.set("currency", currencyFilter)
+      if (categoryFilter !== "all") params.set("categoryId", categoryFilter)
 
       const res = await fetch(`/api/expenses/monthly?${params}`)
       if (res.ok) {
@@ -83,11 +92,27 @@ export function MonthlyExpensesTab() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, currencyFilter])
+  }, [dateFrom, dateTo, currencyFilter, categoryFilter])
 
   useEffect(() => {
     fetchExpenses()
   }, [fetchExpenses])
+
+  // Cargar categorías para el filtro (mismas que /gastos tab Variables)
+  useEffect(() => {
+    async function loadCategories() {
+      try {
+        const res = await fetch("/api/expenses/categories")
+        if (res.ok) {
+          const data = await res.json()
+          setCategories(data.categories || [])
+        }
+      } catch (err) {
+        console.error("Error fetching categories:", err)
+      }
+    }
+    loadCategories()
+  }, [])
 
   const formatCurrency = (amount: number, currency: string) => {
     return new Intl.NumberFormat("es-AR", {
@@ -158,6 +183,25 @@ export function MonthlyExpensesTab() {
               <SelectItem value="ALL">Todos</SelectItem>
               <SelectItem value="recurring">Fijos / Recurrentes</SelectItem>
               <SelectItem value="variable">Variables</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium text-muted-foreground">Categoría</Label>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
+                    {cat.name}
+                  </div>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
