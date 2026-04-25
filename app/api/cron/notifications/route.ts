@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { runAllNotificationGenerators } from "@/lib/notifications/notification-generator"
 
 /**
@@ -23,11 +23,12 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 401 })
     }
 
-    const supabase = await createServerClient()
-    
+    // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.
+    const supabase = createAdminClient()
+
     const startTime = Date.now()
-    
-    const { results, totalGenerated } = await runAllNotificationGenerators(supabase)
+
+    const { results, totalGenerated } = await runAllNotificationGenerators(supabase as any)
     
     const duration = Date.now() - startTime
     return NextResponse.json({

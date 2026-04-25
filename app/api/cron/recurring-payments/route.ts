@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { generateAllRecurringPayments } from "@/lib/accounting/recurring-payments"
 
 /**
@@ -15,8 +15,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServerClient()
-    
+    // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.
+    const supabase = createAdminClient()
+
     // Usar un usuario del sistema o el primer SUPER_ADMIN
     const { data: adminUser } = await supabase
       .from("users")

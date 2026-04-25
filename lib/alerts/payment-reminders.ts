@@ -10,7 +10,7 @@
  * Funciona tanto para payments (clientes) como operator_payments (operadores)
  */
 
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -336,7 +336,8 @@ export async function generatePaymentReminders(alertSettings?: PaymentAlertSetti
   operatorReminders: number
   errors: string[]
 }> {
-  const supabase = await createServerClient()
+  // SaaS multi-tenant: caller cron sin user logueado → RLS bloquea. Bypass con admin.
+  const supabase = createAdminClient()
   const today = new Date()
   today.setHours(0, 0, 0, 0) // Normalizar a inicio del día
 

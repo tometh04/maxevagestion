@@ -1,4 +1,4 @@
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import {
   generateAllAccountingAlerts,
   generateMissingDocsAlert,
@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS: AlertGenerationSettings = {
  * Genera alertas de viajes próximos (según días configurados)
  */
 export async function generateUpcomingTripAlerts(tripDays: number = 7): Promise<void> {
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
   const today = new Date()
   // Ventana: desde mañana hasta tripDays días desde hoy
   const tomorrow = new Date(today)
@@ -83,7 +83,7 @@ export async function generateUpcomingTripAlerts(tripDays: number = 7): Promise<
  * Genera alertas de documentos faltantes
  */
 export async function generateMissingDocumentAlerts(): Promise<void> {
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
   const today = new Date()
   const thirtyDaysFromNow = new Date(today)
   thirtyDaysFromNow.setDate(today.getDate() + 30)
@@ -144,7 +144,7 @@ export async function generateMissingDocumentAlerts(): Promise<void> {
  * Recibe settings opcionales de operation_settings
  */
 export async function generateAllAlerts(settings?: AlertGenerationSettings): Promise<void> {
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
   const cfg = settings || DEFAULT_SETTINGS
 
   console.log("📋 Alert settings:", JSON.stringify(cfg))

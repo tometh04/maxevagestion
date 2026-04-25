@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { sendPushToUser } from "@/lib/push"
 
 export async function POST(request: Request) {
@@ -14,7 +14,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServerClient()
+    // SaaS multi-tenant: cron debe ver tareas de TODAS las orgs. createServerClient
+    // sin user logueado retorna cliente con auth.uid()=NULL → RLS bloquea todo.
+    // El Bearer $CRON_SECRET ya autoriza al caller, así que es seguro bypassear RLS.
+    const supabase = createAdminClient()
     const now = new Date()
 
     // Buscar tareas que necesitan recordatorio:

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
 import { generatePaymentReminders } from "@/lib/alerts/payment-reminders"
 
 /**

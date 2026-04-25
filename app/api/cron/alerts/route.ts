@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { generateAllAlerts, type AlertGenerationSettings } from "@/lib/alerts/generate"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * Endpoint para cron jobs - Generar todas las alertas
@@ -22,7 +22,8 @@ export async function POST(request: Request) {
     let alertSettings: AlertGenerationSettings | undefined
 
     try {
-      const supabase = await createServerClient()
+      // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.
+      const supabase = createAdminClient()
 
       // Obtener la primera agencia con settings (normalmente hay una sola)
       const { data: settings } = await (supabase as any)
