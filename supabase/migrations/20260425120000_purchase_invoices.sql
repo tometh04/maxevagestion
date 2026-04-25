@@ -72,23 +72,52 @@ CREATE TRIGGER purchase_invoices_updated_at
   BEFORE UPDATE ON purchase_invoices
   FOR EACH ROW EXECUTE FUNCTION purchase_invoices_set_updated_at();
 
--- Universal org_id auto-populate (matches SaaS migration 152 pattern).
--- Sin esto, el código legacy que hace INSERT sin org_id sería rechazado por RLS.
-CREATE TRIGGER trg_auto_org_id_purchase_invoices
+-- Resolución de org_id con fallback. El código legacy
+-- (app/api/operations/[id]/purchase-invoices/route.ts) usa SERVICE_ROLE_KEY
+-- para el INSERT, así que auth.uid() es NULL y el trigger universal SaaS
+-- (auto_set_org_id_from_auth, mig 152) no puede resolver. Esta función
+-- tiene fallback: auth.uid() → operation_id → operations.org_id.
+CREATE OR REPLACE FUNCTION purchase_invoices_resolve_org_id() RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.org_id IS NOT NULL THEN RETURN NEW; END IF;
+
+  -- Try auth context first (cubre inserts via server client del user)
+  IF auth.uid() IS NOT NULL THEN
+    NEW.org_id := (SELECT u.org_id FROM users u WHERE u.auth_id = auth.uid() LIMIT 1);
+  END IF;
+
+  -- Fallback: derive from operation_id (cubre inserts via service_role)
+  IF NEW.org_id IS NULL AND NEW.operation_id IS NOT NULL THEN
+    NEW.org_id := (SELECT op.org_id FROM operations op WHERE op.id = NEW.operation_id LIMIT 1);
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_resolve_org_id_purchase_invoices
   BEFORE INSERT ON purchase_invoices
-  FOR EACH ROW EXECUTE FUNCTION auto_set_org_id_from_auth();
+  FOR EACH ROW EXECUTE FUNCTION purchase_invoices_resolve_org_id();
 
 -- RLS
 ALTER TABLE purchase_invoices ENABLE ROW LEVEL SECURITY;
 
+-- Nota sobre el JOIN: el orden importa. `INNER JOIN users u ON u.id = pa.user_id`
+-- + `WHERE u.auth_id = auth.uid()` evita la recursión de RLS que sí dispara
+-- el patrón inverso (`ON u.auth_id = auth.uid() WHERE pa.user_id = u.id`).
+-- Ver migration 149 (saas_billing_events) que usa el mismo orden.
 CREATE POLICY purchase_invoices_tenant_isolation ON purchase_invoices
   FOR ALL TO authenticated
   USING (
     org_id IN (SELECT user_org_ids())
     OR EXISTS (
       SELECT 1 FROM platform_admins pa
-      INNER JOIN users u ON u.auth_id = auth.uid()
-      WHERE pa.user_id = u.id
+      INNER JOIN users u ON u.id = pa.user_id
+      WHERE u.auth_id = auth.uid()
     )
   )
   WITH CHECK (org_id IN (SELECT user_org_ids()));
