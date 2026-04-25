@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     const sellerIdFilter = searchParams.get("sellerId") // ID de vendedor
     const dateFromFilter = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
+    const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase() // SALIDA (departure_date) | CREACION (created_at)
 
     // Verificar permiso de acceso (accounting en vez de customers)
     if (!canAccessModule(user.role as any, "accounting")) {
@@ -188,11 +189,16 @@ export async function GET(request: Request) {
           continue
         }
 
-        // Aplicar filtro de fechas por departure_date de la operación.
+        // Aplicar filtro de fechas según dateType:
+        // - SALIDA (default): operations.departure_date con fallback a created_at
+        //   si la operación no tiene fecha de salida (preserva comportamiento legacy).
+        // - CREACION: operations.created_at directo, sin fallback.
         // Comparamos como timestamps reales (Date.getTime) con offset AR
         // para evitar el bug de UTC/local que hacía que movimientos del
         // final del día en AR quedaran fuera de rango.
-        const opDate = operation.departure_date || operation.created_at
+        const opDate = dateType === "CREACION"
+          ? operation.created_at
+          : (operation.departure_date || operation.created_at)
         if (opDate) {
           const opDateMs = new Date(opDate).getTime()
           if (dateFromFilter) {

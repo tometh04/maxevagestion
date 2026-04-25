@@ -11,8 +11,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Search, X } from "lucide-react"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO, isValid } from "date-fns"
+
+const leadsDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+]
 
 const statusOptions = [
   { value: "ALL", label: "Todos los estados" },
@@ -159,27 +163,14 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
         </SelectContent>
       </Select>
 
-      <DateInputWithCalendar
-        value={dateFrom}
-        onChange={(date) => {
-          setDateFrom(date)
-          if (date && dateTo && dateTo < date) {
-            setDateTo(undefined)
-          }
+      <DateTypeFilter
+        types={leadsDateTypes}
+        includeNone={false}
+        value={{ type: "CREACION", from: dateFrom, to: dateTo }}
+        onChange={(v) => {
+          setDateFrom(v.from)
+          setDateTo(v.to)
         }}
-        placeholder="Desde"
-        className="h-8 text-xs rounded-full"
-      />
-
-      <DateInputWithCalendar
-        value={dateTo}
-        onChange={(date) => {
-          if (date && dateFrom && date < dateFrom) return
-          setDateTo(date)
-        }}
-        placeholder="Hasta"
-        minDate={dateFrom}
-        className="h-8 text-xs rounded-full"
       />
 
       <Button variant="outline" size="sm" onClick={handleApplyFilters} className="h-8 rounded-full text-xs">Aplicar Filtros</Button>

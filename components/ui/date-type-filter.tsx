@@ -41,9 +41,15 @@ export function DateTypeFilter({
   includeNone = true,
   className,
 }: DateTypeFilterProps) {
-  const activeOption = types.find((t) => t.value === value.type)
+  // Cuando hay un solo tipo y no se ofrece "Ninguno", el dropdown es funcionless.
+  // Se omite el Select y se muestran directo los date pickers con label del único tipo.
+  const singleTypeMode = !includeNone && types.length === 1
+  const activeOption = singleTypeMode
+    ? types[0]
+    : types.find((t) => t.value === value.type)
   const showDateInputs =
-    value.type !== "" && value.type !== NONE_VALUE && Boolean(activeOption)
+    singleTypeMode ||
+    (value.type !== "" && value.type !== NONE_VALUE && Boolean(activeOption))
 
   const handleTypeChange = (newType: string) => {
     if (newType === NONE_VALUE) {
@@ -53,39 +59,44 @@ export function DateTypeFilter({
     }
   }
 
+  // En single-type mode el type viene fijo del array, no del state del Select.
+  const effectiveType = singleTypeMode ? types[0].value : value.type
+
   const handleFromChange = (from: Date | undefined) => {
     if (from && value.to && value.to < from) {
-      onChange({ type: value.type, from, to: undefined })
+      onChange({ type: effectiveType, from, to: undefined })
     } else {
-      onChange({ type: value.type, from, to: value.to })
+      onChange({ type: effectiveType, from, to: value.to })
     }
   }
 
   const handleToChange = (to: Date | undefined) => {
     if (to && value.from && to < value.from) return
-    onChange({ type: value.type, from: value.from, to })
+    onChange({ type: effectiveType, from: value.from, to })
   }
 
   return (
     <>
-      <Select value={value.type || ""} onValueChange={handleTypeChange}>
-        <SelectTrigger
-          className={cn(
-            "h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto",
-            className
-          )}
-        >
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {includeNone && <SelectItem value={NONE_VALUE}>Ninguno</SelectItem>}
-          {types.map((t) => (
-            <SelectItem key={t.value} value={t.value}>
-              {t.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {!singleTypeMode && (
+        <Select value={value.type || ""} onValueChange={handleTypeChange}>
+          <SelectTrigger
+            className={cn(
+              "h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto",
+              className
+            )}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {includeNone && <SelectItem value={NONE_VALUE}>Ninguno</SelectItem>}
+            {types.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {showDateInputs && activeOption && (
         <>

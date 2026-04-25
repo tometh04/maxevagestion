@@ -29,8 +29,13 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { Input } from "@/components/ui/input"
+
+const debtorsDateTypes: DateTypeOption[] = [
+  { value: "SALIDA", label: "Salida", shortLabel: "Salida" },
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+]
 
 interface DebtorOperation {
   id: string
@@ -65,6 +70,7 @@ export function DebtsSalesPageClient() {
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("SALIDA")
   const [searchText, setSearchText] = useState("")
 
   const fetchDebtors = useCallback(async () => {
@@ -77,6 +83,9 @@ export function DebtsSalesPageClient() {
       }
       if (dateTo) {
         params.append("dateTo", format(dateTo, "yyyy-MM-dd"))
+      }
+      if (dateType) {
+        params.append("dateType", dateType)
       }
       const queryString = params.toString()
       const response = await fetch(`/api/accounting/debts-sales${queryString ? `?${queryString}` : ""}`)
@@ -93,7 +102,7 @@ export function DebtsSalesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, dateType])
 
   useEffect(() => {
     fetchDebtors()
@@ -230,29 +239,15 @@ export function DebtsSalesPageClient() {
           className="h-8 text-xs rounded-full w-[240px]"
         />
 
-        <DateInputWithCalendar
-          value={dateFrom}
-          onChange={(date) => {
-            setDateFrom(date)
-            if (date && dateTo && dateTo < date) {
-              setDateTo(undefined)
-            }
+        <DateTypeFilter
+          types={debtorsDateTypes}
+          includeNone={false}
+          value={{ type: dateType, from: dateFrom, to: dateTo }}
+          onChange={(v) => {
+            setDateType(v.type)
+            setDateFrom(v.from)
+            setDateTo(v.to)
           }}
-          placeholder="Salida Desde"
-          className="h-8 text-xs rounded-full"
-        />
-
-        <DateInputWithCalendar
-          value={dateTo}
-          onChange={(date) => {
-            if (date && dateFrom && date < dateFrom) {
-              return
-            }
-            setDateTo(date)
-          }}
-          placeholder="Salida Hasta"
-          minDate={dateFrom}
-          className="h-8 text-xs rounded-full"
         />
 
         {(dateFrom || dateTo || searchText) && (

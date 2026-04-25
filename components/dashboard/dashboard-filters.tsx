@@ -11,8 +11,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { X } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format, parseISO, isValid } from "date-fns"
+
+const dashboardDateTypes: DateTypeOption[] = [
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 export interface DashboardFiltersState {
   dateFrom: string
@@ -70,29 +74,17 @@ export function DashboardFilters({
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <DateInputWithCalendar
-        value={toDate(filters.dateFrom)}
-        onChange={(date) => {
-          const str = toStr(date)
+      <DateTypeFilter
+        types={dashboardDateTypes}
+        includeNone={false}
+        value={{ type: "OPERACION", from: toDate(filters.dateFrom), to: toDate(filters.dateTo) }}
+        onChange={(v) => {
           setFilters((prev) => ({
             ...prev,
-            dateFrom: str,
-            dateTo: str && prev.dateTo && prev.dateTo < str ? "" : prev.dateTo,
+            dateFrom: toStr(v.from),
+            dateTo: toStr(v.to),
           }))
         }}
-        placeholder="Desde"
-        className="h-8 text-xs rounded-full"
-      />
-      <DateInputWithCalendar
-        value={toDate(filters.dateTo)}
-        onChange={(date) => {
-          const str = toStr(date)
-          if (str && filters.dateFrom && str < filters.dateFrom) return
-          setFilters((prev) => ({ ...prev, dateTo: str }))
-        }}
-        placeholder="Hasta"
-        minDate={toDate(filters.dateFrom)}
-        className="h-8 text-xs rounded-full"
       />
       <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
         <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
