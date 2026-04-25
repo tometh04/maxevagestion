@@ -46,6 +46,7 @@ const TENANT_TABLES = [
   "alerts",
   "tasks",
   "itinerary_items",
+  "purchase_invoices",
 ] as const
 
 const describeIfCreds = SUPABASE_URL && SERVICE_ROLE ? describe : describe.skip

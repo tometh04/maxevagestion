@@ -1,3 +1,4 @@
+npm warn exec The following package was not found and will be installed: supabase@2.95.3
 export type Json =
   | string
   | number
@@ -5607,13 +5608,13 @@ export type Database = {
       }
       purchase_invoices: {
         Row: {
-          created_at: string | null
+          created_at: string
           created_by: string | null
           currency: string
           document_name: string | null
           document_url: string | null
-          emitter_cuit: string
-          emitter_name: string
+          emitter_cuit: string | null
+          emitter_name: string | null
           exchange_rate: number | null
           id: string
           invoice_date: string
@@ -5623,24 +5624,25 @@ export type Database = {
           iva_rate: number
           net_amount: number
           notes: string | null
-          operation_id: string | null
+          operation_id: string
           operator_id: string | null
-          other_taxes: number | null
-          perception_iibb: number | null
-          perception_iva: number | null
+          org_id: string
+          other_taxes: number
+          perception_iibb: number
+          perception_iva: number
           status: string
           total_amount: number
           total_ars_equivalent: number | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           currency?: string
           document_name?: string | null
           document_url?: string | null
-          emitter_cuit: string
-          emitter_name: string
+          emitter_cuit?: string | null
+          emitter_name?: string | null
           exchange_rate?: number | null
           id?: string
           invoice_date: string
@@ -5650,24 +5652,25 @@ export type Database = {
           iva_rate?: number
           net_amount?: number
           notes?: string | null
-          operation_id?: string | null
+          operation_id: string
           operator_id?: string | null
-          other_taxes?: number | null
-          perception_iibb?: number | null
-          perception_iva?: number | null
+          org_id: string
+          other_taxes?: number
+          perception_iibb?: number
+          perception_iva?: number
           status?: string
-          total_amount?: number
+          total_amount: number
           total_ars_equivalent?: number | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           created_by?: string | null
           currency?: string
           document_name?: string | null
           document_url?: string | null
-          emitter_cuit?: string
-          emitter_name?: string
+          emitter_cuit?: string | null
+          emitter_name?: string | null
           exchange_rate?: number | null
           id?: string
           invoice_date?: string
@@ -5677,15 +5680,16 @@ export type Database = {
           iva_rate?: number
           net_amount?: number
           notes?: string | null
-          operation_id?: string | null
+          operation_id?: string
           operator_id?: string | null
-          other_taxes?: number | null
-          perception_iibb?: number | null
-          perception_iva?: number | null
+          org_id?: string
+          other_taxes?: number
+          perception_iibb?: number
+          perception_iva?: number
           status?: string
           total_amount?: number
           total_ars_equivalent?: number | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -5707,6 +5711,13 @@ export type Database = {
             columns: ["operator_id"]
             isOneToOne: false
             referencedRelation: "operators"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_invoices_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -8371,5 +8382,3 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.90.0 (currently installed v2.84.2)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
