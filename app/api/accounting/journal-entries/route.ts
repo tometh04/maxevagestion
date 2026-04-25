@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     const result = await listJournalEntries(supabase, {
       dateFrom: searchParams.get("dateFrom") || undefined,
       dateTo: searchParams.get("dateTo") || undefined,
+      dateType: searchParams.get("dateType") || undefined,
       source: (searchParams.get("source") as JournalEntrySource | "ALL") || "ALL",
       operationId: searchParams.get("operationId") || undefined,
       search: searchParams.get("search") || undefined,

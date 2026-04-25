@@ -342,6 +342,7 @@ export async function listJournalEntries(
   filters: {
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     source?: JournalEntrySource | "ALL"
     operationId?: string
     search?: string
@@ -351,9 +352,25 @@ export async function listJournalEntries(
 ) {
   const limit = filters.limit ?? 50
   const offset = filters.offset ?? 0
+  const dateType = (filters.dateType || "ASIENTO").toUpperCase()
 
   // SaaS Pilar 2c: usar el client que recibe — RLS tenant_isolation acota por org.
   const adminClient = supabase
+
+  // dateType=OPERACION: pre-resolver op_ids cuya operation_date ∈ [from,to]
+  // y restringir journal_entries.operation_id IN (...). Asientos sin operación
+  // (manuales) quedan fuera cuando se filtra por OPERACION.
+  let opIdsRestriction: string[] | null = null
+  if (dateType === "OPERACION" && (filters.dateFrom || filters.dateTo)) {
+    let opQuery = (adminClient.from("operations") as any).select("id")
+    if (filters.dateFrom) opQuery = opQuery.gte("operation_date", filters.dateFrom)
+    if (filters.dateTo) opQuery = opQuery.lte("operation_date", filters.dateTo)
+    const { data: matchingOps } = await opQuery.limit(5000)
+    opIdsRestriction = (matchingOps || []).map((o: any) => o.id)
+    if (opIdsRestriction.length === 0) {
+      return { entries: [], total: 0, limit, offset, hasMore: false }
+    }
+  }
 
   let query = (adminClient.from("journal_entries") as any)
     .select("*, users:created_by(id, name)", { count: "exact" })
@@ -361,11 +378,16 @@ export async function listJournalEntries(
     .order("entry_number", { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (filters.dateFrom) {
-    query = query.gte("entry_date", filters.dateFrom)
-  }
-  if (filters.dateTo) {
-    query = query.lte("entry_date", filters.dateTo)
+  if (dateType === "OPERACION" && opIdsRestriction) {
+    query = query.in("operation_id", opIdsRestriction)
+  } else {
+    // ASIENTO (default): filtrar por entry_date
+    if (filters.dateFrom) {
+      query = query.gte("entry_date", filters.dateFrom)
+    }
+    if (filters.dateTo) {
+      query = query.lte("entry_date", filters.dateTo)
+    }
   }
   if (filters.source && filters.source !== "ALL") {
     query = query.eq("source", filters.source)

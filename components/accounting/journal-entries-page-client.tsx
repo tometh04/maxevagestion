@@ -29,6 +29,13 @@ import {
   RefreshCw,
 } from "lucide-react"
 import { CreateJournalEntryDialog } from "./create-journal-entry-dialog"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { format } from "date-fns"
+
+const journalDateTypes: DateTypeOption[] = [
+  { value: "ASIENTO", label: "Asiento", shortLabel: "Asiento" },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface JournalEntry {
   id: string
@@ -95,8 +102,9 @@ export function JournalEntriesPageClient() {
   // Filters
   const [search, setSearch] = useState("")
   const [sourceFilter, setSourceFilter] = useState<string>("ALL")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("ASIENTO")
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
@@ -104,8 +112,9 @@ export function JournalEntriesPageClient() {
       const params = new URLSearchParams()
       if (search) params.set("search", search)
       if (sourceFilter !== "ALL") params.set("source", sourceFilter)
-      if (dateFrom) params.set("dateFrom", dateFrom)
-      if (dateTo) params.set("dateTo", dateTo)
+      if (dateFrom) params.set("dateFrom", format(dateFrom, "yyyy-MM-dd"))
+      if (dateTo) params.set("dateTo", format(dateTo, "yyyy-MM-dd"))
+      if (dateType) params.set("dateType", dateType)
       params.set("limit", "50")
 
       const res = await fetch(`/api/accounting/journal-entries?${params}`)
@@ -118,7 +127,7 @@ export function JournalEntriesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [search, sourceFilter, dateFrom, dateTo])
+  }, [search, sourceFilter, dateFrom, dateTo, dateType])
 
   useEffect(() => {
     fetchEntries()
@@ -190,19 +199,15 @@ export function JournalEntriesPageClient() {
             <SelectItem value="AUTO_FX">Tipo de Cambio</SelectItem>
           </SelectContent>
         </Select>
-        <Input
-          type="date"
-          value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
-          className="w-[150px]"
-          placeholder="Desde"
-        />
-        <Input
-          type="date"
-          value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
-          className="w-[150px]"
-          placeholder="Hasta"
+        <DateTypeFilter
+          types={journalDateTypes}
+          includeNone={false}
+          value={{ type: dateType, from: dateFrom, to: dateTo }}
+          onChange={(v) => {
+            setDateType(v.type)
+            setDateFrom(v.from)
+            setDateTo(v.to)
+          }}
         />
         <Button variant="outline" size="icon" onClick={fetchEntries}>
           <RefreshCw className="h-4 w-4" />

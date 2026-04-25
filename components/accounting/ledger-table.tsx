@@ -48,6 +48,7 @@ interface LedgerTableProps {
   filters?: {
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     type?: string
     currency?: string
   }
@@ -87,6 +88,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
         const params = new URLSearchParams()
         if (filters?.dateFrom) params.append("dateFrom", filters.dateFrom)
         if (filters?.dateTo) params.append("dateTo", filters.dateTo)
+        if (filters?.dateType) params.append("dateType", filters.dateType)
         if (filters?.type && filters.type !== "ALL") params.append("type", filters.type)
         if (filters?.currency && filters.currency !== "ALL") params.append("currency", filters.currency)
 

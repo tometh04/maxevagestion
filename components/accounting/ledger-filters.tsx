@@ -10,14 +10,20 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { X } from "lucide-react"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
 import { format } from "date-fns"
+
+const ledgerDateTypes: DateTypeOption[] = [
+  { value: "MOVIMIENTO", label: "Movimiento", shortLabel: "Mov." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface LedgerFiltersProps {
   agencies: Array<{ id: string; name: string }>
   onFiltersChange: (filters: {
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     type?: string
     currency?: string
     agencyId?: string
@@ -27,6 +33,7 @@ interface LedgerFiltersProps {
 export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("MOVIMIENTO")
   const [type, setType] = useState("ALL")
   const [currency, setCurrency] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
@@ -39,6 +46,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
     onFiltersChange({
       dateFrom: formatDateString(dateFrom),
       dateTo: formatDateString(dateTo),
+      dateType: dateType || undefined,
       type: type !== "ALL" ? type : undefined,
       currency: currency !== "ALL" ? currency : undefined,
       agencyId: agencyId !== "ALL" ? agencyId : undefined,
@@ -48,6 +56,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   const handleReset = () => {
     setDateFrom(undefined)
     setDateTo(undefined)
+    setDateType("MOVIMIENTO")
     setType("ALL")
     setCurrency("ALL")
     setAgencyId("ALL")
@@ -56,29 +65,15 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      <DateInputWithCalendar
-        value={dateFrom}
-        onChange={(date) => {
-          setDateFrom(date)
-          if (date && dateTo && dateTo < date) {
-            setDateTo(undefined)
-          }
+      <DateTypeFilter
+        types={ledgerDateTypes}
+        includeNone={false}
+        value={{ type: dateType, from: dateFrom, to: dateTo }}
+        onChange={(v) => {
+          setDateType(v.type)
+          setDateFrom(v.from)
+          setDateTo(v.to)
         }}
-        placeholder="Desde"
-        className="h-8 text-xs rounded-full"
-      />
-
-      <DateInputWithCalendar
-        value={dateTo}
-        onChange={(date) => {
-          if (date && dateFrom && date < dateFrom) {
-            return
-          }
-          setDateTo(date)
-        }}
-        placeholder="Hasta"
-        minDate={dateFrom}
-        className="h-8 text-xs rounded-full"
       />
 
       <Select value={agencyId} onValueChange={setAgencyId}>

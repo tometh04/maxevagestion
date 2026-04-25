@@ -34,6 +34,7 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
   const [filters, setFilters] = useState<{
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     type?: string
     currency?: string
     agencyId?: string

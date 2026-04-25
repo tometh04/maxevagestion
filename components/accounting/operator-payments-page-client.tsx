@@ -36,7 +36,12 @@ import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+
+const operatorPaymentsDateTypes: DateTypeOption[] = [
+  { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -79,6 +84,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
   const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined)
   const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("VENCIMIENTO")
   
   // Estados para inputs (valores que el usuario tipea)
   const [amountMinInput, setAmountMinInput] = useState<string>("")
@@ -166,10 +172,13 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         params.append("operatorId", operatorFilter)
       }
       if (dueDateFrom) {
-        params.append("dueDateFrom", format(dueDateFrom, "yyyy-MM-dd"))
+        params.append("dateFrom", format(dueDateFrom, "yyyy-MM-dd"))
       }
       if (dueDateTo) {
-        params.append("dueDateTo", format(dueDateTo, "yyyy-MM-dd"))
+        params.append("dateTo", format(dueDateTo, "yyyy-MM-dd"))
+      }
+      if (dateType) {
+        params.append("dateType", dateType)
       }
       if (amountMin) {
         params.append("amountMin", amountMin)
@@ -191,7 +200,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, amountMin, amountMax, operationSearch])
+  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, dateType, amountMin, amountMax, operationSearch])
 
   // Ejecutar fetch cuando cambian los filtros
   useEffect(() => {
@@ -404,29 +413,15 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             </SelectContent>
           </Select>
 
-          <DateInputWithCalendar
-            value={dueDateFrom}
-            onChange={(date) => {
-              setDueDateFrom(date)
-              if (date && dueDateTo && dueDateTo < date) {
-                setDueDateTo(undefined)
-              }
+          <DateTypeFilter
+            types={operatorPaymentsDateTypes}
+            includeNone={false}
+            value={{ type: dateType, from: dueDateFrom, to: dueDateTo }}
+            onChange={(v) => {
+              setDateType(v.type)
+              setDueDateFrom(v.from)
+              setDueDateTo(v.to)
             }}
-            placeholder="Venc. Desde"
-            className="h-8 text-xs rounded-full"
-          />
-
-          <DateInputWithCalendar
-            value={dueDateTo}
-            onChange={(date) => {
-              if (date && dueDateFrom && date < dueDateFrom) {
-                return
-              }
-              setDueDateTo(date)
-            }}
-            placeholder="Venc. Hasta"
-            minDate={dueDateFrom}
-            className="h-8 text-xs rounded-full"
           />
 
           <Input
@@ -471,6 +466,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                 setStatusFilter("UNPAID")
                 setDueDateFrom(undefined)
                 setDueDateTo(undefined)
+                setDateType("VENCIMIENTO")
                 setAmountMinInput("")
                 setAmountMaxInput("")
                 setOperationSearchInput("")

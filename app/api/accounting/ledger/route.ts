@@ -20,6 +20,7 @@ export async function GET(request: Request) {
     const offset = parseInt(searchParams.get("offset") || "0")
     const dateFrom = searchParams.get("dateFrom") || undefined
     const dateTo = searchParams.get("dateTo") || undefined
+    const dateType = (searchParams.get("dateType") || "MOVIMIENTO").toUpperCase()
     const typeParam = searchParams.get("type") || "ALL"
     const currency = searchParams.get("currency") || undefined
     const accountId = searchParams.get("accountId") || undefined
@@ -38,9 +39,29 @@ export async function GET(request: Request) {
       )
 
     // IMPORTANTE: filtros ANTES de order/range para que funcione la paginación
-    // Filtros de fecha con offset de AR: evita perder movimientos por desfasaje UTC
-    if (dateFrom) query = query.gte("movement_date", startOfDayAR(dateFrom))
-    if (dateTo)   query = query.lte("movement_date", endOfDayAR(dateTo))
+    // dateType:
+    // - MOVIMIENTO (default): ledger_movements.movement_date con timezone AR
+    // - OPERACION: pre-resolver operations cuya operation_date cae en [from,to]
+    //   y restringir ledger_movements.operation_id IN (...). Movimientos sin
+    //   operation_id (asientos manuales) quedan fuera cuando se filtra por OPERACION.
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = (supabase.from("operations") as any).select("id")
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const opIds = (matchingOps || []).map((o: any) => o.id)
+      if (opIds.length === 0) {
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, limit, offset, hasMore: false },
+        })
+      }
+      query = query.in("operation_id", opIds)
+    } else {
+      // Filtros de fecha con offset de AR: evita perder movimientos por desfasaje UTC
+      if (dateFrom) query = query.gte("movement_date", startOfDayAR(dateFrom))
+      if (dateTo)   query = query.lte("movement_date", endOfDayAR(dateTo))
+    }
     if (currency && currency !== "ALL") query = query.eq("currency", currency)
     if (accountId && accountId !== "ALL") query = query.eq("account_id", accountId)
     if (operationId) query = query.eq("operation_id", operationId)

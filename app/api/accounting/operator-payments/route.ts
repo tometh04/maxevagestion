@@ -16,8 +16,10 @@ export async function GET(request: Request) {
     const operatorId = searchParams.get("operatorId") || undefined
     const status = searchParams.get("status") || undefined
     const agencyId = searchParams.get("agencyId")
-    const dueDateFrom = searchParams.get("dueDateFrom") || undefined
-    const dueDateTo = searchParams.get("dueDateTo") || undefined
+    // Backward-compat: aceptar dueDateFrom/dueDateTo legacy + nuevos dateFrom/dateTo
+    const dateFrom = searchParams.get("dateFrom") || searchParams.get("dueDateFrom") || undefined
+    const dateTo = searchParams.get("dateTo") || searchParams.get("dueDateTo") || undefined
+    const dateType = (searchParams.get("dateType") || "VENCIMIENTO").toUpperCase()
     const amountMin = searchParams.get("amountMin") || undefined
     const amountMax = searchParams.get("amountMax") || undefined
     const operationSearch = searchParams.get("operationSearch") || undefined
@@ -45,15 +47,31 @@ export async function GET(request: Request) {
       query = query.eq("status", status)
     }
 
-    if (dueDateFrom) {
-      query = query.gte("due_date", dueDateFrom)
-    }
-
-    if (dueDateTo) {
-      // Agregar 23:59:59 para incluir todo el día
-      const dateTo = new Date(dueDateTo)
-      dateTo.setHours(23, 59, 59, 999)
-      query = query.lte("due_date", dateTo.toISOString())
+    // dateType:
+    // - VENCIMIENTO (default): operator_payments.due_date
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date ∈ [from,to]
+    //   y restringir operator_payments.operation_id IN (...). Pagos sin operación quedan fuera.
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = (supabase.from("operations") as any).select("id")
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const opIds = (matchingOps || []).map((o: any) => o.id)
+      if (opIds.length === 0) {
+        return NextResponse.json({ payments: [] })
+      }
+      query = query.in("operation_id", opIds)
+    } else {
+      // VENCIMIENTO (default)
+      if (dateFrom) {
+        query = query.gte("due_date", dateFrom)
+      }
+      if (dateTo) {
+        // Agregar 23:59:59 para incluir todo el día
+        const dateToEnd = new Date(dateTo)
+        dateToEnd.setHours(23, 59, 59, 999)
+        query = query.lte("due_date", dateToEnd.toISOString())
+      }
     }
 
     const { data: payments, error } = await query
