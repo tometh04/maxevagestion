@@ -43,6 +43,11 @@ export default function LibroIvaPage() {
     window.open(`/api/accounting/libro-iva?year=${year}&month=${month}&format=csv`, "_blank")
   }
 
+  const handleExportLibroIvaDigital = () => {
+    // RG 4597 — descarga ZIP con los 4 archivos REGINFO oficiales AFIP
+    window.open(`/api/accounting/libro-iva?year=${year}&month=${month}&format=rg4597`, "_blank")
+  }
+
   const formatMoney = (amount: number) =>
     `$ ${Number(amount || 0).toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -59,10 +64,16 @@ export default function LibroIvaPage() {
         <div>
           <p className="text-muted-foreground">Libro IVA Ventas y Compras — {monthLabel}</p>
         </div>
-        <Button onClick={handleExportCSV} variant="outline">
-          <Download className="h-4 w-4 mr-2" />
-          Exportar CSV
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleExportCSV} variant="outline">
+            <Download className="h-4 w-4 mr-2" />
+            Exportar CSV
+          </Button>
+          <Button onClick={handleExportLibroIvaDigital}>
+            <Download className="h-4 w-4 mr-2" />
+            Libro IVA Digital (RG 4597)
+          </Button>
+        </div>
       </div>
 
       {/* Period selector */}

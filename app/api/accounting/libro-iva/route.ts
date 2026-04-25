@@ -3,6 +3,7 @@ import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { normalizeTaxTreatment } from "@/lib/invoices/calculation"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { bundleLibroIvaDigital } from "@/lib/accounting/libro-iva-digital"
 
 export async function GET(request: Request) {
   try {
@@ -150,6 +151,10 @@ export async function GET(request: Request) {
 
     if (format === "rg3683") {
       return generateRG3683CSV(salesInvoices, purchases, year, month)
+    }
+
+    if (format === "rg4597") {
+      return await generateRG4597Zip(salesInvoices, purchases, year, month)
     }
 
     return NextResponse.json({
@@ -446,6 +451,156 @@ function generateRG3683CSV(ventas: any[], compras: any[], year: number, month: n
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="libro-iva-rg3683-${year}-${String(month).padStart(2, "0")}.csv"`,
+    },
+  })
+}
+
+// ── AFIP RG 4597 (Libro IVA Digital) — generador ZIP ──
+
+async function generateRG4597Zip(
+  ventas: any[],
+  compras: any[],
+  year: number,
+  month: number,
+) {
+  // Mapping ventas: invoices con invoice_items[] y campos AFIP nativos
+  const ventasInputs = ventas.map((inv) => {
+    const ivaByRate = getIVAByRate(inv.invoice_items)
+    const cantAlicuotas = Object.values(ivaByRate).filter((v) => v > 0).length || 1
+    return {
+      issue_date: inv.created_at,
+      cbte_tipo: Number(inv.cbte_tipo) || 1,
+      pto_vta: Number(inv.pto_vta) || 1,
+      cbte_nro: Number(inv.cbte_nro) || 0,
+      receptor_doc_tipo: Number(inv.receptor_doc_tipo) || 99,
+      receptor_doc_nro: String(inv.receptor_doc_nro || "0"),
+      receptor_nombre: inv.receptor_nombre || "CONSUMIDOR FINAL",
+      imp_total: Number(inv.imp_total) || 0,
+      imp_tot_conc: Number(inv.imp_tot_conc) || 0,
+      imp_op_ex: Number(inv.imp_op_ex) || 0,
+      imp_iva: Number(inv.imp_iva) || 0,
+      perc_iva: 0,
+      perc_iibb: 0,
+      perc_municipales: 0,
+      imp_internos: Number(inv.imp_trib) || 0,
+      moneda: inv.moneda || "ARS",
+      cotizacion: Number(inv.cotizacion) || 1,
+      cantidad_alicuotas: cantAlicuotas,
+      codigo_operacion: " ",
+      otros_tributos: 0,
+      fecha_vto_pago: null,
+    }
+  })
+
+  // ventas_alicuotas — una entrada por (invoice × rate gravado)
+  const ventasAlicuotasInputs = ventas.map((inv) => {
+    const ivaByRate = getIVAByRate(inv.invoice_items)
+    const breakdown: Record<string, { neto: number; iva: number }> = {}
+    for (const [rate, ivaAmount] of Object.entries(ivaByRate)) {
+      if (ivaAmount > 0) {
+        // Reconstruir neto desde line items con esta tasa
+        const items = (inv.invoice_items || []).filter((it: any) => {
+          const tt = normalizeTaxTreatment(it.tax_treatment, it.iva_porcentaje)
+          return tt === "GRAVADO" && Number(it.iva_porcentaje) === Number(rate)
+        })
+        const neto = items.reduce((s: number, it: any) => s + Number(it.subtotal || 0), 0)
+        breakdown[rate] = { neto, iva: ivaAmount }
+      }
+    }
+    return {
+      cbte_tipo: Number(inv.cbte_tipo) || 1,
+      pto_vta: Number(inv.pto_vta) || 1,
+      cbte_nro: Number(inv.cbte_nro) || 0,
+      iva_breakdown: breakdown,
+    }
+  })
+
+  // Mapping compras: purchase_invoices (single iva_rate por invoice)
+  const comprasInputs = compras.map((inv) => {
+    // Parse "0001-00000099" → pto_vta=1, cbte_nro=99
+    let ptoVta = 1
+    let cbteNro = 0
+    const numMatch = String(inv.invoice_number || "").match(/(\d{1,5})\s*[-]\s*(\d{1,8})/)
+    if (numMatch) {
+      ptoVta = Number(numMatch[1])
+      cbteNro = Number(numMatch[2])
+    } else {
+      cbteNro = Number(String(inv.invoice_number || "").replace(/\D/g, "")) || 0
+    }
+
+    return {
+      issue_date: inv.invoice_date,
+      cbte_tipo: inv.invoice_type || "FACTURA_A",
+      pto_vta: ptoVta,
+      cbte_nro: cbteNro,
+      despacho_importacion: null,
+      emitter_doc_tipo: 80,
+      emitter_cuit: inv.emitter_cuit || null,
+      emitter_name: inv.emitter_name || "",
+      imp_total: Number(inv.total_amount) || 0,
+      imp_tot_conc: 0,
+      imp_op_ex: 0,
+      perc_iva: Number(inv.perception_iva) || 0,
+      perc_no_categorizados: 0,
+      perc_iibb: Number(inv.perception_iibb) || 0,
+      perc_municipales: 0,
+      imp_internos: Number(inv.other_taxes) || 0,
+      moneda: inv.currency || "ARS",
+      cotizacion: 1,
+      cantidad_alicuotas: 1,
+      codigo_operacion: " ",
+      credito_fiscal_computable: Number(inv.iva_amount) || 0,
+      otros_tributos: 0,
+      cuit_corredor: null,
+      denominacion_corredor: null,
+      iva_comision: 0,
+    }
+  })
+
+  // compras_alicuotas — single rate per invoice (purchase_invoices schema legacy)
+  const comprasAlicuotasInputs = compras.map((inv) => {
+    let ptoVta = 1
+    let cbteNro = 0
+    const numMatch = String(inv.invoice_number || "").match(/(\d{1,5})\s*[-]\s*(\d{1,8})/)
+    if (numMatch) {
+      ptoVta = Number(numMatch[1])
+      cbteNro = Number(numMatch[2])
+    } else {
+      cbteNro = Number(String(inv.invoice_number || "").replace(/\D/g, "")) || 0
+    }
+
+    const rate = Number(inv.iva_rate) || 21
+    const breakdown: Record<string, { neto: number; iva: number }> = {}
+    if (Number(inv.iva_amount) > 0) {
+      breakdown[String(rate)] = {
+        neto: Number(inv.net_amount) || 0,
+        iva: Number(inv.iva_amount) || 0,
+      }
+    }
+
+    return {
+      cbte_tipo: inv.invoice_type || "FACTURA_A",
+      pto_vta: ptoVta,
+      cbte_nro: cbteNro,
+      emitter_cuit: inv.emitter_cuit || null,
+      iva_breakdown: breakdown,
+    }
+  })
+
+  const bundle = await bundleLibroIvaDigital({
+    ventas: ventasInputs,
+    ventas_alicuotas: ventasAlicuotasInputs,
+    compras: comprasInputs,
+    compras_alicuotas: comprasAlicuotasInputs,
+    year,
+    month,
+  })
+
+  return new Response(bundle.zipBuffer, {
+    headers: {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${bundle.filename}"`,
+      "X-LIBRO-IVA-COUNTS": JSON.stringify(bundle.counts),
     },
   })
 }
