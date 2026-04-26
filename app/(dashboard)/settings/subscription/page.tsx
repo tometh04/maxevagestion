@@ -59,15 +59,20 @@ export default async function SubscriptionPage({
   }
 
   const admin = createAdminClient() as any
-  const { data: org } = await admin
+  const { data: orgFull } = await admin
     .from("organizations")
     .select("*")
     .eq("id", user.org_id)
     .maybeSingle()
 
-  if (!org) {
+  if (!orgFull) {
     return <div className="p-6">Organización no encontrada.</div>
   }
+
+  // SECURITY: internal_notes es admin-only (mig 163) — strippeamos antes
+  // de pasar el row a children del tenant. Cualquier otro campo admin-only
+  // que se agregue a futuro debe sumarse acá.
+  const { internal_notes: _internalNotes, ...org } = orgFull as any
 
   // Si la org tiene custom_plan_id, renderizamos la vista de plan custom
   // (oculta los planes públicos y muestra solo el acordado con ventas).
