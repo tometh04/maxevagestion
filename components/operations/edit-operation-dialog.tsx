@@ -57,6 +57,8 @@ const operationSchema = z.object({
   currency: z.enum(["ARS", "USD"]),
   reservation_code_air: z.string().optional().nullable(),
   reservation_code_hotel: z.string().optional().nullable(),
+  airline_name: z.string().optional().nullable(),
+  hotel_name: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -104,6 +106,8 @@ interface Operation {
   margin_percentage?: number
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
+  airline_name?: string | null
+  hotel_name?: string | null
 }
 
 interface EditOperationDialogProps {
@@ -234,6 +238,8 @@ export function EditOperationDialog({
       currency: (operation.currency as any) || "USD",
       reservation_code_air: operation.reservation_code_air || null,
       reservation_code_hotel: operation.reservation_code_hotel || null,
+      airline_name: operation.airline_name || null,
+      hotel_name: operation.hotel_name || null,
     },
   })
 
@@ -1120,6 +1126,42 @@ export function EditOperationDialog({
                       <FormControl>
                         <Input
                           placeholder="Ej: XYZ789"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="airline_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Aerolínea</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: American Airlines"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="hotel_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hotel</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: Sheraton Miami"
                           {...field}
                           value={field.value || ""}
                         />

@@ -374,11 +374,21 @@ export function OperationDetailClient({
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Aérea</p>
-                    <p className="text-sm font-medium mt-0.5">{operation.reservation_code_air || "-"}</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {operation.reservation_code_air || "-"}
+                      {operation.airline_name && (
+                        <span className="text-muted-foreground"> · {operation.airline_name}</span>
+                      )}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Reserva Hotel</p>
-                    <p className="text-sm font-medium mt-0.5">{operation.reservation_code_hotel || "-"}</p>
+                    <p className="text-sm font-medium mt-0.5">
+                      {operation.reservation_code_hotel || "-"}
+                      {operation.hotel_name && (
+                        <span className="text-muted-foreground"> · {operation.hotel_name}</span>
+                      )}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">

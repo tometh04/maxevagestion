@@ -71,6 +71,8 @@ export async function POST(request: Request) {
       commission_split, // Split de comisión entre vendedor principal y secundario
       reservation_code_air,
       reservation_code_hotel,
+      airline_name,
+      hotel_name,
     } = body
 
     // Obtener configuración de operaciones
@@ -236,6 +238,8 @@ export async function POST(request: Request) {
       billing_margin_percentage: billingMarginPercentage,
       reservation_code_air: reservation_code_air || null,
       reservation_code_hotel: reservation_code_hotel || null,
+      airline_name: airline_name || null,
+      hotel_name: hotel_name || null,
     }
 
     // ============================================
@@ -981,11 +985,13 @@ export async function GET(request: Request) {
 
       if (operationIdsByCustomer.length > 0) {
         const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
+        // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
+        // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
       } else {
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
       }
     }
 
