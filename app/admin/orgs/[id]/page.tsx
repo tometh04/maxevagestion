@@ -15,6 +15,7 @@ import { OrgProfileCard } from "@/components/admin/org-profile-card"
 import { OrgMembersCard } from "@/components/admin/org-members-card"
 import { OrgActivityTimeline } from "@/components/admin/org-activity-timeline"
 import { PageHeader } from "@/components/admin/page-header"
+import { MrrOverrideCard } from "@/components/admin/mrr-override-card"
 
 export const dynamic = "force-dynamic"
 
@@ -136,6 +137,16 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
           </dl>
         </CardContent>
       </Card>
+
+      <MrrOverrideCard
+        orgId={org.id}
+        currentOverride={
+          org.manual_mrr_override_ars != null
+            ? Number(org.manual_mrr_override_ars)
+            : null
+        }
+        hasCustomPlan={!!org.custom_plan_id}
+      />
 
       <OrgProfileCard
         orgId={org.id}
