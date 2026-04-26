@@ -112,7 +112,12 @@ export function LeadsPageClient({
     }
   }, [])
 
-  const LEADS_LIMIT = 200
+  // Cap del primer batch de leads que carga el kanban. Se subió de 200 a 1000
+  // porque algunos sellers tienen 100+ leads asignados viejos que quedaban fuera
+  // del top 200 ordenado por updated_at DESC y se les "desaparecían" del CRM.
+  // Plus el SELLER path del API trae además TODOS los leads del seller logueado
+  // (sin límite) — ver app/api/leads/route.ts. Así el seller siempre ve los suyos.
+  const LEADS_LIMIT = 1000
   const [leadsPage, setLeadsPage] = useState(1)
   const [leadsHasMore, setLeadsHasMore] = useState(false)
   const [leadsTotal, setLeadsTotal] = useState(0)

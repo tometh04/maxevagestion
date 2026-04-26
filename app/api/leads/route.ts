@@ -90,6 +90,31 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
+    // FIX bug "cards desaparecen del CRM" (sellers Micaela, Ramiro):
+    // El paginado de la query principal ordena por updated_at DESC y trae top N.
+    // Si un seller tiene muchos leads viejos asignados, quedan fuera del top N
+    // y se le "esconden" en el kanban. Para SELLER, hacemos un fetch adicional
+    // de TODOS sus leads asignados (sin límite) y los mergeamos sin duplicar por id.
+    // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER no tocan esta lógica.
+    if (user.role === "SELLER" && agencyIds.length > 0) {
+      const existingIds = new Set(leads.map((l: any) => l.id))
+      const { data: ownLeads } = await supabase.from("leads").select(`
+        *,
+        agencies(name),
+        users:assigned_seller_id(name, email)
+      `)
+        .eq("assigned_seller_id", user.id)
+        .in("agency_id", agencyIds)
+        .is("archived_at", null)
+
+      if (ownLeads) {
+        const missing = (ownLeads as any[]).filter((l) => !existingIds.has(l.id))
+        if (missing.length > 0) {
+          leads = [...leads, ...missing]
+        }
+      }
+    }
+
     // OPTIMIZADO: Solo cargar operaciones y clientes si hay leads WON (evitar consultas innecesarias)
     const wonLeads = (leads || []).filter((l: any) => l.status === "WON")
     
