@@ -4,28 +4,18 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { isPlatformAdmin } from "@/lib/auth/platform"
 import { logSecurityEvent } from "@/lib/security/audit"
 
-const ALLOWED_FIELDS = [
-  "contact_name",
-  "contact_phone",
-  "internal_notes",
-  "address_street",
-  "address_city",
-  "address_province",
-  "address_country",
-  "address_postal_code",
-  "tax_category",
-  "cuit",
-  "billing_email",
-  "billing_name",
+const TENANT_SETTING_KEYS = [
+  "company_name",
+  "tax_id",
+  "legajo",
+  "address",
+  "phone",
+  "email",
+  "website",
+  "instagram",
 ] as const
 
-const VALID_TAX = new Set([
-  "RESPONSABLE_INSCRIPTO",
-  "MONOTRIBUTO",
-  "EXENTO",
-  "CONSUMIDOR_FINAL",
-  "NO_RESPONSABLE",
-])
+type TenantSettingKey = (typeof TENANT_SETTING_KEYS)[number]
 
 export async function PATCH(
   req: Request,
@@ -46,74 +36,137 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 })
   }
 
-  const patch: Record<string, string | null> = {}
-  for (const key of ALLOWED_FIELDS) {
-    if (!(key in body)) continue
-    const v = body[key]
+  // Parse settings object
+  const rawSettings = typeof body.settings === "object" && body.settings !== null
+    ? (body.settings as Record<string, unknown>)
+    : {}
+
+  const settingsPatch: Partial<Record<TenantSettingKey, string | null>> = {}
+  for (const key of TENANT_SETTING_KEYS) {
+    if (!(key in rawSettings)) continue
+    const v = rawSettings[key]
     if (v !== null && typeof v !== "string") {
-      return NextResponse.json({ error: `Invalid value for ${key}` }, { status: 400 })
+      return NextResponse.json({ error: `Invalid value for settings.${key}` }, { status: 400 })
     }
-    patch[key] = v as string | null
+    settingsPatch[key] = v as string | null
   }
 
-  if (Object.keys(patch).length === 0) {
+  // Parse internal_notes
+  let internalNotesPatch: string | null | undefined = undefined
+  if ("internal_notes" in body) {
+    const v = body.internal_notes
+    if (v !== null && typeof v !== "string") {
+      return NextResponse.json({ error: "Invalid value for internal_notes" }, { status: 400 })
+    }
+    internalNotesPatch = v as string | null
+  }
+
+  const hasSettings = Object.keys(settingsPatch).length > 0
+  const hasInternalNotes = internalNotesPatch !== undefined
+
+  if (!hasSettings && !hasInternalNotes) {
     return NextResponse.json({ error: "No fields to update" }, { status: 400 })
   }
 
-  // Validaciones
-  if (patch.cuit) {
-    const stripped = patch.cuit.replace(/[-\s]/g, "")
+  // Validate tax_id (CUIT: 11 digits AR)
+  if (settingsPatch.tax_id) {
+    const stripped = settingsPatch.tax_id.replace(/[-\s]/g, "")
     if (!/^\d{11}$/.test(stripped)) {
       return NextResponse.json({ error: "CUIT debe tener 11 dígitos" }, { status: 400 })
     }
-    patch.cuit = stripped
-  }
-
-  if (patch.tax_category && !VALID_TAX.has(patch.tax_category)) {
-    return NextResponse.json({ error: "tax_category inválida" }, { status: 400 })
-  }
-
-  if (patch.address_country) {
-    const cc = patch.address_country.toUpperCase()
-    if (!/^[A-Z]{2}$/.test(cc)) {
-      return NextResponse.json(
-        { error: "address_country debe ser ISO 2 letras" },
-        { status: 400 },
-      )
-    }
-    patch.address_country = cc
+    settingsPatch.tax_id = stripped
   }
 
   const admin = createAdminClient()
 
-  // Snapshot before
-  const { data: before } = await (admin.from("organizations") as any)
-    .select(ALLOWED_FIELDS.join(","))
+  // Verify org exists
+  const { data: orgExists } = await (admin.from("organizations") as any)
+    .select("id, internal_notes")
     .eq("id", orgId)
     .maybeSingle()
 
-  if (!before) {
+  if (!orgExists) {
     return NextResponse.json({ error: "Organization not found" }, { status: 404 })
   }
 
-  // Update
-  const { data: updated, error } = await (admin.from("organizations") as any)
-    .update(patch)
-    .eq("id", orgId)
-    .select("*")
-    .single()
+  // Snapshot of settings before
+  const settingKeys = Object.keys(settingsPatch) as TenantSettingKey[]
+  const allKeysToFetch = [
+    ...settingKeys,
+    // Also fetch aliases for before snapshot
+    ...settingKeys.flatMap((k) => (k === "address" ? ["company_address"] : [])),
+  ]
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  const beforeSettingsMap: Record<string, string | null> = {}
+  if (allKeysToFetch.length > 0) {
+    const { data: beforeRows } = await (admin.from("organization_settings") as any)
+      .select("key, value")
+      .eq("org_id", orgId)
+      .in("key", allKeysToFetch)
+    for (const row of (beforeRows ?? [])) {
+      beforeSettingsMap[row.key] = row.value
+    }
   }
 
-  // Audit
-  const changed_fields = Object.keys(patch)
-  const before_subset: Record<string, unknown> = {}
-  const after_subset: Record<string, unknown> = {}
-  for (const k of changed_fields) {
-    before_subset[k] = (before as any)[k]
-    after_subset[k] = (updated as any)[k]
+  // Upsert settings into organization_settings
+  if (hasSettings) {
+    const now = new Date().toISOString()
+    const upsertRows: { org_id: string; key: string; value: string | null; updated_at: string }[] = []
+
+    for (const [key, value] of Object.entries(settingsPatch) as [TenantSettingKey, string | null][]) {
+      upsertRows.push({ org_id: orgId, key, value, updated_at: now })
+      // Sync address/company_address (same as tenant API)
+      if (key === "address") {
+        upsertRows.push({ org_id: orgId, key: "company_address", value, updated_at: now })
+      }
+    }
+
+    const { error: upsertError } = await (admin.from("organization_settings") as any)
+      .upsert(upsertRows, { onConflict: "org_id,key" })
+
+    if (upsertError) {
+      return NextResponse.json({ error: upsertError.message }, { status: 500 })
+    }
+  }
+
+  // Update internal_notes in organizations table
+  let afterInternalNotes = orgExists.internal_notes
+  if (hasInternalNotes) {
+    const { error: notesError } = await (admin.from("organizations") as any)
+      .update({ internal_notes: internalNotesPatch })
+      .eq("id", orgId)
+
+    if (notesError) {
+      return NextResponse.json({ error: notesError.message }, { status: 500 })
+    }
+    afterInternalNotes = internalNotesPatch
+  }
+
+  // Snapshot after settings
+  const afterSettingsMap: Record<string, string | null> = {}
+  if (settingKeys.length > 0) {
+    const { data: afterRows } = await (admin.from("organization_settings") as any)
+      .select("key, value")
+      .eq("org_id", orgId)
+      .in("key", settingKeys)
+    for (const row of (afterRows ?? [])) {
+      afterSettingsMap[row.key] = row.value
+    }
+  }
+
+  // Build changed_fields list
+  const changed_fields: string[] = [
+    ...settingKeys.map((k) => `settings.${k}`),
+    ...(hasInternalNotes ? ["internal_notes"] : []),
+  ]
+
+  const before: Record<string, unknown> = {
+    ...Object.fromEntries(settingKeys.map((k) => [`settings.${k}`, beforeSettingsMap[k] ?? null])),
+    ...(hasInternalNotes ? { internal_notes: orgExists.internal_notes } : {}),
+  }
+  const after: Record<string, unknown> = {
+    ...Object.fromEntries(settingKeys.map((k) => [`settings.${k}`, afterSettingsMap[k] ?? null])),
+    ...(hasInternalNotes ? { internal_notes: afterInternalNotes } : {}),
   }
 
   logSecurityEvent({
@@ -125,8 +178,8 @@ export async function PATCH(
     targetEntity: "organizations",
     targetEntityId: orgId,
     requestPath: req.url,
-    details: { changed_fields, before: before_subset, after: after_subset },
+    details: { changed_fields, before, after },
   })
 
-  return NextResponse.json({ ok: true, profile: updated })
+  return NextResponse.json({ ok: true })
 }

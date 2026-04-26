@@ -1,24 +1,23 @@
-const FIELDS = [
-  "contact_name",
-  "contact_phone",
-  "cuit",
-  "tax_category",
-  "billing_email",
-  "address_street",
-  "address_city",
-  "address_province",
-  "address_postal_code",
+export const TENANT_PROFILE_FIELDS = [
+  "company_name",
+  "tax_id",
+  "legajo",
+  "address",
+  "phone",
+  "email",
+  "website",
+  "instagram",
 ] as const
 
-export const PROFILE_FIELD_COUNT = FIELDS.length
+export const PROFILE_FIELD_COUNT = TENANT_PROFILE_FIELDS.length // 8
 
 export type ProfileBadgeLevel = "empty" | "partial" | "complete"
 
 export function computeProfileCompletion(
-  org: Partial<Record<(typeof FIELDS)[number], string | null | undefined>>,
+  settings: Partial<Record<(typeof TENANT_PROFILE_FIELDS)[number], string | null | undefined>>,
 ): number {
-  return FIELDS.reduce((acc, key) => {
-    const value = org[key]
+  return TENANT_PROFILE_FIELDS.reduce((acc, key) => {
+    const value = settings[key]
     if (value !== null && value !== undefined && value !== "") return acc + 1
     return acc
   }, 0)

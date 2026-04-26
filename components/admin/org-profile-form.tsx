@@ -5,53 +5,39 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { TAX_CATEGORIES } from "@/lib/admin/constants"
 import {
   computeProfileCompletion,
   PROFILE_FIELD_COUNT,
 } from "@/lib/admin/profile-completion"
 import { ProfileBadge } from "./profile-badge"
-
-type ProfileFields = {
-  contact_name: string | null
-  contact_phone: string | null
-  internal_notes: string | null
-  address_street: string | null
-  address_city: string | null
-  address_province: string | null
-  address_country: string | null
-  address_postal_code: string | null
-  tax_category: string | null
-  cuit: string | null
-  billing_email: string | null
-  billing_name: string | null
-}
+import type { TenantSettings } from "./org-profile-card"
 
 type Props = {
   orgId: string
-  initial: ProfileFields
+  initialSettings: TenantSettings
+  initialInternalNotes: string | null
   onCancel: () => void
   onSaved: () => void
 }
 
-export function OrgProfileForm({ orgId, initial, onCancel, onSaved }: Props) {
+export function OrgProfileForm({
+  orgId,
+  initialSettings,
+  initialInternalNotes,
+  onCancel,
+  onSaved,
+}: Props) {
   const router = useRouter()
-  const [values, setValues] = React.useState<ProfileFields>(initial)
+  const [settings, setSettings] = React.useState<TenantSettings>(initialSettings)
+  const [internalNotes, setInternalNotes] = React.useState<string>(initialInternalNotes ?? "")
   const [saving, setSaving] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
-  const completion = computeProfileCompletion(values)
+  const completion = computeProfileCompletion(settings)
 
-  function set<K extends keyof ProfileFields>(key: K, v: ProfileFields[K]) {
-    setValues((prev) => ({ ...prev, [key]: v }))
+  function setField<K extends keyof TenantSettings>(key: K, v: string) {
+    setSettings((prev) => ({ ...prev, [key]: v || null }))
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -62,7 +48,10 @@ export function OrgProfileForm({ orgId, initial, onCancel, onSaved }: Props) {
       const res = await fetch(`/api/admin/orgs/${orgId}/profile`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({
+          settings,
+          internal_notes: internalNotes || null,
+        }),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
@@ -85,75 +74,59 @@ export function OrgProfileForm({ orgId, initial, onCancel, onSaved }: Props) {
       </div>
 
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Field label="Razón social (billing_name)">
-          <Input value={values.billing_name ?? ""} onChange={(e) => set("billing_name", e.target.value)} />
-        </Field>
-        <Field label="CUIT">
+        <Field label="Nombre de la empresa (Razón social)">
           <Input
-            value={values.cuit ?? ""}
-            onChange={(e) => set("cuit", e.target.value)}
+            value={settings.company_name ?? ""}
+            onChange={(e) => setField("company_name", e.target.value)}
+          />
+        </Field>
+        <Field label="CUIT / Tax ID">
+          <Input
+            value={settings.tax_id ?? ""}
+            onChange={(e) => setField("tax_id", e.target.value)}
             placeholder="30123456789"
           />
         </Field>
-        <Field label="Condición fiscal">
-          <Select
-            value={values.tax_category ?? ""}
-            onValueChange={(v) => set("tax_category", v || null)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Seleccionar" />
-            </SelectTrigger>
-            <SelectContent>
-              {TAX_CATEGORIES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Email facturación">
+        <Field label="Legajo">
           <Input
-            type="email"
-            value={values.billing_email ?? ""}
-            onChange={(e) => set("billing_email", e.target.value)}
+            value={settings.legajo ?? ""}
+            onChange={(e) => setField("legajo", e.target.value)}
           />
         </Field>
-        <Field label="Contacto (nombre)">
-          <Input value={values.contact_name ?? ""} onChange={(e) => set("contact_name", e.target.value)} />
-        </Field>
-        <Field label="Contacto (teléfono / WhatsApp)">
+        <Field label="Email">
           <Input
-            value={values.contact_phone ?? ""}
-            onChange={(e) => set("contact_phone", e.target.value)}
+            type="email"
+            value={settings.email ?? ""}
+            onChange={(e) => setField("email", e.target.value)}
+          />
+        </Field>
+        <Field label="Teléfono">
+          <Input
+            value={settings.phone ?? ""}
+            onChange={(e) => setField("phone", e.target.value)}
             placeholder="+54 9 ..."
           />
         </Field>
-      </section>
-
-      <section>
-        <h4 className="text-xs font-semibold uppercase text-slate-400 mb-2">Dirección fiscal</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Calle y número">
-            <Input value={values.address_street ?? ""} onChange={(e) => set("address_street", e.target.value)} />
-          </Field>
-          <Field label="Ciudad">
-            <Input value={values.address_city ?? ""} onChange={(e) => set("address_city", e.target.value)} />
-          </Field>
-          <Field label="Provincia">
-            <Input value={values.address_province ?? ""} onChange={(e) => set("address_province", e.target.value)} />
-          </Field>
-          <Field label="Código postal">
-            <Input value={values.address_postal_code ?? ""} onChange={(e) => set("address_postal_code", e.target.value)} />
-          </Field>
-          <Field label="País (ISO2)">
-            <Input
-              value={values.address_country ?? "AR"}
-              onChange={(e) => set("address_country", e.target.value.toUpperCase())}
-              maxLength={2}
-            />
-          </Field>
-        </div>
+        <Field label="Sitio web">
+          <Input
+            value={settings.website ?? ""}
+            onChange={(e) => setField("website", e.target.value)}
+            placeholder="https://..."
+          />
+        </Field>
+        <Field label="Instagram">
+          <Input
+            value={settings.instagram ?? ""}
+            onChange={(e) => setField("instagram", e.target.value)}
+            placeholder="@usuario"
+          />
+        </Field>
+        <Field label="Dirección">
+          <Input
+            value={settings.address ?? ""}
+            onChange={(e) => setField("address", e.target.value)}
+          />
+        </Field>
       </section>
 
       <section className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
@@ -161,8 +134,8 @@ export function OrgProfileForm({ orgId, initial, onCancel, onSaved }: Props) {
           Notas internas · solo admin
         </h4>
         <Textarea
-          value={values.internal_notes ?? ""}
-          onChange={(e) => set("internal_notes", e.target.value)}
+          value={internalNotes}
+          onChange={(e) => setInternalNotes(e.target.value)}
           rows={4}
           placeholder="Cualquier nota relevante para el equipo platform..."
         />

@@ -35,6 +35,36 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
   const { data: org } = await admin.from("organizations").select("*").eq("id", id).maybeSingle()
   if (!org) notFound()
 
+  // Fetch tenant profile settings from organization_settings
+  const { data: settingsRows } = await admin
+    .from("organization_settings")
+    .select("key, value")
+    .eq("org_id", org.id)
+    .in("key", [
+      "company_name",
+      "company_tax_id", "tax_id",
+      "company_legajo", "legajo",
+      "company_address", "address",
+      "company_phone", "phone",
+      "company_email", "email",
+      "company_website", "website",
+      "company_instagram", "instagram",
+    ])
+
+  const sMap: Record<string, string> = {}
+  for (const r of (settingsRows ?? [])) sMap[r.key] = r.value
+
+  const orgSettings = {
+    company_name: sMap["company_name"] ?? null,
+    tax_id: sMap["tax_id"] ?? sMap["company_tax_id"] ?? null,
+    legajo: sMap["legajo"] ?? sMap["company_legajo"] ?? null,
+    address: sMap["address"] ?? sMap["company_address"] ?? null,
+    phone: sMap["phone"] ?? sMap["company_phone"] ?? null,
+    email: sMap["email"] ?? sMap["company_email"] ?? null,
+    website: sMap["website"] ?? sMap["company_website"] ?? null,
+    instagram: sMap["instagram"] ?? sMap["company_instagram"] ?? null,
+  }
+
   let customPlan: any = null
   if (org.custom_plan_id) {
     const r = await admin.from("custom_plans").select("*").eq("id", org.custom_plan_id).maybeSingle()
@@ -109,20 +139,8 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
       <OrgProfileCard
         orgId={org.id}
-        profile={{
-          contact_name: org.contact_name,
-          contact_phone: org.contact_phone,
-          internal_notes: org.internal_notes,
-          address_street: org.address_street,
-          address_city: org.address_city,
-          address_province: org.address_province,
-          address_country: org.address_country,
-          address_postal_code: org.address_postal_code,
-          tax_category: org.tax_category,
-          cuit: org.cuit,
-          billing_email: org.billing_email,
-          billing_name: org.billing_name,
-        }}
+        settings={orgSettings}
+        internalNotes={org.internal_notes ?? null}
       />
 
       <OrgMembersCard orgId={org.id} />

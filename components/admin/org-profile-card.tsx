@@ -3,7 +3,6 @@
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { TAX_CATEGORIES } from "@/lib/admin/constants"
 import {
   computeProfileCompletion,
   PROFILE_FIELD_COUNT,
@@ -11,29 +10,26 @@ import {
 import { ProfileBadge } from "./profile-badge"
 import { OrgProfileForm } from "./org-profile-form"
 
-type ProfileFields = {
-  contact_name: string | null
-  contact_phone: string | null
-  internal_notes: string | null
-  address_street: string | null
-  address_city: string | null
-  address_province: string | null
-  address_country: string | null
-  address_postal_code: string | null
-  tax_category: string | null
-  cuit: string | null
-  billing_email: string | null
-  billing_name: string | null
+export type TenantSettings = {
+  company_name: string | null
+  tax_id: string | null
+  legajo: string | null
+  address: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  instagram: string | null
 }
 
 type Props = {
   orgId: string
-  profile: ProfileFields
+  settings: TenantSettings
+  internalNotes: string | null
 }
 
-export function OrgProfileCard({ orgId, profile }: Props) {
+export function OrgProfileCard({ orgId, settings, internalNotes }: Props) {
   const [editing, setEditing] = React.useState(false)
-  const completion = computeProfileCompletion(profile)
+  const completion = computeProfileCompletion(settings)
 
   return (
     <Card>
@@ -52,12 +48,13 @@ export function OrgProfileCard({ orgId, profile }: Props) {
         {editing ? (
           <OrgProfileForm
             orgId={orgId}
-            initial={profile}
+            initialSettings={settings}
+            initialInternalNotes={internalNotes}
             onCancel={() => setEditing(false)}
             onSaved={() => setEditing(false)}
           />
         ) : (
-          <ReadView profile={profile} completion={completion} />
+          <ReadView settings={settings} internalNotes={internalNotes} completion={completion} />
         )}
       </CardContent>
     </Card>
@@ -65,28 +62,25 @@ export function OrgProfileCard({ orgId, profile }: Props) {
 }
 
 function ReadView({
-  profile,
+  settings,
+  internalNotes,
   completion,
 }: {
-  profile: ProfileFields
+  settings: TenantSettings
+  internalNotes: string | null
   completion: number
 }) {
-  const taxLabel =
-    TAX_CATEGORIES.find((t) => t.value === profile.tax_category)?.label ?? null
-
   return (
     <div className="space-y-6">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3">
-        <Row label="Razón social" value={profile.billing_name} />
-        <Row label="CUIT" value={profile.cuit} />
-        <Row label="Condición fiscal" value={taxLabel} />
-        <Row label="Email facturación" value={profile.billing_email} />
-        <Row label="Contacto" value={joinContact(profile.contact_name, profile.contact_phone)} />
-        <Row
-          label="Dirección"
-          value={joinAddress(profile)}
-          colSpan={2}
-        />
+        <Row label="Razón social" value={settings.company_name} />
+        <Row label="CUIT / Tax ID" value={settings.tax_id} />
+        <Row label="Legajo" value={settings.legajo} />
+        <Row label="Email" value={settings.email} />
+        <Row label="Teléfono" value={settings.phone} />
+        <Row label="Sitio web" value={settings.website} />
+        <Row label="Instagram" value={settings.instagram} />
+        <Row label="Dirección" value={settings.address} colSpan={2} />
       </section>
 
       <section className="rounded border border-amber-500/30 bg-amber-500/5 p-4">
@@ -94,13 +88,12 @@ function ReadView({
           Notas internas · solo admin
         </h4>
         <p className="text-sm text-slate-300 whitespace-pre-wrap">
-          {profile.internal_notes ?? <span className="text-slate-500">Sin notas</span>}
+          {internalNotes ?? <span className="text-slate-500">Sin notas</span>}
         </p>
       </section>
 
       <div className="text-xs text-slate-500">
-        Completitud: {completion}/{PROFILE_FIELD_COUNT} (
-        {profile.internal_notes ? "con notas internas" : "sin notas internas"})
+        Completitud: {completion}/{PROFILE_FIELD_COUNT}
       </div>
     </div>
   )
@@ -123,20 +116,4 @@ function Row({
       </div>
     </div>
   )
-}
-
-function joinContact(name: string | null, phone: string | null) {
-  if (!name && !phone) return null
-  return [name, phone].filter(Boolean).join(" · ")
-}
-
-function joinAddress(p: ProfileFields) {
-  const parts = [
-    p.address_street,
-    p.address_city,
-    p.address_province,
-    p.address_country,
-    p.address_postal_code,
-  ].filter(Boolean)
-  return parts.length ? parts.join(", ") : null
 }
