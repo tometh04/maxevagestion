@@ -25,6 +25,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { CreditCard, Landmark, Plus, Trash2, AlertCircle, CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
+import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 interface Category {
   id: string
@@ -75,6 +76,7 @@ interface CCPaymentDialogProps {
 
 export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { currency: defaultCurrency } = useDefaultCurrency()
   const [categories, setCategories] = useState<Category[]>([])
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
@@ -89,7 +91,7 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
       credit_card_account_id: "",
       source_account_id: "",
       total_amount: 0,
-      currency: "ARS",
+      currency: defaultCurrency,
       exchange_rate: undefined,
       payment_date: getDefaultDate(),
       notes: "",
@@ -105,6 +107,10 @@ export function CCPaymentDialog({ open, onOpenChange, onSuccess }: CCPaymentDial
   const watchCurrency = form.watch("currency")
   const watchTotalAmount = form.watch("total_amount")
   const watchItems = form.watch("items")
+
+  useEffect(() => {
+    form.setValue("currency", defaultCurrency)
+  }, [defaultCurrency, form])
 
   const itemsSum = (watchItems || []).reduce((sum, item) => sum + (Number(item.amount) || 0), 0)
   const totalNum = Number(watchTotalAmount) || 0

@@ -41,6 +41,7 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { Check, ChevronsUpDown, Plus, Search, Building2, DollarSign, Calendar, FileText } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 const recurringPaymentSchema = z.object({
   provider_name: z.string().min(3, "El proveedor debe tener al menos 3 caracteres"),
@@ -78,6 +79,7 @@ export function NewRecurringPaymentDialog({
   onSuccess,
 }: NewRecurringPaymentDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { currency: defaultCurrency } = useDefaultCurrency()
   const [hasEndDate, setHasEndDate] = useState(false)
   const [providerOpen, setProviderOpen] = useState(false)
   const [providers, setProviders] = useState<string[]>([])
@@ -90,7 +92,7 @@ export function NewRecurringPaymentDialog({
     defaultValues: {
       provider_name: "",
       amount: 0,
-      currency: "USD",
+      currency: defaultCurrency,
       frequency: "MONTHLY",
       start_date: new Date().toISOString().split("T")[0],
       end_date: null,
@@ -134,12 +136,13 @@ export function NewRecurringPaymentDialog({
   useEffect(() => {
     if (open) {
       form.reset()
+      form.setValue("currency", defaultCurrency)
       setHasEndDate(false)
       setProviderSearch("")
       fetchProviders()
       fetchCategories()
     }
-  }, [open, form])
+  }, [open, form, defaultCurrency])
 
   // Filtrar proveedores basado en búsqueda
   const filteredProviders = useMemo(() => {

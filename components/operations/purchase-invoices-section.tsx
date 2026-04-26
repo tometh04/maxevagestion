@@ -117,7 +117,7 @@ export function PurchaseInvoicesSection({
     invoice_date: new Date().toISOString().split("T")[0],
     emitter_cuit: "",
     emitter_name: "",
-    currency: "ARS",
+    currency: currency || "USD",
     net_amount: "",
     iva_rate: "21",
     iva_amount: "",
@@ -233,7 +233,7 @@ export function PurchaseInvoicesSection({
     setForm({
       operator_id: "", invoice_type: "FACTURA_A", invoice_number: "",
       invoice_date: new Date().toISOString().split("T")[0],
-      emitter_cuit: "", emitter_name: "", currency: "ARS",
+      emitter_cuit: "", emitter_name: "", currency: currency || "USD",
       net_amount: "", iva_rate: "21", iva_amount: "",
       perception_iva: "0", perception_iibb: "0", other_taxes: "0",
       total_amount: "", notes: "",

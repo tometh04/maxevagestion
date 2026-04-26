@@ -25,6 +25,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Upload, FileText, Receipt, Landmark, StickyNote } from "lucide-react"
 import { toast } from "sonner"
+import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 interface Category {
   id: string
@@ -66,6 +67,7 @@ export function NewVariableExpenseDialog({
   onSuccess,
 }: NewVariableExpenseDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { currency: defaultCurrency } = useDefaultCurrency()
   const [categories, setCategories] = useState<Category[]>([])
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -88,7 +90,7 @@ export function NewVariableExpenseDialog({
       provider_name: "",
       category_id: "",
       amount: 0,
-      currency: "ARS",
+      currency: defaultCurrency,
       exchange_rate: undefined,
       financial_account_id: "",
       movement_date: getDefaultDateTimeLocal(),
@@ -97,6 +99,10 @@ export function NewVariableExpenseDialog({
   })
 
   const watchCurrency = form.watch("currency")
+
+  useEffect(() => {
+    form.setValue("currency", defaultCurrency)
+  }, [defaultCurrency, form])
 
   useEffect(() => {
     if (open) {

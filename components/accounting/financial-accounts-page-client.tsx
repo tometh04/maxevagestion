@@ -37,6 +37,7 @@ import { Plus, Trash2, AlertTriangle, Building2, ArrowRightLeft } from "lucide-r
 import { TransferAccountDialog } from "./transfer-account-dialog"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
+import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -83,6 +84,7 @@ interface FinancialAccountsPageClientProps {
 
 export function FinancialAccountsPageClient({ agencies: initialAgencies }: FinancialAccountsPageClientProps) {
   const router = useRouter()
+  const { currency: defaultCurrency } = useDefaultCurrency()
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [accounts, setAccounts] = useState<any[]>([])
@@ -105,7 +107,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
   const [formData, setFormData] = useState<any>({
     name: "",
     type: "",
-    currency: "ARS",
+    currency: defaultCurrency,
     agency_id: "",
     initial_balance: 0,
     account_number: "",
@@ -125,6 +127,11 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Sync default currency once it loads from org settings
+  useEffect(() => {
+    setFormData((prev: any) => prev.type ? prev : { ...prev, currency: defaultCurrency })
+  }, [defaultCurrency])
 
   async function fetchData(bustCache = false) {
     setLoading(true)
@@ -262,7 +269,7 @@ export function FinancialAccountsPageClient({ agencies: initialAgencies }: Finan
     setFormData({
       name: "",
       type: "",
-      currency: "ARS",
+      currency: defaultCurrency,
       agency_id: "",
       initial_balance: 0,
       account_number: "",

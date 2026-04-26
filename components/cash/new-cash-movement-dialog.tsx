@@ -26,6 +26,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { ArrowUpDown, DollarSign, CalendarIcon } from "lucide-react"
 import { toast } from "sonner"
+import { useDefaultCurrency } from "@/hooks/use-default-currency"
 
 interface FinancialAccount {
   id: string
@@ -76,6 +77,7 @@ export function NewCashMovementDialog({
   operations = [],
 }: NewCashMovementDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
+  const { currency: defaultCurrency } = useDefaultCurrency()
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([])
 
@@ -98,7 +100,7 @@ export function NewCashMovementDialog({
       category: "",
       category_id: null,
       amount: 0,
-      currency: "ARS",
+      currency: defaultCurrency,
       financial_account_id: "",
       affects_balance: true,
       movement_date: getDefaultDateTimeLocal(),
@@ -114,6 +116,11 @@ export function NewCashMovementDialog({
     form.setValue("category", "")
     form.setValue("category_id", null)
   }, [movementType, form])
+
+  // Sync currency when org default loads after mount
+  useEffect(() => {
+    form.setValue("currency", defaultCurrency)
+  }, [defaultCurrency, form])
 
   // Cargar cuentas financieras y categorías de gasto cuando se abre el dialog
   useEffect(() => {
