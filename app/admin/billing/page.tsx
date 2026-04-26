@@ -3,6 +3,17 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatArs } from "@/lib/billing/plans"
 import { cn } from "@/lib/utils"
+import { AlertCircle, Clock, Tag, Activity } from "lucide-react"
+import { PageHeader } from "@/components/admin/page-header"
+import { EmptyState } from "@/components/admin/empty-state"
+import {
+  DataTableShell,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableTh,
+  DataTableTd,
+} from "@/components/admin/data-table-shell"
 
 export const dynamic = "force-dynamic"
 
@@ -62,7 +73,10 @@ export default async function AdminBillingPage() {
 
   return (
     <div className="space-y-6 max-w-6xl">
-      <h1 className="text-2xl font-semibold text-slate-100">Operaciones de billing</h1>
+      <PageHeader
+        title="Operaciones de billing"
+        description="Cobranzas pendientes, vencimientos próximos, custom plans vigentes y eventos recientes cross-org."
+      />
 
       <PendingSection rows={pending ?? []} />
       <UpcomingSection rows={upcoming ?? []} />
@@ -82,42 +96,48 @@ function PendingSection({ rows }: { rows: any[] }) {
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin cobranzas pendientes.</p>
+          <EmptyState
+            icon={AlertCircle}
+            title="Sin cobranzas pendientes"
+            description="Todas las orgs están al día."
+          />
         ) : (
-          <Table>
-            <Thead>
-              <Th>Org</Th>
-              <Th>Status</Th>
-              <Th>Plan</Th>
-              <Th>Vence</Th>
-              <Th>MP preapproval</Th>
-            </Thead>
-            <tbody>
+          <DataTableShell>
+            <DataTableHead>
+              <tr>
+                <DataTableTh>Org</DataTableTh>
+                <DataTableTh>Status</DataTableTh>
+                <DataTableTh>Plan</DataTableTh>
+                <DataTableTh>Vence</DataTableTh>
+                <DataTableTh>MP preapproval</DataTableTh>
+              </tr>
+            </DataTableHead>
+            <DataTableBody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                  <Td>
+                <DataTableRow key={r.id}>
+                  <DataTableTd>
                     <Link href={`/admin/orgs/${r.id}`} className="text-blue-300 hover:underline">
                       {r.name}
                     </Link>
-                  </Td>
-                  <Td>
+                  </DataTableTd>
+                  <DataTableTd>
                     <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
                       {r.subscription_status}
                     </span>
-                  </Td>
-                  <Td>{r.plan}</Td>
-                  <Td className="text-slate-400">
+                  </DataTableTd>
+                  <DataTableTd>{r.plan}</DataTableTd>
+                  <DataTableTd className="text-slate-400">
                     {r.current_period_ends_at
                       ? new Date(r.current_period_ends_at).toLocaleDateString("es-AR")
                       : "—"}
-                  </Td>
-                  <Td className="text-xs text-slate-500 font-mono truncate max-w-[200px]">
+                  </DataTableTd>
+                  <DataTableTd className="text-xs text-slate-500 font-mono truncate max-w-[200px]">
                     {r.mp_preapproval_id ?? "—"}
-                  </Td>
-                </tr>
+                  </DataTableTd>
+                </DataTableRow>
               ))}
-            </tbody>
-          </Table>
+            </DataTableBody>
+          </DataTableShell>
         )}
       </CardContent>
     </Card>
@@ -134,34 +154,40 @@ function UpcomingSection({ rows }: { rows: any[] }) {
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin vencimientos próximos.</p>
+          <EmptyState
+            icon={Clock}
+            title="Sin vencimientos próximos"
+            description="Ninguna org vence en los próximos 7 días."
+          />
         ) : (
-          <Table>
-            <Thead>
-              <Th>Org</Th>
-              <Th>Status</Th>
-              <Th>Plan</Th>
-              <Th>Vence en</Th>
-            </Thead>
-            <tbody>
+          <DataTableShell>
+            <DataTableHead>
+              <tr>
+                <DataTableTh>Org</DataTableTh>
+                <DataTableTh>Status</DataTableTh>
+                <DataTableTh>Plan</DataTableTh>
+                <DataTableTh>Vence en</DataTableTh>
+              </tr>
+            </DataTableHead>
+            <DataTableBody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                  <Td>
+                <DataTableRow key={r.id}>
+                  <DataTableTd>
                     <Link href={`/admin/orgs/${r.id}`} className="text-blue-300 hover:underline">
                       {r.name}
                     </Link>
-                  </Td>
-                  <Td>
+                  </DataTableTd>
+                  <DataTableTd>
                     <span className={cn("rounded px-2 py-0.5 text-xs", statusColor(r.subscription_status))}>
                       {r.subscription_status}
                     </span>
-                  </Td>
-                  <Td>{r.plan}</Td>
-                  <Td className="text-slate-400">{relativeTime(r.current_period_ends_at)}</Td>
-                </tr>
+                  </DataTableTd>
+                  <DataTableTd>{r.plan}</DataTableTd>
+                  <DataTableTd className="text-slate-400">{relativeTime(r.current_period_ends_at)}</DataTableTd>
+                </DataTableRow>
               ))}
-            </tbody>
-          </Table>
+            </DataTableBody>
+          </DataTableShell>
         )}
       </CardContent>
     </Card>
@@ -179,30 +205,36 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin custom plans creados.</p>
+          <EmptyState
+            icon={Tag}
+            title="Sin custom plans"
+            description="Todavía no hay planes custom creados."
+          />
         ) : (
-          <Table>
-            <Thead>
-              <Th>Org</Th>
-              <Th>Plan</Th>
-              <Th>Precio base</Th>
-              <Th>Descuento</Th>
-              <Th>Método</Th>
-              <Th>Creado</Th>
-            </Thead>
-            <tbody>
+          <DataTableShell>
+            <DataTableHead>
+              <tr>
+                <DataTableTh>Org</DataTableTh>
+                <DataTableTh>Plan</DataTableTh>
+                <DataTableTh>Precio base</DataTableTh>
+                <DataTableTh>Descuento</DataTableTh>
+                <DataTableTh>Método</DataTableTh>
+                <DataTableTh>Creado</DataTableTh>
+              </tr>
+            </DataTableHead>
+            <DataTableBody>
               {rows.map((r) => {
                 const discountActive = r.discount_ends_at && new Date(r.discount_ends_at).getTime() > now
                 return (
-                  <tr key={r.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                    <Td>
+                  <DataTableRow key={r.id}>
+                    <DataTableTd>
                       <Link href={`/admin/orgs/${r.org_id}`} className="text-blue-300 hover:underline">
                         {orgNameMap.get(r.org_id) ?? r.org_id}
                       </Link>
-                    </Td>
-                    <Td>{r.display_name}</Td>
-                    <Td>{formatArs(Number(r.base_price_ars))}</Td>
-                    <Td>
+                    </DataTableTd>
+                    <DataTableTd>{r.display_name}</DataTableTd>
+                    <DataTableTd>{formatArs(Number(r.base_price_ars))}</DataTableTd>
+                    <DataTableTd>
                       {r.discount_percent > 0 ? (
                         <span className={discountActive ? "text-amber-300" : "text-slate-500"}>
                           {r.discount_percent}% {discountActive ? "vigente" : "expirado"}
@@ -210,16 +242,16 @@ function CustomPlansSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map
                       ) : (
                         <span className="text-slate-500">—</span>
                       )}
-                    </Td>
-                    <Td>
+                    </DataTableTd>
+                    <DataTableTd>
                       <span className="rounded bg-slate-800 px-2 py-0.5 text-xs">{r.billing_method}</span>
-                    </Td>
-                    <Td className="text-slate-400">{relativeTime(r.created_at)}</Td>
-                  </tr>
+                    </DataTableTd>
+                    <DataTableTd className="text-slate-400">{relativeTime(r.created_at)}</DataTableTd>
+                  </DataTableRow>
                 )
               })}
-            </tbody>
-          </Table>
+            </DataTableBody>
+          </DataTableShell>
         )}
       </CardContent>
     </Card>
@@ -236,21 +268,27 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
       </CardHeader>
       <CardContent>
         {rows.length === 0 ? (
-          <p className="text-sm text-slate-400">Sin eventos.</p>
+          <EmptyState
+            icon={Activity}
+            title="Sin eventos recientes"
+            description="Sin eventos billing en el log."
+          />
         ) : (
-          <Table>
-            <Thead>
-              <Th>Cuándo</Th>
-              <Th>Tipo</Th>
-              <Th>Org</Th>
-              <Th>Monto</Th>
-              <Th>Status</Th>
-            </Thead>
-            <tbody>
+          <DataTableShell>
+            <DataTableHead>
+              <tr>
+                <DataTableTh>Cuándo</DataTableTh>
+                <DataTableTh>Tipo</DataTableTh>
+                <DataTableTh>Org</DataTableTh>
+                <DataTableTh>Monto</DataTableTh>
+                <DataTableTh>Status</DataTableTh>
+              </tr>
+            </DataTableHead>
+            <DataTableBody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-slate-800 hover:bg-slate-900/40">
-                  <Td className="text-slate-400">{relativeTime(r.created_at)}</Td>
-                  <Td>
+                <DataTableRow key={r.id}>
+                  <DataTableTd className="text-slate-400">{relativeTime(r.created_at)}</DataTableTd>
+                  <DataTableTd>
                     <span
                       className={cn(
                         "rounded px-2 py-0.5 text-xs font-medium",
@@ -259,8 +297,8 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
                     >
                       {r.event_type}
                     </span>
-                  </Td>
-                  <Td>
+                  </DataTableTd>
+                  <DataTableTd>
                     {r.org_id ? (
                       <Link href={`/admin/orgs/${r.org_id}`} className="text-blue-300 hover:underline">
                         {orgNameMap.get(r.org_id) ?? r.org_id}
@@ -268,19 +306,19 @@ function EventsSection({ rows, orgNameMap }: { rows: any[]; orgNameMap: Map<stri
                     ) : (
                       <span className="text-slate-500">—</span>
                     )}
-                  </Td>
-                  <Td>
+                  </DataTableTd>
+                  <DataTableTd>
                     {r.amount_cents != null ? (
                       formatArs(Number(r.amount_cents) / 100)
                     ) : (
                       <span className="text-slate-500">—</span>
                     )}
-                  </Td>
-                  <Td className="text-xs text-slate-500">{r.status ?? "—"}</Td>
-                </tr>
+                  </DataTableTd>
+                  <DataTableTd className="text-xs text-slate-500">{r.status ?? "—"}</DataTableTd>
+                </DataTableRow>
               ))}
-            </tbody>
-          </Table>
+            </DataTableBody>
+          </DataTableShell>
         )}
       </CardContent>
     </Card>
@@ -293,30 +331,6 @@ function statusColor(s: string): string {
   if (s === "SUSPENDED" || s === "CANCELLED") return "bg-red-500/15 text-red-300"
   if (s === "TRIAL" || s === "TRIALING") return "bg-blue-500/15 text-blue-300"
   return "bg-slate-700 text-slate-300"
-}
-
-function Table({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="overflow-x-auto rounded border border-slate-800">
-      <table className="min-w-full text-sm">{children}</table>
-    </div>
-  )
-}
-
-function Thead({ children }: { children: React.ReactNode }) {
-  return (
-    <thead className="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
-      <tr>{children}</tr>
-    </thead>
-  )
-}
-
-function Th({ children }: { children: React.ReactNode }) {
-  return <th className="px-3 py-2 text-left">{children}</th>
-}
-
-function Td({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <td className={cn("px-3 py-2 align-top", className)}>{children}</td>
 }
 
 function relativeTime(iso: string | null): string {

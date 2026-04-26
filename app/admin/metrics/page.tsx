@@ -1,6 +1,31 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { computeMrrArs, type MrrOrg, type MrrCustomPlan } from "@/lib/admin/metrics"
 import { formatArs } from "@/lib/billing/plans"
+import {
+  Users,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Ban,
+  UserCheck,
+  Briefcase,
+  Sparkles,
+  CircleDollarSign,
+  TrendingUp,
+  LineChart,
+  TrendingDown,
+} from "lucide-react"
+import { PageHeader } from "@/components/admin/page-header"
+import { StatCard } from "@/components/admin/stat-card"
+import {
+  DataTableShell,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableTh,
+  DataTableTd,
+} from "@/components/admin/data-table-shell"
+import { MrrBarChart } from "@/components/admin/mrr-bar-chart"
 
 export const dynamic = "force-dynamic"
 
@@ -118,93 +143,88 @@ export default async function AdminMetricsPage() {
     { label: "Otros", key: "OTHER" },
   ]
 
+  const chartData = breakdownRows.map(({ label, key }) => ({
+    label,
+    mrr: breakdown[key].mrr,
+  }))
+
   return (
     <div className="space-y-6 max-w-5xl">
-      <h1 className="text-2xl font-semibold">Platform metrics</h1>
+      <PageHeader
+        title="Platform metrics"
+        description="Vista global del SaaS — orgs por estado, MRR/ARR, breakdown por plan."
+      />
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Tenants por estado</h2>
         <div className="grid grid-cols-5 gap-3">
-          <Metric label="Total" value={totalOrgs} />
-          <Metric label="ACTIVE" value={activeOrgs} />
-          <Metric label="TRIAL" value={trialOrgs} />
-          <Metric label="PAST_DUE" value={pastDueOrgs} />
-          <Metric label="SUSPENDED" value={suspendedOrgs} />
+          <StatCard label="Total" value={totalOrgs ?? 0} icon={Users} />
+          <StatCard label="ACTIVE" value={activeOrgs ?? 0} icon={CheckCircle2} />
+          <StatCard label="TRIAL" value={trialOrgs ?? 0} icon={Clock} />
+          <StatCard label="PAST_DUE" value={pastDueOrgs ?? 0} icon={AlertCircle} />
+          <StatCard label="SUSPENDED" value={suspendedOrgs ?? 0} icon={Ban} />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Actividad global</h2>
         <div className="grid grid-cols-3 gap-3">
-          <Metric label="Users activos" value={totalUsers} />
-          <Metric label="Operaciones totales" value={totalOperations} />
-          <Metric label="Signups últimos 30d" value={signups30d} />
+          <StatCard label="Users activos" value={totalUsers ?? 0} icon={UserCheck} />
+          <StatCard label="Operaciones totales" value={totalOperations ?? 0} icon={Briefcase} />
+          <StatCard label="Signups últimos 30d" value={signups30d ?? 0} icon={Sparkles} />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Revenue</h2>
         <div className="grid grid-cols-4 gap-3">
-          <MetricText label="MRR" value={formatArs(totalMrr)} />
-          <MetricText label="ARR" value={formatArs(totalArr)} />
-          <MetricText label="Avg MRR / org pagadora" value={formatArs(avgMrrPerOrg)} />
-          <Metric label="Churn últimos 30d" value={churn30d} />
+          <StatCard label="MRR" value={formatArs(totalMrr)} icon={CircleDollarSign} />
+          <StatCard label="ARR" value={formatArs(totalArr)} icon={TrendingUp} />
+          <StatCard label="Avg MRR / org pagadora" value={formatArs(avgMrrPerOrg)} icon={LineChart} />
+          <StatCard label="Churn últimos 30d" value={churn30d ?? 0} icon={TrendingDown} />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Breakdown por plan</h2>
-        <div className="border rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr>
-                <th className="text-left px-4 py-2 font-medium">Plan</th>
-                <th className="text-right px-4 py-2 font-medium">Orgs</th>
-                <th className="text-right px-4 py-2 font-medium">MRR</th>
-                <th className="text-right px-4 py-2 font-medium">% del MRR</th>
-              </tr>
-            </thead>
-            <tbody>
-              {breakdownRows.map(({ label, key }) => {
-                const row = breakdown[key]
-                const pct = totalMrr > 0 ? ((row.mrr / totalMrr) * 100).toFixed(1) : "0.0"
-                return (
-                  <tr key={key} className="border-t">
-                    <td className="px-4 py-2">{label}</td>
-                    <td className="px-4 py-2 text-right">{row.count}</td>
-                    <td className="px-4 py-2 text-right">{formatArs(row.mrr)}</td>
-                    <td className="px-4 py-2 text-right">{pct}%</td>
-                  </tr>
-                )
-              })}
-              <tr className="border-t bg-muted/30 font-medium">
-                <td className="px-4 py-2">Total</td>
-                <td className="px-4 py-2 text-right">{(allOrgs ?? []).length}</td>
-                <td className="px-4 py-2 text-right">{formatArs(totalMrr)}</td>
-                <td className="px-4 py-2 text-right">100%</td>
-              </tr>
-            </tbody>
-          </table>
+        <DataTableShell>
+          <DataTableHead>
+            <tr>
+              <DataTableTh>Plan</DataTableTh>
+              <DataTableTh className="text-right">Orgs</DataTableTh>
+              <DataTableTh className="text-right">MRR</DataTableTh>
+              <DataTableTh className="text-right">% del MRR</DataTableTh>
+            </tr>
+          </DataTableHead>
+          <DataTableBody>
+            {breakdownRows.map(({ label, key }) => {
+              const row = breakdown[key]
+              const pct = totalMrr > 0 ? ((row.mrr / totalMrr) * 100).toFixed(1) : "0.0"
+              return (
+                <DataTableRow key={key}>
+                  <DataTableTd>{label}</DataTableTd>
+                  <DataTableTd className="text-right">{row.count}</DataTableTd>
+                  <DataTableTd className="text-right">{formatArs(row.mrr)}</DataTableTd>
+                  <DataTableTd className="text-right">{pct}%</DataTableTd>
+                </DataTableRow>
+              )
+            })}
+            <DataTableRow className="font-medium bg-slate-900/60">
+              <DataTableTd>Total</DataTableTd>
+              <DataTableTd className="text-right">{(allOrgs ?? []).length}</DataTableTd>
+              <DataTableTd className="text-right">{formatArs(totalMrr)}</DataTableTd>
+              <DataTableTd className="text-right">100%</DataTableTd>
+            </DataTableRow>
+          </DataTableBody>
+        </DataTableShell>
+      </section>
+
+      <section>
+        <h2 className="text-sm font-semibold text-muted-foreground mb-2">MRR por plan</h2>
+        <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4">
+          <MrrBarChart data={chartData} />
         </div>
       </section>
-    </div>
-  )
-}
-
-function Metric({ label, value }: { label: string; value: number | null | undefined }) {
-  return (
-    <div className="border rounded-lg p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-2xl font-semibold mt-1">{value ?? 0}</div>
-    </div>
-  )
-}
-
-function MetricText({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="border rounded-lg p-3">
-      <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-xl font-semibold mt-1">{value}</div>
     </div>
   )
 }
