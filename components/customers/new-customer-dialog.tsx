@@ -48,6 +48,25 @@ interface NewCustomerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: (customer?: any) => void
+  /**
+   * Si está set, todo documento OCR-eado en el dialog se vincula automáticamente
+   * a esta operación además del cliente. Sirve para que aparezca en la sección
+   * "Documentos" de la operación. (Item 11 backlog Santi)
+   */
+  operationId?: string
+  /**
+   * Pre-fill de campos del form al abrir. Usado p.ej. desde facturación cuando
+   * el user ya tipeó CUIT/DNI en el receptor: abrir el dialog con esos valores
+   * para no perder lo escrito. (Item 10b backlog Santi)
+   */
+  prefillData?: {
+    first_name?: string
+    last_name?: string
+    document_type?: string
+    document_number?: string
+    phone?: string
+    email?: string
+  }
 }
 
 const documentTypes = [
@@ -120,6 +139,8 @@ export function NewCustomerDialog({
   open,
   onOpenChange,
   onSuccess,
+  operationId,
+  prefillData,
 }: NewCustomerDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isProcessingOCR, setIsProcessingOCR] = useState(false)
@@ -225,6 +246,17 @@ export function NewCustomerDialog({
       form.reset(defaultValues)
     }
   }, [settings, settingsLoading, defaultValues, form])
+
+  // Aplicar prefillData cuando se abre el dialog (item 10b backlog Santi)
+  useEffect(() => {
+    if (!open || !prefillData) return
+    if (prefillData.first_name) form.setValue("first_name", prefillData.first_name)
+    if (prefillData.last_name) form.setValue("last_name", prefillData.last_name)
+    if (prefillData.document_type) form.setValue("document_type", prefillData.document_type)
+    if (prefillData.document_number) form.setValue("document_number", prefillData.document_number)
+    if (prefillData.phone) form.setValue("phone", prefillData.phone)
+    if (prefillData.email) form.setValue("email" as any, prefillData.email)
+  }, [open, prefillData, form])
 
   // Procesar documento con OCR
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -438,6 +470,11 @@ export function NewCustomerDialog({
           docFormData.append("file", uploadedFile)
           docFormData.append("type", values.document_type === "CUIL" ? "DNI" : values.document_type || "DNI")
           docFormData.append("customerId", newCustomer.id)
+          // Item 11 backlog Santi: si el dialog se abrió desde una operación,
+          // vincular el doc también a la operación para que aparezca en su sección Documentos.
+          if (operationId) {
+            docFormData.append("operationId", operationId)
+          }
 
           const docResponse = await fetch("/api/documents/upload-with-ocr", {
             method: "POST",

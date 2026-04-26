@@ -447,6 +447,7 @@ export function PassengersSection({
         <NewCustomerDialog
           open={showNewCustomerDialog}
           onOpenChange={setShowNewCustomerDialog}
+          operationId={operationId}
           onSuccess={(newCustomer) => {
             if (newCustomer) {
               // Agregar el nuevo cliente automáticamente como acompañante

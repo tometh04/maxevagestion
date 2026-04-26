@@ -1458,7 +1458,9 @@ export default function NewInvoicePage() {
         </div>
       </div>
 
-      {/* Dialog para crear nuevo cliente */}
+      {/* Dialog para crear nuevo cliente. Pasa operationId para que el doc
+          OCR-eado se vincule a la operación (item 11). Pre-fillea con el
+          CUIT/DNI typed en receptor (item 10b) para no perder lo escrito. */}
       <NewCustomerDialog
         open={showNewCustomerDialog}
         onOpenChange={setShowNewCustomerDialog}
@@ -1468,6 +1470,20 @@ export default function NewInvoicePage() {
             setShowNewCustomerDialog(false)
           }
         }}
+        operationId={formData.operation_id || undefined}
+        prefillData={(() => {
+          const docNro = formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? formData.receptor_doc_nro : undefined
+          if (!docNro) return undefined
+          // Map AFIP receptor_doc_tipo → customer document_type
+          // 80=CUIT, 86=CUIL, 96=DNI, 99=Sin especificar
+          const typeMap: Record<number, string> = { 80: "CUIT", 86: "CUIL", 96: "DNI" }
+          return {
+            document_type: typeMap[formData.receptor_doc_tipo],
+            document_number: docNro,
+            // Si el receptor name está cargado, lo dejo en first_name (el user puede separar después)
+            first_name: formData.receptor_nombre || undefined,
+          }
+        })()}
       />
 
       {/* AlertDialog persistente cuando AFIP rechaza la autorización automática.

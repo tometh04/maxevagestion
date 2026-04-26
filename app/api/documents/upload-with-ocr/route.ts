@@ -151,15 +151,16 @@ export async function POST(request: Request) {
       finalCustomerId = customerId
       documentData.customer_id = customerId
       
-      // Buscar todas las operaciones del cliente
+      // Buscar todas las operaciones del cliente. Incluir role en el select
+      // para poder priorizar la operación donde el cliente es MAIN.
       const { data: operationCustomers } = await supabase
         .from("operation_customers")
-        .select("operation_id")
+        .select("operation_id, role")
         .eq("customer_id", customerId)
-      
+
       if (operationCustomers && operationCustomers.length > 0) {
-        // Si el cliente tiene solo una operación, asociar el documento a esa operación
-        // Si tiene múltiples, asociar a todas (o solo a la principal)
+        // Preferir la operación donde el cliente es MAIN (titular). Si no es MAIN
+        // en ninguna, fallback a la primera (acompañante).
         const mainOperation = operationCustomers.find((oc: any) => oc.role === "MAIN") || operationCustomers[0]
         if (mainOperation) {
           documentData.operation_id = mainOperation.operation_id
