@@ -13,6 +13,7 @@ import { MpSnapshot } from "@/components/admin/mp-snapshot"
 import { AuditLogInline } from "@/components/admin/audit-log-inline"
 import { OrgProfileCard } from "@/components/admin/org-profile-card"
 import { OrgMembersCard } from "@/components/admin/org-members-card"
+import { PageHeader } from "@/components/admin/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -57,34 +58,26 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
 
   return (
     <div className="space-y-6">
-      <Link
-        href="/admin/orgs"
-        className="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Todas las organizaciones
-      </Link>
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-start gap-4 min-w-0">
-          <div className="h-14 w-14 rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/20 border border-blue-500/30 flex items-center justify-center text-blue-300 text-xl font-semibold shrink-0">
-            {org.name.charAt(0).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold text-white tracking-tight">{org.name}</h1>
-            <div className="flex items-center gap-2 mt-1 text-sm text-slate-400">
-              <span className="font-mono">{org.slug}</span>
-              <span className="text-slate-600">·</span>
-              <span className="font-mono text-xs">{org.id}</span>
-            </div>
-          </div>
-        </div>
-        <span
-          className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border ${status.className}`}
-        >
-          {status.label}
-        </span>
-      </div>
+      <PageHeader
+        title={org.name}
+        description={`Slug: ${org.slug} · ID: ${org.id} · Plan: ${org.plan ?? "—"} · Estado: ${status.label}`}
+        actions={
+          <>
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border ${status.className}`}
+            >
+              {status.label}
+            </span>
+            <Link
+              href="/admin/orgs"
+              className="inline-flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Volver al listado
+            </Link>
+          </>
+        }
+      />
 
       <TenantMetrics orgId={id} />
 

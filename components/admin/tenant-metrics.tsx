@@ -1,5 +1,7 @@
-import { Users, Building2, Briefcase, TrendingUp, DollarSign, Clock } from "lucide-react"
+import { Users, Building2, Briefcase, TrendingUp, CircleDollarSign, Clock } from "lucide-react"
 import { createAdminClient } from "@/lib/supabase/server"
+import { StatCard } from "@/components/admin/stat-card"
+import { formatArs } from "@/lib/billing/plans"
 
 export async function TenantMetrics({ orgId }: { orgId: string }) {
   const admin = createAdminClient() as any
@@ -34,42 +36,26 @@ export async function TenantMetrics({ orgId }: { orgId: string }) {
     ? Number(mrrQ.data.base_price_ars) * (1 - (mrrQ.data.discount_percent ?? 0) / 100)
     : null
 
-  const cards = [
-    { label: "Miembros", value: String(membersQ.count ?? 0), icon: Users },
-    { label: "Agencias", value: String(agenciesQ.count ?? 0), icon: Building2 },
-    { label: "Ops mes", value: String(opsMonthQ.count ?? 0), icon: TrendingUp },
-    { label: "Ops total", value: String(opsTotalQ.count ?? 0), icon: Briefcase },
-    {
-      label: "MRR ARS",
-      value: effectiveMrr != null ? `$${effectiveMrr.toLocaleString("es-AR")}` : "—",
-      icon: DollarSign,
-    },
-    {
-      label: "Último acceso",
-      value: lastActivityQ.data?.updated_at
-        ? new Date(lastActivityQ.data.updated_at).toLocaleDateString("es-AR", {
-            day: "2-digit",
-            month: "short",
-          })
-        : "—",
-      icon: Clock,
-    },
-  ]
+  const lastAccessValue = lastActivityQ.data?.updated_at
+    ? `último: ${new Date(lastActivityQ.data.updated_at).toLocaleDateString("es-AR", {
+        day: "2-digit",
+        month: "short",
+      })}`
+    : "—"
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {cards.map((c) => (
-        <div
-          key={c.label}
-          className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
-        >
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500">
-            <c.icon className="h-3.5 w-3.5" />
-            {c.label}
-          </div>
-          <div className="text-xl font-semibold mt-2 text-white tabular-nums">{c.value}</div>
-        </div>
-      ))}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      <StatCard label="Miembros" value={membersQ.count ?? 0} icon={Users} />
+      <StatCard label="Agencias" value={agenciesQ.count ?? 0} icon={Building2} />
+      <StatCard label="Ops mes" value={opsMonthQ.count ?? 0} icon={TrendingUp} hint="últimos 30 días" />
+      <StatCard label="Ops total" value={opsTotalQ.count ?? 0} icon={Briefcase} />
+      <StatCard
+        label="MRR ARS"
+        value={effectiveMrr != null ? formatArs(effectiveMrr) : "—"}
+        icon={CircleDollarSign}
+        hint="ARS/mes"
+      />
+      <StatCard label="Último acceso" value={lastAccessValue} icon={Clock} />
     </div>
   )
 }
