@@ -18,6 +18,29 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 
+/**
+ * Normaliza un invoice_number al formato AFIP estándar: "0001-00000099"
+ * (4 dígitos pto_vta + dash + 8 dígitos cbte_nro). Sin esto, el Libro IVA
+ * Digital RG 4597 puede parsear mal o AFIP rechaza la importación. (SP-6.6)
+ *
+ * Acepta formatos del user: "1-99", "01-99", "0001-00000099", "1-0000099".
+ * Rechaza: sin guión, no-numérico, vacío, demasiados dígitos.
+ *
+ * Devuelve la string normalizada o null si no se puede parsear.
+ */
+function normalizeInvoiceNumber(raw: string): string | null {
+  if (!raw) return null
+  const trimmed = raw.trim()
+  // Aceptar 1-5 dígitos pto_vta + dash + 1-8 dígitos cbte_nro
+  const match = trimmed.match(/^(\d{1,5})-(\d{1,8})$/)
+  if (!match) return null
+  const pto = match[1].padStart(4, "0")
+  const nro = match[2].padStart(8, "0")
+  // Si pto > 9999 o nro > 99999999, rechazar (overflow del formato AFIP)
+  if (pto.length > 4 || nro.length > 8) return null
+  return `${pto}-${nro}`
+}
+
 interface PurchaseInvoice {
   id: string
   operation_id: string
@@ -266,6 +289,23 @@ export function PurchaseInvoicesSection({
       return
     }
 
+    // SP-6.6: validar formato invoice_number "XXXX-XXXXXXXX". Si está mal, el Libro IVA
+    // Digital RG 4597 lo parsea mal o AFIP rechaza al importar.
+    const normalized = normalizeInvoiceNumber(form.invoice_number)
+    if (!normalized) {
+      toast({
+        title: "Formato de factura inválido",
+        description: 'El número de factura debe tener formato "XXXX-XXXXXXXX" (ej: 0001-00000099). Tipeás "1-99" y se autocompleta.',
+        variant: "destructive",
+      })
+      return
+    }
+    // Auto-corregir el form para guardar la versión normalizada
+    if (normalized !== form.invoice_number) {
+      setForm(prev => ({ ...prev, invoice_number: normalized }))
+    }
+    const formToSave = { ...form, invoice_number: normalized }
+
     try {
       if (editingInvoice) {
         // Update
@@ -275,14 +315,14 @@ export function PurchaseInvoicesSection({
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              ...form,
-              net_amount: parseFloat(form.net_amount) || 0,
-              iva_rate: parseFloat(form.iva_rate) || 21,
-              iva_amount: parseFloat(form.iva_amount) || 0,
-              perception_iva: parseFloat(form.perception_iva) || 0,
-              perception_iibb: parseFloat(form.perception_iibb) || 0,
-              other_taxes: parseFloat(form.other_taxes) || 0,
-              total_amount: parseFloat(form.total_amount) || 0,
+              ...formToSave,
+              net_amount: parseFloat(formToSave.net_amount) || 0,
+              iva_rate: parseFloat(formToSave.iva_rate) || 21,
+              iva_amount: parseFloat(formToSave.iva_amount) || 0,
+              perception_iva: parseFloat(formToSave.perception_iva) || 0,
+              perception_iibb: parseFloat(formToSave.perception_iibb) || 0,
+              other_taxes: parseFloat(formToSave.other_taxes) || 0,
+              total_amount: parseFloat(formToSave.total_amount) || 0,
             }),
           }
         )
@@ -568,7 +608,17 @@ export function PurchaseInvoicesSection({
                   placeholder="0001-00012345"
                   value={form.invoice_number}
                   onChange={e => setForm(prev => ({ ...prev, invoice_number: e.target.value }))}
+                  onBlur={e => {
+                    // SP-6.6: auto-format al blur ("1-99" → "0001-00000099")
+                    const normalized = normalizeInvoiceNumber(e.target.value)
+                    if (normalized && normalized !== e.target.value) {
+                      setForm(prev => ({ ...prev, invoice_number: normalized }))
+                    }
+                  }}
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Formato: <code>XXXX-XXXXXXXX</code>. Si tipeás <code>1-99</code> se autocompleta a <code>0001-00000099</code>.
+                </p>
               </div>
             </div>
 
