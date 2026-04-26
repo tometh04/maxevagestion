@@ -12,6 +12,7 @@ import { ManualPaymentsSection } from "@/components/admin/manual-payments-sectio
 import { MpSnapshot } from "@/components/admin/mp-snapshot"
 import { AuditLogInline } from "@/components/admin/audit-log-inline"
 import { OrgProfileCard } from "@/components/admin/org-profile-card"
+import { OrgMembersCard } from "@/components/admin/org-members-card"
 
 export const dynamic = "force-dynamic"
 
@@ -129,6 +130,8 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
           billing_name: org.billing_name,
         }}
       />
+
+      <OrgMembersCard orgId={org.id} />
 
       {customPlan ? (
         <CustomPlanDisplay orgId={id} plan={customPlan} />
