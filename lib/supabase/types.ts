@@ -4684,6 +4684,7 @@ export type Database = {
         Row: {
           adults: number | null
           agency_id: string
+          airline_name: string | null
           billing_margin_amount: number | null
           billing_margin_percentage: number | null
           checkin_date: string | null
@@ -4696,6 +4697,7 @@ export type Database = {
           destination: string
           destination_id: string | null
           file_code: string | null
+          hotel_name: string | null
           id: string
           infants: number | null
           lead_id: string | null
@@ -4723,6 +4725,7 @@ export type Database = {
         Insert: {
           adults?: number | null
           agency_id: string
+          airline_name?: string | null
           billing_margin_amount?: number | null
           billing_margin_percentage?: number | null
           checkin_date?: string | null
@@ -4735,6 +4738,7 @@ export type Database = {
           destination: string
           destination_id?: string | null
           file_code?: string | null
+          hotel_name?: string | null
           id?: string
           infants?: number | null
           lead_id?: string | null
@@ -4762,6 +4766,7 @@ export type Database = {
         Update: {
           adults?: number | null
           agency_id?: string
+          airline_name?: string | null
           billing_margin_amount?: number | null
           billing_margin_percentage?: number | null
           checkin_date?: string | null
@@ -4774,6 +4779,7 @@ export type Database = {
           destination?: string
           destination_id?: string | null
           file_code?: string | null
+          hotel_name?: string | null
           id?: string
           infants?: number | null
           lead_id?: string | null
@@ -5158,6 +5164,7 @@ export type Database = {
           id: string
           internal_notes: string | null
           logo_url: string | null
+          manual_mrr_override_ars: number | null
           max_agencies: number
           max_operations_per_month: number
           max_users: number
@@ -5194,6 +5201,7 @@ export type Database = {
           id?: string
           internal_notes?: string | null
           logo_url?: string | null
+          manual_mrr_override_ars?: number | null
           max_agencies?: number
           max_operations_per_month?: number
           max_users?: number
@@ -5230,6 +5238,7 @@ export type Database = {
           id?: string
           internal_notes?: string | null
           logo_url?: string | null
+          manual_mrr_override_ars?: number | null
           max_agencies?: number
           max_operations_per_month?: number
           max_users?: number
@@ -8804,6 +8813,8 @@ export type Database = {
         Args: { p_operation_id: string; p_operators: Json }
         Returns: undefined
       }
+      show_limit: { Args: never; Returns: number }
+      show_trgm: { Args: { "": string }; Returns: string[] }
       user_org_ids: { Args: never; Returns: string[] }
     }
     Enums: {
