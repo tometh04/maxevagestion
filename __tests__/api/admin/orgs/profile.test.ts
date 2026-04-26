@@ -90,7 +90,9 @@ describe("PATCH /api/admin/orgs/[id]/profile", () => {
     expect(mockLog).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: "ORG_PROFILE_UPDATED_BY_ADMIN",
-        target_org_id: "org-123",
+        targetOrgId: "org-123",
+        targetEntity: "organizations",
+        targetEntityId: "org-123",
         details: expect.objectContaining({
           changed_fields: ["contact_name"],
         }),

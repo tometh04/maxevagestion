@@ -121,11 +121,12 @@ export async function PATCH(
     severity: "INFO",
     actorUserId: user.id,
     actorAuthId: (user as any).auth_id,
-    // target_org_id used intentionally to match audit schema column name
-    target_org_id: orgId,
+    targetOrgId: orgId,
+    targetEntity: "organizations",
+    targetEntityId: orgId,
     requestPath: req.url,
     details: { changed_fields, before: before_subset, after: after_subset },
-  } as any)
+  })
 
   return NextResponse.json({ ok: true, profile: updated })
 }
