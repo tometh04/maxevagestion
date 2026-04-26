@@ -1,4 +1,15 @@
+import { ShieldAlert } from "lucide-react"
 import { createAdminClient } from "@/lib/supabase/server"
+import { PageHeader } from "@/components/admin/page-header"
+import { EmptyState } from "@/components/admin/empty-state"
+import {
+  DataTableShell,
+  DataTableHead,
+  DataTableBody,
+  DataTableRow,
+  DataTableTh,
+  DataTableTd,
+} from "@/components/admin/data-table-shell"
 
 export const dynamic = "force-dynamic"
 
@@ -14,44 +25,52 @@ export default async function AdminAuditPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Security audit log</h1>
-      <p className="text-sm text-muted-foreground">Últimos {rows.length} eventos</p>
+      <PageHeader
+        title="Audit log"
+        description={`Eventos de seguridad de la plataforma. Últimos ${rows.length}.`}
+      />
 
-      <div className="border rounded-lg overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead className="bg-muted/50">
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={ShieldAlert}
+          title="Sin eventos"
+          description="Todavía no hay eventos en el audit log."
+        />
+      ) : (
+        <DataTableShell>
+          <DataTableHead>
             <tr>
-              <th className="text-left px-3 py-2">Fecha</th>
-              <th className="text-left px-3 py-2">Severity</th>
-              <th className="text-left px-3 py-2">Tipo</th>
-              <th className="text-left px-3 py-2">Actor org</th>
-              <th className="text-left px-3 py-2">Target org</th>
-              <th className="text-left px-3 py-2">Path</th>
-              <th className="text-left px-3 py-2">Detalle</th>
+              <DataTableTh>Fecha</DataTableTh>
+              <DataTableTh>Severity</DataTableTh>
+              <DataTableTh>Tipo</DataTableTh>
+              <DataTableTh>Actor org</DataTableTh>
+              <DataTableTh>Target org</DataTableTh>
+              <DataTableTh>Path</DataTableTh>
+              <DataTableTh>Detalle</DataTableTh>
             </tr>
-          </thead>
-          <tbody>
+          </DataTableHead>
+          <DataTableBody>
             {rows.map((e) => (
-              <tr key={e.id} className="border-t">
-                <td className="px-3 py-2 whitespace-nowrap">{new Date(e.created_at).toLocaleString()}</td>
-                <td className={`px-3 py-2 font-semibold ${sevClass(e.severity)}`}>{e.severity}</td>
-                <td className="px-3 py-2">{e.event_type}</td>
-                <td className="px-3 py-2 text-muted-foreground">{e.actor_org_id?.slice(0, 8) || "—"}</td>
-                <td className="px-3 py-2 text-muted-foreground">{e.target_org_id?.slice(0, 8) || "—"}</td>
-                <td className="px-3 py-2 text-muted-foreground">{e.request_path || "—"}</td>
-                <td className="px-3 py-2">
+              <DataTableRow key={e.id}>
+                <DataTableTd className="whitespace-nowrap">{new Date(e.created_at).toLocaleString()}</DataTableTd>
+                <DataTableTd className={`font-semibold ${sevClass(e.severity)}`}>{e.severity}</DataTableTd>
+                <DataTableTd>{e.event_type}</DataTableTd>
+                <DataTableTd className="text-slate-500">{e.actor_org_id?.slice(0, 8) || "—"}</DataTableTd>
+                <DataTableTd className="text-slate-500">{e.target_org_id?.slice(0, 8) || "—"}</DataTableTd>
+                <DataTableTd className="text-slate-500">{e.request_path || "—"}</DataTableTd>
+                <DataTableTd>
                   <details>
-                    <summary className="cursor-pointer text-blue-600">ver</summary>
-                    <pre className="text-[10px] mt-1 bg-muted p-2 rounded max-w-md overflow-auto">
+                    <summary className="cursor-pointer text-blue-400">ver</summary>
+                    <pre className="text-[10px] mt-1 bg-slate-900 p-2 rounded max-w-md overflow-auto text-slate-300">
                       {JSON.stringify(e.details, null, 2)}
                     </pre>
                   </details>
-                </td>
-              </tr>
+                </DataTableTd>
+              </DataTableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </DataTableBody>
+        </DataTableShell>
+      )}
     </div>
   )
 }

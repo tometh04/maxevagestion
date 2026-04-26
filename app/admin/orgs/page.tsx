@@ -4,6 +4,7 @@ import { OrgsFilters } from "@/components/admin/orgs-filters"
 import { OrgsTable } from "@/components/admin/orgs-table"
 import { OrgsPagination } from "@/components/admin/orgs-pagination"
 import { ORGS_PAGE_SIZE } from "@/lib/admin/constants"
+import { PageHeader } from "@/components/admin/page-header"
 
 export const dynamic = "force-dynamic"
 
@@ -125,14 +126,10 @@ export default async function AdminOrgsPage({
 
   return (
     <div className="space-y-6">
-      <header className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-100">Organizaciones</h1>
-          <p className="text-sm text-slate-400">
-            {count ?? 0} {count === 1 ? "org" : "orgs"} · {ORGS_PAGE_SIZE}/pág
-          </p>
-        </div>
-      </header>
+      <PageHeader
+        title="Organizaciones"
+        description={`${count ?? 0} ${count === 1 ? "org" : "orgs"} · ${ORGS_PAGE_SIZE}/pág`}
+      />
 
       <div className="space-y-3">
         <OrgsSearchBar />
