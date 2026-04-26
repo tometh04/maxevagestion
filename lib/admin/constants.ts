@@ -19,6 +19,6 @@ export const ORG_SUBSCRIPTION_STATUSES = [
   "PENDING_PAYMENT",
 ] as const
 
-export const ORG_PLANS = ["STARTER", "PROFESSIONAL", "ENTERPRISE"] as const
+export const ORG_PLANS = ["STARTER", "PRO", "ENTERPRISE"] as const
 
 export type ProfileCompletionFilter = "empty" | "partial" | "complete"
