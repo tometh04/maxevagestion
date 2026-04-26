@@ -1,174 +1,172 @@
-import { createAdminClient } from "@/lib/supabase/server"
-import { computeMrrArs, type MrrOrg, type MrrCustomPlan } from "@/lib/admin/metrics"
-import { formatArs } from "@/lib/billing/plans"
 import {
-  Users,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  Ban,
-  UserCheck,
-  Briefcase,
-  Sparkles,
-  CircleDollarSign,
-  TrendingUp,
-  LineChart,
-  TrendingDown,
+  AlertCircle, Ban, Briefcase, CheckCircle2, CircleDollarSign, Clock,
+  LineChart, Sparkles, TrendingDown, TrendingUp, UserCheck, Users, Wallet,
 } from "lucide-react"
+import { createAdminClient } from "@/lib/supabase/server"
 import { PageHeader } from "@/components/admin/page-header"
 import { StatCard } from "@/components/admin/stat-card"
 import {
-  DataTableShell,
-  DataTableHead,
-  DataTableBody,
-  DataTableRow,
-  DataTableTh,
-  DataTableTd,
+  DataTableShell, DataTableHead, DataTableBody, DataTableRow, DataTableTh, DataTableTd,
 } from "@/components/admin/data-table-shell"
+import { EmptyState } from "@/components/admin/empty-state"
+import { EnterpriseWithoutPriceAlert } from "@/components/admin/enterprise-without-price-alert"
 import { MrrBarChart } from "@/components/admin/mrr-bar-chart"
+import { formatArs, PLANS } from "@/lib/billing/plans"
+import {
+  computeMrrArs, computeTrialPipelineMrrArs, computePotentialMrrArs,
+  type MrrOrg, type MrrCustomPlan,
+} from "@/lib/admin/metrics"
 
 export const dynamic = "force-dynamic"
 
-type OrgRow = {
-  id: string
-  plan: string | null
-  subscription_status: string
-  custom_plan_id: string | null
-  updated_at: string
-}
-
-type CustomPlanRow = {
-  org_id: string
-  base_price_ars: number
-  discount_percent: number
-  discount_ends_at: string | null
-}
-
 export default async function AdminMetricsPage() {
   const admin = createAdminClient() as any
+  const since30d = new Date(Date.now() - 30 * 86400 * 1000).toISOString()
 
-  const since30d = new Date()
-  since30d.setDate(since30d.getDate() - 30)
-  const sinceIso = since30d.toISOString()
-
+  // === Counts por status ===
   const [
     { count: totalOrgs },
     { count: activeOrgs },
-    { count: trialOrgs },
+    { count: trialingOrgs },
+    { count: trialLegacyOrgs },
     { count: pastDueOrgs },
+    { count: pendingPaymentOrgs },
     { count: suspendedOrgs },
+    { count: cancelledOrgs },
     { count: totalUsers },
     { count: totalOperations },
     { count: signups30d },
-    { data: allOrgs },
-    { data: customPlansRaw },
-    { count: churn30d },
   ] = await Promise.all([
     admin.from("organizations").select("*", { count: "exact", head: true }),
     admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "ACTIVE"),
+    admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "TRIALING"),
     admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "TRIAL"),
     admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "PAST_DUE"),
+    admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "PENDING_PAYMENT"),
     admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "SUSPENDED"),
+    admin.from("organizations").select("*", { count: "exact", head: true }).eq("subscription_status", "CANCELLED"),
     admin.from("users").select("*", { count: "exact", head: true }).eq("is_active", true),
     admin.from("operations").select("*", { count: "exact", head: true }),
-    admin.from("organizations").select("*", { count: "exact", head: true }).gte("created_at", sinceIso),
-    admin.from("organizations").select("id, plan, subscription_status, custom_plan_id, updated_at"),
-    admin.from("custom_plans").select("org_id, base_price_ars, discount_percent, discount_ends_at"),
-    admin
-      .from("organizations")
-      .select("*", { count: "exact", head: true })
-      .in("subscription_status", ["CANCELLED", "SUSPENDED"])
-      .gte("updated_at", sinceIso),
+    admin.from("organizations").select("*", { count: "exact", head: true }).gte("created_at", since30d),
   ])
 
-  // Build custom_plans lookup map
-  const customPlansMap = new Map<string, MrrCustomPlan>()
-  for (const cp of (customPlansRaw ?? []) as CustomPlanRow[]) {
-    customPlansMap.set(cp.org_id, {
-      base_price_ars: cp.base_price_ars,
+  // === Data para cálculos ===
+  const [
+    { data: orgsForMrr },
+    { data: customPlans },
+    { data: orgsForChurn },
+  ] = await Promise.all([
+    admin
+      .from("organizations")
+      .select("id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, created_at, updated_at"),
+    admin
+      .from("custom_plans")
+      .select("org_id, base_price_ars, discount_percent, discount_ends_at"),
+    admin
+      .from("organizations")
+      .select("id, plan, subscription_status, custom_plan_id, manual_mrr_override_ars, updated_at")
+      .in("subscription_status", ["CANCELLED", "SUSPENDED"])
+      .gte("updated_at", since30d),
+  ])
+
+  const cpMap = new Map<string, MrrCustomPlan>()
+  for (const cp of (customPlans ?? []) as any[]) {
+    cpMap.set(cp.org_id, {
+      base_price_ars: Number(cp.base_price_ars),
       discount_percent: cp.discount_percent,
       discount_ends_at: cp.discount_ends_at,
     })
   }
 
-  // Compute MRR per org
-  type PlanKey = "STARTER" | "PRO" | "ENTERPRISE_CUSTOM" | "ENTERPRISE_NO_CUSTOM" | "OTHER"
+  let mrrTotal = 0
+  let trialPipelineMrr = 0
+  let newMrr30d = 0
+  let activePayingOrgs = 0
+  const mrrByPlan = new Map<string, { count: number; mrr: number }>()
 
-  const breakdown: Record<PlanKey, { count: number; mrr: number }> = {
-    STARTER: { count: 0, mrr: 0 },
-    PRO: { count: 0, mrr: 0 },
-    ENTERPRISE_CUSTOM: { count: 0, mrr: 0 },
-    ENTERPRISE_NO_CUSTOM: { count: 0, mrr: 0 },
-    OTHER: { count: 0, mrr: 0 },
-  }
+  for (const o of (orgsForMrr ?? []) as any[]) {
+    const org: MrrOrg = {
+      plan: o.plan,
+      subscription_status: o.subscription_status,
+      custom_plan_id: o.custom_plan_id,
+      manual_mrr_override_ars: o.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
+    }
+    const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
 
-  let totalMrr = 0
-  let payingOrgCount = 0
+    const mrr = computeMrrArs(org, cp)
+    mrrTotal += mrr
+    if (mrr > 0) activePayingOrgs += 1
 
-  for (const org of (allOrgs ?? []) as OrgRow[]) {
-    const customPlan = org.custom_plan_id ? (customPlansMap.get(org.id) ?? null) : null
-    const mrr = computeMrrArs(org as MrrOrg, customPlan)
+    const pipeline = computeTrialPipelineMrrArs(org, cp)
+    trialPipelineMrr += pipeline
 
+    if (mrr > 0 && new Date(o.created_at).getTime() >= Date.parse(since30d)) {
+      newMrr30d += mrr
+    }
+
+    const bucketKey = o.custom_plan_id ? "CUSTOM" : (o.plan ?? "OTHER")
     if (mrr > 0) {
-      totalMrr += mrr
-      payingOrgCount++
+      const bucket = mrrByPlan.get(bucketKey) ?? { count: 0, mrr: 0 }
+      bucket.count += 1
+      bucket.mrr += mrr
+      mrrByPlan.set(bucketKey, bucket)
     }
-
-    // Breakdown assignment (all orgs, not just paying)
-    let key: PlanKey
-    if (org.custom_plan_id) {
-      key = "ENTERPRISE_CUSTOM"
-    } else if (org.plan === "STARTER") {
-      key = "STARTER"
-    } else if (org.plan === "PRO") {
-      key = "PRO"
-    } else if (org.plan === "ENTERPRISE") {
-      key = "ENTERPRISE_NO_CUSTOM"
-    } else {
-      key = "OTHER"
-    }
-
-    breakdown[key].count++
-    breakdown[key].mrr += mrr
   }
 
-  const totalArr = totalMrr * 12
-  const avgMrrPerOrg = payingOrgCount > 0 ? Math.round(totalMrr / payingOrgCount) : 0
+  let churnMrr30d = 0
+  for (const o of (orgsForChurn ?? []) as any[]) {
+    const org: MrrOrg = {
+      plan: o.plan,
+      subscription_status: o.subscription_status,
+      custom_plan_id: o.custom_plan_id,
+      manual_mrr_override_ars: o.manual_mrr_override_ars != null ? Number(o.manual_mrr_override_ars) : null,
+    }
+    const cp = o.custom_plan_id ? cpMap.get(o.id) ?? null : null
+    churnMrr30d += computePotentialMrrArs(org, cp)
+  }
 
-  const breakdownRows: { label: string; key: PlanKey }[] = [
-    { label: "STARTER", key: "STARTER" },
-    { label: "PRO", key: "PRO" },
-    { label: "ENTERPRISE (custom plan)", key: "ENTERPRISE_CUSTOM" },
-    { label: "ENTERPRISE (sin custom plan)", key: "ENTERPRISE_NO_CUSTOM" },
-    { label: "Otros", key: "OTHER" },
-  ]
+  const arr = mrrTotal * 12
+  const avgMrrPerActiveOrg = activePayingOrgs > 0 ? Math.round(mrrTotal / activePayingOrgs) : 0
 
-  const chartData = breakdownRows.map(({ label, key }) => ({
-    label,
-    mrr: breakdown[key].mrr,
-  }))
+  const breakdown = Array.from(mrrByPlan.entries())
+    .map(([key, v]) => ({
+      label: key === "CUSTOM" ? "Custom plan" : (PLANS[key as keyof typeof PLANS]?.name ?? key),
+      count: v.count,
+      mrr: v.mrr,
+      pct: mrrTotal > 0 ? (v.mrr / mrrTotal) * 100 : 0,
+    }))
+    .sort((a, b) => b.mrr - a.mrr)
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 max-w-6xl">
       <PageHeader
         title="Platform metrics"
         description="Vista global del SaaS — orgs por estado, MRR/ARR, breakdown por plan."
       />
 
+      <EnterpriseWithoutPriceAlert />
+
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Tenants por estado</h2>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <StatCard label="Total" value={totalOrgs ?? 0} icon={Users} />
           <StatCard label="ACTIVE" value={activeOrgs ?? 0} icon={CheckCircle2} />
-          <StatCard label="TRIAL" value={trialOrgs ?? 0} icon={Clock} />
+          <StatCard label="TRIALING" value={trialingOrgs ?? 0} icon={Clock} />
+          <StatCard label="PENDING" value={pendingPaymentOrgs ?? 0} icon={AlertCircle} />
           <StatCard label="PAST_DUE" value={pastDueOrgs ?? 0} icon={AlertCircle} />
           <StatCard label="SUSPENDED" value={suspendedOrgs ?? 0} icon={Ban} />
+          <StatCard label="CANCELLED" value={cancelledOrgs ?? 0} icon={Ban} />
         </div>
+        {(trialLegacyOrgs ?? 0) > 0 && (
+          <p className="mt-2 text-xs text-slate-500">
+            Legacy TRIAL: {trialLegacyOrgs} (deberían migrarse a TRIALING o PENDING_PAYMENT)
+          </p>
+        )}
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Actividad global</h2>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <StatCard label="Users activos" value={totalUsers ?? 0} icon={UserCheck} />
           <StatCard label="Operaciones totales" value={totalOperations ?? 0} icon={Briefcase} />
           <StatCard label="Signups últimos 30d" value={signups30d ?? 0} icon={Sparkles} />
@@ -177,53 +175,81 @@ export default async function AdminMetricsPage() {
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Revenue</h2>
-        <div className="grid grid-cols-4 gap-3">
-          <StatCard label="MRR" value={formatArs(totalMrr)} icon={CircleDollarSign} />
-          <StatCard label="ARR" value={formatArs(totalArr)} icon={TrendingUp} />
-          <StatCard label="Avg MRR / org pagadora" value={formatArs(avgMrrPerOrg)} icon={LineChart} />
-          <StatCard label="Churn últimos 30d" value={churn30d ?? 0} icon={TrendingDown} />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <StatCard
+            label="MRR"
+            value={formatArs(mrrTotal)}
+            icon={CircleDollarSign}
+            hint="ARS / mes"
+          />
+          <StatCard
+            label="ARR"
+            value={formatArs(arr)}
+            icon={TrendingUp}
+            hint="ARS / año"
+          />
+          <StatCard
+            label="Avg MRR / org"
+            value={formatArs(avgMrrPerActiveOrg)}
+            icon={LineChart}
+            hint={`${activePayingOrgs} orgs pagando`}
+          />
+          <StatCard
+            label="Pipeline MRR"
+            value={formatArs(trialPipelineMrr)}
+            icon={Wallet}
+            hint={`${trialingOrgs ?? 0} en TRIALING`}
+          />
+          <StatCard
+            label="New MRR 30d"
+            value={formatArs(newMrr30d)}
+            icon={TrendingUp}
+            hint="orgs nuevas pagando"
+          />
+          <StatCard
+            label="Churn MRR 30d"
+            value={formatArs(churnMrr30d)}
+            icon={TrendingDown}
+            hint="orgs canceladas/suspendidas"
+          />
         </div>
       </section>
 
       <section>
         <h2 className="text-sm font-semibold text-muted-foreground mb-2">Breakdown por plan</h2>
-        <DataTableShell>
-          <DataTableHead>
-            <tr>
-              <DataTableTh>Plan</DataTableTh>
-              <DataTableTh className="text-right">Orgs</DataTableTh>
-              <DataTableTh className="text-right">MRR</DataTableTh>
-              <DataTableTh className="text-right">% del MRR</DataTableTh>
-            </tr>
-          </DataTableHead>
-          <DataTableBody>
-            {breakdownRows.map(({ label, key }) => {
-              const row = breakdown[key]
-              const pct = totalMrr > 0 ? ((row.mrr / totalMrr) * 100).toFixed(1) : "0.0"
-              return (
-                <DataTableRow key={key}>
-                  <DataTableTd>{label}</DataTableTd>
-                  <DataTableTd className="text-right">{row.count}</DataTableTd>
-                  <DataTableTd className="text-right">{formatArs(row.mrr)}</DataTableTd>
-                  <DataTableTd className="text-right">{pct}%</DataTableTd>
-                </DataTableRow>
-              )
-            })}
-            <DataTableRow className="font-medium bg-slate-900/60">
-              <DataTableTd>Total</DataTableTd>
-              <DataTableTd className="text-right">{(allOrgs ?? []).length}</DataTableTd>
-              <DataTableTd className="text-right">{formatArs(totalMrr)}</DataTableTd>
-              <DataTableTd className="text-right">100%</DataTableTd>
-            </DataTableRow>
-          </DataTableBody>
-        </DataTableShell>
-      </section>
-
-      <section>
-        <h2 className="text-sm font-semibold text-muted-foreground mb-2">MRR por plan</h2>
-        <div className="rounded-lg border border-slate-800/80 bg-slate-900/40 p-4">
-          <MrrBarChart data={chartData} />
-        </div>
+        {breakdown.length === 0 ? (
+          <EmptyState
+            icon={CircleDollarSign}
+            title="Sin MRR por plan"
+            description="Cuando haya orgs pagando aparecerán acá."
+          />
+        ) : (
+          <>
+            <DataTableShell>
+              <DataTableHead>
+                <tr>
+                  <DataTableTh>Plan</DataTableTh>
+                  <DataTableTh>Orgs pagando</DataTableTh>
+                  <DataTableTh>MRR</DataTableTh>
+                  <DataTableTh>% del total</DataTableTh>
+                </tr>
+              </DataTableHead>
+              <DataTableBody>
+                {breakdown.map((b) => (
+                  <DataTableRow key={b.label}>
+                    <DataTableTd className="font-medium text-slate-200">{b.label}</DataTableTd>
+                    <DataTableTd>{b.count}</DataTableTd>
+                    <DataTableTd>{formatArs(b.mrr)}</DataTableTd>
+                    <DataTableTd className="text-slate-400">{b.pct.toFixed(1)}%</DataTableTd>
+                  </DataTableRow>
+                ))}
+              </DataTableBody>
+            </DataTableShell>
+            <div className="mt-4">
+              <MrrBarChart data={breakdown.map((b) => ({ label: b.label, mrr: b.mrr }))} />
+            </div>
+          </>
+        )}
       </section>
     </div>
   )
