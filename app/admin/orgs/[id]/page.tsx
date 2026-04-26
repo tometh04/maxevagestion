@@ -11,6 +11,7 @@ import { CriticalActions } from "@/components/admin/critical-actions"
 import { ManualPaymentsSection } from "@/components/admin/manual-payments-section"
 import { MpSnapshot } from "@/components/admin/mp-snapshot"
 import { AuditLogInline } from "@/components/admin/audit-log-inline"
+import { OrgProfileCard } from "@/components/admin/org-profile-card"
 
 export const dynamic = "force-dynamic"
 
@@ -110,6 +111,24 @@ export default async function AdminOrgDetailPage({ params }: { params: Promise<{
           </dl>
         </CardContent>
       </Card>
+
+      <OrgProfileCard
+        orgId={org.id}
+        profile={{
+          contact_name: org.contact_name,
+          contact_phone: org.contact_phone,
+          internal_notes: org.internal_notes,
+          address_street: org.address_street,
+          address_city: org.address_city,
+          address_province: org.address_province,
+          address_country: org.address_country,
+          address_postal_code: org.address_postal_code,
+          tax_category: org.tax_category,
+          cuit: org.cuit,
+          billing_email: org.billing_email,
+          billing_name: org.billing_name,
+        }}
+      />
 
       {customPlan ? (
         <CustomPlanDisplay orgId={id} plan={customPlan} />
