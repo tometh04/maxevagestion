@@ -32,6 +32,7 @@ interface Summary {
   avg_first_response_seconds: number | null
   initiated_count: number
   pdfs_sent_count: number
+  pdfs_sent_pending_classification: number
   pdfs_received_count: number
   pdfs_total_count: number
 }
@@ -132,7 +133,7 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
         { label: "Mensajes Recibidos", value: summary.inbound_count, icon: MessageCircle, color: "text-blue-600" },
         { label: "Mensajes Enviados", value: summary.outbound_count, icon: MessageSquareText, color: "text-green-600" },
         { label: "Conversaciones Iniciadas", value: summary.initiated_count, icon: Send, color: "text-cyan-600" },
-        { label: "PDFs Enviados", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600" },
+        { label: "PDFs Enviados (cotizaciones)", value: summary.pdfs_sent_count, icon: FileText, color: "text-rose-600", subtitle: summary.pdfs_sent_pending_classification > 0 ? `+${summary.pdfs_sent_pending_classification} pendientes` : undefined },
         { label: "PDFs Recibidos", value: summary.pdfs_received_count, icon: FileText, color: "text-amber-600" },
         { label: "Tiempo Resp. Promedio", value: formatResponseTime(summary.avg_first_response_seconds), icon: Clock, color: "text-orange-600" },
         { label: "Chats Activos", value: summary.active_chats_count, icon: Users, color: "text-purple-600" },
@@ -209,6 +210,11 @@ export function MetricsDashboard({ agencies }: MetricsDashboardProps) {
                     <span className="text-xs text-muted-foreground">{kpi.label}</span>
                   </div>
                   <p className="text-2xl font-bold">{kpi.value}</p>
+                  {kpi.subtitle && (
+                    <span className="text-[10px] text-muted-foreground" title="PDFs sin clasificar — el sistema los procesa cada 30 min">
+                      {kpi.subtitle}
+                    </span>
+                  )}
                 </CardContent>
               </Card>
             ))}
