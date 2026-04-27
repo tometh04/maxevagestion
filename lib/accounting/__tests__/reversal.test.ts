@@ -47,12 +47,12 @@ describe("buildReversalPayload", () => {
     expect(payload.type).toBe("EXPENSE")
   })
 
-  it("preserves amount + currency + financial_account + agency + org + operation + user", () => {
+  it("preserves amount + currency + financial_account + org + operation + user (no agency_id en cash_movements)", () => {
     const p = buildReversalPayload(baseOriginal, "test", "orig-id", "2026-04-27")
     expect(p.amount).toBe(1000)
     expect(p.currency).toBe("ARS")
     expect(p.financial_account_id).toBe("acc-1")
-    expect(p.agency_id).toBe("ag-1")
+    expect(p.agency_id).toBeUndefined()
     expect(p.org_id).toBe("org-1")
     expect(p.operation_id).toBe("op-1")
     expect(p.user_id).toBe("u-1")
@@ -74,10 +74,11 @@ describe("buildReversalPayload", () => {
   it("optional cols default to null when missing", () => {
     const minimal = { type: "INCOME", amount: 500, currency: "USD", financial_account_id: null }
     const p = buildReversalPayload(minimal, "x", "id", "d")
-    expect(p.agency_id).toBeNull()
     expect(p.org_id).toBeNull()
     expect(p.operation_id).toBeNull()
     expect(p.user_id).toBeNull()
     expect(p.financial_account_id).toBeNull()
+    // agency_id no es parte del payload de cash_movements (la tabla no tiene esa columna)
+    expect(p.agency_id).toBeUndefined()
   })
 })

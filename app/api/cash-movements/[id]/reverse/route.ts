@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canReverse, buildReversalPayload } from "@/lib/accounting/reversal"
+import { canReverse, buildCashReversalPayload, buildLedgerReversalPayload } from "@/lib/accounting/reversal"
 import { logSecurityEvent } from "@/lib/security/audit"
 
 export async function POST(
@@ -32,7 +32,7 @@ export async function POST(
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 })
 
   const today = new Date().toISOString().split("T")[0]
-  const reversalPayload = buildReversalPayload(original, reason, id, today)
+  const reversalPayload = buildCashReversalPayload(original, reason, id, today)
 
   const { data: reversal, error: insertError } = await (supabase.from("cash_movements") as any)
     .insert(reversalPayload)
@@ -65,7 +65,7 @@ export async function POST(
         .single()
 
       if (ledger && canReverse(ledger).ok) {
-        const ledgerReversalPayload = buildReversalPayload(
+        const ledgerReversalPayload = buildLedgerReversalPayload(
           ledger,
           `Cascade desde reversión de cash_movement ${id}: ${reason}`,
           ledger.id,

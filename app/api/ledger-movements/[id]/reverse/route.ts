@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { canReverse, buildReversalPayload } from "@/lib/accounting/reversal"
+import { canReverse, buildLedgerReversalPayload } from "@/lib/accounting/reversal"
 import { logSecurityEvent } from "@/lib/security/audit"
 
 export async function POST(
@@ -31,8 +31,16 @@ export async function POST(
   const check = canReverse(original)
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 })
 
+  // v1: solo INCOME/EXPENSE. FX_GAIN/FX_LOSS/COMMISSION/OPERATOR_PAYMENT requieren handling especial.
+  if (!["INCOME", "EXPENSE"].includes(original.type)) {
+    return NextResponse.json(
+      { error: `Tipo ${original.type} no soporta reversión automática en v1` },
+      { status: 400 },
+    )
+  }
+
   const today = new Date().toISOString().split("T")[0]
-  const reversalPayload = buildReversalPayload(original, reason, id, today)
+  const reversalPayload = buildLedgerReversalPayload(original, reason, id, today)
 
   const { data: reversal, error: insertError } = await (supabase.from("ledger_movements") as any)
     .insert(reversalPayload)
@@ -63,7 +71,7 @@ export async function POST(
     targetEntity: "ledger_movements",
     targetEntityId: id,
     requestPath: `/api/ledger-movements/${id}/reverse`,
-    details: { reason, amount: original.amount, currency: original.currency, reversal_id: reversal.id },
+    details: { reason, amount: original.amount_original, currency: original.currency, reversal_id: reversal.id },
   })
 
   return NextResponse.json({ original_id: id, reversal })
