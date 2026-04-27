@@ -375,6 +375,10 @@ export async function GET(request: Request) {
         movement_date: m.movement_date,
         notes: m.notes ?? null,
         affects_balance: linkedLedger?.affects_balance ?? true,
+        reversed_at: m.reversed_at ?? null,
+        reverses_movement_id: m.reverses_movement_id ?? null,
+        reversed_by_movement_id: m.reversed_by_movement_id ?? null,
+        reversal_reason: m.reversal_reason ?? null,
         operations: m.operations
           ? {
               id: m.operations.id,
