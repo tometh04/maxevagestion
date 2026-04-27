@@ -127,7 +127,7 @@ export default async function CashSummaryPage() {
         <PaymentsPageClient agencies={agencies} defaultFilters={paymentDefaultFilters} />
       }
       movementsContent={
-        <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+        <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} userRole={user.role} />
       }
     />
   )
