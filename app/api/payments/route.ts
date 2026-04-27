@@ -35,6 +35,9 @@ import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/w
 import { annotatePaymentAsJournalEntry } from "@/lib/accounting/journal-entries"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { loadApprovalRules, getCurrentArsPerUsd } from "@/lib/payments/load-rules"
+import { requiresApproval, convertToArs } from "@/lib/payments/approval"
+import { notifyApprovers } from "@/lib/payments/notify-approvers"
 
 const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
   "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
@@ -452,10 +455,26 @@ export async function POST(request: Request) {
       amountUsd = parseFloat(amount) / providedExchangeRateNumber
     }
 
+    // Approval gate: load rules and check if this payment requires approval
+    const agencyIdForApproval = operationData?.agency_id ?? null
+    let needsApproval = false
+    if (agencyIdForApproval) {
+      try {
+        const [approvalRules, arsPerUsd] = await Promise.all([
+          loadApprovalRules(agencyIdForApproval, supabase),
+          getCurrentArsPerUsd(supabase),
+        ])
+        const amountArs = convertToArs(parseFloat(amount), currency as "ARS" | "USD", arsPerUsd)
+        needsApproval = requiresApproval(amountArs, user.role, approvalRules)
+      } catch (approvalErr) {
+        console.warn("[payments POST] Error evaluating approval rules, defaulting to no-approval:", approvalErr)
+      }
+    }
+
     // 1. Crear el pago en tabla payments
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
-    const paymentData = {
+    const paymentData: Record<string, any> = {
       operation_id,
       operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
       operator_id: resolvedOperatorId,
@@ -470,8 +489,12 @@ export async function POST(request: Request) {
       amount_usd: amountUsd,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
-      status: finalStatus,
+      status: needsApproval ? "PENDING" : finalStatus,
       reference: notes || null,
+      created_by_user_id: user.id,
+    }
+    if (needsApproval) {
+      paymentData.approval_status = "PENDING_APPROVAL"
     }
 
     const { data: payment, error: paymentError } = await (supabase.from("payments") as any)
@@ -494,6 +517,16 @@ export async function POST(request: Request) {
       details: { amount, currency, direction, payer_type },
       ip_address: getClientIP(request) || undefined,
     })
+
+    // Approval gate: if approval is required, skip ledger/cash creation and return early
+    if (needsApproval) {
+      try {
+        await notifyApprovers(payment, agencyIdForApproval, supabase, user.id)
+      } catch (notifyErr) {
+        console.warn("[payments POST] notifyApprovers failed (non-fatal):", notifyErr)
+      }
+      return NextResponse.json({ payment, requires_approval: true })
+    }
 
     // Solo crear movimientos contables si el pago está PAID explícitamente
     // Si status no se especifica, el default es PENDING, así que no crear movimientos

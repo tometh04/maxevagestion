@@ -6,6 +6,9 @@ import {
   getEffectiveOperatorPaymentStatus,
   hasPendingBalance,
 } from "@/lib/accounting/operator-payment-settlement"
+import { loadApprovalRules, getCurrentArsPerUsd } from "@/lib/payments/load-rules"
+import { requiresApproval, convertToArs } from "@/lib/payments/approval"
+import { notifyApprovers } from "@/lib/payments/notify-approvers"
 
 export async function GET(request: Request) {
   try {
@@ -198,24 +201,56 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
     }
 
+    // Approval gate: operator_payments sin operation_id no tienen agency_id directo;
+    // intentar resolver desde el body (agencyId opcional) o dejar sin reglas.
+    const agencyIdForApproval: string | null = body.agency_id ?? null
+    let needsApproval = false
+    if (agencyIdForApproval) {
+      try {
+        const [approvalRules, arsPerUsd] = await Promise.all([
+          loadApprovalRules(agencyIdForApproval, supabase),
+          getCurrentArsPerUsd(supabase),
+        ])
+        const amountArs = convertToArs(parseFloat(amount), currency as "ARS" | "USD", arsPerUsd)
+        needsApproval = requiresApproval(amountArs, user.role, approvalRules)
+      } catch (approvalErr) {
+        console.warn("[operator-payments POST] Error evaluating approval rules, defaulting to no-approval:", approvalErr)
+      }
+    }
+
     // Crear operator_payment manual (sin operation_id)
+    const insertPayload: Record<string, any> = {
+      operation_id: null, // Pago manual sin operación
+      operator_id,
+      amount: parseFloat(amount),
+      currency,
+      due_date,
+      status: "PENDING",
+      paid_amount: 0,
+      notes: notes || null,
+      created_by_user_id: user.id,
+    }
+    if (needsApproval) {
+      insertPayload.approval_status = "PENDING_APPROVAL"
+    }
+
     const { data: operatorPayment, error: paymentError } = await (supabase.from("operator_payments") as any)
-      .insert({
-        operation_id: null, // Pago manual sin operación
-        operator_id,
-        amount: parseFloat(amount),
-        currency,
-        due_date,
-        status: "PENDING",
-        paid_amount: 0,
-        notes: notes || null,
-      })
+      .insert(insertPayload)
       .select()
       .single()
 
     if (paymentError) {
       console.error("Error creating operator payment:", paymentError)
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
+    }
+
+    if (needsApproval) {
+      try {
+        await notifyApprovers(operatorPayment, agencyIdForApproval, supabase, user.id)
+      } catch (notifyErr) {
+        console.warn("[operator-payments POST] notifyApprovers failed (non-fatal):", notifyErr)
+      }
+      return NextResponse.json({ payment: operatorPayment, requires_approval: true }, { status: 201 })
     }
 
     return NextResponse.json({ payment: operatorPayment }, { status: 201 })
