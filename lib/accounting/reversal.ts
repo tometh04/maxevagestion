@@ -33,7 +33,6 @@ export function buildCashReversalPayload<M extends {
   operation_id?: string | null
   user_id?: string | null
   org_id?: string | null
-  affects_balance?: boolean | null
 }>(original: M, reason: string, originalId: string, todayIso: string): Record<string, any> {
   return {
     type: oppositeMovementType(original.type as MovementType),
@@ -47,9 +46,6 @@ export function buildCashReversalPayload<M extends {
     notes: `Reversión de ${originalId}: ${reason}`,
     movement_date: todayIso,
     reverses_movement_id: originalId,
-    // Mantener el flag affects_balance del original — si era false, la reversión también
-    // no afecta balance (consistencia neutral).
-    affects_balance: original.affects_balance ?? true,
   }
 }
 
