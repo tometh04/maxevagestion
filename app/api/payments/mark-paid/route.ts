@@ -68,15 +68,16 @@ export async function POST(request: Request) {
     const paymentsSelect = supabase.from("payments") as any
     const { data: payment } = await paymentsSelect
       .select(`
-        operation_id, 
+        operation_id,
         operator_id,
         operator_payment_id,
-        amount, 
-        currency, 
-        direction, 
-        payer_type, 
+        amount,
+        currency,
+        direction,
+        payer_type,
         method,
         status,
+        approval_status,
         ledger_movement_id,
         operations:operation_id(
           id,
@@ -117,6 +118,19 @@ export async function POST(request: Request) {
       return NextResponse.json({
         error: "No se pudo identificar la deuda del operador para este pago. Volvé a crearlo seleccionando el operador correcto.",
       }, { status: 400 })
+    }
+
+    // ============================================
+    // GUARD DE APROBACIÓN: bloquear mark-paid si el pago requiere aprobación
+    // y no fue aprobado todavía. Antes de este guard, cualquier rol con acceso
+    // a Caja podía bypassear las reglas de payment_approval_rules llamando
+    // mark-paid directo desde el dialog "crear y marcar pagado".
+    // ============================================
+    if (paymentData.approval_status === "PENDING_APPROVAL") {
+      return NextResponse.json({
+        error: "Este pago requiere aprobación previa. Pedí a un administrador que lo apruebe en /payments/pending-approvals antes de marcarlo como cobrado.",
+        requires_approval: true,
+      }, { status: 403 })
     }
 
     // ============================================

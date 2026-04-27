@@ -335,6 +335,16 @@ export function NewPaymentDialog({ open, onOpenChange, onSuccess }: NewPaymentDi
 
       const createData = await createResponse.json()
 
+      // Si el pago requiere aprobación, NO llamar a mark-paid: el ledger/cash
+      // se crea recién cuando un admin aprueba el pago. Avisamos y cerramos.
+      if (createData.requires_approval) {
+        toast.success("Pago creado. Queda pendiente de aprobación antes de impactar caja.")
+        onSuccess()
+        onOpenChange(false)
+        form.reset()
+        return
+      }
+
       // 2. Si se marcó como pagado, llamar a mark-paid
       if (values.mark_as_paid && createData.payment?.id) {
         const markPaidResponse = await fetch("/api/payments/mark-paid", {
