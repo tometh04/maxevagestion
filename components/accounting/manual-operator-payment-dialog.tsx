@@ -95,7 +95,12 @@ export function ManualOperatorPaymentDialog({
         throw new Error(error.error || "Error al crear pago")
       }
 
-      toast.success("Deuda a operador creada exitosamente")
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.requires_approval) {
+        toast.success("Deuda creada. Queda pendiente de aprobación antes de poder pagarse.")
+      } else {
+        toast.success("Deuda a operador creada exitosamente")
+      }
       form.reset()
       onOpenChange(false)
       onSuccess()

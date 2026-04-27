@@ -201,9 +201,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Operador no encontrado" }, { status: 404 })
     }
 
-    // Approval gate: operator_payments sin operation_id no tienen agency_id directo;
-    // intentar resolver desde el body (agencyId opcional) o dejar sin reglas.
-    const agencyIdForApproval: string | null = body.agency_id ?? null
+    // Approval gate: operator_payments sin operation_id no tienen agency_id directo.
+    // Aceptamos agency_id explícito en el body, y si no viene, fallback a la primera
+    // agencia del usuario (user_agencies). Antes este fallback no existía y el
+    // dialog no mandaba agency_id → needsApproval siempre false → bypass del gate.
+    let agencyIdForApproval: string | null = body.agency_id ?? null
+    if (!agencyIdForApproval) {
+      const { data: userAgencies } = await (supabase.from("user_agencies") as any)
+        .select("agency_id")
+        .eq("user_id", user.id)
+        .limit(1)
+      agencyIdForApproval = (userAgencies as any)?.[0]?.agency_id ?? null
+    }
     let needsApproval = false
     if (agencyIdForApproval) {
       try {
