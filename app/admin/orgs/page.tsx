@@ -41,6 +41,22 @@ export default async function AdminOrgsPage({
 
   const admin = createAdminClient()
 
+  // Pre-search: orgs creadas con el wizard nuevo guardan contacto en
+  // organization_settings (no en organizations.contact_name/phone que están
+  // deprecated). Si hay query de texto, buscamos org_ids que matchean por
+  // settings y los sumamos al OR de búsqueda principal.
+  let settingsMatchedIds: string[] = []
+  if (q && !/^[0-9a-f-]{36}$/i.test(q)) {
+    const { data: matchingSettings } = await admin
+      .from("organization_settings")
+      .select("org_id")
+      .in("key", ["company_name", "phone", "company_phone", "email", "company_email"])
+      .ilike("value", `%${q}%`)
+    settingsMatchedIds = Array.from(
+      new Set(((matchingSettings ?? []) as any[]).map((s) => s.org_id)),
+    )
+  }
+
   // Base query desde la VIEW (incluye profile_completion)
   let query: any = admin
     .from("organizations_with_profile_completion")
@@ -57,16 +73,18 @@ export default async function AdminOrgsPage({
       query = query.eq("id", q)
     } else {
       const ilike = `%${q}%`
-      query = query.or(
-        [
-          `name.ilike.${ilike}`,
-          `slug.ilike.${ilike}`,
-          `cuit.ilike.${ilike}`,
-          `billing_email.ilike.${ilike}`,
-          `contact_name.ilike.${ilike}`,
-          `contact_phone.ilike.${ilike}`,
-        ].join(","),
-      )
+      const orParts = [
+        `name.ilike.${ilike}`,
+        `slug.ilike.${ilike}`,
+        `cuit.ilike.${ilike}`,
+        `billing_email.ilike.${ilike}`,
+        `contact_name.ilike.${ilike}`,
+        `contact_phone.ilike.${ilike}`,
+      ]
+      if (settingsMatchedIds.length > 0) {
+        orParts.push(`id.in.(${settingsMatchedIds.join(",")})`)
+      }
+      query = query.or(orParts.join(","))
     }
   }
 
@@ -96,6 +114,31 @@ export default async function AdminOrgsPage({
   query = query.range(from, to)
 
   const { data: orgs, count, error } = await query
+
+  // Hydrate contacto desde organization_settings: las orgs creadas con el wizard
+  // nuevo no escriben contact_name/phone en organizations (deprecated). Sin esto
+  // la columna "Contacto" sale vacía para tenants nuevos.
+  const orgIds = ((orgs ?? []) as any[]).map((o: any) => o.id)
+  const settingsByOrg = new Map<string, Record<string, string>>()
+  if (orgIds.length > 0) {
+    const { data: settingsRows } = await admin
+      .from("organization_settings")
+      .select("org_id, key, value")
+      .in("org_id", orgIds)
+      .in("key", ["company_name", "phone", "company_phone"])
+    for (const s of (settingsRows ?? []) as any[]) {
+      if (!settingsByOrg.has(s.org_id)) settingsByOrg.set(s.org_id, {})
+      settingsByOrg.get(s.org_id)![s.key] = s.value
+    }
+  }
+  const hydratedOrgs = ((orgs ?? []) as any[]).map((o: any) => {
+    const settings = settingsByOrg.get(o.id) ?? {}
+    return {
+      ...o,
+      contact_name: settings.company_name ?? o.contact_name,
+      contact_phone: settings.phone ?? settings.company_phone ?? o.contact_phone,
+    }
+  })
 
   const totalPages = Math.max(1, Math.ceil((count ?? 0) / ORGS_PAGE_SIZE))
 
@@ -153,7 +196,7 @@ export default async function AdminOrgsPage({
       )}
 
       <OrgsTable
-        orgs={(orgs ?? []) as any}
+        orgs={hydratedOrgs as any}
         sort={sortCol}
         dir={dir}
         buildSortHref={buildSortHref}
