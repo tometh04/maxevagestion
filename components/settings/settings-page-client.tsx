@@ -122,7 +122,18 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
       <TabsContent value="agencies" className="mt-6">
         <div className="space-y-6">
           <AgenciesSettings />
-          {firstAgencyId && <AgencyApprovalRulesForm agencyId={firstAgencyId} />}
+          {agencies.length > 0 && (
+            <div className="space-y-6">
+              {agencies.map((agency) => (
+                <div key={agency.id} className="space-y-2">
+                  <h3 className="text-sm font-medium text-foreground/80">
+                    Reglas de aprobación · {agency.name}
+                  </h3>
+                  <AgencyApprovalRulesForm agencyId={agency.id} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </TabsContent>
       {/* Hidden tab contents - kept for future use */}
