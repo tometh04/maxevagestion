@@ -192,6 +192,15 @@ function createEmptyOption(number: number, items?: QuotationItem[]): QuotationOp
   }
 }
 
+const PAYMENT_METHODS: Array<{ value: string; label: string }> = [
+  { value: "EFECTIVO_USD", label: "Efectivo USD" },
+  { value: "EFECTIVO_ARS", label: "Efectivo ARS" },
+  { value: "TRANSFERENCIA", label: "Transferencia" },
+  { value: "TARJETA", label: "Tarjeta" },
+  { value: "MP", label: "MercadoPago" },
+  { value: "CREDITO", label: "Crédito en cuotas" },
+]
+
 function createNewQuotationDraft(lead: QuotationBuilderProps["lead"]) {
   return {
     quotationTitle: lead.contact_name,
@@ -206,6 +215,7 @@ function createNewQuotationDraft(lead: QuotationBuilderProps["lead"]) {
     currency: "USD",
     pricingMode: "PER_PERSON" as QuotationPricingMode,
     notes: "",
+    paymentMethods: [] as string[],
     options: [createEmptyOption(1)],
   }
 }
@@ -287,6 +297,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
   const [currency, setCurrency] = useState("USD")
   const [pricingMode, setPricingMode] = useState<QuotationPricingMode>("PER_PERSON")
   const [notes, setNotes] = useState("")
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([])
 
   // Options
   const [options, setOptions] = useState<QuotationOption[]>(initialDraft.options)
@@ -336,6 +347,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     setCurrency(draft.currency)
     setPricingMode(draft.pricingMode)
     setNotes(draft.notes)
+    setPaymentMethods(draft.paymentMethods)
     setOptions(draft.options)
   }, [])
 
@@ -374,6 +386,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         setCurrency(data.currency || "USD")
         setPricingMode(normalizeQuotationPricingMode(data.pricing_mode))
         setNotes(data.notes || "")
+        setPaymentMethods(Array.isArray(data.payment_methods) ? data.payment_methods : [])
         // Reconstruct options from quotation_options + quotation_items
         const opts = (data.quotation_options || [])
           .sort((a: any, b: any) => a.option_number - b.option_number)
@@ -957,6 +970,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
         currency,
         pricing_mode: normalizeQuotationPricingMode(pricingMode),
         notes: notes || null,
+        payment_methods: paymentMethods,
         options: finalOptions.map((opt) => ({
           title: opt.title,
           total_amount: opt.total_amount,
@@ -1899,6 +1913,44 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 placeholder="Notas internas sobre esta cotizacion..."
                 rows={2}
               />
+            </div>
+          </div>
+
+          {/* Payment methods (mostradas al cliente en el presupuesto público) */}
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Formas de pago aceptadas</h4>
+              <span className="text-[10px] text-muted-foreground">(visible al cliente)</span>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {PAYMENT_METHODS.map((pm) => {
+                const checked = paymentMethods.includes(pm.value)
+                return (
+                  <label
+                    key={pm.value}
+                    className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer text-sm transition ${
+                      checked ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/30" : "border-border/40 hover:bg-muted/40"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setPaymentMethods((prev) => [...prev, pm.value])
+                        } else {
+                          setPaymentMethods((prev) => prev.filter((v) => v !== pm.value))
+                        }
+                      }}
+                      className="h-4 w-4 accent-emerald-500"
+                    />
+                    {pm.label}
+                  </label>
+                )
+              })}
             </div>
           </div>
         </div>

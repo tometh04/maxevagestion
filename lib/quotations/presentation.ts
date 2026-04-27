@@ -59,6 +59,7 @@ export interface QuotationPresentationData {
   status: string
   notes?: string | null
   terms_and_conditions?: string | null
+  payment_methods?: string[] | null
   created_at: string
   seller_name: string
   agency_name: string
@@ -296,6 +297,7 @@ export function normalizeQuotationForPresentation(quotation: any): QuotationPres
     status: quotation.status || "DRAFT",
     notes: quotation.notes || null,
     terms_and_conditions: quotation.terms_and_conditions || null,
+    payment_methods: Array.isArray(quotation.payment_methods) ? quotation.payment_methods : null,
     created_at: quotation.created_at || new Date().toISOString(),
     seller_name: quotation.seller_name || quotation.seller?.name || "",
     agency_name: quotation.agency_name || quotation.agency?.name || "",

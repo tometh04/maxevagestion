@@ -35,6 +35,19 @@ import {
   type QuotationPresentationItem,
 } from "@/lib/quotations/presentation"
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  EFECTIVO_USD: "Efectivo USD",
+  EFECTIVO_ARS: "Efectivo ARS",
+  TRANSFERENCIA: "Transferencia",
+  TARJETA: "Tarjeta",
+  MP: "MercadoPago",
+  CREDITO: "Crédito en cuotas",
+}
+
+function paymentMethodLabel(value: string): string {
+  return PAYMENT_METHOD_LABELS[value] || value
+}
+
 export type PublicQuotationViewMode = "interactive" | "print"
 
 export interface PublicQuotationBranding {
@@ -675,6 +688,24 @@ export function PublicQuotationDocument({
                 {QUOTATION_AVAILABILITY_NOTE}
               </p>
             </div>
+
+            {(data.payment_methods || []).length > 0 && (
+              <div className="mt-4 max-w-lg mx-auto">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground text-center mb-2">
+                  Formas de pago aceptadas
+                </p>
+                <div className="flex flex-wrap justify-center gap-1.5">
+                  {(data.payment_methods || []).map((pm) => (
+                    <span
+                      key={pm}
+                      className="inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-medium text-emerald-700"
+                    >
+                      {paymentMethodLabel(pm)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {data.terms_and_conditions && (
               <div className="mt-4 max-w-lg mx-auto">

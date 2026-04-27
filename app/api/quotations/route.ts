@@ -109,6 +109,7 @@ export async function POST(request: Request) {
       pricing_mode,
       notes,
       terms_and_conditions,
+      payment_methods,
       options, // Array de opciones: [{ title, total_amount, manual_total_amount?, items: [...] }]
     } = body
 
@@ -169,6 +170,7 @@ export async function POST(request: Request) {
         status: "DRAFT",
         notes: notes || null,
         terms_and_conditions: terms_and_conditions || null,
+        payment_methods: Array.isArray(payment_methods) ? payment_methods : [],
         created_by: user.id,
       })
       .select()
