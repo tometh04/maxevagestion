@@ -51,6 +51,9 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [],
     params.set("dateFrom", filters.dateFrom)
     params.set("dateTo", filters.dateTo)
     params.set("currency", filters.currency)
+    if (filters.dateType) {
+      params.set("dateType", filters.dateType)
+    }
 
     if (filters.agencyId !== "ALL") {
       params.set("agencyId", filters.agencyId)
