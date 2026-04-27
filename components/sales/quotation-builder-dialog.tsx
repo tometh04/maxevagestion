@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { SearchableCombobox, type ComboboxOption } from "@/components/ui/searchable-combobox"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X } from "lucide-react"
+import { Plus, Trash2, Loader2, Plane, Hotel, Bus, Shield, MapPin, Copy, Send, Globe, ListChecks, StickyNote, DollarSign, Eye, Upload, Image, X, AlertTriangle } from "lucide-react"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 import {
@@ -1315,12 +1315,16 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 {/* Items */}
                 {option.items.map((item, itemIndex) => {
                   const itemMargin = (item.unit_price || 0) - (item.cost_amount || 0)
+                  const itemMarginPct = (item.unit_price || 0) > 0
+                    ? (itemMargin / (item.unit_price || 1)) * 100
+                    : 0
+                  const isNegativeMargin = itemMargin < 0 && (item.cost_amount || 0) > 0
                   const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
                   const TypeIcon = typeConfig?.icon || MapPin
                   const isLinkedFlightReadonly = optIndex > 0 && item.item_type === "FLIGHT"
 
                   return (
-                    <div key={item.id} className="border rounded-lg p-3 space-y-3 bg-muted/30">
+                    <div key={item.id} className={`border rounded-lg p-3 space-y-3 ${isNegativeMargin ? "border-red-400 bg-red-50/60 dark:bg-red-950/20" : "bg-muted/30"}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <TypeIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1458,11 +1462,17 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                         </div>
                         <div className="flex items-end pb-1.5">
                           {item.unit_price > 0 && (
-                            <div className="rounded-md bg-muted/50 px-2 py-1 text-xs">
-                              <span className="text-muted-foreground">Margen: </span>
-                              <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-500"}`}>
+                            <div className={`rounded-md px-2 py-1 text-xs flex items-center gap-1.5 ${isNegativeMargin ? "bg-red-100 dark:bg-red-900/40 ring-1 ring-red-400" : "bg-muted/50"}`}>
+                              {isNegativeMargin && <AlertTriangle className="h-3 w-3 text-red-600" />}
+                              <span className="text-muted-foreground">Margen:</span>
+                              <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
                                 {currency} {itemMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                               </span>
+                              {(item.cost_amount || 0) > 0 && (
+                                <span className={`font-mono font-semibold ${itemMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                                  ({itemMarginPct.toFixed(1)}%)
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1889,11 +1899,18 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                     <p className="text-sm font-mono font-semibold">{currency} {globalTotals.totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                   </div>
                 )}
-                {globalTotals.totalCost > 0 && (
-                  <Badge variant="secondary" className={`text-xs font-mono ${globalTotals.totalMargin >= 0 ? "bg-green-500/10 text-green-700" : "bg-red-500/10 text-red-600"}`}>
-                    Margen: {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-                  </Badge>
-                )}
+                {globalTotals.totalCost > 0 && (() => {
+                  const totalMarginPct = globalTotals.totalClient > 0
+                    ? (globalTotals.totalMargin / globalTotals.totalClient) * 100
+                    : 0
+                  const isNegative = globalTotals.totalMargin < 0
+                  return (
+                    <Badge variant="secondary" className={`text-xs font-mono flex items-center gap-1 ${isNegative ? "bg-red-500/15 text-red-700 ring-1 ring-red-400" : "bg-green-500/10 text-green-700"}`}>
+                      {isNegative && <AlertTriangle className="h-3 w-3" />}
+                      Margen: {currency} {globalTotals.totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })} ({totalMarginPct.toFixed(1)}%)
+                    </Badge>
+                  )
+                })()}
               </div>
             </div>
           )}

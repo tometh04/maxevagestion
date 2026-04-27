@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { normalizeQuotationForPresentation } from "@/lib/quotations/presentation"
 
 export const dynamic = "force-dynamic"
@@ -89,7 +89,7 @@ export async function POST(
     // Buscar cotización por token
     const { data: quotation } = await (supabase
       .from("quotations") as any)
-      .select("id, status, valid_until")
+      .select("id, status, valid_until, seller_id, lead_id, destination, quotation_number, org_id")
       .eq("public_token", token)
       .single()
 
@@ -133,6 +133,25 @@ export async function POST(
         approved_at: new Date().toISOString(),
       })
       .eq("id", quotation.id)
+
+    // Crear alerta para el seller — usa admin client porque el endpoint es público
+    // (sin auth) y RLS bloquearía el insert. Fire-and-forget.
+    if (quotation.seller_id) {
+      try {
+        const admin = createAdminClient() as any
+        const description = `Cliente aceptó cotización ${quotation.quotation_number || ""} ${quotation.destination ? `a ${quotation.destination}` : ""}`.trim()
+        await admin.from("alerts").insert({
+          user_id: quotation.seller_id,
+          org_id: quotation.org_id,
+          type: "QUOTATION_ACCEPTED",
+          description,
+          date_due: new Date().toISOString().split("T")[0],
+          status: "PENDING",
+        })
+      } catch (alertErr: any) {
+        console.warn("[public/quotations] Alert insert failed:", alertErr?.message)
+      }
+    }
 
     return NextResponse.json({ success: true, message: "Cotización aceptada" })
   } catch (error: any) {
