@@ -42,7 +42,7 @@ export default async function CRMManychatPage() {
   // Get operators for conversion dialog
   const { data: operators } = await supabase
     .from("operators")
-    .select("id, name")
+    .select("id, name, admin_fee_percentage")
     .order("name")
 
   // IMPORTANTE: Cargar leads de Manychat (nuevos) + Trello con list_name (migración visual)

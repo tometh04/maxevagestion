@@ -57,7 +57,7 @@ interface LeadsPageClientProps {
   initialLeads: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
-  operators: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   defaultAgencyId?: string
   defaultSellerId?: string
   hasTrelloLeads?: boolean

@@ -187,7 +187,7 @@ interface LeadDetailDialogProps {
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
-  operators?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
   onArchive?: () => void

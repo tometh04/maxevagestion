@@ -144,7 +144,7 @@ export async function POST(request: Request) {
 
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit } = body
+    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage } = body
 
     // Validations
     if (!name) {
@@ -165,6 +165,7 @@ export async function POST(request: Request) {
         contact_email: contact_email || null,
         contact_phone: contact_phone || null,
         credit_limit: credit_limit || null,
+        admin_fee_percentage: typeof admin_fee_percentage === "number" ? admin_fee_percentage : 0,
       })
       .select()
       .single()

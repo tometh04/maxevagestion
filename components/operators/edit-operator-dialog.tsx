@@ -32,6 +32,7 @@ const operatorSchema = z.object({
   contact_email: z.string().email("Email inválido").optional().or(z.literal("")),
   contact_phone: z.string().optional(),
   credit_limit: z.coerce.number().min(0).optional(),
+  admin_fee_percentage: z.coerce.number().min(0).max(100).optional(),
 })
 
 type OperatorFormValues = z.infer<typeof operatorSchema>
@@ -43,6 +44,7 @@ interface Operator {
   contact_email?: string | null
   contact_phone?: string | null
   credit_limit?: number | null
+  admin_fee_percentage?: number | null
 }
 
 interface EditOperatorDialogProps {
@@ -68,6 +70,7 @@ export function EditOperatorDialog({
       contact_email: operator.contact_email || "",
       contact_phone: operator.contact_phone || "",
       credit_limit: operator.credit_limit || 0,
+      admin_fee_percentage: operator.admin_fee_percentage ?? 0,
     },
   })
 
@@ -80,6 +83,7 @@ export function EditOperatorDialog({
         contact_email: operator.contact_email || "",
         contact_phone: operator.contact_phone || "",
         credit_limit: operator.credit_limit || 0,
+        admin_fee_percentage: operator.admin_fee_percentage ?? 0,
       })
     }
   }, [operator, form])
@@ -96,6 +100,7 @@ export function EditOperatorDialog({
           contact_email: values.contact_email || null,
           contact_phone: values.contact_phone || null,
           credit_limit: values.credit_limit || null,
+          admin_fee_percentage: typeof values.admin_fee_percentage === "number" ? values.admin_fee_percentage : 0,
         }),
       })
 
@@ -213,6 +218,23 @@ export function EditOperatorDialog({
                     </FormControl>
                     <FormDescription>
                       Monto máximo de crédito permitido con este operador
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="admin_fee_percentage"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>% Gastos administrativos default</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.5" min="0" max="100" placeholder="0" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Markup que se aplica al costo del operador en cada cotización. Editable por item.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

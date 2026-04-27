@@ -39,7 +39,7 @@ interface QuotationBuilderProps {
     region?: string | null
     agency_id?: string | null
   }
-  operators?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   onSuccess?: (quotation: any) => void
   /** If set, loads and edits an existing quotation instead of creating new */
   existingQuotationId?: string | null
@@ -59,6 +59,7 @@ interface QuotationItem {
   quantity: number
   cost_amount: number
   cost_currency: string
+  admin_fee_percentage: number
   operator_id: string | null
   generates_commission: boolean
   // Hotel
@@ -141,6 +142,7 @@ function createEmptyItem(type: string = "FLIGHT"): QuotationItem {
     quantity: 1,
     cost_amount: 0,
     cost_currency: "USD",
+    admin_fee_percentage: 0,
     operator_id: null,
     generates_commission: COMMISSION_TYPES.has(type),
     stopovers: [],
@@ -388,6 +390,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 quantity: item.quantity || 1,
                 cost_amount: item.cost_amount || 0,
                 cost_currency: item.cost_currency || "USD",
+                admin_fee_percentage: Number(item.admin_fee_percentage) || 0,
                 operator_id: item.operator_id || null,
                 generates_commission: item.generates_commission || false,
                 destination_city: item.destination_city || undefined,
@@ -724,6 +727,16 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                 if (field === "item_type") {
                   updated.generates_commission = COMMISSION_TYPES.has(value)
                 }
+                // Auto-fill admin_fee_percentage cuando se selecciona operador,
+                // solo si el item todavía no tiene un override (el seller puede
+                // pisarlo después manualmente sin que se reescriba).
+                if (field === "operator_id" && value) {
+                  const op = operators.find((o) => o.id === value)
+                  const opFee = Number(op?.admin_fee_percentage) || 0
+                  if (opFee > 0 && (!i.admin_fee_percentage || i.admin_fee_percentage === 0)) {
+                    updated.admin_fee_percentage = opFee
+                  }
+                }
                 // Auto-fill hotel data when hotel is selected from search
                 if (field === "hotel_name" && value) {
                   const cacheKey = buildHotelCacheKey(value, updated.destination_city || destination)
@@ -791,8 +804,10 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
     for (const item of allItems) {
       const t = item.item_type
       if (!byType[t]) byType[t] = { sale: 0, cost: 0, count: 0 }
+      const adminFeePct = Number(item.admin_fee_percentage) || 0
+      const itemTotalCost = (item.cost_amount || 0) * (1 + adminFeePct / 100)
       byType[t].sale += (item.unit_price || 0) * (item.quantity || 1)
-      byType[t].cost += (item.cost_amount || 0) * (item.quantity || 1)
+      byType[t].cost += itemTotalCost * (item.quantity || 1)
       byType[t].count++
     }
     const totalSale = Object.values(byType).reduce((s, v) => s + v.sale, 0)
@@ -956,6 +971,7 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
             quantity: item.quantity,
             cost_amount: item.cost_amount || 0,
             cost_currency: item.cost_currency || currency,
+            admin_fee_percentage: Number(item.admin_fee_percentage) || 0,
             operator_id: item.operator_id || null,
             generates_commission: item.generates_commission || false,
             provider: item.provider || null,
@@ -1314,11 +1330,13 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
               <div className="space-y-3">
                 {/* Items */}
                 {option.items.map((item, itemIndex) => {
-                  const itemMargin = (item.unit_price || 0) - (item.cost_amount || 0)
+                  const adminFeePct = Number(item.admin_fee_percentage) || 0
+                  const totalCost = (item.cost_amount || 0) * (1 + adminFeePct / 100)
+                  const itemMargin = (item.unit_price || 0) - totalCost
                   const itemMarginPct = (item.unit_price || 0) > 0
                     ? (itemMargin / (item.unit_price || 1)) * 100
                     : 0
-                  const isNegativeMargin = itemMargin < 0 && (item.cost_amount || 0) > 0
+                  const isNegativeMargin = itemMargin < 0 && totalCost > 0
                   const typeConfig = ITEM_TYPES.find(t => t.value === item.item_type)
                   const TypeIcon = typeConfig?.icon || MapPin
                   const isLinkedFlightReadonly = optIndex > 0 && item.item_type === "FLIGHT"
@@ -1444,6 +1462,26 @@ export function QuotationBuilderDialog({ open, onOpenChange, lead, operators = [
                               placeholder="0.00"
                               className="text-sm font-mono pl-7"
                             />
+                          </div>
+                          <div className="flex items-center gap-1 pt-0.5">
+                            <span className="text-[10px] text-muted-foreground">+ admin</span>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              step={0.5}
+                              value={item.admin_fee_percentage || ""}
+                              disabled={isLinkedFlightReadonly}
+                              onChange={(e) => updateItem(option.id, item.id, "admin_fee_percentage", Number(e.target.value))}
+                              placeholder="0"
+                              className="h-6 text-[11px] font-mono w-16 px-1.5"
+                            />
+                            <span className="text-[10px] text-muted-foreground">%</span>
+                            {adminFeePct > 0 && (
+                              <span className="text-[10px] font-mono text-orange-600 ml-auto">
+                                = {currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="space-y-1">
