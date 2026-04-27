@@ -117,6 +117,8 @@ export async function GET(request: Request) {
         contact_email: op.contact_email,
         contact_phone: op.contact_phone,
         credit_limit: op.credit_limit,
+        admin_fee_percentage: op.admin_fee_percentage ?? 0,
+        cuit: op.cuit ?? null,
         operationsCount,
         totalCostByCurrency,
         paidAmountByCurrency,
