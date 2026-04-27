@@ -63,3 +63,87 @@ describe("classifyByFilename", () => {
     })
   })
 })
+
+// Mock OpenAI before import
+const mockCreate = jest.fn()
+
+jest.mock("openai", () => {
+  return {
+    __esModule: true,
+    default: jest.fn().mockImplementation(() => ({
+      chat: { completions: { create: mockCreate } },
+    })),
+  }
+})
+
+import { classifyByLLM, classifyPdf } from "../classify-quotation"
+
+describe("classifyByLLM", () => {
+  beforeEach(() => mockCreate.mockReset())
+
+  it("returns is_quotation=true when LLM responds with quotation + high confidence", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ is_quotation: true, confidence: 0.92 }) } }],
+    })
+    const result = await classifyByLLM("propuesta viaje.pdf", "test-api-key")
+    expect(result.is_quotation).toBe(true)
+    expect(result.source).toBe("llm")
+    expect(result.confidence).toBe(0.92)
+  })
+
+  it("returns is_quotation=false when LLM responds with confidence < 0.7", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ is_quotation: true, confidence: 0.5 }) } }],
+    })
+    const result = await classifyByLLM("documento.pdf", "test-api-key")
+    expect(result.is_quotation).toBe(false)
+    expect(result.source).toBe("llm_low_confidence")
+  })
+
+  it("returns is_quotation=false on malformed LLM response", async () => {
+    mockCreate.mockResolvedValueOnce({ choices: [{ message: { content: "not json" } }] })
+    const result = await classifyByLLM("documento.pdf", "test-api-key")
+    expect(result.is_quotation).toBe(false)
+    expect(result.source).toBe("llm_low_confidence")
+  })
+
+  it("propagates LLM API errors", async () => {
+    mockCreate.mockRejectedValueOnce(new Error("rate limit"))
+    await expect(classifyByLLM("doc.pdf", "test-api-key")).rejects.toThrow("rate limit")
+  })
+})
+
+describe("classifyPdf (orchestrator)", () => {
+  beforeEach(() => mockCreate.mockReset())
+
+  it("returns heuristic positive without calling LLM", async () => {
+    const result = await classifyPdf("Cotizacion_Maragogi.pdf", "test-key")
+    expect(result.is_quotation).toBe(true)
+    expect(result.source).toBe("heuristic_positive")
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("returns heuristic negative without calling LLM", async () => {
+    const result = await classifyPdf("factura_001.pdf", "test-key")
+    expect(result.is_quotation).toBe(false)
+    expect(result.source).toBe("heuristic_negative")
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+
+  it("falls back to LLM for ambiguous filename", async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: JSON.stringify({ is_quotation: true, confidence: 0.85 }) } }],
+    })
+    const result = await classifyPdf("documento.pdf", "test-key")
+    expect(result.is_quotation).toBe(true)
+    expect(result.source).toBe("llm")
+    expect(mockCreate).toHaveBeenCalledTimes(1)
+  })
+
+  it("returns false (without calling LLM) when filename is null", async () => {
+    const result = await classifyPdf(null, "test-key")
+    expect(result.is_quotation).toBe(false)
+    expect(result.source).toBe("llm_low_confidence")
+    expect(mockCreate).not.toHaveBeenCalled()
+  })
+})
