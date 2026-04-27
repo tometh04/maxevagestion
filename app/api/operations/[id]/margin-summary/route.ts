@@ -45,22 +45,42 @@ export async function GET(
       return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
     }
 
-    // Fetch invoices asociadas
+    // Fetch invoices asociadas (incluyendo customer_id para agrupar)
     const { data: invoices } = await (supabase.from("invoices") as any)
-      .select("id, cbte_nro, pto_vta, cbte_tipo, imp_total, fecha_emision, status, verification_status, cae")
+      .select("id, cbte_nro, pto_vta, cbte_tipo, imp_total, fecha_emision, status, verification_status, cae, customer_id")
       .eq("operation_id", id)
       .order("fecha_emision", { ascending: false })
 
     const invoicesList = (invoices ?? []) as any[]
 
-    // Fetch customer (MAIN) via M:N operation_customers
+    // Fetch ALL customers via M:N operation_customers (ordenados MAIN primero)
     let customer: { id: string; name: string } | null = null
     let resolvedCustomerId: string | null = null
+    const customersBreakdown: Array<{
+      id: string
+      name: string
+      role: "MAIN" | "COMPANION"
+      invoiced: number
+    }> = []
 
     const { data: opCustomers } = await (supabase.from("operation_customers") as any)
       .select("customer_id, role, customers(id, first_name, last_name)")
       .eq("operation_id", id)
       .order("role", { ascending: true }) // MAIN < COMPANION alfabéticamente
+
+    for (const oc of (opCustomers ?? []) as any[]) {
+      if (!oc.customers) continue
+      const cid = oc.customer_id as string
+      const invoicedToCustomer = invoicesList
+        .filter((inv) => inv.customer_id === cid && inv.status === "authorized")
+        .reduce((sum, inv) => sum + Number(inv.imp_total || 0), 0)
+      customersBreakdown.push({
+        id: oc.customers.id,
+        name: `${oc.customers.first_name || ""} ${oc.customers.last_name || ""}`.trim(),
+        role: oc.role,
+        invoiced: invoicedToCustomer,
+      })
+    }
 
     const mainOrFirst = (opCustomers ?? []).find((oc: any) => oc.role === "MAIN")
       ?? (opCustomers ?? [])[0]
@@ -92,6 +112,7 @@ export async function GET(
         operator_cost: Number(operation.operator_cost),
         margin_amount: Number(operation.margin_amount),
         customer,
+        customers: customersBreakdown,
         has_afip_emisor: hasAfipConfig,
       },
       summary,

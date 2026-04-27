@@ -2,11 +2,18 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Receipt, ExternalLink, CheckCircle2, AlertCircle } from "lucide-react"
+import { Loader2, Receipt, ExternalLink, CheckCircle2, AlertCircle, Users } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+interface CustomerBreakdown {
+  id: string
+  name: string
+  role: "MAIN" | "COMPANION"
+  invoiced: number
+}
 
 interface MarginSummaryResponse {
   operation: {
@@ -15,6 +22,7 @@ interface MarginSummaryResponse {
     destination: string
     margin_amount: number
     customer: { id: string; name: string } | null
+    customers?: CustomerBreakdown[]
     has_afip_emisor: boolean
   }
   summary: {
@@ -150,7 +158,45 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
           <Progress value={pct} className="h-2" />
         )}
 
-        {/* Action button */}
+        {/* Per-customer breakdown when there are multiple passengers — facturación múltiple */}
+        {(data.operation.customers?.length || 0) > 1 && (
+          <div className="border rounded-md p-3 space-y-2 bg-muted/20">
+            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <Users className="h-3 w-3" />
+              Pasajeros
+            </div>
+            {data.operation.customers?.map((c) => (
+              <div key={c.id} className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span>{c.name || "—"}</span>
+                  {c.role === "MAIN" && (
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5">titular</Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    Facturado: <span className="font-mono text-foreground">{fmtARS(c.invoiced)}</span>
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7"
+                    disabled={!summary.can_invoice}
+                    onClick={() =>
+                      router.push(
+                        `/operations/billing/new?operationId=${operationId}&customerId=${c.id}`,
+                      )
+                    }
+                  >
+                    Facturar
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Action button — siempre visible para 1 cliente o como fallback */}
         <div>
           <Button
             onClick={() => router.push(`/operations/billing/new?operationId=${operationId}`)}
@@ -158,7 +204,7 @@ export function OperationFacturacionSection({ operationId }: { operationId: stri
             className="w-full sm:w-auto"
           >
             <Receipt className="h-4 w-4 mr-2" />
-            Facturar ganancia
+            {(data.operation.customers?.length || 0) > 1 ? "Facturar (elegir cliente)" : "Facturar ganancia"}
           </Button>
           {disabledReasonText && (
             <p className="text-xs text-muted-foreground mt-2">{disabledReasonText}</p>

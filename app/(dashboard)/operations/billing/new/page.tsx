@@ -132,6 +132,7 @@ export default function NewInvoicePage() {
   const [afipFailureAlert, setAfipFailureAlert] = useState<{ message: string; pendingRedirect: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const preselectedOperationId = urlSearchParams.get('operationId') || null
+  const preselectedCustomerId = urlSearchParams.get('customerId') || null
   
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -635,7 +636,13 @@ export default function NewInvoicePage() {
         return
       }
 
+      // Si vino ?customerId=X en la URL, priorizamos ese (facturación múltiple
+      // por operación: el seller eligió a qué pasajero facturar).
+      const requestedCustomer = preselectedCustomerId
+        ? opData.customers?.find((oc) => oc.customer_id === preselectedCustomerId)
+        : null
       const mainOperationCustomer =
+        requestedCustomer ||
         opData.customers?.find(operationCustomer => operationCustomer.role === 'MAIN') ||
         opData.customers?.[0]
 
