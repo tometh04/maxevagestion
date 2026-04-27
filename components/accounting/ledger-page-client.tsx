@@ -28,9 +28,10 @@ import {
 
 interface LedgerPageClientProps {
   agencies: Array<{ id: string; name: string }>
+  userRole?: string
 }
 
-export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
+export function LedgerPageClient({ agencies, userRole }: LedgerPageClientProps) {
   const [filters, setFilters] = useState<{
     dateFrom?: string
     dateTo?: string
@@ -72,7 +73,7 @@ export function LedgerPageClient({ agencies }: LedgerPageClientProps) {
           <p className="text-xs text-muted-foreground mt-0.5">Lista completa de movimientos del ledger</p>
         </div>
         <div className="px-5 pb-5">
-          <LedgerTable filters={filters} />
+          <LedgerTable filters={filters} userRole={userRole} />
         </div>
       </div>
     </div>

@@ -134,7 +134,7 @@ export default async function ContabilidadPage() {
         <MonthlyPositionPageClient agencies={agencies} userRole={user.role || "SELLER"} />
       }
       ledgerContent={
-        <LedgerPageClient agencies={agencies} />
+        <LedgerPageClient agencies={agencies} userRole={user.role} />
       }
       debtsSalesContent={
         <DebtsSalesPageClient sellers={(sellers || []).map((s: any) => ({ id: s.id, name: s.name }))} />

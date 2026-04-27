@@ -43,5 +43,5 @@ export default async function CashMovementsPage() {
     currency: "ALL",
   }
 
-  return <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+  return <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} userRole={user.role} />
 }

@@ -16,6 +16,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ServerPagination } from "@/components/ui/server-pagination"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import Link from "next/link"
+import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { Undo2 } from "lucide-react"
 
 interface MovementOperation {
   id: string
@@ -40,6 +42,9 @@ export interface CashMovement {
   movement_date: string
   notes: string | null
   affects_balance?: boolean
+  reversed_at?: string | null
+  reverses_movement_id?: string | null
+  reversed_by_movement_id?: string | null
   operations?: MovementOperation | null
   users?: MovementUser | null
 }
@@ -48,6 +53,7 @@ interface MovementsTableProps {
   movements?: CashMovement[] // Opcional: si no se pasa, carga sus propios datos con paginación
   isLoading?: boolean
   emptyMessage?: string
+  userRole?: string
   // Filtros para paginación server-side
   dateFrom?: string
   dateTo?: string
@@ -62,6 +68,7 @@ export function MovementsTable({
   movements: initialMovements,
   isLoading: externalLoading = false,
   emptyMessage,
+  userRole,
   dateFrom,
   dateTo,
   dateType,
@@ -70,6 +77,7 @@ export function MovementsTable({
   type,
   customerQuery,
 }: MovementsTableProps) {
+  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
   const [movements, setMovements] = useState<CashMovement[]>(initialMovements || [])
   const [loading, setLoading] = useState(!initialMovements)
 
@@ -156,20 +164,21 @@ export function MovementsTable({
               Usuario
             </SortableTableHead>
             <TableHead>Notas</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {isLoading ? (
             Array.from({ length: 5 }).map((_, index) => (
               <TableRow key={`skeleton-${index}`}>
-                <TableCell colSpan={7}>
+                <TableCell colSpan={8}>
                   <Skeleton className="h-6 w-full" />
                 </TableCell>
               </TableRow>
             ))
           ) : sortedData.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="text-center text-muted-foreground">
+              <TableCell colSpan={8} className="text-center text-muted-foreground">
                 {emptyMessage || "No hay movimientos"}
               </TableCell>
             </TableRow>
@@ -214,11 +223,27 @@ export function MovementsTable({
                     )}
                   </div>
                 </TableCell>
-                <TableCell className={`text-right ${movement.type === "INCOME" ? "text-success" : "text-destructive"}`}>
+                <TableCell className={`text-right ${movement.type === "INCOME" ? "text-success" : "text-destructive"} ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
                   {movement.currency} {movement.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                 </TableCell>
                 <TableCell>{movement.users?.name || "-"}</TableCell>
                 <TableCell>{movement.notes || "-"}</TableCell>
+                <TableCell className="text-right">
+                  {movement.reversed_at ? (
+                    <Badge variant="secondary">REVERSADO</Badge>
+                  ) : movement.reverses_movement_id ? (
+                    <Badge variant="outline" className="border-blue-300 text-blue-700">
+                      <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
+                    </Badge>
+                  ) : (
+                    <CashMovementReverseButton
+                      movementId={movement.id}
+                      endpoint="cash-movements"
+                      movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                      disabled={!canReverse}
+                    />
+                  )}
+                </TableCell>
               </TableRow>
             ))
           )}

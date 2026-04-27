@@ -271,6 +271,7 @@ export async function GET(request: Request) {
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
         ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
         operations:operation_id (

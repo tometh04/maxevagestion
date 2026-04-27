@@ -15,6 +15,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { Undo2 } from "lucide-react"
 
 function formatCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
@@ -36,6 +38,9 @@ interface LedgerMovement {
   receipt_number: string | null
   notes: string | null
   created_at: string
+  reversed_at?: string | null
+  reverses_movement_id?: string | null
+  reversed_by_movement_id?: string | null
   financial_accounts?: { name: string; type: string } | null
   sellers?: { name: string } | null
   operators?: { name: string } | null
@@ -52,6 +57,7 @@ interface LedgerTableProps {
     type?: string
     currency?: string
   }
+  userRole?: string
 }
 
 const typeLabels: Record<string, string> = {
@@ -72,9 +78,10 @@ const typeColors: Record<string, string> = {
   OPERATOR_PAYMENT: "bg-purple-500",
 }
 
-export function LedgerTable({ filters }: LedgerTableProps) {
+export function LedgerTable({ filters, userRole }: LedgerTableProps) {
   const [movements, setMovements] = useState<LedgerMovement[]>([])
   const [loading, setLoading] = useState(true)
+  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
 
   const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
     key: "created_at",
@@ -154,6 +161,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
             <SortableTableHead sortKey="sellers.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
               Vendedor
             </SortableTableHead>
+            <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -168,7 +176,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                 </Badge>
               </TableCell>
               <TableCell className="max-w-xs truncate">{movement.concept}</TableCell>
-              <TableCell className="text-right">
+              <TableCell className={`text-right ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
                 {formatCurrency(movement.amount_original, movement.currency)}
                 {movement.exchange_rate && movement.currency === "USD" && (
                   <span className="text-xs text-muted-foreground ml-1">
@@ -176,7 +184,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                   </span>
                 )}
               </TableCell>
-              <TableCell className="font-medium text-right">
+              <TableCell className={`font-medium text-right ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
                 {formatCurrency(movement.amount_ars_equivalent, "ARS")}
               </TableCell>
               <TableCell>
@@ -199,6 +207,22 @@ export function LedgerTable({ filters }: LedgerTableProps) {
               </TableCell>
               <TableCell>
                 {movement.sellers?.name || "-"}
+              </TableCell>
+              <TableCell className="text-right">
+                {movement.reversed_at ? (
+                  <Badge variant="secondary">REVERSADO</Badge>
+                ) : movement.reverses_movement_id ? (
+                  <Badge variant="outline" className="border-blue-300 text-blue-700">
+                    <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
+                  </Badge>
+                ) : (
+                  <CashMovementReverseButton
+                    movementId={movement.id}
+                    endpoint="ledger-movements"
+                    movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                    disabled={!canReverse}
+                  />
+                )}
               </TableCell>
             </TableRow>
           ))}

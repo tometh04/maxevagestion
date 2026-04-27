@@ -25,9 +25,10 @@ interface MovementsPageClientProps {
   agencies: Array<{ id: string; name: string }>
   defaultFilters: CashFiltersState
   operations?: Array<{ id: string; destination: string }>
+  userRole?: string
 }
 
-export function MovementsPageClient({ agencies, defaultFilters, operations = [] }: MovementsPageClientProps) {
+export function MovementsPageClient({ agencies, defaultFilters, operations = [], userRole }: MovementsPageClientProps) {
   const [baseFilters, setBaseFilters] = useState(defaultFilters)
   const [type, setType] = useState("ALL")
   const [newMovementDialogOpen, setNewMovementDialogOpen] = useState(false)
@@ -119,6 +120,7 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
         type={filters.type}
         customerQuery={filters.customerQuery}
         emptyMessage="No encontramos movimientos con los filtros actuales"
+        userRole={userRole}
       />
 
       <NewCashMovementDialog

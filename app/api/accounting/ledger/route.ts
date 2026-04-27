@@ -33,6 +33,7 @@ export async function GET(request: Request) {
       .from("ledger_movements")
       .select(
         `id, type, concept, currency, amount_original, amount_ars_equivalent, exchange_rate, movement_date, created_at, seller_id, operation_id, affects_balance,
+         reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
          operations:operation_id (id, file_code, agency_id, destination, operation_customers(customers:customer_id(first_name, last_name))),
          users:created_by (name)`,
         { count: "exact" }
