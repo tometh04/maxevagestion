@@ -73,7 +73,7 @@ export async function GET(request: Request) {
   // Query all messages in range — WITHOUT raw_payload (too heavy for large datasets)
   let msgQuery = supabase
     .from("wa_messages")
-    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type, media_file_name")
+    .select("id, device_id, chat_id, direction, sent_at, message_type, from_me, media_mime_type, media_file_name, is_quotation")
     .order("id", { ascending: true })
 
   if (deviceIds) {
@@ -131,6 +131,7 @@ export async function GET(request: Request) {
   let inbound_count = 0
   let outbound_count = 0
   let pdfs_sent_count = 0
+  let pdfs_sent_pending_classification = 0
   let pdfs_received_count = 0
   const chatIds = new Set<string>()
   const inboundChatIds = new Set<string>()
@@ -141,10 +142,16 @@ export async function GET(request: Request) {
   for (const m of msgs) {
     chatIds.add(m.chat_id)
 
-    // Count PDFs for ALL directions (both sent and received)
+    // Count PDFs. For OUTBOUND, only those classified as quotation (#3 reunión Gabi).
+    // PDFs sin clasificar (is_quotation === null) se cuentan en pdfs_sent_pending_classification
+    // para transparencia — el cron los procesa cada 30 min.
     if (m.message_type === "document" && isPdfDocument(m, docPdfSet)) {
       if (m.direction === "outbound") {
-        pdfs_sent_count++
+        if (m.is_quotation === true) {
+          pdfs_sent_count++
+        } else if (m.is_quotation === null) {
+          pdfs_sent_pending_classification++
+        }
       } else if (m.direction === "inbound") {
         pdfs_received_count++
       }
@@ -301,6 +308,7 @@ export async function GET(request: Request) {
     avg_first_response_seconds,
     initiated_count,
     pdfs_sent_count,
+    pdfs_sent_pending_classification,
     pdfs_received_count,
     pdfs_total_count: pdfs_sent_count + pdfs_received_count,
   }
@@ -336,6 +344,7 @@ function emptySummary() {
     avg_first_response_seconds: null,
     initiated_count: 0,
     pdfs_sent_count: 0,
+    pdfs_sent_pending_classification: 0,
     pdfs_received_count: 0,
     pdfs_total_count: 0,
   }
