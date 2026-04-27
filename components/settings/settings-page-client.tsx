@@ -15,6 +15,7 @@ import { AfipSettings } from "@/components/settings/afip-settings"
 import { InterfaceSettings } from "@/components/settings/interface-settings"
 import { AuditSettings } from "@/components/settings/audit-settings"
 import { BulkImportTab } from "@/components/settings/bulk-import-tab"
+import { AgencyApprovalRulesForm } from "@/components/settings/agency-approval-rules-form"
 import { OperatorsTable, Operator } from "@/components/operators/operators-table"
 import { NewOperatorDialog } from "@/components/operators/new-operator-dialog"
 import { Button } from "@/components/ui/button"
@@ -119,7 +120,10 @@ export function SettingsPageClient({ defaultTab, agencies, firstAgencyId, userRo
         <OperatorsTab />
       </TabsContent>
       <TabsContent value="agencies" className="mt-6">
-        <AgenciesSettings />
+        <div className="space-y-6">
+          <AgenciesSettings />
+          {firstAgencyId && <AgencyApprovalRulesForm agencyId={firstAgencyId} />}
+        </div>
       </TabsContent>
       {/* Hidden tab contents - kept for future use */}
       <TabsContent value="trello" className="mt-6">
