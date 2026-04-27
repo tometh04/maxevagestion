@@ -1,3 +1,5 @@
+import Link from "next/link"
+import { Plus } from "lucide-react"
 import { createAdminClient } from "@/lib/supabase/server"
 import { OrgsSearchBar } from "@/components/admin/orgs-search-bar"
 import { OrgsFilters } from "@/components/admin/orgs-filters"
@@ -5,6 +7,7 @@ import { OrgsTable } from "@/components/admin/orgs-table"
 import { OrgsPagination } from "@/components/admin/orgs-pagination"
 import { ORGS_PAGE_SIZE } from "@/lib/admin/constants"
 import { PageHeader } from "@/components/admin/page-header"
+import { Button } from "@/components/ui/button"
 
 export const dynamic = "force-dynamic"
 
@@ -129,6 +132,13 @@ export default async function AdminOrgsPage({
       <PageHeader
         title="Organizaciones"
         description={`${count ?? 0} ${count === 1 ? "org" : "orgs"} · ${ORGS_PAGE_SIZE}/pág`}
+        actions={
+          <Button asChild size="sm">
+            <Link href="/admin/orgs/new">
+              <Plus className="h-4 w-4 mr-1" /> Nueva agencia
+            </Link>
+          </Button>
+        }
       />
 
       <div className="space-y-3">
