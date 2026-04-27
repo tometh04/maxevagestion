@@ -1,0 +1,87 @@
+import { NextResponse } from "next/server"
+import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
+import { getCurrentUser } from "@/lib/auth"
+import { canApprove, convertToArs } from "@/lib/payments/approval"
+import { loadApprovalRules, getCurrentArsPerUsd } from "@/lib/payments/load-rules"
+import { logSecurityEvent } from "@/lib/security/audit"
+
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params
+  const { user } = await getCurrentUser()
+  const supabase = await createServerClient()
+  const admin = createAdminClient() as any
+
+  const { data: payment } = await (supabase.from("payments") as any)
+    .select("*, operation:operation_id(agency_id)")
+    .eq("id", id)
+    .single()
+
+  if (!payment) return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
+  if ((payment as any).approval_status !== "PENDING_APPROVAL") {
+    return NextResponse.json({ error: "Pago no está pendiente de aprobación" }, { status: 400 })
+  }
+
+  const agencyId = (payment as any).operation?.agency_id
+  const rules = await loadApprovalRules(agencyId, supabase)
+  const arsPerUsd = await getCurrentArsPerUsd(supabase)
+  const amountArs = convertToArs(Number((payment as any).amount), (payment as any).currency, arsPerUsd)
+
+  if (!canApprove(amountArs, user.role, rules)) {
+    return NextResponse.json({ error: "No tenés permiso para aprobar este monto" }, { status: 403 })
+  }
+
+  // Race-safe UPDATE: only if still PENDING_APPROVAL
+  const { data: updated, error: updError } = await (supabase.from("payments") as any)
+    .update({
+      approval_status: "APPROVED",
+      approved_by_user_id: user.id,
+      approved_at: new Date().toISOString(),
+      status: "PAID",
+      date_paid: new Date().toISOString().split("T")[0],
+    })
+    .eq("id", id)
+    .eq("approval_status", "PENDING_APPROVAL")
+    .select()
+    .single()
+
+  if (updError || !updated) {
+    return NextResponse.json({ error: "Race condition o pago ya resuelto" }, { status: 409 })
+  }
+
+  // NOTE: Ledger/cash creation is NOT triggered here intentionally.
+  // The full ledger flow (FX, counterparts, journal entries, perceptions, WhatsApp)
+  // lives in app/api/payments/mark-paid/route.ts and requires financial_account_id
+  // which is a user input. After approval, a user with ADMIN+ role should trigger
+  // mark-paid to complete the accounting entries.
+  // TODO: consider auto-triggering mark-paid with a default financial_account_id
+  // if you want fully automated ledger creation on approval.
+  console.warn(`[payments/approve] Payment ${id} approved but ledger/cash NOT created yet. Use mark-paid to complete accounting.`)
+
+  // Notify creator
+  if ((payment as any).created_by_user_id) {
+    await admin.from("alerts").insert({
+      user_id: (payment as any).created_by_user_id,
+      org_id: (payment as any).org_id,
+      type: "PAYMENT_APPROVED",
+      description: `Tu pago ${(payment as any).amount} ${(payment as any).currency} fue aprobado`,
+      date_due: new Date().toISOString().split("T")[0],
+      status: "PENDING",
+    }).catch((e: any) => console.warn("notify failed:", e?.message))
+  }
+
+  logSecurityEvent({
+    eventType: "PAYMENT_APPROVED",
+    severity: "INFO",
+    actorUserId: user.id,
+    targetEntity: "payments",
+    targetEntityId: id,
+    requestPath: `/api/payments/${id}/approve`,
+    details: { amount: (payment as any).amount, currency: (payment as any).currency, amountArs },
+  })
+
+  return NextResponse.json({ payment: updated })
+}
