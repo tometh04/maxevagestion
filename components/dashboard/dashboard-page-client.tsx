@@ -164,9 +164,11 @@ export function DashboardPageClient({
         prevParams.set("sellerId", filters.sellerId)
       }
 
-      // Fetch all data in parallel (sin cache para evitar datos stale)
+      // Fetch en paralelo. Cache controlado por header Cache-Control de cada
+      // endpoint (private, max-age=30, stale-while-revalidate=60). El botón
+      // "Actualizar" del header re-monta el componente y fuerza re-fetch.
       const fetchOptions = {
-        cache: "no-store" as RequestCache
+        cache: "default" as RequestCache
       }
       
       // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales

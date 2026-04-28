@@ -127,7 +127,9 @@ export async function GET(request: Request) {
         .sort((a: any, b: any) => b.totalSales - a.totalSales)
         .slice(0, Number(limit))
 
-    return NextResponse.json({ destinations })
+    return NextResponse.json({ destinations }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/destinations:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de destinos" }, { status: 500 })

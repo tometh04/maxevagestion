@@ -127,7 +127,9 @@ export async function GET(request: Request) {
         avgMarginPercent,
       }
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/sales:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de ventas" }, { status: 500 })

@@ -217,6 +217,8 @@ export async function GET(request: Request) {
     return NextResponse.json({
       accountsReceivable: Math.max(0, accountsReceivableTotal), // Solo valores positivos
       accountsPayable: Math.max(0, accountsPayableTotal), // Solo valores positivos
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
     })
   } catch (error: any) {
     console.error("[PendingBalances] Error in GET /api/analytics/pending-balances:", error)

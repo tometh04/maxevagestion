@@ -154,7 +154,9 @@ export async function GET(request: Request) {
         a.date.localeCompare(b.date),
       )
 
-    return NextResponse.json({ cashflow })
+    return NextResponse.json({ cashflow }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/cashflow:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de flujo de caja" }, { status: 500 })

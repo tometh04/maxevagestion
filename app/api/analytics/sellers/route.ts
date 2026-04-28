@@ -164,7 +164,9 @@ export async function GET(request: Request) {
       // Sort by total sales descending
       sellers.sort((a: any, b: any) => b.totalSales - a.totalSales)
 
-    return NextResponse.json({ sellers })
+    return NextResponse.json({ sellers }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/sellers:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de vendedores" }, { status: 500 })

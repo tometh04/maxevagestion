@@ -277,7 +277,9 @@ export async function GET(request: Request) {
     // Sort by total debt (descending)
     debtors.sort((a, b) => b.totalDebt - a.totalDebt)
 
-    return NextResponse.json({ debtors })
+    return NextResponse.json({ debtors }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error) {
     console.error("Error in GET /api/accounting/debts-sales:", error)
     return NextResponse.json({ error: "Error al obtener deudores" }, { status: 500 })
