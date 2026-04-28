@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
-import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export const dynamic = 'force-dynamic'
@@ -160,8 +160,25 @@ export async function GET(request: Request) {
     // Obtener tasa de cambio más reciente como fallback (una sola vez fuera del loop)
     const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
-    // Cambiar forEach a for...of para permitir await dentro del loop
+    // Pre-build exchange rate map en 2 queries (en vez de N queries dentro del loop).
+    // Recopilamos todas las fechas de operations ARS de todos los customers.
+    // Multi-tenant safe: este map solo cubre fechas de operations que YA pasaron
+    // el filtro RLS de customers; no expone tasas a otros tenants (las tasas son
+    // globales por definición, no per-tenant).
     const customersList = (customers || []) as any[]
+    const allArsDates: (string | null | undefined)[] = []
+    for (const customer of customersList) {
+      const operations = (customer.operation_customers || []) as any[]
+      for (const oc of operations) {
+        const operation = oc.operations
+        if (!operation) continue
+        const saleCurrency = operation.sale_currency || operation.currency || "USD"
+        if (saleCurrency === "ARS") {
+          allArsDates.push(operation.departure_date || operation.created_at)
+        }
+      }
+    }
+    const getRate = await buildExchangeRateMap(supabase, allArsDates)
     for (const customer of customersList) {
       const operations = (customer.operation_customers || []) as any[]
       const operationsWithDebt: Array<{
@@ -222,12 +239,9 @@ export async function GET(request: Request) {
         // Convertir sale_amount_total a USD
         let saleAmountUsd = saleAmount
         if (saleCurrency === "ARS") {
-          // Obtener tasa de cambio histórica para la fecha de la operación
+          // Lookup sincrónico en el map (sin queries a la BD).
           const operationDate = operation.departure_date || operation.created_at
-          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
-          if (!exchangeRate) {
-            exchangeRate = latestExchangeRate
-          }
+          const exchangeRate = getRate(operationDate) || latestExchangeRate
           // Convertir ARS a USD: dividir por el exchange_rate
           saleAmountUsd = saleAmount / exchangeRate
         }
