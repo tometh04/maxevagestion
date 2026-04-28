@@ -29,7 +29,11 @@ const nextConfig = {
   },
   compress: true,
   poweredByHeader: false,
-  reactStrictMode: process.env.NODE_ENV === 'production',
+  // reactStrictMode: solo en DEV (default React). Antes estaba INVERTIDO
+  // (true en prod, false en dev) lo cual disparaba useEffect 2x en algunas
+  // páginas como dashboard — causaba duplicate fetches y 503s por sobrecarga
+  // de conexiones a Supabase.
+  reactStrictMode: process.env.NODE_ENV !== 'production',
   async headers() {
     return [
       {
