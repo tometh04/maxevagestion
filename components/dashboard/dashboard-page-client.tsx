@@ -190,13 +190,16 @@ export function DashboardPageClient({
         operatorsDebtParams.set("agencyId", filters.agencyId)
       }
 
-      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsSalesRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
+      // PERF: usamos el endpoint lightweight `/api/accounting/debts-sales-total`
+      // (RPC SUM SQL, ~500ms) en vez del completo (~9s). Si el nuevo fallara,
+      // caemos automáticamente al original (mismo shape de respuesta).
+      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsTotalRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/accounting/debts-sales?${debtsSalesSearchParams.toString()}`, fetchOptions),
+        fetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
         fetch(`/api/analytics/pending-balances?${operatorsDebtParams.toString()}`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
@@ -206,13 +209,45 @@ export function DashboardPageClient({
       const destinationsData = destinationsRes.ok ? await destinationsRes.json() : { destinations: [] }
       const destinationsAllData = destinationsAllRes.ok ? await destinationsAllRes.json() : { destinations: [] }
       const cashflowData = cashflowRes.ok ? await cashflowRes.json() : { cashflow: [] }
-      const debtsSalesData = debtsSalesRes.ok ? await debtsSalesRes.json() : { debtors: [] }
       const operatorsDebtData = operatorsDebtRes.ok ? await operatorsDebtRes.json() : { accountsPayable: 0 }
       const prevSalesData = prevSalesRes.ok ? await prevSalesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0 }
 
-      // Sumar la deuda total por ventas desde debts-sales (en USD)
-      const customerDebtUsd = ((debtsSalesData.debtors || []) as any[])
-        .reduce((sum: number, d: any) => sum + (Number(d.totalDebt) || 0), 0)
+      // Total de deuda por ventas (USD): primero el endpoint lightweight,
+      // si falla → fallback al original con el .reduce viejo.
+      let customerDebtUsd = 0
+      if (debtsTotalRes.ok) {
+        try {
+          const debtsTotalData = await debtsTotalRes.json()
+          if (typeof debtsTotalData?.totalUsd === "number") {
+            customerDebtUsd = debtsTotalData.totalUsd
+          } else {
+            throw new Error("unexpected shape")
+          }
+        } catch {
+          // Cae al fallback abajo
+          customerDebtUsd = NaN
+        }
+      } else {
+        customerDebtUsd = NaN
+      }
+      if (!Number.isFinite(customerDebtUsd)) {
+        // Fallback automático al endpoint completo (lento pero funcional).
+        try {
+          const fallbackRes = await fetch(
+            `/api/accounting/debts-sales?${debtsSalesSearchParams.toString()}`,
+            fetchOptions
+          )
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json()
+            customerDebtUsd = ((fallbackData.debtors || []) as any[])
+              .reduce((sum: number, d: any) => sum + (Number(d.totalDebt) || 0), 0)
+          } else {
+            customerDebtUsd = 0
+          }
+        } catch {
+          customerDebtUsd = 0
+        }
+      }
 
       setPreviousKpis({
         totalSales: prevSalesData.totalSales || 0,
