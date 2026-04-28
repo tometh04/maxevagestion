@@ -31,6 +31,10 @@ export async function GET(request: Request) {
   const limitStr = limit.toISOString().split("T")[0]
 
   // 1. Pagos de clientes pending (lo que nos deben)
+  // LIMIT 500: ORDER BY date_due ascending pone los más urgentes primero;
+  // el corte cae en pagos lejanos. Combinado con idx_payments_pending_due
+  // (mig 20260427000009) deja el query en O(log n).
+  // Multi-tenant: RLS de payments scopea por org_id automáticamente.
   let customerQuery = supabase
     .from("payments")
     .select(
@@ -42,6 +46,7 @@ export async function GET(request: Request) {
     .in("status", ["PENDING", "OVERDUE"])
     .lte("date_due", limitStr)
     .order("date_due", { ascending: true })
+    .limit(500)
 
   // 2. Pagos a operadores pending (lo que tenemos que pagar)
   let operatorQuery = supabase
@@ -54,6 +59,7 @@ export async function GET(request: Request) {
     .in("status", ["PENDING", "OVERDUE"])
     .lte("due_date", limitStr)
     .order("due_date", { ascending: true })
+    .limit(500)
 
   const [customerRes, operatorRes] = await Promise.all([customerQuery, operatorQuery])
 
