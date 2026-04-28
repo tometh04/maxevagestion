@@ -1,10 +1,14 @@
+import { cache } from 'react'
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
 
 type User = Database['public']['Tables']['users']['Row']
 
-export async function getCurrentUser(): Promise<{ user: User; session: { user: any } }> {
+// React.cache deduplica DENTRO del mismo request. Multi-tenant safe:
+// per-request scope, no global; distintos users = distintas cookies =
+// distintos requests = distinto cache.
+export const getCurrentUser = cache(async (): Promise<{ user: User; session: { user: any } }> => {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
   // Seguridad: si DISABLE_AUTH=true pero NODE_ENV=production, ignoramos la flag.
   if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
@@ -54,9 +58,9 @@ export async function getCurrentUser(): Promise<{ user: User; session: { user: a
   }
 
   return { user: userData, session: { user: authUser } }
-}
+})
 
-export async function getUserAgencies(userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> {
+export const getUserAgencies = cache(async (userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> => {
   // BYPASS EN DESARROLLO - Retornar array vacío si falla
   if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     try {
@@ -96,7 +100,7 @@ export async function getUserAgencies(userId: string): Promise<Array<{ agency_id
   }
 
   return (data || []) as Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>
-}
+})
 
 // Helper functions para verificación de roles
 export function hasRole(userRole: string, requiredRole: string): boolean {

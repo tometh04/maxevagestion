@@ -4,6 +4,7 @@
  * Maneja la obtención y gestión de tasas de cambio para conversión de monedas
  */
 
+import { cache } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -69,13 +70,16 @@ export async function getExchangeRate(
 }
 
 /**
- * Obtener la tasa de cambio más reciente disponible
+ * Obtener la tasa de cambio más reciente disponible.
+ * Wrappeada con React.cache: distintos supabase clients (= distintos users)
+ * NO comparten cache; misma instancia + mismo par currency = 1 sola query
+ * por request.
  */
-export async function getLatestExchangeRate(
+export const getLatestExchangeRate = cache(async (
   supabase: SupabaseClient<Database>,
   fromCurrency: "USD" = "USD",
   toCurrency: "ARS" = "ARS"
-): Promise<number | null> {
+): Promise<number | null> => {
   const { data, error } = await (supabase.from("exchange_rates") as any)
     .select("rate")
     .eq("from_currency", fromCurrency)
@@ -91,7 +95,7 @@ export async function getLatestExchangeRate(
   }
 
   return parseFloat(data.rate)
-}
+})
 
 /**
  * Obtener exchange rate con fallback seguro.
