@@ -53,8 +53,24 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
         params.set("sellerId", sellerId)
       }
       
-      const response = await fetch(`/api/operations?${params.toString()}`)
-      const data = await response.json()
+      // PERF: usamos el endpoint lightweight /api/operations/upcoming-trips
+      // (projection mínima, sin nested joins). Si fallara, fallback al
+      // /api/operations original (mismo shape de respuesta {operations}).
+      let data: { operations?: Operation[] } = { operations: [] }
+      try {
+        const response = await fetch(`/api/operations/upcoming-trips?${params.toString()}`)
+        if (response.ok) {
+          data = await response.json()
+        } else {
+          throw new Error(`Status ${response.status}`)
+        }
+      } catch {
+        // Fallback automático al endpoint completo
+        const fallback = await fetch(`/api/operations?${params.toString()}`)
+        if (fallback.ok) {
+          data = await fallback.json()
+        }
+      }
       // Filter only future departures (departure_date >= today)
       const todayDate = new Date()
       todayDate.setHours(0, 0, 0, 0)
