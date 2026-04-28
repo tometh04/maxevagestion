@@ -16,6 +16,7 @@ import { BirthdaysTodayCard } from "./birthdays-today-card"
 import { KpiCustomizer, type DashboardKpiId } from "./kpi-customizer"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
 import { HelpCircle, RefreshCw } from "lucide-react"
 import {
@@ -90,6 +91,9 @@ export function DashboardPageClient({
   const isSeller = userRole === "SELLER"
   const [filters, setFilters] = useState(defaultFilters)
   const [loading, setLoading] = useState(false)
+  // Progress 0-100 mientras se cargan las 8 fetches del dashboard.
+  // Pure UI feedback — no afecta los datos en absoluto.
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [kpis, setKpis] = useState<KPIs>({
     totalSales: 0,
     totalMargin: 0,
@@ -133,6 +137,20 @@ export function DashboardPageClient({
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
+    setLoadingProgress(0)
+    // Tracker de progreso: incrementa por cada fetch que termina (sea ok o error).
+    // Total = 8 fetches del Promise.all. UI feedback puro.
+    let completed = 0
+    const TOTAL_FETCHES = 8
+    const trackedFetch = async (url: string, opts?: RequestInit): Promise<Response> => {
+      try {
+        const res = await fetch(url, opts)
+        return res
+      } finally {
+        completed += 1
+        setLoadingProgress(Math.min(100, Math.round((completed / TOTAL_FETCHES) * 100)))
+      }
+    }
     try {
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
@@ -196,14 +214,14 @@ export function DashboardPageClient({
       //   - operator-debts-total (~500ms vs ~5s del pending-balances completo)
       // Si los nuevos fallaran, caemos automáticamente a los originales.
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsTotalRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
-        fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
-        fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
-        fetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions),
-        fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
+        trackedFetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
       const salesData = salesRes.ok ? await salesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0, avgMarginPercent: 0 }
@@ -305,6 +323,9 @@ export function DashboardPageClient({
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
     } finally {
+      // Forzar 100% al cierre para que el bar no se quede estancado en
+      // un valor intermedio si alguna fetch hizo throw antes del finally.
+      setLoadingProgress(100)
       setLoading(false)
     }
   }, [filters])
@@ -329,6 +350,16 @@ export function DashboardPageClient({
           Actualizar
         </Button>
       </div>
+
+      {/* Progress bar de carga (paso C-1). UI-only, no afecta data. */}
+      {loading && (
+        <div className="space-y-1">
+          <Progress value={loadingProgress} className="h-1" />
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            Cargando datos del resumen… {loadingProgress}%
+          </p>
+        </div>
+      )}
 
       <DashboardFilters
         agencies={agencies}
