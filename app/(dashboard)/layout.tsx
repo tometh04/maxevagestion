@@ -11,7 +11,6 @@ import {
 import { BrandProvider } from "@/components/brand-provider"
 import { assertSubscriptionActive } from "@/lib/billing/guard"
 import { SubscriptionBanner } from "@/components/billing/subscription-banner"
-import { createAdminClient } from "@/lib/supabase/server"
 
 export default async function DashboardLayout({
   children,
@@ -20,7 +19,9 @@ export default async function DashboardLayout({
 }) {
   // Capa B del defense-in-depth: bloquea acceso si no hay suscripción activa.
   // Independiente del middleware (que puede bypassearse via CVE-2025-29927).
-  await assertSubscriptionActive()
+  // Retorna el row de organizations para reusar en SubscriptionBanner sin
+  // re-fetchear (ahorro de 1 query por navegación dashboard).
+  const orgBanner = await assertSubscriptionActive()
 
   const { user } = await getCurrentUser()
   const userAgencies = await getUserAgencies(user.id)
@@ -29,15 +30,6 @@ export default async function DashboardLayout({
     id: ua.agency_id,
     name: ua.agencies?.name || "Sin nombre",
   }))
-
-  // Banner de suscripción (TRIALING / PAST_DUE / CANCELLED con acceso).
-  // Reutiliza la query del guard pero fetcheamos fresh para tener trial_ends_at.
-  const admin = createAdminClient() as any
-  const { data: orgBanner } = await admin
-    .from("organizations")
-    .select("subscription_status, current_period_ends_at, trial_ends_at")
-    .eq("id", user.org_id)
-    .maybeSingle()
 
   return (
     <BrandProvider>

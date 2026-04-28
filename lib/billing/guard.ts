@@ -10,6 +10,7 @@
  * server-side es la que realmente protege el acceso.
  */
 
+import { cache } from "react"
 import { redirect } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth"
 import { createAdminClient } from "@/lib/supabase/server"
@@ -60,8 +61,14 @@ export function isAccessAllowed(org: BillingOrg): boolean {
 /**
  * Guard server-side. Llamar desde layout del (dashboard) o API routes de
  * negocio. Si el org no tiene acceso, redirige a /onboarding/billing.
+ *
+ * Retorna el row de organizations (o null si redirige) para que callers
+ * puedan reusar el dato sin re-fetchear (ej. SubscriptionBanner del layout).
+ *
+ * Wrappeado con React.cache para deduplicar dentro del mismo request.
+ * Multi-tenant safe: la query filtra por user.org_id; per-request scope.
  */
-export async function assertSubscriptionActive(): Promise<void> {
+export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | null> => {
   const { user } = await getCurrentUser()
   if (!user) redirect("/login")
   if (!user.org_id) redirect("/onboarding")
@@ -75,7 +82,10 @@ export async function assertSubscriptionActive(): Promise<void> {
 
   if (!data) redirect("/onboarding")
 
-  if (!isAccessAllowed(data as BillingOrg)) {
+  const org = data as BillingOrg
+  if (!isAccessAllowed(org)) {
     redirect("/onboarding/billing")
   }
-}
+
+  return org
+})
