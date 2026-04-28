@@ -190,9 +190,11 @@ export function DashboardPageClient({
         operatorsDebtParams.set("agencyId", filters.agencyId)
       }
 
-      // PERF: usamos el endpoint lightweight `/api/accounting/debts-sales-total`
-      // (RPC SUM SQL, ~500ms) en vez del completo (~9s). Si el nuevo fallara,
-      // caemos automáticamente al original (mismo shape de respuesta).
+      // PERF: usamos endpoints lightweight (RPC SUM SQL) para los 2 KPIs
+      // pesados:
+      //   - debts-sales-total   (~500ms vs ~9s del completo)
+      //   - operator-debts-total (~500ms vs ~5s del pending-balances completo)
+      // Si los nuevos fallaran, caemos automáticamente a los originales.
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsTotalRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
         fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
         fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
@@ -200,7 +202,7 @@ export function DashboardPageClient({
         fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
         fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
         fetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
-        fetch(`/api/analytics/pending-balances?${operatorsDebtParams.toString()}`, fetchOptions),
+        fetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions),
         fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
@@ -209,7 +211,39 @@ export function DashboardPageClient({
       const destinationsData = destinationsRes.ok ? await destinationsRes.json() : { destinations: [] }
       const destinationsAllData = destinationsAllRes.ok ? await destinationsAllRes.json() : { destinations: [] }
       const cashflowData = cashflowRes.ok ? await cashflowRes.json() : { cashflow: [] }
-      const operatorsDebtData = operatorsDebtRes.ok ? await operatorsDebtRes.json() : { accountsPayable: 0 }
+      // accountsPayable: primero el endpoint lightweight, si falla → fallback al pending-balances original.
+      let operatorDebtUsd = 0
+      if (operatorsDebtRes.ok) {
+        try {
+          const operatorTotalData = await operatorsDebtRes.json()
+          if (typeof operatorTotalData?.totalUsd === "number") {
+            operatorDebtUsd = operatorTotalData.totalUsd
+          } else {
+            throw new Error("unexpected shape")
+          }
+        } catch {
+          operatorDebtUsd = NaN
+        }
+      } else {
+        operatorDebtUsd = NaN
+      }
+      if (!Number.isFinite(operatorDebtUsd)) {
+        try {
+          const fallbackOperatorRes = await fetch(
+            `/api/analytics/pending-balances?${operatorsDebtParams.toString()}`,
+            fetchOptions
+          )
+          if (fallbackOperatorRes.ok) {
+            const fallbackOperatorData = await fallbackOperatorRes.json()
+            operatorDebtUsd = Number(fallbackOperatorData?.accountsPayable) || 0
+          } else {
+            operatorDebtUsd = 0
+          }
+        } catch {
+          operatorDebtUsd = 0
+        }
+      }
+      const operatorsDebtData = { accountsPayable: operatorDebtUsd }
       const prevSalesData = prevSalesRes.ok ? await prevSalesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0 }
 
       // Total de deuda por ventas (USD): primero el endpoint lightweight,
