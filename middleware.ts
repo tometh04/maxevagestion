@@ -215,10 +215,48 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/api/admin")
 
   if (authUserId && !isOnboardingAllowed) {
-    const { data: userRow } = await (supabase.from("users") as any)
-      .select("org_id, is_active")
-      .eq("auth_id", authUserId)
-      .maybeSingle()
+    // FAST PATH (perf C-3): combinar las 2 queries (users + organizations)
+    // en una sola con nested select. Ahorra 1 round-trip a Supabase
+    // (~300-500ms) en CADA navegación autenticada.
+    //
+    // Si el fast-path falla por CUALQUIER motivo (RLS, sintaxis no
+    // soportada, error de red, shape inesperado), cae al código viejo
+    // intacto debajo. El comportamiento del middleware no cambia.
+    let userRow: any = null
+    let orgRow: any = null
+    let combinedQueryWorked = false
+
+    try {
+      const { data: combined, error: combinedError } = await (supabase.from("users") as any)
+        .select(
+          `org_id, is_active,
+           org:org_id(subscription_status, current_period_ends_at, trial_ends_at, custom_plan_id)`
+        )
+        .eq("auth_id", authUserId)
+        .maybeSingle()
+
+      if (!combinedError && combined) {
+        userRow = { org_id: (combined as any).org_id, is_active: (combined as any).is_active }
+        // El nested `org` puede ser objeto, array o null según cómo PostgREST
+        // resuelva la relación. Manejamos ambos defensivamente.
+        const nested = (combined as any).org
+        orgRow = Array.isArray(nested) ? (nested[0] || null) : (nested || null)
+        combinedQueryWorked = true
+      }
+    } catch {
+      // Silent fall-through al slow path
+    }
+
+    // SLOW PATH (fallback): si el combined query falló, ejecutamos la
+    // lógica original idéntica al código pre-C-3.
+    if (!combinedQueryWorked) {
+      const { data } = await (supabase.from("users") as any)
+        .select("org_id, is_active")
+        .eq("auth_id", authUserId)
+        .maybeSingle()
+      userRow = data
+      // orgRow se mantiene null; se fetcheará abajo en el bloque paywall si hace falta.
+    }
 
     const orgId = (userRow as any)?.org_id as string | null | undefined
     const isActive = (userRow as any)?.is_active !== false
@@ -235,10 +273,15 @@ export async function middleware(req: NextRequest) {
     // No podemos importarla acá (middleware es Edge / no puede hacer I/O
     // complejo o importar server-side code), así que duplicamos la regla.
     if (orgId && !isPaywallAllowed) {
-      const { data: orgRow } = await (supabase.from("organizations") as any)
-        .select("subscription_status, current_period_ends_at, trial_ends_at, custom_plan_id")
-        .eq("id", orgId)
-        .maybeSingle()
+      // Si el fast-path no trajo la org (slow path o RLS no devolvió nested),
+      // la fetcheamos ahora separada — exactamente como hacía antes.
+      if (!orgRow) {
+        const { data } = await (supabase.from("organizations") as any)
+          .select("subscription_status, current_period_ends_at, trial_ends_at, custom_plan_id")
+          .eq("id", orgId)
+          .maybeSingle()
+        orgRow = data
+      }
 
       const status = (orgRow as any)?.subscription_status as string | undefined
       const periodEnds = (orgRow as any)?.current_period_ends_at as string | null | undefined
