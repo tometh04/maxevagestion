@@ -9,6 +9,7 @@ export type ImportPipeline =
   | "operators"
   | "payments-suelto"
   | "cash-movements"
+  | "users"
 
 export type ExchangeRateMode = "monthly_rates" | "manual_fixed" | "monthly_with_fallback"
 
@@ -53,6 +54,7 @@ export interface ImportResult {
     operationsToCreate?: number
     paymentsToCreate?: number
     cashMovementsToCreate?: number
+    usersToCreate?: number
   }
 }
 
