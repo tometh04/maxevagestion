@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { hasPermission } from "@/lib/permissions"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/payments/allocations?operationId=xxx
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "operationId o paymentId requerido" }, { status: 400 })
   }
 
-  const supabase = await createServerClient()
+  const supabase = createAdminClient()
 
   let query = (supabase.from("payment_passenger_allocations") as any)
     .select(`
@@ -85,7 +85,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "paymentId y allocations son requeridos" }, { status: 400 })
   }
 
-  const supabase = await createServerClient()
+  if (allocations.some((allocation: any) => Number(allocation.amount || 0) < 0)) {
+    return NextResponse.json({ error: "Los montos asignados no pueden ser negativos" }, { status: 400 })
+  }
+
+  const supabase = createAdminClient()
 
   // Verify payment exists and get its amount
   const { data: payment, error: paymentError } = await supabase
@@ -98,35 +102,77 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
   }
 
+  const rows = allocations
+    .map((allocation: any) => ({
+      operationCustomerId: allocation.operationCustomerId,
+      amount: Number(allocation.amount || 0),
+      notes: allocation.notes || null,
+    }))
+    .filter((allocation: any) => allocation.amount > 0)
+
+  if (rows.some((allocation: any) => !allocation.operationCustomerId || Number.isNaN(allocation.amount))) {
+    return NextResponse.json({ error: "Asignaciones inválidas" }, { status: 400 })
+  }
+
+  const operationCustomerIds = Array.from(new Set(rows.map((allocation: any) => allocation.operationCustomerId)))
+
+  if (operationCustomerIds.length > 0) {
+    const { data: linkedCustomers, error: linkedCustomersError } = await (supabase
+      .from("operation_customers") as any)
+      .select("id, operation_id")
+      .in("id", operationCustomerIds)
+
+    if (linkedCustomersError) {
+      console.error("[Allocations] Operation customer validation error:", linkedCustomersError)
+      return NextResponse.json({ error: "Error validando pasajeros" }, { status: 500 })
+    }
+
+    const linkedIds = new Set((linkedCustomers || []).map((customer: any) => customer.id))
+    const hasInvalidCustomer =
+      linkedIds.size !== operationCustomerIds.length ||
+      (linkedCustomers || []).some((customer: any) => customer.operation_id !== (payment as any).operation_id)
+
+    if (hasInvalidCustomer) {
+      return NextResponse.json(
+        { error: "Una asignación pertenece a otra operación o a un pasajero inexistente" },
+        { status: 400 }
+      )
+    }
+  }
+
   // Validate total allocations don't exceed payment amount
-  const totalAllocated = allocations.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0)
-  if (totalAllocated > Number((payment as any).amount) * 1.01) { // 1% tolerance for rounding
+  const totalAllocated = rows.reduce((sum: number, allocation: any) => sum + allocation.amount, 0)
+  if (totalAllocated > Number((payment as any).amount) + 0.01) {
     return NextResponse.json({
       error: `El total asignado ($${totalAllocated.toFixed(2)}) supera el monto del pago ($${(payment as any).amount})`,
     }, { status: 400 })
   }
 
   // Delete existing allocations for this payment
-  await (supabase.from("payment_passenger_allocations") as any)
+  const { error: deleteError } = await (supabase.from("payment_passenger_allocations") as any)
     .delete()
     .eq("payment_id", paymentId)
 
+  if (deleteError) {
+    console.error("[Allocations] Delete error:", deleteError)
+    return NextResponse.json({ error: deleteError.message }, { status: 500 })
+  }
+
   // Insert new allocations
-  if (allocations.length > 0) {
-    const rows = allocations
-      .filter((a: any) => Number(a.amount) > 0)
-      .map((a: any) => ({
+  if (rows.length > 0) {
+    const allocationRows = rows
+      .map((allocation: any) => ({
         payment_id: paymentId,
-        operation_customer_id: a.operationCustomerId,
-        amount: Number(a.amount),
+        operation_customer_id: allocation.operationCustomerId,
+        amount: allocation.amount,
         currency: (payment as any).currency || "ARS",
-        notes: a.notes || null,
+        notes: allocation.notes,
         created_by: user.id,
       }))
 
-    if (rows.length > 0) {
+    if (allocationRows.length > 0) {
       const { error: insertError } = await (supabase.from("payment_passenger_allocations") as any)
-        .insert(rows)
+        .insert(allocationRows)
 
       if (insertError) {
         console.error("[Allocations] Insert error:", insertError)

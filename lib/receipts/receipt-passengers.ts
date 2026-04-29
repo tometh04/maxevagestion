@@ -1,11 +1,19 @@
 interface ReceiptCustomerRecord {
   role?: string | null
-  customers?: {
-    first_name?: string | null
-    last_name?: string | null
-    address?: string | null
-    city?: string | null
-  } | null
+  customers?:
+    | {
+        first_name?: string | null
+        last_name?: string | null
+        address?: string | null
+        city?: string | null
+      }
+    | Array<{
+      first_name?: string | null
+      last_name?: string | null
+      address?: string | null
+      city?: string | null
+    }>
+    | null
 }
 
 interface BuildReceiptPassengerDetailsParams {
@@ -25,7 +33,15 @@ function normalizeDisplayName(value?: string | null): string {
   return (value || "").replace(/\s+/g, " ").trim()
 }
 
-function buildCustomerDisplayName(customer?: ReceiptCustomerRecord["customers"]): string {
+function getCustomer(record?: ReceiptCustomerRecord | null): Exclude<ReceiptCustomerRecord["customers"], any[] | null | undefined> | null {
+  const customer = record?.customers
+  if (Array.isArray(customer)) {
+    return customer[0] || null
+  }
+  return customer || null
+}
+
+function buildCustomerDisplayName(customer?: ReturnType<typeof getCustomer>): string {
   if (!customer) return ""
   return normalizeDisplayName(`${customer.first_name || ""} ${customer.last_name || ""}`)
 }
@@ -40,7 +56,7 @@ export function buildReceiptPassengerDetails({
   leadContactName,
 }: BuildReceiptPassengerDetailsParams): ReceiptPassengerDetails {
   const customerRecords = (operationCustomers || [])
-    .filter((record) => record?.customers)
+    .filter((record) => getCustomer(record))
     .sort((left, right) => {
       if (left.role === "MAIN" && right.role !== "MAIN") return -1
       if (left.role !== "MAIN" && right.role === "MAIN") return 1
@@ -49,7 +65,7 @@ export function buildReceiptPassengerDetails({
 
   const seenPassengerNames = new Set<string>()
   const passengerNames = customerRecords
-    .map((record) => buildCustomerDisplayName(record.customers))
+    .map((record) => buildCustomerDisplayName(getCustomer(record)))
     .filter((name) => {
       if (!name) return false
 
@@ -63,8 +79,8 @@ export function buildReceiptPassengerDetails({
     })
 
   const mainCustomer =
-    customerRecords.find((record) => record.role === "MAIN")?.customers ||
-    customerRecords[0]?.customers ||
+    getCustomer(customerRecords.find((record) => record.role === "MAIN")) ||
+    getCustomer(customerRecords[0]) ||
     null
 
   const fallbackLeadName = normalizeDisplayName(leadContactName)

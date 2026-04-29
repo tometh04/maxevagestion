@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
@@ -7,6 +7,7 @@ import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operator-payments"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 
 type IncomingOperatorPayload = {
   operator_id: string
@@ -98,17 +99,19 @@ export async function GET(
   // Extraer clientes de la operación (ya están incluidos en la query)
   const operationCustomers = (op.operation_customers || []) as any[]
 
+  const adminClient = createAdminClient()
+
   // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas)
   const [
-    documentsResult,
+    documents,
     paymentsResult,
     alertsResult
   ] = await Promise.all([
-    supabase
-      .from("documents")
-      .select("*")
-      .eq("operation_id", operationId)
-      .order("uploaded_at", { ascending: false }),
+    getOperationVisibleDocuments(adminClient, {
+      operationId,
+      leadId: op.lead_id,
+      operationCustomers,
+    }),
     supabase
       .from("payments")
       .select("*")
@@ -121,7 +124,6 @@ export async function GET(
       .order("date_due", { ascending: true }),
   ])
 
-  const documents = documentsResult.data || []
   const payments = paymentsResult.data || []
   const alerts = alertsResult.data || []
 
@@ -208,7 +210,7 @@ export async function PATCH(
     }
 
     // Detectar cambio de moneda
-    const oldCurrency = currentOp.currency || currentOp.sale_currency || "USD"
+    const oldCurrency = currentOp.sale_currency || currentOp.currency || "USD"
     const newCurrency = body.currency || body.sale_currency || oldCurrency
     const currencyChanged = oldCurrency !== newCurrency
 
@@ -238,7 +240,7 @@ export async function PATCH(
     const { operators: incomingOperators, ...bodyWithoutOperators } = body
     const normalizedIncomingOperators = normalizeIncomingOperators(
       incomingOperators,
-      currentOp.operator_cost_currency || currentOp.currency || "USD"
+      currentOp.operator_cost_currency || currentOp.sale_currency || currentOp.currency || "USD"
     )
     const synchronizedOperators = normalizedIncomingOperators || []
     const usesIncomingOperators = Array.isArray(normalizedIncomingOperators)
@@ -301,7 +303,7 @@ export async function PATCH(
     }
 
     const op = operation as any
-    const currency = op.currency || op.sale_currency || "USD"
+    const currency = op.sale_currency || op.currency || "USD"
 
     // ============================================
     // MANEJAR CAMBIO DE MONEDA
@@ -369,7 +371,7 @@ export async function PATCH(
       try {
         // Obtener monedas de la operación actualizada
         const saleCurrency = op.sale_currency || op.currency || "USD"
-        const operatorCostCurrency = op.operator_cost_currency || op.currency || "USD"
+        const operatorCostCurrency = op.operator_cost_currency || op.sale_currency || op.currency || "USD"
         
         // Convertir costo del operador a la misma moneda de venta si es necesario
         let operatorCostForIVA = newOperatorCost

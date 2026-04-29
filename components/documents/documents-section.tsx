@@ -69,6 +69,7 @@ interface Document {
     email: string
   }
   fromLead?: boolean // Indica si el documento proviene de un lead asociado
+  fromCustomer?: boolean // Indica si el documento proviene de un cliente asociado
 }
 
 interface DocumentsSectionProps {
@@ -302,6 +303,11 @@ export function DocumentsSection({
                       {doc.fromLead && (
                         <Badge variant="secondary" className="text-[10px]">
                           Desde Lead
+                        </Badge>
+                      )}
+                      {doc.fromCustomer && (
+                        <Badge variant="secondary" className="text-[10px]">
+                          Desde Cliente
                         </Badge>
                       )}
                     </div>

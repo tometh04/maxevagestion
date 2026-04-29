@@ -146,6 +146,8 @@ export function EditOperationDialog({
   const [useMultipleOperators, setUseMultipleOperators] = useState(false)
   const [operatorList, setOperatorList] = useState<OperatorEntry[]>([])
   const [operatorsLoaded, setOperatorsLoaded] = useState(false)
+  const operationCurrency = (operation.sale_currency || operation.currency || "USD") as "ARS" | "USD"
+  const operationCostCurrency = (operation.operator_cost_currency || operationCurrency) as "ARS" | "USD"
 
   // Cargar estados personalizados
   useEffect(() => {
@@ -190,7 +192,7 @@ export function EditOperationDialog({
               id: oo.id,
               operator_id: oo.operator_id || "",
               cost: Number(oo.cost || 0),
-              cost_currency: (oo.cost_currency || operation.operator_cost_currency || operation.currency || "USD") as "ARS" | "USD",
+              cost_currency: (oo.cost_currency || operationCostCurrency) as "ARS" | "USD",
               product_type: oo.product_type || undefined,
               notes: oo.notes || undefined,
             }))
@@ -205,7 +207,7 @@ export function EditOperationDialog({
       setOperatorsLoaded(true)
     }
     loadOperators()
-  }, [open, operation.id, operatorsLoaded])
+  }, [open, operation.id, operationCostCurrency, operatorsLoaded])
 
   // Reset operatorsLoaded when dialog closes
   useEffect(() => {
@@ -235,7 +237,7 @@ export function EditOperationDialog({
       status: (operation.status as any) || "RESERVED",
       sale_amount_total: operation.sale_amount_total || 0,
       operator_cost: operation.operator_cost || 0,
-      currency: (operation.currency as any) || "USD",
+      currency: operationCurrency,
       reservation_code_air: operation.reservation_code_air || null,
       reservation_code_hotel: operation.reservation_code_hotel || null,
       airline_name: operation.airline_name || null,
@@ -263,12 +265,12 @@ export function EditOperationDialog({
         status: (operation.status as any) || "RESERVED",
         sale_amount_total: operation.sale_amount_total || 0,
         operator_cost: operation.operator_cost || 0,
-        currency: (operation.currency as any) || "USD",
+        currency: operationCurrency,
         reservation_code_air: operation.reservation_code_air || null,
         reservation_code_hotel: operation.reservation_code_hotel || null,
       })
     }
-  }, [operation, form])
+  }, [operation, form, operationCurrency])
 
   // Watch values for margin calculation
   const saleAmount = form.watch("sale_amount_total")
