@@ -1,0 +1,4 @@
+Código,Fecha Operación,Nombre del Cliente,Email Cliente,Destino,Fecha Salida,Fecha Regreso,Adultos,Niños,Monto Venta,Monto Cobrado,Pendiente de Cobrar,Monto Operador,Pagado a Operador,Pendiente a Operador,Operador 1,Costo Operador 1,Operador 2,Costo Operador 2,Operador 3,Costo Operador 3,Moneda,Estado,Nombre Vendedor
+,2026-02-15,Septiembre Nuñez,,Bayahibe,13/03/2026,21/03/2026,6,,"$13,680","$5,730","$7,950","$12,381","$5,397","$6,984",Delfos,"$6,984",,,,,USD,CONFIRMED,Emi
+,2026-02-20,Noviembre Abud,,Aruba,03/04/2026,11/04/2026,3,,"$5,070","$5,070","$0","$4,616","$1,968","$2,648",Delfos,"$2,648",,,,,USD,CONFIRMED,Cande
+,2026-02-25,Julio Acevedo,,Bayahibe,22/05/2026,31/05/2026,20,8,"$62,190","$28,850","$33,340","$57,714","$26,957","$30,757",Lozada,"$30,757",,,,,USD,CONFIRMED,Mica - Jose

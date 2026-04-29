@@ -1,0 +1,2 @@
+Código,Fecha Operación,Nombre del Cliente,Email Cliente,Destino,Fecha Salida,Fecha Regreso,Adultos,Niños,Monto Venta,Monto Cobrado,Pendiente de Cobrar,Monto Operador,Pagado a Operador,Pendiente a Operador,Operador 1,Costo Operador 1,Operador 2,Costo Operador 2,Operador 3,Costo Operador 3,Moneda,Estado,Nombre Vendedor
+,2026-03-15,Juan Pérez,juan@example.com,Cancún,15/04/2026,22/04/2026,2,0,1500000,800000,700000,1200000,500000,700000,Despegar,1200000,,,,,ARS,CONFIRMED,vendedor@agencia.com

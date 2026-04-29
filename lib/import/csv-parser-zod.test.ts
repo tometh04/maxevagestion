@@ -1,4 +1,4 @@
-import { parseCsv } from "./csv-parser"
+import { parseCsv } from "./csv-parser-zod"
 import { z } from "zod"
 
 const testSchema = z.object({

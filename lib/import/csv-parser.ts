@@ -1,59 +1,79 @@
-import Papa from "papaparse"
-import type { z } from "zod"
-
-export interface ParsedRow<T> {
-  rowNumber: number
-  data: T
-  errors: string[]
-  warnings: string[]
-}
-
-export interface ParseResult<T> {
-  rows: ParsedRow<T>[]
-  headerError: string | null
-}
-
 /**
- * Parsea CSV strict con Zod. Requiere headers exactos (case-insensitive trim).
- * Devuelve rows con errores/warnings por fila, o headerError si los headers no matchean.
+ * Parsea CSV plain a array de filas. Soporta:
+ * - BOM al inicio
+ * - Comas y newlines dentro de campos quoted
+ * - Quotes escapadas como ""
+ * - CRLF y LF
  */
-export async function parseCsv<T>(
-  csv: string,
-  schema: z.ZodType<T>,
-  expectedHeaders: readonly string[]
-): Promise<ParseResult<T>> {
-  const parsed = Papa.parse(csv, {
-    header: true,
-    skipEmptyLines: true,
-    transformHeader: (h) => h.trim().toLowerCase(),
-  })
+export function parseCsv(content: string): string[][] {
+  // Remover BOM
+  const clean = content.replace(/^﻿/, "")
+  if (!clean.trim()) return []
 
-  const actualHeaders = parsed.meta.fields?.map((h) => h.toLowerCase()) ?? []
-  const expected = expectedHeaders.map((h) => h.toLowerCase())
+  const rows: string[][] = []
+  let currentRow: string[] = []
+  let currentField = ""
+  let inQuotes = false
+  let i = 0
 
-  const missing = expected.filter((h) => !actualHeaders.includes(h))
-  const extra = actualHeaders.filter((h) => !expected.includes(h))
+  while (i < clean.length) {
+    const char = clean[i]
+    const nextChar = clean[i + 1]
 
-  if (missing.length > 0 || extra.length > 0) {
-    const parts: string[] = []
-    if (missing.length > 0) parts.push(`faltan: ${missing.join(", ")}`)
-    if (extra.length > 0) parts.push(`sobran: ${extra.join(", ")}`)
-    return {
-      rows: [],
-      headerError: `Headers no coinciden con la plantilla. ${parts.join(". ")}. Descargá la plantilla de nuevo.`,
+    if (inQuotes) {
+      if (char === '"' && nextChar === '"') {
+        // Escaped quote
+        currentField += '"'
+        i += 2
+        continue
+      }
+      if (char === '"') {
+        inQuotes = false
+        i++
+        continue
+      }
+      currentField += char
+      i++
+      continue
+    }
+
+    // Not in quotes
+    if (char === '"') {
+      inQuotes = true
+      i++
+      continue
+    }
+    if (char === ",") {
+      currentRow.push(currentField)
+      currentField = ""
+      i++
+      continue
+    }
+    if (char === "\n" || char === "\r") {
+      // End of row
+      currentRow.push(currentField)
+      // Push only if row has content (skip empty lines)
+      if (currentRow.some(c => c.length > 0)) {
+        rows.push(currentRow)
+      }
+      currentRow = []
+      currentField = ""
+      // Skip \r\n as one
+      if (char === "\r" && nextChar === "\n") i += 2
+      else i++
+      continue
+    }
+    currentField += char
+    i++
+  }
+
+  // Push last field/row if any content
+  if (currentField.length > 0 || currentRow.length > 0) {
+    currentRow.push(currentField)
+    if (currentRow.some(c => c.length > 0)) {
+      rows.push(currentRow)
     }
   }
 
-  const rows: ParsedRow<T>[] = (parsed.data as Record<string, string>[]).map((raw, i) => {
-    const result = schema.safeParse(raw)
-    if (result.success) {
-      return { rowNumber: i + 2, data: result.data, errors: [], warnings: [] }
-    }
-    const errors = result.error.issues.map(
-      (iss) => `${iss.path.join(".")}: ${iss.message}`
-    )
-    return { rowNumber: i + 2, data: raw as unknown as T, errors, warnings: [] }
-  })
-
-  return { rows, headerError: null }
+  return rows
 }
