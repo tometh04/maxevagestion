@@ -1,9 +1,11 @@
 import dynamic from "next/dynamic"
+import { headers } from "next/headers"
 import { DashboardFiltersState } from "@/components/dashboard/dashboard-filters"
 import { ImportBanner } from "@/components/dashboard/import-banner"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { Skeleton } from "@/components/ui/skeleton"
+import { makeTimer } from "@/lib/perf-log"
 
 const DashboardPageClient = dynamic(
   () =>
@@ -40,35 +42,57 @@ function getDefaultDateRange() {
 }
 
 export default async function DashboardPage() {
+  const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
+  const t = makeTimer("page(dashboard)", __perfReqId)
+
   const { user } = await getCurrentUser()
+  t.mark("getCurrentUser")
   const supabase = await createServerClient()
+  t.mark("createServerClient")
 
-  // Get user agencies
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id")
-    .eq("user_id", user.id)
-
-  let agencies: Array<{ id: string; name: string }> = []
-
-  if (user.role === "SUPER_ADMIN") {
-    const { data } = await supabase.from("agencies").select("id, name").order("name")
-    agencies = data || []
-  } else if (userAgencies && userAgencies.length > 0) {
-    const agencyIds = userAgencies.map((ua: any) => ua.agency_id)
-    const { data } = await supabase.from("agencies").select("id, name").in("id", agencyIds)
-    agencies = data || []
-  }
-
-  // Get sellers
-  let sellersQuery = supabase.from("users").select("id, name").in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"]).eq("is_active", true)
-
+  // PERF: paralelizamos lo que no tiene dependencias.
+  // - SUPER_ADMIN: agencies(all) + user_agencies + sellers son independientes → 1 round-trip.
+  // - Otros roles: user_agencies + sellers en paralelo, luego agencies scoped.
   const userRole = user.role as string
+
+  let sellersQuery = supabase
+    .from("users")
+    .select("id, name")
+    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+    .eq("is_active", true)
   if (userRole === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
 
-  const { data: sellers } = await sellersQuery
+  let agencies: Array<{ id: string; name: string }> = []
+  let sellers: Array<{ id: string; name: string }> | null = null
+
+  if (userRole === "SUPER_ADMIN") {
+    const [agenciesRes, sellersRes] = await Promise.all([
+      supabase.from("agencies").select("id, name").order("name"),
+      sellersQuery,
+    ])
+    agencies = (agenciesRes.data as any) || []
+    sellers = (sellersRes.data as any) || []
+    t.mark("parallel agencies+sellers (SUPER_ADMIN)")
+  } else {
+    const [userAgenciesRes, sellersRes] = await Promise.all([
+      supabase.from("user_agencies").select("agency_id").eq("user_id", user.id),
+      sellersQuery,
+    ])
+    sellers = (sellersRes.data as any) || []
+    const userAgencies = userAgenciesRes.data
+    t.mark("parallel user_agencies+sellers")
+
+    if (userAgencies && userAgencies.length > 0) {
+      const agencyIds = userAgencies.map((ua: any) => ua.agency_id)
+      const { data } = await supabase.from("agencies").select("id, name").in("id", agencyIds)
+      agencies = (data as any) || []
+      t.mark("select agencies (scoped)")
+    }
+  }
+
+  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} role=${userRole}`)
 
   const dates = getDefaultDateRange()
 

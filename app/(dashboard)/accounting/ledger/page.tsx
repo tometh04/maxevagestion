@@ -1,10 +1,12 @@
 import dynamic from "next/dynamic"
+import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { createServerClient } from "@/lib/supabase/server"
 import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ContabilidadTabs } from "@/components/accounting/contabilidad-tabs"
+import { makeTimer } from "@/lib/perf-log"
 
 const LedgerPageClient = dynamic(
   () =>
@@ -87,10 +89,15 @@ const ChartOfAccountsTree = dynamic(
 )
 
 export default async function ContabilidadPage() {
+  const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
+  const t = makeTimer("page(accounting/ledger)", __perfReqId)
+
   const { user } = await getCurrentUser()
+  t.mark("getCurrentUser")
   const userRole = user.role as any
 
   if (!canAccessModule(userRole, "accounting")) {
+    t.end("forbidden")
     return (
       <div className="space-y-6">
         <div>
@@ -102,8 +109,7 @@ export default async function ContabilidadPage() {
   }
 
   const supabase = await createServerClient()
-
-  const agencies = await getScopedAgenciesForUser(supabase, user)
+  t.mark("createServerClient")
 
   // Get sellers for DebtsSales
   let sellersQuery = supabase
@@ -115,12 +121,22 @@ export default async function ContabilidadPage() {
   if (user.role === "SELLER") {
     sellersQuery = sellersQuery.eq("id", user.id)
   }
-  const { data: sellers } = await sellersQuery
 
-  // Get operators for OperatorPayments
-  const { data: operators } = await supabase.from("operators").select("id, name").order("name")
+  // PERF: paralelizamos las 3 fuentes (agencies scope, sellers, operators).
+  // getScopedAgenciesForUser hace queries propias dentro pero no dependen
+  // de sellers/operators, así que se pueden lanzar en paralelo.
+  const [agencies, sellersRes, operatorsRes] = await Promise.all([
+    getScopedAgenciesForUser(supabase, user),
+    sellersQuery,
+    supabase.from("operators").select("id, name").order("name"),
+  ])
+  t.mark("parallel agencies+sellers+operators")
+  const sellers = sellersRes.data
+  const operators = operatorsRes.data
 
   const showPartnerAccounts = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(user.role)
+
+  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} operators=${operators?.length ?? 0}`)
 
   return (
     <ContabilidadTabs

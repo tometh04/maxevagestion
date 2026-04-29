@@ -113,6 +113,15 @@ export function DashboardPageClient({
   const [cashflowData, setCashflowData] = useState<any[]>([])
   const [hiddenKpis, setHiddenKpis] = useState<Set<DashboardKpiId>>(new Set())
 
+  // [perf-instrumentation] Loguea cuándo el page client component se monta
+  // (relativo al page load del browser). Se correlaciona con CLICK del sidebar
+  // y NAV del PerfNavLogger. Quitar tras la investigación.
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_PERF_LOG === "0") return
+    // eslint-disable-next-line no-console
+    console.log(`[perf:client] DashboardPageClient MOUNT at ${performance.now().toFixed(0)}ms`)
+  }, [])
+
   // Carga de preferencias de KPIs ocultos (organization_settings.dashboard_hidden_kpis).
   // Usa el mismo endpoint que el resto de settings. Silenciosamente cae en
   // "mostrar todos" si la key no existe (tenants nuevos).
@@ -213,16 +222,29 @@ export function DashboardPageClient({
       //   - debts-sales-total   (~500ms vs ~9s del completo)
       //   - operator-debts-total (~500ms vs ~5s del pending-balances completo)
       // Si los nuevos fallaran, caemos automáticamente a los originales.
+      const __perfFetchStart = performance.now()
+      const __perfLog = process.env.NEXT_PUBLIC_PERF_LOG !== "0"
+      const stamp = (name: string) => (res: Response) => {
+        if (__perfLog) {
+          // eslint-disable-next-line no-console
+          console.log(`[perf:client] dashboard fetch ${name}: ${(performance.now() - __perfFetchStart).toFixed(0)}ms (status=${res.status})`)
+        }
+        return res
+      }
       const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsTotalRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
-        trackedFetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
-        trackedFetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
-        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
-        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
-        trackedFetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        trackedFetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
-        trackedFetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions),
-        trackedFetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sales?${params.toString()}`, fetchOptions).then(stamp("sales")),
+        trackedFetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions).then(stamp("sellers")),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions).then(stamp("destinations5")),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions).then(stamp("destinations10")),
+        trackedFetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions).then(stamp("cashflow")),
+        trackedFetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions).then(stamp("debts-sales-total")),
+        trackedFetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions).then(stamp("operator-debts-total")),
+        trackedFetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions).then(stamp("sales (prev period)")),
       ])
+      if (__perfLog) {
+        // eslint-disable-next-line no-console
+        console.log(`[perf:client] dashboard ALL fetches DONE: ${(performance.now() - __perfFetchStart).toFixed(0)}ms`)
+      }
 
       const salesData = salesRes.ok ? await salesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0, avgMarginPercent: 0 }
       const sellersData = sellersRes.ok ? await sellersRes.json() : { sellers: [] }

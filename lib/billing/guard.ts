@@ -69,6 +69,18 @@ export function isAccessAllowed(org: BillingOrg): boolean {
  * Multi-tenant safe: la query filtra por user.org_id; per-request scope.
  */
 export const assertSubscriptionActive = cache(async (): Promise<BillingOrg | null> => {
+  // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
+  // Mismo patrón que lib/auth.ts: si DISABLE_AUTH=true en dev, no chequeamos
+  // suscripción ni org_id (el user mock tiene org_id=null y forzaría redirect
+  // a /onboarding).
+  if (process.env.DISABLE_AUTH === "true" && process.env.NODE_ENV !== "production") {
+    return {
+      subscription_status: "ACTIVE",
+      current_period_ends_at: null,
+      trial_ends_at: null,
+    }
+  }
+
   const { user } = await getCurrentUser()
   if (!user) redirect("/login")
   if (!user.org_id) redirect("/onboarding")

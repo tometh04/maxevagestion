@@ -1,13 +1,20 @@
+import { headers } from "next/headers"
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { OperationsPageClient } from "@/components/operations/operations-page-client"
 import { canAccessModule } from "@/lib/permissions"
+import { makeTimer } from "@/lib/perf-log"
 
 export default async function OperationsPage() {
+  const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
+  const t = makeTimer("page(operations)", __perfReqId)
+
   const { user } = await getCurrentUser()
-  
+  t.mark("getCurrentUser")
+
   // Verificar permiso de acceso
   if (!canAccessModule(user.role as any, "operations")) {
+    t.end("forbidden")
     return (
       <div className="space-y-6">
         <div>
@@ -19,27 +26,34 @@ export default async function OperationsPage() {
   }
 
   const supabase = await createServerClient()
+  t.mark("createServerClient")
 
-  // Get user agencies
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id, agencies(id, name)")
-    .eq("user_id", user.id)
+  // PERF: las 3 queries son independientes (sellers y operators no dependen
+  // de user_agencies). Paralelizamos con Promise.all para evitar waterfall.
+  const [userAgenciesRes, sellersRes, operatorsRes] = await Promise.all([
+    supabase
+      .from("user_agencies")
+      .select("agency_id, agencies(id, name)")
+      .eq("user_id", user.id),
+    supabase
+      .from("users")
+      .select("id, name")
+      .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
+      .eq("is_active", true),
+    supabase.from("operators").select("id, name").order("name"),
+  ])
+  t.mark("parallel queries (user_agencies + sellers + operators)")
+
+  const userAgencies = userAgenciesRes.data
+  const sellers = sellersRes.data
+  const operators = operatorsRes.data
 
   const agencies = (userAgencies || []).map((ua: any) => ({
     id: ua.agency_id,
     name: ua.agencies?.name || "Sin nombre",
   }))
 
-  // Get sellers (all users with SELLER role or ADMIN/SUPER_ADMIN)
-  const { data: sellers } = await supabase
-    .from("users")
-    .select("id, name")
-    .in("role", ["SELLER", "ADMIN", "SUPER_ADMIN"])
-    .eq("is_active", true)
-
-  // Get operators
-  const { data: operators } = await supabase.from("operators").select("id, name").order("name")
+  t.end(`agencies=${agencies.length} sellers=${sellers?.length ?? 0} operators=${operators?.length ?? 0}`)
 
   return (
     <OperationsPageClient

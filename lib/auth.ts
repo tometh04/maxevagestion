@@ -2,6 +2,7 @@ import { cache } from 'react'
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
+import { makeTimer } from '@/lib/perf-log'
 
 type User = Database['public']['Tables']['users']['Row']
 
@@ -32,16 +33,19 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     return { user: mockUser, session: { user: { id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe' } } }
   }
 
+  const t = makeTimer('getCurrentUser')
   const supabase = await createServerClient()
-  
+  t.mark('createServerClient')
+
   // Si estamos usando placeholders, redirigir al login
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
   if (supabaseUrl.includes('placeholder')) {
     redirect('/login')
   }
-  
+
   const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-  
+  t.mark('auth.getUser')
+
   if (authError || !authUser) {
     redirect('/login')
   }
@@ -51,12 +55,14 @@ export const getCurrentUser = cache(async (): Promise<{ user: User; session: { u
     .select('*')
     .eq('auth_id', authUser.id)
     .maybeSingle()
+  t.mark('select users')
 
   const userData = user as any
   if (error || !userData || !userData.is_active) {
     redirect('/login')
   }
 
+  t.end(`role=${userData.role}`)
   return { user: userData, session: { user: authUser } }
 })
 
@@ -88,17 +94,22 @@ export const getUserAgencies = cache(async (userId: string): Promise<Array<{ age
     }
   }
 
+  const t = makeTimer('getUserAgencies')
   const supabase = await createServerClient()
+  t.mark('createServerClient')
   const { data, error } = await supabase
     .from('user_agencies')
     .select('agency_id, agencies(*)')
     .eq('user_id', userId)
+  t.mark('select user_agencies+nested')
 
   if (error) {
     console.error('Error fetching user agencies:', error)
+    t.end('error')
     return []
   }
 
+  t.end(`count=${data?.length ?? 0}`)
   return (data || []) as Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>
 })
 

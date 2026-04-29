@@ -1,9 +1,11 @@
+import { headers } from "next/headers"
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
 import { TaskShortcutProvider } from "@/components/tasks/task-shortcut-provider"
 import { PushNotificationManager } from "@/components/notifications/push-notification-manager"
 import { TrialBanner } from "@/components/trial-banner"
+import { PerfNavLogger } from "@/components/perf-nav-logger"
 import {
   SidebarInset,
   SidebarProvider,
@@ -11,25 +13,40 @@ import {
 import { BrandProvider } from "@/components/brand-provider"
 import { assertSubscriptionActive } from "@/lib/billing/guard"
 import { SubscriptionBanner } from "@/components/billing/subscription-banner"
+import { makeTimer } from "@/lib/perf-log"
 
 export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  // [perf-instrumentation] reqId proviene del middleware via header.
+  const __perfReqId = (await headers()).get("x-perf-req-id") || undefined
+  const t = makeTimer("layout(dashboard)", __perfReqId)
+
   // Capa B del defense-in-depth: bloquea acceso si no hay suscripción activa.
   // Independiente del middleware (que puede bypassearse via CVE-2025-29927).
   // Retorna el row de organizations para reusar en SubscriptionBanner sin
   // re-fetchear (ahorro de 1 query por navegación dashboard).
-  const orgBanner = await assertSubscriptionActive()
-
-  const { user } = await getCurrentUser()
+  //
+  // PERF: assertSubscriptionActive y getCurrentUser son independientes
+  // (ambos llaman getCurrentUser internamente, deduplicado por React.cache),
+  // así que paralelizamos. getUserAgencies necesita user.id, va después.
+  const [orgBanner, currentUser] = await Promise.all([
+    assertSubscriptionActive(),
+    getCurrentUser(),
+  ])
+  t.mark("subscription+currentUser (parallel)")
+  const { user } = currentUser
   const userAgencies = await getUserAgencies(user.id)
+  t.mark("getUserAgencies")
 
   const agencies = (userAgencies || []).map((ua: any) => ({
     id: ua.agency_id,
     name: ua.agencies?.name || "Sin nombre",
   }))
+
+  t.end(`role=${user.role} agencies=${agencies.length}`)
 
   return (
     <BrandProvider>
@@ -71,6 +88,7 @@ export default async function DashboardLayout({
           agencyId={agencies[0]?.id || ""}
         />
         <PushNotificationManager userId={user.id} />
+        <PerfNavLogger />
       </SidebarProvider>
     </BrandProvider>
   )

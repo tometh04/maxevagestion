@@ -34,6 +34,16 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
 }
 
 export async function middleware(req: NextRequest) {
+  // [perf-instrumentation] Identificador único por request para correlacionar
+  // logs server-side (middleware → layout → page) y client-side. Setea
+  // `x-perf-req-id` en request y response headers más abajo. Quitar cuando se
+  // termine el diagnóstico de navegación lenta.
+  const __perfStart = Date.now()
+  const __perfReqId = Math.random().toString(36).slice(2, 8)
+  const __perfPath = req.nextUrl.pathname
+  const __perfLog = process.env.PERF_LOG !== '0'
+  if (__perfLog) console.log(`[perf:${__perfReqId}] mw START ${req.method} ${__perfPath}`)
+
   // Legacy domain redirect: maxevagestion.com → app.vibook.ai (301)
   // Corre PRIMERO para no ejecutar auth/rate-limit/db en requests que solo
   // necesitan ser redirigidos. Preserva path y query string.
@@ -96,11 +106,18 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
+  // [perf-instrumentation] Pasamos el reqId al layout/page via request headers
+  // (los Server Components lo leen con `headers()`). También lo seteamos en
+  // response headers para que el browser lo vea en DevTools → Network.
+  const __perfRequestHeaders = new Headers(req.headers)
+  __perfRequestHeaders.set('x-perf-req-id', __perfReqId)
+
   let response = NextResponse.next({
     request: {
-      headers: req.headers,
+      headers: __perfRequestHeaders,
     },
   })
+  response.headers.set('x-perf-req-id', __perfReqId)
 
   const supabase = createServerClient(
     supabaseUrl,
@@ -123,7 +140,9 @@ export async function middleware(req: NextRequest) {
   // Refresh session if expired - required for Server Components
   let authUserId: string | null = null
   try {
+    const __perfAuthStart = Date.now()
     const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (__perfLog) console.log(`[perf:${__perfReqId}] mw auth.getUser: ${Date.now() - __perfAuthStart}ms`)
     authUserId = authUser?.id ?? null
   } catch (error: unknown) {
     // Silenciar errores de refresh token inválido/no encontrado (normal cuando no hay sesión)
@@ -227,6 +246,7 @@ export async function middleware(req: NextRequest) {
     let combinedQueryWorked = false
 
     try {
+      const __perfFastStart = Date.now()
       const { data: combined, error: combinedError } = await (supabase.from("users") as any)
         .select(
           `org_id, is_active,
@@ -234,6 +254,7 @@ export async function middleware(req: NextRequest) {
         )
         .eq("auth_id", authUserId)
         .maybeSingle()
+      if (__perfLog) console.log(`[perf:${__perfReqId}] mw users+org FAST: ${Date.now() - __perfFastStart}ms (worked=${!combinedError && !!combined})`)
 
       if (!combinedError && combined) {
         userRow = { org_id: (combined as any).org_id, is_active: (combined as any).is_active }
@@ -250,10 +271,12 @@ export async function middleware(req: NextRequest) {
     // SLOW PATH (fallback): si el combined query falló, ejecutamos la
     // lógica original idéntica al código pre-C-3.
     if (!combinedQueryWorked) {
+      const __perfSlowStart = Date.now()
       const { data } = await (supabase.from("users") as any)
         .select("org_id, is_active")
         .eq("auth_id", authUserId)
         .maybeSingle()
+      if (__perfLog) console.log(`[perf:${__perfReqId}] mw users SLOW: ${Date.now() - __perfSlowStart}ms`)
       userRow = data
       // orgRow se mantiene null; se fetcheará abajo en el bloque paywall si hace falta.
     }
@@ -276,10 +299,12 @@ export async function middleware(req: NextRequest) {
       // Si el fast-path no trajo la org (slow path o RLS no devolvió nested),
       // la fetcheamos ahora separada — exactamente como hacía antes.
       if (!orgRow) {
+        const __perfOrgStart = Date.now()
         const { data } = await (supabase.from("organizations") as any)
           .select("subscription_status, current_period_ends_at, trial_ends_at, custom_plan_id")
           .eq("id", orgId)
           .maybeSingle()
+        if (__perfLog) console.log(`[perf:${__perfReqId}] mw organizations: ${Date.now() - __perfOrgStart}ms`)
         orgRow = data
       }
 
@@ -307,6 +332,11 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  if (__perfLog) {
+    const __perfTotal = Date.now() - __perfStart
+    response.headers.set('Server-Timing', `mw;dur=${__perfTotal}`)
+    console.log(`[perf:${__perfReqId}] mw END ${__perfPath} TOTAL ${__perfTotal}ms`)
+  }
   return response
 }
 

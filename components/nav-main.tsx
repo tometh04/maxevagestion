@@ -44,6 +44,15 @@ interface NavMainProps {
   pathname: string
 }
 
+// [perf-instrumentation] Loguea el momento exacto del click en sidebar para
+// correlacionar con logs server-side. Quitar cuando termine la investigación.
+const PERF_LOG_ENABLED = process.env.NEXT_PUBLIC_PERF_LOG !== "0"
+const logSidebarClick = (url: string) => {
+  if (!PERF_LOG_ENABLED) return
+  // eslint-disable-next-line no-console
+  console.log(`[perf:client] CLICK → ${url} at ${performance.now().toFixed(0)}ms`)
+}
+
 export function NavMain({ items, pathname }: NavMainProps) {
   return (
     <SidebarGroup>
@@ -59,7 +68,7 @@ export function NavMain({ items, pathname }: NavMainProps) {
               return (
                 <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton tooltip={item.title} asChild isActive={isActive}>
-                    <Link href={item.url}>
+                    <Link href={item.url} onClick={() => logSidebarClick(item.url)}>
                       {item.icon && <item.icon />}
                       <span>{item.title}</span>
                     </Link>
@@ -113,7 +122,7 @@ export function NavMain({ items, pathname }: NavMainProps) {
                                       return (
                                         <SidebarMenuSubItem key={subSubItem.url}>
                                           <SidebarMenuSubButton asChild isActive={subSubIsActive} className="pl-1">
-                                            <Link href={subSubItem.url}>
+                                            <Link href={subSubItem.url} onClick={() => logSidebarClick(subSubItem.url)}>
                                               {subSubItem.title}
                                             </Link>
                                           </SidebarMenuSubButton>
@@ -131,7 +140,7 @@ export function NavMain({ items, pathname }: NavMainProps) {
                         return (
                           <SidebarMenuSubItem key={subItem.url}>
                             <SidebarMenuSubButton asChild isActive={subIsActive}>
-                              <Link href={subItem.url}>
+                              <Link href={subItem.url} onClick={() => logSidebarClick(subItem.url)}>
                                 <span>{subItem.title}</span>
                               </Link>
                             </SidebarMenuSubButton>

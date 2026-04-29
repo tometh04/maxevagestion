@@ -34,6 +34,19 @@ const nextConfig = {
   // páginas como dashboard — causaba duplicate fetches y 503s por sobrecarga
   // de conexiones a Supabase.
   reactStrictMode: process.env.NODE_ENV !== 'production',
+  // PERF: tree-shake automático de barrel imports en librerías grandes.
+  // Sin esto, importar `import { Foo } from 'recharts'` arrastra todo el
+  // paquete. Con esto, Next reescribe a sub-imports específicos.
+  // https://nextjs.org/docs/app/api-reference/config/next-config-js/optimizePackageImports
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      '@tabler/icons-react',
+      'recharts',
+      '@radix-ui/react-icons',
+      'date-fns',
+    ],
+  },
   async headers() {
     return [
       {
