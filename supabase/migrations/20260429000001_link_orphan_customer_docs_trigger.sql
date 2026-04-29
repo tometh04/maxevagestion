@@ -57,12 +57,17 @@ EXECUTE FUNCTION link_orphan_customer_docs_to_operation();
 -- Backfill: docs huérfanos cuyos clientes YA están en operation_customers.
 -- Linkea cada doc huérfano con la primera operación donde el cliente es MAIN
 -- (o la primera disponible si no es MAIN en ninguna).
+--
+-- operation_customers NO tiene created_at (sólo id, operation_id,
+-- customer_id, role — ver migración 001), así que ordenamos por
+-- operations.created_at vía JOIN para tener un criterio determinista.
 WITH first_op_for_customer AS (
   SELECT DISTINCT ON (oc.customer_id)
     oc.customer_id,
     oc.operation_id
   FROM operation_customers oc
-  ORDER BY oc.customer_id, (oc.role = 'MAIN') DESC, oc.created_at ASC NULLS LAST
+  JOIN operations o ON o.id = oc.operation_id
+  ORDER BY oc.customer_id, (oc.role = 'MAIN') DESC, o.created_at ASC NULLS LAST
 )
 UPDATE documents d
 SET operation_id = foc.operation_id
