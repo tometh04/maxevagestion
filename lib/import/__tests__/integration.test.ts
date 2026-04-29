@@ -8,13 +8,14 @@ jest.mock("react", () => ({
 import { PIPELINES } from "../index"
 
 describe("PIPELINES registry", () => {
-  it("expone los 5 pipelines", () => {
+  it("expone los 6 pipelines", () => {
     expect(Object.keys(PIPELINES).sort()).toEqual([
       "cash-movements",
       "customers",
       "operations-master",
       "operators",
       "payments-suelto",
+      "users",
     ])
   })
 
