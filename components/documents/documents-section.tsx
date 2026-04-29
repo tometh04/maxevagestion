@@ -76,9 +76,18 @@ interface DocumentsSectionProps {
   operationId?: string
   customerId?: string
   departureDate?: string // Para verificar vencimiento vs viaje
+  allowUpload?: boolean
+  allowDelete?: boolean
 }
 
-export function DocumentsSection({ documents: initialDocuments, operationId, customerId, departureDate }: DocumentsSectionProps) {
+export function DocumentsSection({
+  documents: initialDocuments,
+  operationId,
+  customerId,
+  departureDate,
+  allowUpload = true,
+  allowDelete = true,
+}: DocumentsSectionProps) {
   const [documents, setDocuments] = useState<Document[]>(initialDocuments || [])
   const [uploading, setUploading] = useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
@@ -193,82 +202,84 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
   }
 
   return (
-    <Card>
+    <Card className="rounded-xl border border-border/40">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Documentos</CardTitle>
-        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Subir Documento
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Subir Documento</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Tipo de Documento</label>
-                <Select value={documentType} onValueChange={setDocumentType}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecciona el tipo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="PASSPORT">Pasaporte</SelectItem>
-                    <SelectItem value="DNI">DNI</SelectItem>
-                    <SelectItem value="LICENSE">Licencia de Conducir</SelectItem>
-                    <SelectItem value="VOUCHER">Voucher</SelectItem>
-                    <SelectItem value="INVOICE">Factura</SelectItem>
-                    <SelectItem value="PAYMENT_PROOF">Comprobante de Pago</SelectItem>
-                    <SelectItem value="OTHER">Otro</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-2 block">Archivo</label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={handleFileSelect}
-                  className="w-full text-sm"
-                />
-                {selectedFile && (
-                  <div className="mt-2 text-sm text-muted-foreground">
-                    Seleccionado: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                  </div>
-                )}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                <p>• Formatos permitidos: JPEG, PNG, WebP, PDF</p>
-                <p>• Tamaño máximo: 10MB</p>
-                <p>• Los documentos de tipo Pasaporte, DNI o Licencia se escanearán automáticamente con IA</p>
-              </div>
-              <Button
-                onClick={handleUpload}
-                disabled={!selectedFile || !documentType || uploading}
-                className="w-full"
-              >
-                {uploading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Subiendo y escaneando...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Subir y Escanear
-                  </>
-                )}
+        {allowUpload && (
+          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Upload className="h-4 w-4 mr-2" />
+                Subir Documento
               </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Subir Documento</DialogTitle>
+              </DialogHeader>
+              <div className="px-6 py-5 space-y-5">
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Tipo de Documento</label>
+                  <Select value={documentType} onValueChange={setDocumentType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona el tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PASSPORT">Pasaporte</SelectItem>
+                      <SelectItem value="DNI">DNI</SelectItem>
+                      <SelectItem value="LICENSE">Licencia de Conducir</SelectItem>
+                      <SelectItem value="VOUCHER">Voucher</SelectItem>
+                      <SelectItem value="INVOICE">Factura</SelectItem>
+                      <SelectItem value="PAYMENT_PROOF">Comprobante de Pago</SelectItem>
+                      <SelectItem value="OTHER">Otro</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Archivo</label>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={handleFileSelect}
+                    className="w-full text-sm"
+                  />
+                  {selectedFile && (
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      Seleccionado: {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  <p>• Formatos permitidos: JPEG, PNG, WebP, PDF</p>
+                  <p>• Tamaño máximo: 10MB</p>
+                  <p>• Los documentos de tipo Pasaporte, DNI o Licencia se escanearán automáticamente con IA</p>
+                </div>
+                <Button
+                  onClick={handleUpload}
+                  disabled={!selectedFile || !documentType || uploading}
+                  className="w-full"
+                >
+                  {uploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Subiendo y escaneando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Subir y Escanear
+                    </>
+                  )}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
       </CardHeader>
       <CardContent>
         {documents.length === 0 ? (
-          <div className="text-sm text-muted-foreground bg-muted/50 rounded-lg p-4 text-center">
+          <div className="text-sm text-muted-foreground rounded-xl border border-border/40 bg-muted/20 p-4 text-center">
             No hay documentos subidos
           </div>
         ) : (
@@ -276,14 +287,14 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
             {documents.map((doc) => (
               <div
                 key={doc.id}
-                className="bg-muted/50 rounded-lg p-4 space-y-3 border border-border"
+                className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4"
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="outline">{getDocumentTypeLabel(doc.type)}</Badge>
                       {doc.scanned_data && (
-                        <Badge variant="default" className="bg-green-600">
+                        <Badge variant="default" className="bg-success/10 text-success">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Escaneado
                         </Badge>
@@ -306,14 +317,16 @@ export function DocumentsSection({ documents: initialDocuments, operationId, cus
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => handleDelete(doc.id)}
-                      className="text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {allowDelete && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(doc.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
 

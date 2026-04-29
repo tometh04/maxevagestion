@@ -39,7 +39,7 @@ export default async function NotificationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Notificaciones</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Notificaciones</h1>
         <p className="text-muted-foreground">
           Centro de alertas y notificaciones del sistema
         </p>

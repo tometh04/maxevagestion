@@ -130,3 +130,39 @@ export function withRateLimit(
   return result
 }
 
+/**
+ * Helper ergonómico para rate-limit por usuario en API routes.
+ * Retorna null si se permite, o un 429 Response listo para retornar.
+ *
+ * Uso:
+ *   const limit = enforceUserRateLimit(user.id, "/api/payments", "WRITE")
+ *   if (limit) return limit
+ */
+import { NextResponse } from "next/server"
+
+export function enforceUserRateLimit(
+  userId: string | null | undefined,
+  endpoint: string,
+  kind: keyof typeof RATE_LIMIT_CONFIGS = "WRITE"
+): NextResponse | null {
+  const identifier = userId || "anonymous"
+  const result = checkRateLimit(identifier, endpoint, RATE_LIMIT_CONFIGS[kind])
+  if (result.allowed) return null
+
+  const retryAfterSec = Math.max(1, Math.ceil((result.resetTime - Date.now()) / 1000))
+  return NextResponse.json(
+    {
+      error: "Demasiadas solicitudes. Esperá un momento antes de volver a intentar.",
+      retryAfter: retryAfterSec,
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryAfterSec),
+        "X-RateLimit-Remaining": String(result.remaining),
+        "X-RateLimit-Reset": String(result.resetTime),
+      },
+    }
+  )
+}
+

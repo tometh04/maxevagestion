@@ -24,16 +24,31 @@ const createMockSupabase = () => {
 
 describe("IVA Service", () => {
   describe("calculateSaleIVA", () => {
-    it("should calculate IVA correctly for a sale", () => {
-      const result = calculateSaleIVA(1210) // 1000 neto + 210 IVA
-      expect(result.net_amount).toBeCloseTo(1000, 2)
-      expect(result.iva_amount).toBeCloseTo(210, 2)
+    it("should calculate IVA over margin (sale - operator_cost)", () => {
+      // Nueva semántica: el total es la ganancia bruta (margin), IVA se
+      // calcula sobre margin. Con operatorCost=0 (default), margin=1210.
+      // Rate INTERMEDIACION 21%. iva=254.10; net=955.90.
+      const result = calculateSaleIVA(1210)
+      expect(result.margin).toBeCloseTo(1210, 2)
+      expect(result.iva_amount).toBeCloseTo(254.1, 2)
+      expect(result.net_amount).toBeCloseTo(955.9, 2)
+      expect(result.iva_rate).toBe(0.21)
     })
 
     it("should handle decimal amounts correctly", () => {
+      // margin=1210.5; iva=254.205→254.21; net=956.295→956.30
       const result = calculateSaleIVA(1210.5)
-      expect(result.net_amount).toBeCloseTo(1000.41, 2)
-      expect(result.iva_amount).toBeCloseTo(210.09, 2)
+      expect(result.margin).toBeCloseTo(1210.5, 2)
+      expect(result.iva_amount).toBeCloseTo(254.21, 2)
+      expect(result.net_amount).toBeCloseTo(956.3, 2)
+    })
+
+    it("should calculate correctly with operator cost (real margin)", () => {
+      // saleTotal=1210, operatorCost=210 → margin=1000, iva=210, net=790
+      const result = calculateSaleIVA(1210, 210)
+      expect(result.margin).toBeCloseTo(1000, 2)
+      expect(result.iva_amount).toBeCloseTo(210, 2)
+      expect(result.net_amount).toBeCloseTo(790, 2)
     })
 
     it("should round to 2 decimal places", () => {
@@ -106,9 +121,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(315)
-      expect(result.total_purchases_iva).toBe(50)
-      expect(result.iva_to_pay).toBe(265)
+      expect(result.ars.total_sales_iva).toBe(315)
+      expect(result.ars.total_purchases_iva).toBe(50)
+      expect(result.ars.iva_to_pay).toBe(265)
     })
 
     it("should handle empty data", async () => {
@@ -141,9 +156,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(0)
-      expect(result.total_purchases_iva).toBe(0)
-      expect(result.iva_to_pay).toBe(0)
+      expect(result.ars.total_sales_iva).toBe(0)
+      expect(result.ars.total_purchases_iva).toBe(0)
+      expect(result.ars.iva_to_pay).toBe(0)
     })
 
     it("should handle null iva_amount values", async () => {
@@ -176,9 +191,9 @@ describe("IVA Service", () => {
 
       const result = await getMonthlyIVAToPay(mockSupabase, 2025, 11)
 
-      expect(result.total_sales_iva).toBe(210)
-      expect(result.total_purchases_iva).toBe(0)
-      expect(result.iva_to_pay).toBe(210)
+      expect(result.ars.total_sales_iva).toBe(210)
+      expect(result.ars.total_purchases_iva).toBe(0)
+      expect(result.ars.iva_to_pay).toBe(210)
     })
   })
 })

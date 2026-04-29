@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { 
-  Loader2, Plus, Users, Crown, MoreHorizontal, Trash2, Edit2, 
-  Target, TrendingUp, UserPlus
+  Loader2, Plus, Users, Crown, MoreHorizontal, Trash2, Edit2,
+  Target, TrendingUp, UserPlus, Palette
 } from "lucide-react"
 import {
   Breadcrumb,
@@ -140,6 +140,11 @@ export function TeamsPageClient() {
       }
     } catch (error) {
       console.error('Error loading users:', error)
+      toast({
+        title: "Error",
+        description: "Error al cargar usuarios",
+        variant: "destructive",
+      })
     }
   }
 
@@ -257,7 +262,7 @@ export function TeamsPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Equipos de Ventas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Equipos de Ventas</h1>
           <p className="text-muted-foreground">
             Organiza tu equipo y asigna metas de ventas
           </p>
@@ -385,95 +390,113 @@ export function TeamsPageClient() {
               Crea un nuevo equipo de ventas y asigna miembros
             </DialogDescription>
           </DialogHeader>
-          
-          <div className="space-y-4">
-            <div>
-              <Label>Nombre del equipo *</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Ej: Equipo Premium"
-              />
-            </div>
 
-            <div>
-              <Label>Descripción</Label>
-              <Textarea
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Descripción del equipo..."
-              />
-            </div>
+          <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Info del Equipo */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Users className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Información</h4>
+              </div>
+              <div>
+                <Label>Nombre del equipo *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="Ej: Equipo Premium"
+                />
+              </div>
 
-            <div>
-              <Label>Color</Label>
-              <div className="flex gap-2 mt-2">
-                {colorOptions.map(color => (
-                  <button
-                    key={color}
-                    type="button"
-                    className={cn(
-                      "w-8 h-8 rounded-full border-2 transition-all",
-                      formData.color === color 
-                        ? "border-foreground ring-2 ring-offset-2" 
-                        : "border-transparent hover:scale-110"
-                    )}
-                    style={{ backgroundColor: color }}
-                    onClick={() => setFormData({ ...formData, color })}
-                  />
-                ))}
+              <div>
+                <Label>Descripción</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Descripción del equipo..."
+                />
+              </div>
+
+              <div>
+                <Label>Color</Label>
+                <div className="flex gap-2 mt-2">
+                  {colorOptions.map(color => (
+                    <button
+                      key={color}
+                      type="button"
+                      className={cn(
+                        "w-8 h-8 rounded-full border-2 transition-all",
+                        formData.color === color
+                          ? "border-foreground ring-2 ring-offset-2"
+                          : "border-transparent hover:scale-110"
+                      )}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setFormData({ ...formData, color })}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div>
-              <Label>Líder del equipo</Label>
-              <Select 
-                value={formData.leader_id} 
-                onValueChange={(v) => setFormData({ ...formData, leader_id: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar líder" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users.map(user => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.first_name} {user.last_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Miembros */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <Crown className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Miembros</h4>
+              </div>
+              <div>
+                <Label>Líder del equipo</Label>
+                <Select
+                  value={formData.leader_id}
+                  onValueChange={(v) => setFormData({ ...formData, leader_id: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar líder" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users.map(user => (
+                      <SelectItem key={user.id} value={user.id}>
+                        {user.first_name} {user.last_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div>
-              <Label>Miembros</Label>
-              <div className="border rounded-md p-3 mt-2 max-h-48 overflow-y-auto space-y-2">
-                {users.map(user => (
-                  <label 
-                    key={user.id}
-                    className="flex items-center gap-3 p-2 hover:bg-muted rounded cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={formData.member_ids.includes(user.id)}
-                      onChange={() => toggleMember(user.id)}
-                      className="h-4 w-4"
-                    />
-                    <Avatar className="h-8 w-8">
-                      <AvatarFallback>
-                        {getInitials(user.first_name, user.last_name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="text-sm font-medium">{user.first_name} {user.last_name}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
-                    </div>
-                  </label>
-                ))}
-                {users.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No hay usuarios disponibles
-                  </p>
-                )}
+              <div>
+                <Label>Miembros</Label>
+                <div className="border border-border/30 bg-background rounded-lg p-3 mt-2 max-h-48 overflow-y-auto space-y-2">
+                  {users.map(user => (
+                    <label
+                      key={user.id}
+                      className="flex items-center gap-3 p-2 hover:bg-muted rounded cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.member_ids.includes(user.id)}
+                        onChange={() => toggleMember(user.id)}
+                        className="h-4 w-4"
+                      />
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>
+                          {getInitials(user.first_name, user.last_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium">{user.first_name} {user.last_name}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                    </label>
+                  ))}
+                  {users.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      No hay usuarios disponibles
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </div>

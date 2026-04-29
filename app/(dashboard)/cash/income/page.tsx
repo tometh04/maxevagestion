@@ -6,8 +6,7 @@ import { canAccessModule } from "@/lib/permissions"
 
 function getDefaultDateRange() {
   const today = new Date()
-  const from = new Date()
-  from.setDate(today.getDate() - 30)
+  const from = new Date(today.getFullYear(), 0, 1) // 1° de enero del año actual
 
   return {
     dateFrom: from.toISOString().split("T")[0],
@@ -22,7 +21,7 @@ export default async function CashIncomePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Ingresos</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Ingresos</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a caja</p>
         </div>
       </div>
@@ -52,6 +51,7 @@ export default async function CashIncomePage() {
   const defaultFilters: CashFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    dateType: "CREACION",
     agencyId: "ALL",
     currency: "ALL",
   }

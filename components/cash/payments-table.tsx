@@ -9,7 +9,7 @@ import { es } from "date-fns/locale"
 import { DataTable } from "@/components/ui/data-table"
 import { DataTableColumnHeader } from "@/components/ui/data-table-column-header"
 import { ServerPagination } from "@/components/ui/server-pagination"
-import { MoreHorizontal } from "lucide-react"
+import { MoreHorizontal, Info } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,18 +18,37 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { MarkPaidDialog } from "@/components/payments/mark-paid-dialog"
+import { PaymentInfoDialog } from "@/components/payments/payment-info-dialog"
+import Link from "next/link"
 
 interface PaymentOperation {
   id: string
   destination: string
+  file_code?: string | null
   agency_id?: string | null
   agencies?: { name: string | null } | null
   sellers?: { name: string | null } | null
+  operation_customers?: Array<{
+    role?: string
+    customers?: { id: string; first_name: string; last_name: string } | null
+  }> | null
+}
+
+interface PaymentLedger {
+  id: string
+  created_at: string
+  receipt_number?: string | null
+  method?: string | null
+  notes?: string | null
+  account_id?: string | null
+  financial_accounts?: { name: string | null } | null
 }
 
 export interface Payment {
   id: string
   operation_id: string
+  operator_id?: string | null
+  operator_payment_id?: string | null
   payer_type: "CUSTOMER" | "OPERATOR"
   direction: "INCOME" | "EXPENSE"
   method: string
@@ -39,7 +58,11 @@ export interface Payment {
   date_paid: string | null
   status: "PENDING" | "PAID" | "OVERDUE"
   reference: string | null
+  created_at?: string
+  updated_at?: string
   operations?: PaymentOperation | null
+  operators?: { id: string; name: string; contact_email?: string | null } | null
+  ledger_movements?: PaymentLedger | null
 }
 
 interface PaymentsTableProps {
@@ -50,6 +73,7 @@ interface PaymentsTableProps {
   // Filtros para paginación server-side
   dateFrom?: string
   dateTo?: string
+  dateType?: string
   currency?: string
   agencyId?: string
   status?: string
@@ -65,6 +89,7 @@ export function PaymentsTable({
   emptyMessage,
   dateFrom,
   dateTo,
+  dateType,
   currency,
   agencyId,
   status,
@@ -76,6 +101,8 @@ export function PaymentsTable({
   const [loading, setLoading] = useState(!initialPayments)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [infoPayment, setInfoPayment] = useState<Payment | null>(null)
   
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
@@ -96,6 +123,7 @@ export function PaymentsTable({
       const params = new URLSearchParams()
       if (dateFrom) params.append("dateFrom", dateFrom)
       if (dateTo) params.append("dateTo", dateTo)
+      if (dateType) params.append("dateType", dateType)
       if (currency) params.append("currency", currency)
       if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
       if (status && status !== "ALL") params.append("status", status)
@@ -120,7 +148,7 @@ export function PaymentsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, status, payerType, direction, contactName, page, limit])
+  }, [useServerPagination, dateFrom, dateTo, dateType, currency, agencyId, status, payerType, direction, contactName, page, limit])
   
   useEffect(() => {
     fetchPayments()
@@ -179,9 +207,19 @@ export function PaymentsTable({
         header: "Operación",
         cell: ({ row }) => (
           <div className="space-y-1">
-            <p className="font-medium">
-              {row.original.operations?.destination || "Sin destino"}
-            </p>
+            {row.original.operation_id ? (
+              <Link
+                href={`/operations/${row.original.operation_id}`}
+                className="font-medium text-primary hover:underline"
+                prefetch={false}
+              >
+                {row.original.operations?.destination || "Sin destino"}
+              </Link>
+            ) : (
+              <p className="font-medium">
+                {row.original.operations?.destination || "Sin destino"}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">
               {row.original.operations?.agencies?.name || "Sin agencia"}
             </p>
@@ -194,22 +232,14 @@ export function PaymentsTable({
           <DataTableColumnHeader column={column} title="Payer" />
         ),
         cell: ({ row }) => (
-          <Badge variant="outline">
-            {row.original.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
-          </Badge>
-        ),
-      },
-      {
-        accessorKey: "direction",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Dirección" />
-        ),
-        cell: ({ row }) => (
-          <Badge
-            variant={row.original.direction === "INCOME" ? "default" : "destructive"}
-          >
-            {row.original.direction === "INCOME" ? "Ingreso" : "Egreso"}
-          </Badge>
+          <div className="space-y-1">
+            <Badge variant="outline">
+              {row.original.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
+            </Badge>
+            {row.original.payer_type === "OPERATOR" && row.original.operators?.name && (
+              <p className="text-xs text-muted-foreground">{row.original.operators.name}</p>
+            )}
+          </div>
         ),
       },
       {
@@ -272,6 +302,15 @@ export function PaymentsTable({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => {
+                    setInfoPayment(payment)
+                    setInfoDialogOpen(true)
+                  }}
+                >
+                  <Info className="h-4 w-4 mr-2" />
+                  Ver info
+                </DropdownMenuItem>
                 {payment.status !== "PAID" && (
                   <DropdownMenuItem
                     onClick={() => {
@@ -349,6 +388,13 @@ export function PaymentsTable({
             fetchPayments() // Recargar si usa paginación server-side
           }
         }}
+      />
+
+      <PaymentInfoDialog
+        open={infoDialogOpen}
+        onOpenChange={setInfoDialogOpen}
+        payment={infoPayment}
+        type="customer"
       />
     </>
   )

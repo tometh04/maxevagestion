@@ -411,7 +411,7 @@ async function setupAgency(agencyName: string, config: typeof TRELLO_CONFIG.ROSA
   console.log("")
   console.log("🔗 Configurando webhook...")
   try {
-    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://erplozada.vercel.app"}/api/trello/webhook`
+    const callbackUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"}/api/trello/webhook`
     const webhook = await setupWebhook(config.boardId, config.apiKey, config.token, callbackUrl)
     console.log(`   ✅ Webhook configurado: ${webhook.id}`)
   } catch (error: any) {

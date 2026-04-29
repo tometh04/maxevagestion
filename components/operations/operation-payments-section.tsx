@@ -38,8 +38,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2 } from "lucide-react"
+import { CalendarIcon, Plus, Loader2, Trash2, FileText, Download, MessageSquare, Pencil, CheckCircle2, CreditCard, Banknote, Landmark, StickyNote, Receipt } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { useRouter } from "next/navigation"
@@ -47,6 +48,18 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
+import {
+  calculateAmountInSaleCurrency,
+  normalizeSupportedCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
+import { toast } from "sonner"
+import {
+  getOperationBaseOperatorPayments,
+  type OperationOperatorPaymentLike,
+  type OperationServicePaymentRelationLike,
+} from "@/lib/operations/payment-operators"
 
 interface FinancialAccount {
   id: string
@@ -60,11 +73,12 @@ interface FinancialAccount {
 const paymentSchema = z.object({
   payer_type: z.enum(["CUSTOMER", "OPERATOR"]),
   direction: z.enum(["INCOME", "EXPENSE"]),
+  operator_id: z.string().optional(),
   method: z.string().min(1, "Método es requerido"),
   amount: z.coerce.number().min(0.01, "Monto debe ser mayor a 0"),
   currency: z.enum(["ARS", "USD"]),
   financial_account_id: z.string().min(1, "Debe seleccionar una cuenta financiera"),
-  exchange_rate: z.coerce.number().optional(), // Tipo de cambio para ARS
+  exchange_rate: z.coerce.number().optional(), // Tipo de cambio cuando la cobranza requiere conversion
   date_paid: z.date({
     required_error: "Fecha de pago es requerida",
   }),
@@ -99,22 +113,42 @@ const paymentMethods = [
   { value: "Otro", label: "Otro" },
 ]
 
+const NO_BASE_OPERATOR_DEBT_MESSAGE =
+  "No hay deudas pendientes de la operación base. Si necesitás pagar un servicio, hacelo desde la pestaña Servicios."
+
 interface OperationPaymentsSectionProps {
   operationId: string
   payments: any[]
   currency: string
+  saleCurrency: string
   saleAmount: number
   operatorCost: number
   userRole: string
+  operators: Array<{ id: string; name: string }>
+  operatorPayments?: OperationOperatorPaymentLike[]
+  operationServices?: OperationServicePaymentRelationLike[]
+  destination?: string
+}
+
+function isInternationalDestination(destination?: string | null): boolean {
+  if (!destination) return false
+  const normalized = destination.trim().toLowerCase()
+  const domesticKeywords = ["argentina", "nacional", "cabotaje", "domestic"]
+  return !domesticKeywords.some((kw) => normalized.includes(kw))
 }
 
 export function OperationPaymentsSection({
   operationId,
   payments,
   currency,
+  saleCurrency,
   saleAmount,
   operatorCost,
   userRole,
+  operators,
+  operatorPayments = [],
+  operationServices = [],
+  destination,
 }: OperationPaymentsSectionProps) {
   const router = useRouter()
   const [incomeDialogOpen, setIncomeDialogOpen] = useState(false)
@@ -128,6 +162,10 @@ export function OperationPaymentsSection({
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [editingPayment, setEditingPayment] = useState<any>(null)
   const [markAsPaid, setMarkAsPaid] = useState(false)
+  const [applyRg5617, setApplyRg5617] = useState(false)
+  const [applyRg3819, setApplyRg3819] = useState(false)
+  const operatorNameById = new Map(operators.map((operator) => [operator.id, operator.name]))
+  const customerSaleCurrency = normalizeSupportedCurrency(saleCurrency || currency)
 
   // Cargar cuentas financieras cuando se abre cualquier diálogo
   useEffect(() => {
@@ -144,6 +182,7 @@ export function OperationPaymentsSection({
           }
         } catch (error) {
           console.error("Error fetching financial accounts:", error)
+          toast.error("Error al cargar cuentas financieras")
         }
       }
       fetchFinancialAccounts()
@@ -172,20 +211,25 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error:", error)
-      alert("Error al eliminar pagos pendientes")
+      toast.error("Error al eliminar pagos pendientes")
     } finally {
       setIsDeleting(false)
     }
   }
 
-  const handleDeletePayment = async (paymentId: string) => {
+  const handleDeletePayment = async (payment: any) => {
+    if (payment?.source === "OPERATOR_BULK") {
+      toast.error("Los pagos generados desde Pago Masivo no se pueden eliminar desde esta pantalla")
+      return
+    }
+
     if (!confirm("¿Eliminar este pago? También se eliminarán los movimientos contables asociados (libro mayor y caja).")) {
       return
     }
     
-    setDeletingPaymentId(paymentId)
+    setDeletingPaymentId(payment.id)
     try {
-      const response = await fetch(`/api/payments?paymentId=${paymentId}`, {
+      const response = await fetch(`/api/payments?paymentId=${payment.id}`, {
         method: "DELETE",
       })
 
@@ -197,7 +241,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error:", error)
-      alert(error instanceof Error ? error.message : "Error al eliminar pago")
+      toast.error(error instanceof Error ? error.message : "Error al eliminar pago")
     } finally {
       setDeletingPaymentId(null)
     }
@@ -224,11 +268,11 @@ export function OperationPaymentsSection({
         window.open(data.whatsappLink, "_blank")
       }
       
-      alert("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
+      toast.success("Mensaje WhatsApp creado exitosamente. Se abrirá WhatsApp para enviarlo.")
       router.refresh()
     } catch (error) {
       console.error("Error sending receipt via WhatsApp:", error)
-      alert(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
+      toast.error(error instanceof Error ? error.message : "Error al enviar recibo por WhatsApp")
     } finally {
       setSendingReceiptId(null)
     }
@@ -237,325 +281,10 @@ export function OperationPaymentsSection({
   const handleDownloadReceipt = async (paymentId: string) => {
     setDownloadingReceiptId(paymentId)
     try {
-      // Obtener datos del recibo desde la API
-      const response = await fetch(`/api/receipt-data?paymentId=${paymentId}`)
-      
-      if (!response.ok) {
-        throw new Error("Error al obtener datos del recibo")
-      }
-
-      const data = await response.json()
-
-      // Importar jsPDF dinámicamente (solo en cliente)
-      const { default: jsPDF } = await import("jspdf")
-      const { format } = await import("date-fns")
-      const { es } = await import("date-fns/locale")
-      
-      // Crear PDF
-      const doc = new jsPDF()
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const pageHeight = doc.internal.pageSize.getHeight()
-      const margin = 15
-      let y = 0
-
-      // ========== HEADER LOZADA ==========
-      // Fondo dorado izquierdo
-      doc.setFillColor(194, 156, 95) // Color dorado
-      doc.rect(0, 0, pageWidth * 0.55, 35, "F")
-      
-      // Flecha blanca
-      doc.setFillColor(255, 255, 255)
-      doc.triangle(pageWidth * 0.45, 0, pageWidth * 0.55, 17.5, pageWidth * 0.45, 35, "F")
-      
-      // Fondo dorado derecho (más oscuro)
-      doc.setFillColor(184, 142, 74)
-      doc.rect(pageWidth * 0.55, 0, pageWidth * 0.45, 35, "F")
-      
-      // Logo LOZADA Viajes (texto)
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(22)
-      doc.setFont("helvetica", "bold")
-      doc.text("LOZADA", 15, 18)
-      doc.setFontSize(16)
-      doc.setFont("helvetica", "italic")
-      doc.text("Viajes", 62, 22)
-      
-      // Datos derecha del header
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(7)
-      doc.setFont("helvetica", "normal")
-      
-      // Recuadro "Documento no valido como factura X"
-      doc.setDrawColor(255, 255, 255)
-      doc.setLineWidth(0.3)
-      doc.rect(pageWidth - 45, 3, 40, 12)
-      doc.setFontSize(6)
-      doc.text("Documento no", pageWidth - 43, 7)
-      doc.text("valido como", pageWidth - 43, 10)
-      doc.text("factura", pageWidth - 43, 13)
-      doc.setFontSize(16)
-      doc.setFont("helvetica", "bold")
-      doc.text("X", pageWidth - 12, 12)
-      
-      // Info de contacto
-      doc.setFontSize(7)
-      doc.setFont("helvetica", "normal")
-      doc.text(`N° Legajo: 18181`, pageWidth - 45, 20)
-      doc.text(`+5493412753942`, pageWidth - 45, 24)
-      doc.text(`rosario.ventas@lozadaviajes.com`, pageWidth - 45, 28)
-      doc.text(`Corrientes 631 (Piso 1) Rosario, Santa Fe`, pageWidth - 45, 32)
-
-      y = 45
-
-      // ========== FECHA Y NUMERO RECIBO ==========
-      doc.setTextColor(0, 0, 0)
-      doc.setFontSize(10)
-      doc.setFont("helvetica", "normal")
-      doc.text(`${data.agencyCity} ${data.fechaFormateada}`, margin, y)
-
-      doc.setFontSize(11)
-      doc.setFont("helvetica", "bold")
-      doc.text(`RECIBO X: No ${data.receiptNumber}`, pageWidth - margin, y, { align: "right" })
-
-      y += 15
-
-      // Línea separadora
-      doc.setDrawColor(0, 0, 0)
-      doc.setLineWidth(0.5)
-      doc.line(margin, y, pageWidth - margin, y)
-      
-      y += 12
-
-      // ========== DATOS DEL CLIENTE ==========
-      doc.setFontSize(10)
-      
-      doc.setFont("helvetica", "bold")
-      doc.text("Señor/a:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.customerName, margin + 25, y)
-      
-      y += 8
-      
-      doc.setFont("helvetica", "bold")
-      doc.text("Domicilio:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.customerAddress || "-", margin + 28, y)
-      
-      y += 8
-      
-      doc.setFont("helvetica", "bold")
-      doc.text("Localidad:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.customerCity || "-", margin + 28, y)
-
-      y += 15
-
-      // ========== INFORMACIÓN DEL VIAJE (si existe) ==========
-      if (data.destination || data.fileCode) {
-        doc.setFillColor(240, 240, 240)
-        doc.rect(margin, y - 5, pageWidth - 2 * margin, 10, "F")
-        doc.setFontSize(11)
-        doc.setFont("helvetica", "bold")
-        doc.setTextColor(194, 156, 95) // Color dorado Lozada
-        doc.text("INFORMACIÓN DEL VIAJE", margin + 5, y + 2)
-        doc.setTextColor(0, 0, 0)
-        y += 15
-
-        doc.setFontSize(9)
-        if (data.fileCode) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Código de Operación:", margin, y)
-          doc.setFont("helvetica", "normal")
-          doc.text(data.fileCode, margin + 50, y)
-          y += 7
-        }
-        if (data.destination) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Destino:", margin, y)
-          doc.setFont("helvetica", "normal")
-          doc.text(data.destination, margin + 25, y)
-          y += 7
-        }
-        if (data.origin) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Origen:", margin, y)
-          doc.setFont("helvetica", "normal")
-          doc.text(data.origin, margin + 25, y)
-          y += 7
-        }
-        if (data.departureDate) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Fecha de Salida:", margin, y)
-          doc.setFont("helvetica", "normal")
-          const depDate = format(new Date(data.departureDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es })
-          doc.text(depDate, margin + 40, y)
-          y += 7
-        }
-        if (data.returnDate) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Fecha de Regreso:", margin, y)
-          doc.setFont("helvetica", "normal")
-          const retDate = format(new Date(data.returnDate), "EEEE, dd 'de' MMMM 'de' yyyy", { locale: es })
-          doc.text(retDate, margin + 45, y)
-          y += 7
-        }
-        if (data.adults || data.children || data.infants) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Pasajeros:", margin, y)
-          doc.setFont("helvetica", "normal")
-          const pasajeros = []
-          if (data.adults > 0) pasajeros.push(`${data.adults} adulto${data.adults > 1 ? 's' : ''}`)
-          if (data.children > 0) pasajeros.push(`${data.children} menor${data.children > 1 ? 'es' : ''}`)
-          if (data.infants > 0) pasajeros.push(`${data.infants} bebé${data.infants > 1 ? 's' : ''}`)
-          doc.text(pasajeros.join(", ") || "-", margin + 30, y)
-          y += 7
-        }
-        if (data.operatorName) {
-          doc.setFont("helvetica", "bold")
-          doc.text("Operador:", margin, y)
-          doc.setFont("helvetica", "normal")
-          doc.text(data.operatorName, margin + 28, y)
-          y += 7
-        }
-
-        y += 10
-      }
-
-      // ========== MONTO RECIBIDO ==========
-      doc.setFont("helvetica", "bold")
-      doc.setFontSize(11)
-      doc.text(`Recibimos el equivalente a ${data.currencyName}: ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin, y)
-
-      y += 12
-
-      // CONCEPTO
-      doc.setFont("helvetica", "normal")
-      doc.setFontSize(10)
-      doc.text(data.concepto, margin, y)
-
-      y += 10
-
-      // Moneda recibida
-      doc.setFont("helvetica", "bold")
-      doc.text("Moneda recibida:", margin, y)
-      doc.setFont("helvetica", "normal")
-      doc.text(data.currencyName, margin + 42, y)
-
-      y += 20
-
-      // ========== HISTORIAL DE PAGOS (si hay múltiples pagos) ==========
-      if (data.paymentHistory && data.paymentHistory.length > 1) {
-        doc.setFillColor(250, 250, 250)
-        doc.rect(margin, y - 5, pageWidth - 2 * margin, 12, "F")
-        doc.setFontSize(10)
-        doc.setFont("helvetica", "bold")
-        doc.text("HISTORIAL DE PAGOS", margin + 5, y + 2)
-        y += 15
-
-        doc.setFontSize(8)
-        doc.setFont("helvetica", "bold")
-        // Encabezados de tabla
-        doc.text("Fecha", margin, y)
-        doc.text("Monto", margin + 50, y)
-        doc.text("Referencia", margin + 100, y)
-        y += 6
-
-        doc.setDrawColor(200, 200, 200)
-        doc.setLineWidth(0.2)
-        doc.line(margin, y, pageWidth - margin, y)
-        y += 4
-
-        doc.setFont("helvetica", "normal")
-        for (const pago of data.paymentHistory) {
-          const fechaPago = pago.datePaid ? format(new Date(pago.datePaid), "dd/MM/yyyy", { locale: es }) : "-"
-          const montoPago = `${pago.currency} ${pago.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          
-          doc.text(fechaPago, margin, y)
-          doc.text(montoPago, margin + 50, y)
-          doc.text(pago.reference || "-", margin + 100, y)
-          y += 6
-        }
-        y += 5
-      }
-
-      // ========== TOTAL ==========
-      doc.setLineWidth(0.3)
-      doc.line(pageWidth - 85, y, pageWidth - margin, y)
-      
-      y += 8
-      
-      doc.setFontSize(12)
-      doc.setFont("helvetica", "bold")
-      doc.text("TOTAL", pageWidth - 85, y)
-      
-      const totalFormatted = `${data.currency} ${data.amount.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-      doc.text(totalFormatted, pageWidth - margin, y, { align: "right" })
-
-      y += 4
-      doc.line(pageWidth - 85, y, pageWidth - margin, y)
-
-      // ========== SALDO RESTANTE ==========
-      if (data.saldoRestante > 0) {
-        y += 15
-        doc.setFillColor(255, 243, 205) // Fondo amarillo claro
-        doc.rect(margin, y - 5, pageWidth - margin * 2, 18, "F")
-        
-        doc.setFontSize(10)
-        doc.setFont("helvetica", "bold")
-        doc.setTextColor(133, 100, 4) // Color dorado oscuro
-        doc.text("SALDO PENDIENTE DE PAGO:", margin + 5, y + 3)
-        
-        doc.setFontSize(12)
-        const saldoFormatted = `${data.currency} ${data.saldoRestante.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-        doc.text(saldoFormatted, pageWidth - margin - 5, y + 3, { align: "right" })
-        
-        doc.setFontSize(8)
-        doc.setFont("helvetica", "normal")
-        doc.text(`(Total operación: ${data.currency} ${data.totalOperacion.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - Pagado: ${data.currency} ${data.totalPagado.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`, margin + 5, y + 10)
-        
-        doc.setTextColor(0, 0, 0)
-        y += 20
-      } else if (data.totalOperacion > 0) {
-        y += 15
-        doc.setFillColor(209, 250, 229) // Fondo verde claro
-        doc.rect(margin, y - 5, pageWidth - margin * 2, 12, "F")
-        
-        doc.setFontSize(10)
-        doc.setFont("helvetica", "bold")
-        doc.setTextColor(22, 101, 52) // Verde oscuro
-        doc.text("PAGADO EN SU TOTALIDAD", pageWidth / 2, y + 3, { align: "center" })
-        
-        doc.setTextColor(0, 0, 0)
-        y += 15
-      }
-
-      y += 15
-
-      // ========== FIRMAS ==========
-      doc.setFontSize(9)
-      doc.setFont("helvetica", "normal")
-      doc.setTextColor(0, 0, 0)
-      
-      doc.line(margin, y, margin + 65, y)
-      doc.text("Firma Cliente", margin + 18, y + 6)
-
-      doc.line(pageWidth - margin - 65, y, pageWidth - margin, y)
-      doc.text("Firma Agencia", pageWidth - margin - 48, y + 6)
-
-      // ========== FOOTER ==========
-      const footerY = pageHeight - 15
-      doc.setFontSize(7)
-      doc.setFont("helvetica", "italic")
-      doc.setTextColor(128, 128, 128)
-      
-      doc.text("LOZADA VIAJES - Corrientes 631 (Piso 1 Oficina F) Rosario, Santa Fe", pageWidth / 2, footerY - 3, { align: "center" })
-      doc.text("Este recibo es valido como comprobante de pago. No valido como factura.", pageWidth / 2, footerY + 1, { align: "center" })
-
-      // Descargar el PDF
-      doc.save(`recibo-${data.receiptNumber}.pdf`)
+      await downloadReceiptPdf(paymentId)
     } catch (error) {
       console.error("Error:", error)
-      alert("Error al descargar el recibo")
+      toast.error(error instanceof Error ? error.message : "Error al descargar el recibo")
     } finally {
       setDownloadingReceiptId(null)
     }
@@ -581,6 +310,7 @@ export function OperationPaymentsSection({
     defaultValues: {
       payer_type: "OPERATOR",
       direction: "EXPENSE",
+      operator_id: operators.length === 1 ? operators[0].id : "",
       method: "Transferencia",
       amount: 0,
       currency: "USD", // Default USD
@@ -590,6 +320,19 @@ export function OperationPaymentsSection({
       notes: "",
     },
   })
+
+  useEffect(() => {
+    const currentOperatorId = expenseForm.getValues("operator_id")
+
+    if (operators.length === 1) {
+      expenseForm.setValue("operator_id", operators[0].id, { shouldValidate: true })
+      return
+    }
+
+    if (currentOperatorId && !operators.some((operator) => operator.id === currentOperatorId)) {
+      expenseForm.setValue("operator_id", "", { shouldValidate: true })
+    }
+  }, [expenseForm, operators])
 
   const editForm = useForm<EditPaymentFormValues>({
     resolver: zodResolver(editPaymentSchema),
@@ -607,8 +350,49 @@ export function OperationPaymentsSection({
   })
 
   const canEditPayments = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole)
+  const incomePaymentCurrency = incomeForm.watch("currency")
+  const incomeNeedsExchangeRate = requiresCustomerIncomeExchangeRate({
+    payerType: "CUSTOMER",
+    direction: "INCOME",
+    paymentCurrency: incomePaymentCurrency,
+    saleCurrency: customerSaleCurrency,
+  })
+  const editPaymentCurrency = editForm.watch("currency")
+  const isEditingCustomerIncome =
+    editingPayment?.payer_type === "CUSTOMER" && editingPayment?.direction === "INCOME"
+  const editNeedsExchangeRate = isEditingCustomerIncome
+    ? requiresCustomerIncomeExchangeRate({
+        payerType: editingPayment?.payer_type,
+        direction: editingPayment?.direction,
+        paymentCurrency: editPaymentCurrency,
+        saleCurrency: customerSaleCurrency,
+      })
+    : editPaymentCurrency === "ARS"
+
+  const formatSaleCurrencyPreview = (amount: number, paymentCurrency: string, exchangeRate?: number | null) => {
+    const equivalent = calculateAmountInSaleCurrency({
+      amount,
+      paymentCurrency,
+      saleCurrency: customerSaleCurrency,
+      exchangeRate: exchangeRate ?? null,
+    })
+
+    if (equivalent == null) {
+      return `La operación está en ${customerSaleCurrency}, el cobro en ${paymentCurrency}. Ingrese el tipo de cambio.`
+    }
+
+    return `Equivale a ${customerSaleCurrency} ${equivalent.toLocaleString("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`
+  }
 
   const handleOpenEditDialog = (payment: any) => {
+    if (payment?.source === "OPERATOR_BULK") {
+      toast.error("Los pagos generados desde Pago Masivo no se pueden editar desde esta pantalla")
+      return
+    }
+
     setEditingPayment(payment)
     setMarkAsPaid(false)
     editForm.reset({
@@ -630,12 +414,16 @@ export function OperationPaymentsSection({
 
     // Si es PAID o se está marcando como pagado, necesita cuenta financiera
     if ((editingPayment.status === "PAID" || markAsPaid) && !values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+    if (editNeedsExchangeRate && !values.exchange_rate) {
+      toast.error(
+        isEditingCustomerIncome
+          ? "Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación"
+          : "Debe ingresar el tipo de cambio para pagos en ARS"
+      )
       return
     }
 
@@ -650,7 +438,7 @@ export function OperationPaymentsSection({
           currency: values.currency,
           method: values.method,
           date_paid: values.date_paid.toISOString().split("T")[0],
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          exchange_rate: editNeedsExchangeRate ? values.exchange_rate : null,
           financial_account_id: values.financial_account_id || null,
           notes: values.notes,
           markAsPaid: markAsPaid || undefined,
@@ -669,7 +457,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error editing payment:", error)
-      alert(error instanceof Error ? error.message : "Error al editar pago")
+      toast.error(error instanceof Error ? error.message : "Error al editar pago")
     } finally {
       setIsLoading(false)
     }
@@ -680,7 +468,11 @@ export function OperationPaymentsSection({
   const currencySymbol = opCurrency === "ARS" ? "$" : "USD"
 
   const customerPayments = payments.filter(p => p.payer_type === "CUSTOMER" && p.status === "PAID")
-  const operatorPayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
+  const operatorExpensePayments = payments.filter(p => p.payer_type === "OPERATOR" && p.status === "PAID")
+  const baseOperatorPayments = getOperationBaseOperatorPayments({
+    operatorPayments,
+    operationServices,
+  })
 
   // Convierte un pago a la moneda de la operación
   const calculateAmountInOpCurrency = (p: any): number => {
@@ -708,27 +500,48 @@ export function OperationPaymentsSection({
   }
 
   const totalPaidByCustomer = customerPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
-  const totalPaidToOperator = operatorPayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalPaidToOperatorByPayments = operatorExpensePayments.reduce((sum, p) => sum + calculateAmountInOpCurrency(p), 0)
+  const totalRegisteredOperatorAmount = baseOperatorPayments.reduce((sum, payment) => {
+    return sum + (Number(payment.amount) || 0)
+  }, 0)
+  const totalRegisteredOperatorPaid = baseOperatorPayments.reduce((sum, payment) => {
+    return sum + (Number(payment.paid_amount) || 0)
+  }, 0)
+  const totalRegisteredOperatorPending = baseOperatorPayments.reduce((sum, payment) => {
+    const amount = Number(payment.amount) || 0
+    const paidAmount = Number(payment.paid_amount) || 0
+    return sum + Math.max(0, amount - paidAmount)
+  }, 0)
+  const hasRegisteredBaseOperatorDebt = baseOperatorPayments.length > 0
 
   const customerDebt = saleAmount - totalPaidByCustomer
-  const operatorDebt = operatorCost - totalPaidToOperator
+  const totalPaidToOperator = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorPaid
+    : totalPaidToOperatorByPayments
+  const displayedOperatorTotal = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorAmount
+    : operatorCost
+  const operatorDebt = hasRegisteredBaseOperatorDebt
+    ? totalRegisteredOperatorPending
+    : operatorCost - totalPaidToOperatorByPayments
 
   const onSubmitIncome = async (values: PaymentFormValues) => {
     // Validar cuenta financiera
     if (!values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
-    // Validar tipo de cambio si es ARS
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+    if (incomeNeedsExchangeRate && !values.exchange_rate) {
+      toast.error("Debe ingresar el tipo de cambio cuando la moneda del cobro difiere de la moneda de la operación")
       return
     }
     
     setIsLoading(true)
     try {
       const { payer_type, direction, ...restValues } = values
+      const datePaidStr = values.date_paid.toISOString().split("T")[0]
+      // Create payment as PAID directly (single atomic call)
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -738,10 +551,12 @@ export function OperationPaymentsSection({
           direction: "INCOME",
           ...restValues,
           financial_account_id: values.financial_account_id,
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
-          date_paid: values.date_paid.toISOString().split("T")[0],
-          date_due: values.date_paid.toISOString().split("T")[0],
+          exchange_rate: incomeNeedsExchangeRate ? values.exchange_rate : null,
+          date_paid: datePaidStr,
+          date_due: datePaidStr,
           status: "PAID",
+          apply_rg5617: applyRg5617,
+          apply_rg3819: applyRg3819,
         }),
       })
 
@@ -752,31 +567,43 @@ export function OperationPaymentsSection({
 
       setIncomeDialogOpen(false)
       incomeForm.reset()
+      setApplyRg5617(false)
+      setApplyRg3819(false)
       router.refresh()
     } catch (error) {
       console.error("Error registering income:", error)
-      alert(error instanceof Error ? error.message : "Error al registrar cobro")
+      toast.error(error instanceof Error ? error.message : "Error al registrar cobro")
     } finally {
       setIsLoading(false)
     }
   }
 
   const onSubmitExpense = async (values: PaymentFormValues) => {
+    if (operators.length === 0) {
+      toast.error(NO_BASE_OPERATOR_DEBT_MESSAGE)
+      return
+    }
+
+    if (!values.operator_id) {
+      expenseForm.setError("operator_id", { message: "Debe seleccionar un operador" })
+      return
+    }
+
     // Validar cuenta financiera
     if (!values.financial_account_id) {
-      alert("Debe seleccionar una cuenta financiera")
+      toast.error("Debe seleccionar una cuenta financiera")
       return
     }
 
     // Validar tipo de cambio si es ARS
     if (values.currency === "ARS" && !values.exchange_rate) {
-      alert("Debe ingresar el tipo de cambio para pagos en ARS")
+      toast.error("Debe ingresar el tipo de cambio para pagos en ARS")
       return
     }
     
     setIsLoading(true)
     try {
-      const { payer_type, direction, ...restValues } = values
+      const { payer_type, direction, operator_id, ...restValues } = values
       const response = await fetch("/api/payments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -784,6 +611,7 @@ export function OperationPaymentsSection({
           operation_id: operationId,
           payer_type: "OPERATOR",
           direction: "EXPENSE",
+          operator_id: operator_id || null,
           ...restValues,
           financial_account_id: values.financial_account_id,
           exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
@@ -803,7 +631,7 @@ export function OperationPaymentsSection({
       router.refresh()
     } catch (error) {
       console.error("Error registering expense:", error)
-      alert(error instanceof Error ? error.message : "Error al registrar pago")
+      toast.error(error instanceof Error ? error.message : "Error al registrar pago")
     } finally {
       setIsLoading(false)
     }
@@ -828,7 +656,7 @@ export function OperationPaymentsSection({
               {" / "} Total: {currencySymbol} {saleAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {customerDebt <= 0 && (
-              <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
+              <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
           </CardContent>
         </Card>
@@ -846,10 +674,10 @@ export function OperationPaymentsSection({
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Pagado: {currencySymbol} {totalPaidToOperator.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-              {" / "} Total: {currencySymbol} {operatorCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+              {" / "} Total: {currencySymbol} {displayedOperatorTotal.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
             </p>
             {operatorDebt <= 0 && (
-              <Badge className="mt-2 bg-green-600">Pagado completo</Badge>
+              <Badge className="mt-2 bg-success">Pagado completo</Badge>
             )}
           </CardContent>
         </Card>
@@ -864,7 +692,7 @@ export function OperationPaymentsSection({
                 onClick={handleDeletePendingPayments} 
                 size="sm" 
                 variant="outline"
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive/80"
                 disabled={isDeleting}
               >
                 {isDeleting ? (
@@ -925,9 +753,21 @@ export function OperationPaymentsSection({
                         <Badge variant={payment.direction === "INCOME" ? "default" : "destructive"}>
                           {payment.direction === "INCOME" ? "Ingreso" : "Egreso"}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-xs text-muted-foreground">
+                            {payment.payer_type === "CUSTOMER" ? "Cliente" : "Operador"}
+                          </span>
+                          {payment.source === "OPERATOR_BULK" && (
+                            <Badge variant="secondary" className="w-fit text-[10px]">
+                              Pago Masivo
+                            </Badge>
+                          )}
+                          {payment.payer_type === "OPERATOR" && payment.operator_id && (
+                            <span className="text-xs font-medium">
+                              {operatorNameById.get(payment.operator_id) || "Operador seleccionado"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>{payment.method || "-"}</TableCell>
@@ -935,7 +775,7 @@ export function OperationPaymentsSection({
                       {payment.currency} {Number(payment.amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell className="text-center">
-                      {payment.currency === "ARS" && payment.exchange_rate 
+                      {payment.exchange_rate
                         ? Number(payment.exchange_rate).toLocaleString("es-AR", { minimumFractionDigits: 2 })
                         : "-"
                       }
@@ -969,7 +809,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-blue-500 hover:text-blue-700 hover:bg-blue-100"
+                              className="h-8 w-8 text-info hover:text-info/80 hover:bg-info/10"
                               onClick={() => handleDownloadReceipt(payment.id)}
                               disabled={downloadingReceiptId === payment.id}
                               title="Descargar recibo PDF"
@@ -983,7 +823,7 @@ export function OperationPaymentsSection({
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-green-500 hover:text-green-700 hover:bg-green-100"
+                              className="h-8 w-8 text-success hover:text-success/80 hover:bg-success/10"
                               onClick={() => handleSendReceiptWhatsApp(payment.id)}
                               disabled={sendingReceiptId === payment.id}
                               title="Enviar recibo por WhatsApp"
@@ -1001,9 +841,10 @@ export function OperationPaymentsSection({
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-amber-500 hover:text-amber-700 hover:bg-amber-100"
+                            className="h-8 w-8 text-warning hover:text-warning/80 hover:bg-warning/10"
                             onClick={() => handleOpenEditDialog(payment)}
-                            title="Editar pago"
+                            disabled={payment.source === "OPERATOR_BULK"}
+                            title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Editar pago"}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -1012,10 +853,10 @@ export function OperationPaymentsSection({
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-100"
-                          onClick={() => handleDeletePayment(payment.id)}
-                          disabled={deletingPaymentId === payment.id}
-                          title="Eliminar pago"
+                          className="h-8 w-8 text-destructive hover:text-destructive/80 hover:bg-destructive/10"
+                          onClick={() => handleDeletePayment(payment)}
+                          disabled={payment.source === "OPERATOR_BULK" || deletingPaymentId === payment.id}
+                          title={payment.source === "OPERATOR_BULK" ? "Pago generado desde Pago Masivo" : "Eliminar pago"}
                         >
                           {deletingPaymentId === payment.id ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1042,55 +883,21 @@ export function OperationPaymentsSection({
               Registra un cobro recibido del cliente.
             </DialogDescription>
           </DialogHeader>
-          
+
           <Form {...incomeForm}>
-            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="space-y-4">
-              <FormField
-                control={incomeForm.control}
-                name="method"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Método de Pago</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {paymentMethods.map((method) => (
-                          <SelectItem key={method.value} value={method.value}>
-                            {method.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid grid-cols-2 gap-4">
-              <FormField
-                  control={incomeForm.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Monto</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min="0" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
+            <form onSubmit={incomeForm.handleSubmit(onSubmitIncome)} className="px-6 py-5 space-y-5">
+              {/* Sub-card: Método y Monto */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-xs font-medium text-foreground/70">Pago</span>
+                </div>
                 <FormField
                   control={incomeForm.control}
-                  name="currency"
+                  name="method"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Moneda</FormLabel>
+                      <FormLabel>Método de Pago</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
@@ -1098,18 +905,58 @@ export function OperationPaymentsSection({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
+                          {paymentMethods.map((method) => (
+                            <SelectItem key={method.value} value={method.value}>
+                              {method.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={incomeForm.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Monto</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" min="0" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={incomeForm.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Moneda</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="ARS">ARS</SelectItem>
+                            <SelectItem value="USD">USD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
-              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-              {incomeForm.watch("currency") === "ARS" && (
+              {incomeNeedsExchangeRate && (
                 <FormField
                   control={incomeForm.control}
                   name="exchange_rate"
@@ -1117,18 +964,22 @@ export function OperationPaymentsSection({
                     <FormItem>
                       <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          min="0" 
-                          placeholder="Ej: 1200" 
-                          {...field} 
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="Ej: 1200"
+                          {...field}
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        {field.value && incomeForm.watch("amount") 
-                          ? `Equivale a USD ${(incomeForm.watch("amount") / field.value).toFixed(2)}`
-                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                        {field.value && incomeForm.watch("amount")
+                          ? formatSaleCurrencyPreview(
+                              Number(incomeForm.watch("amount") || 0),
+                              incomePaymentCurrency,
+                              Number(field.value)
+                            )
+                          : `La operación está en ${customerSaleCurrency}, el cobro en ${incomePaymentCurrency}. Ingrese el tipo de cambio.`
                         }
                       </p>
                       <FormMessage />
@@ -1137,86 +988,152 @@ export function OperationPaymentsSection({
                 />
               )}
 
-              <FormField
-                control={incomeForm.control}
-                name="date_paid"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha del Cobro</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Sub-card: Fecha y Cuenta */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-1.5">
+                  <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-xs font-medium text-foreground/70">Destino del cobro</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={incomeForm.control}
+                    name="date_paid"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha del Cobro</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: es })
+                                ) : (
+                                  <span>Seleccionar fecha</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={incomeForm.control}
-                name="financial_account_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Financiera *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {financialAccounts
-                          .filter((acc) => acc.currency === incomeForm.watch("currency"))
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({account.currency})
-                              {account.current_balance !== undefined && userRole !== "SELLER" && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                    style: "currency",
-                                    currency: account.currency,
-                                  })}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  <FormField
+                    control={incomeForm.control}
+                    name="financial_account_id"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Cuenta Financiera *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar cuenta" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {financialAccounts
+                              .filter((acc) => acc.currency === incomeForm.watch("currency"))
+                              .map((account) => (
+                                <SelectItem key={account.id} value={account.id}>
+                                  {account.name} ({account.currency})
+                                  {account.current_balance !== undefined && userRole !== "SELLER" && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                        style: "currency",
+                                        currency: account.currency,
+                                      })}
+                                    </span>
+                                  )}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Percepciones opcionales */}
+              {isInternationalDestination(destination) && (() => {
+                const watchedMethod = incomeForm.watch("method")
+                const watchedAmount = Number(incomeForm.watch("amount") || 0)
+                const watchedCurrency = incomeForm.watch("currency")
+                const isCash = watchedMethod === "Efectivo"
+                return (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 space-y-3">
+                    <div className="flex items-center gap-1.5">
+                      <Receipt className="h-3.5 w-3.5 text-amber-500" />
+                      <span className="text-xs font-medium text-foreground/70">Percepciones Impositivas</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Destino: <span className="font-medium text-foreground">{destination}</span> (internacional)
+                    </p>
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="income-rg5617"
+                        checked={applyRg5617}
+                        onCheckedChange={(checked) => setApplyRg5617(checked === true)}
+                      />
+                      <label htmlFor="income-rg5617" className="text-sm leading-tight cursor-pointer">
+                        <span className="font-medium">RG 5617 — 30%</span>
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          Percepción Ganancias/Bienes Personales.
+                          {watchedAmount > 0 && (
+                            <span className="font-medium text-foreground ml-1">
+                              ({watchedCurrency} {(watchedAmount * 0.3).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                    {isCash && (
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          id="income-rg3819"
+                          checked={applyRg3819}
+                          onCheckedChange={(checked) => setApplyRg3819(checked === true)}
+                        />
+                        <label htmlFor="income-rg3819" className="text-sm leading-tight cursor-pointer">
+                          <span className="font-medium">RG 3819 — 5%</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            Percepción adicional por pago en efectivo.
+                            {watchedAmount > 0 && (
+                              <span className="font-medium text-foreground ml-1">
+                                ({watchedCurrency} {(watchedAmount * 0.05).toLocaleString("es-AR", { minimumFractionDigits: 2 })})
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
 
               <FormField
                 control={incomeForm.control}
                 name="notes"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Notas (opcional)</FormLabel>
+                    <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                     <FormControl>
                       <Input placeholder="Referencia, comprobante, etc." {...field} />
                     </FormControl>
@@ -1264,53 +1181,19 @@ export function OperationPaymentsSection({
             </DialogHeader>
 
             <Form {...editForm}>
-              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4">
-                <FormField
-                  control={editForm.control}
-                  name="method"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Método de Pago</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {paymentMethods.map((method) => (
-                            <SelectItem key={method.value} value={method.value}>
-                              {method.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="px-6 py-5 space-y-5">
+                {/* Sub-card: Método y Monto */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="h-3.5 w-3.5 text-primary" />
+                    <span className="text-xs font-medium text-foreground/70">Pago</span>
+                  </div>
                   <FormField
                     control={editForm.control}
-                    name="amount"
+                    name="method"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Monto</FormLabel>
-                        <FormControl>
-                          <Input type="number" step="0.01" min="0" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={editForm.control}
-                    name="currency"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Moneda</FormLabel>
+                        <FormLabel>Método de Pago</FormLabel>
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
@@ -1318,17 +1201,58 @@ export function OperationPaymentsSection({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="ARS">ARS</SelectItem>
-                            <SelectItem value="USD">USD</SelectItem>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={editForm.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monto</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" min="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={editForm.control}
+                      name="currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 </div>
 
-                {editForm.watch("currency") === "ARS" && (
+                {editNeedsExchangeRate && (
                   <FormField
                     control={editForm.control}
                     name="exchange_rate"
@@ -1346,8 +1270,16 @@ export function OperationPaymentsSection({
                         </FormControl>
                         <p className="text-xs text-muted-foreground">
                           {field.value && editForm.watch("amount")
-                            ? `Equivale a USD ${(editForm.watch("amount") / field.value).toFixed(2)}`
-                            : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                            ? isEditingCustomerIncome
+                              ? formatSaleCurrencyPreview(
+                                  Number(editForm.watch("amount") || 0),
+                                  editPaymentCurrency,
+                                  Number(field.value)
+                                )
+                              : `Equivale a USD ${(Number(editForm.watch("amount") || 0) / Number(field.value)).toFixed(2)}`
+                            : isEditingCustomerIncome
+                              ? `La operación está en ${customerSaleCurrency}, el cobro en ${editPaymentCurrency}. Ingrese el tipo de cambio.`
+                              : "Ingrese el tipo de cambio para calcular el equivalente en USD"
                           }
                         </p>
                         <FormMessage />
@@ -1356,108 +1288,115 @@ export function OperationPaymentsSection({
                   />
                 )}
 
-                <FormField
-                  control={editForm.control}
-                  name="date_paid"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Fecha del Pago</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant={"outline"}
-                              className={cn(
-                                "w-full pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP", { locale: es })
-                              ) : (
-                                <span>Seleccionar fecha</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Switch para marcar como pagado - solo para PENDING de operador */}
-                {editingPayment?.status === "PENDING" && editingPayment?.payer_type === "OPERATOR" && (
-                  <div className="flex items-center justify-between rounded-lg border p-3 shadow-sm">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="h-4 w-4 text-green-600" />
-                        <span className="text-sm font-medium">Marcar como pagado</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Registra este pago como realizado y selecciona la cuenta de origen
-                      </p>
-                    </div>
-                    <Switch
-                      checked={markAsPaid}
-                      onCheckedChange={setMarkAsPaid}
-                    />
+                {/* Sub-card: Fecha y Estado */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Fecha y Cuenta</span>
                   </div>
-                )}
-
-                {/* Cuenta financiera - si el pago está PAID o se está marcando como pagado */}
-                {(editingPayment?.status === "PAID" || markAsPaid) && (
                   <FormField
                     control={editForm.control}
-                    name="financial_account_id"
+                    name="date_paid"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Cuenta Financiera *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Seleccionar cuenta" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {financialAccounts
-                              .filter((acc) => acc.currency === editForm.watch("currency"))
-                              .map((account) => (
-                                <SelectItem key={account.id} value={account.id}>
-                                  {account.name} ({account.currency})
-                                  {account.current_balance !== undefined && (
-                                    <span className="text-xs text-muted-foreground ml-2">
-                                      - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                        style: "currency",
-                                        currency: account.currency,
-                                      })}
-                                    </span>
-                                  )}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Fecha del Pago</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(field.value, "PPP", { locale: es })
+                                ) : (
+                                  <span>Seleccionar fecha</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                )}
+
+                  {/* Switch para marcar como pagado - para cualquier pago PENDING */}
+                  {editingPayment?.status === "PENDING" && (
+                    <div className="flex items-center justify-between rounded-xl border border-border/30 bg-background p-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <span className="text-sm font-medium">Marcar como pagado</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Registra este pago como realizado y selecciona la cuenta de origen
+                        </p>
+                      </div>
+                      <Switch
+                        checked={markAsPaid}
+                        onCheckedChange={setMarkAsPaid}
+                      />
+                    </div>
+                  )}
+
+                  {/* Cuenta financiera - si el pago está PAID o se está marcando como pagado */}
+                  {(editingPayment?.status === "PAID" || markAsPaid) && (
+                    <FormField
+                      control={editForm.control}
+                      name="financial_account_id"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Cuenta Financiera *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar cuenta" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {financialAccounts
+                                .filter((acc) => acc.currency === editForm.watch("currency"))
+                                .map((account) => (
+                                  <SelectItem key={account.id} value={account.id}>
+                                    {account.name} ({account.currency})
+                                    {account.current_balance !== undefined && (
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                          style: "currency",
+                                          currency: account.currency,
+                                        })}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
+                </div>
 
                 <FormField
                   control={editForm.control}
                   name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Notas (opcional)</FormLabel>
+                      <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
                         <Input placeholder="Referencia, comprobante, etc." {...field} />
                       </FormControl>
@@ -1492,7 +1431,7 @@ export function OperationPaymentsSection({
 
       {(userRole === "ADMIN" || userRole === "SUPER_ADMIN") && (
         <Dialog open={expenseDialogOpen} onOpenChange={setExpenseDialogOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Registrar Pago a Operador</DialogTitle>
               <DialogDescription>
@@ -1501,192 +1440,236 @@ export function OperationPaymentsSection({
             </DialogHeader>
             
             <Form {...expenseForm}>
-              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="space-y-4">
+              <form onSubmit={expenseForm.handleSubmit(onSubmitExpense)} className="px-6 py-5 space-y-5">
+                {/* Operador */}
                 <FormField
                   control={expenseForm.control}
-                name="method"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Método de Pago</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {paymentMethods.map((method) => (
-                          <SelectItem key={method.value} value={method.value}>
-                            {method.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                  name="operator_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Operador</FormLabel>
+                      {operators.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{NO_BASE_OPERATOR_DEBT_MESSAGE}</p>
+                      ) : (
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Seleccionar operador" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {operators.map((op) => (
+                              <SelectItem key={op.id} value={op.id}>{op.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
+                {/* Sub-card: Método y Monto */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Banknote className="h-3.5 w-3.5 text-warning" />
+                    <span className="text-xs font-medium text-foreground/70">Pago al Operador</span>
+                  </div>
+                  <FormField
                     control={expenseForm.control}
-                  name="amount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Monto</FormLabel>
-                      <FormControl>
-                        <Input type="number" step="0.01" min="0" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                    name="method"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Método de Pago</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={expenseForm.control}
+                      name="amount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Monto</FormLabel>
+                          <FormControl>
+                            <Input type="number" step="0.01" min="0" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
+                      name="currency"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Moneda</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="ARS">ARS</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                {/* Tipo de cambio - solo visible cuando moneda es ARS */}
+                {expenseForm.watch("currency") === "ARS" && (
+                  <FormField
                     control={expenseForm.control}
-                  name="currency"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Moneda</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    name="exchange_rate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
                         <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Ej: 1200"
+                            {...field}
+                          />
                         </FormControl>
-                        <SelectContent>
-                          <SelectItem value="ARS">ARS</SelectItem>
-                          <SelectItem value="USD">USD</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                        <p className="text-xs text-muted-foreground">
+                          {field.value && expenseForm.watch("amount")
+                            ? `Equivale a USD ${(expenseForm.watch("amount") / field.value).toFixed(2)}`
+                            : "Ingrese el tipo de cambio para calcular el equivalente en USD"
+                          }
+                        </p>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
-              {/* Tipo de cambio - solo visible cuando moneda es ARS */}
-              {expenseForm.watch("currency") === "ARS" && (
+                {/* Sub-card: Fecha y Cuenta */}
+                <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-center gap-1.5">
+                    <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-xs font-medium text-foreground/70">Destino del pago</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={expenseForm.control}
+                      name="date_paid"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Fecha del Pago</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant={"outline"}
+                                  className={cn(
+                                    "w-full pl-3 text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                >
+                                  {field.value ? (
+                                    format(field.value, "PPP", { locale: es })
+                                  ) : (
+                                    <span>Seleccionar fecha</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={expenseForm.control}
+                      name="financial_account_id"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Cuenta Financiera *</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Seleccionar cuenta" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {financialAccounts
+                                .filter((acc) => acc.currency === expenseForm.watch("currency"))
+                                .map((account) => (
+                                  <SelectItem key={account.id} value={account.id}>
+                                    {account.name} ({account.currency})
+                                    {account.current_balance !== undefined && (
+                                      <span className="text-xs text-muted-foreground ml-2">
+                                        - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                          style: "currency",
+                                          currency: account.currency,
+                                        })}
+                                      </span>
+                                    )}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </div>
+
                 <FormField
                   control={expenseForm.control}
-                  name="exchange_rate"
+                  name="notes"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tipo de Cambio (ARS por 1 USD)</FormLabel>
+                      <FormLabel className="flex items-center gap-1.5"><StickyNote className="h-3 w-3 text-muted-foreground" /> Notas (opcional)</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          step="0.01" 
-                          min="0" 
-                          placeholder="Ej: 1200" 
-                          {...field} 
-                        />
+                        <Input placeholder="Referencia, comprobante, etc." {...field} />
                       </FormControl>
-                      <p className="text-xs text-muted-foreground">
-                        {field.value && expenseForm.watch("amount") 
-                          ? `Equivale a USD ${(expenseForm.watch("amount") / field.value).toFixed(2)}`
-                          : "Ingrese el tipo de cambio para calcular el equivalente en USD"
-                        }
-                      </p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
-
-              <FormField
-                  control={expenseForm.control}
-                name="date_paid"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel>Fecha del Pago</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant={"outline"}
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP", { locale: es })
-                            ) : (
-                              <span>Seleccionar fecha</span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={expenseForm.control}
-                name="financial_account_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cuenta Financiera *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar cuenta" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {financialAccounts
-                          .filter((acc) => acc.currency === expenseForm.watch("currency"))
-                          .map((account) => (
-                            <SelectItem key={account.id} value={account.id}>
-                              {account.name} ({account.currency})
-                              {account.current_balance !== undefined && (
-                                <span className="text-xs text-muted-foreground ml-2">
-                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                    style: "currency",
-                                    currency: account.currency,
-                                  })}
-                                </span>
-                              )}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                  control={expenseForm.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Notas (opcional)</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Referencia, comprobante, etc." {...field} />
-                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
               <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
+                <Button type="button" variant="outline" onClick={() => setExpenseDialogOpen(false)}>
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || operators.length === 0}>
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -1,8 +1,58 @@
 /**
  * Servicio de Email usando Resend
- * 
+ *
  * Requiere configurar RESEND_API_KEY en variables de entorno
  */
+
+interface OrgSettings {
+  companyName: string
+  address: string
+  phone: string
+  email: string
+  website: string
+  logo: string
+}
+
+async function getOrgSettings(supabase: any): Promise<OrgSettings> {
+  const { data } = await supabase.from('organization_settings').select('key, value')
+  const get = (key: string, fallback: string = '') =>
+    data?.find((s: any) => s.key === key)?.value || fallback
+  return {
+    companyName: get('company_name', 'Mi Empresa'),
+    address: get('address', ''),
+    phone: get('phone', ''),
+    email: get('email', ''),
+    website: get('website', ''),
+    logo: get('brand_logo', ''),
+  }
+}
+
+function generateEmailHeader(orgSettings: OrgSettings, subtitle: string, gradientColors: string): string {
+  const logoHtml = orgSettings.logo
+    ? `<img src="${orgSettings.logo}" alt="${orgSettings.companyName}" style="max-height: 50px; margin-bottom: 10px;" /><br/>`
+    : ''
+  return `<div style="background: linear-gradient(${gradientColors}); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
+    ${logoHtml}<h1 style="color: white; margin: 0; font-size: 24px;">${orgSettings.companyName}</h1>
+    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">${subtitle}</p>
+  </div>`
+}
+
+function generateEmailFooter(orgSettings: OrgSettings): string {
+  const parts: string[] = []
+  if (orgSettings.address) parts.push(orgSettings.address)
+  if (orgSettings.phone) parts.push(orgSettings.phone)
+  if (orgSettings.website) parts.push(orgSettings.website)
+  if (orgSettings.email) parts.push(orgSettings.email)
+
+  const contactLine = parts.length > 0
+    ? `<p style="margin: 4px 0;">${parts.join(' | ')}</p>`
+    : ''
+
+  return `<div style="text-align: center; padding: 20px; color: #888; font-size: 12px;">
+    <p style="margin: 4px 0;">Este email fue enviado por ${orgSettings.companyName}</p>
+    ${contactLine}
+  </div>`
+}
 
 interface EmailOptions {
   to: string | string[]
@@ -39,7 +89,7 @@ export async function sendEmail(options: EmailOptions): Promise<SendEmailResult>
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: options.from || process.env.RESEND_FROM_EMAIL || "Maxeva Gestión <noreply@maxevagestion.com>",
+        from: options.from || process.env.RESEND_FROM_EMAIL || "Vibook <noreply@vibook.ai>",
         to: Array.isArray(options.to) ? options.to : [options.to],
         subject: options.subject,
         html: options.html,
@@ -76,8 +126,14 @@ export async function sendQuotationEmail(
   totalAmount: string,
   validUntil: string,
   agencyName: string,
-  pdfBuffer?: Buffer
+  pdfBuffer?: Buffer,
+  supabase?: any
 ): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+
   const html = generateQuotationEmailHtml({
     customerName,
     quotationNumber,
@@ -85,6 +141,7 @@ export async function sendQuotationEmail(
     totalAmount,
     validUntil,
     agencyName,
+    orgSettings,
   })
 
   return sendEmail({
@@ -108,19 +165,28 @@ export async function sendPaymentConfirmationEmail(
   amount: string,
   paymentMethod: string,
   destination: string,
-  agencyName: string
+  agencyName: string,
+  supabase?: any
 ): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+
+  const displayName = orgSettings?.companyName || agencyName
+
   const html = generatePaymentConfirmationHtml({
     customerName,
     amount,
     paymentMethod,
     destination,
     agencyName,
+    orgSettings,
   })
 
   return sendEmail({
     to,
-    subject: `Confirmación de Pago - ${agencyName}`,
+    subject: `Confirmación de Pago - ${displayName}`,
     html,
   })
 }
@@ -134,14 +200,21 @@ export async function sendPaymentReminderEmail(
   amount: string,
   dueDate: string,
   destination: string,
-  agencyName: string
+  agencyName: string,
+  supabase?: any
 ): Promise<SendEmailResult> {
+  let orgSettings: OrgSettings | undefined
+  if (supabase) {
+    orgSettings = await getOrgSettings(supabase)
+  }
+
   const html = generatePaymentReminderHtml({
     customerName,
     amount,
     dueDate,
     destination,
     agencyName,
+    orgSettings,
   })
 
   return sendEmail({
@@ -162,7 +235,11 @@ function generateQuotationEmailHtml(data: {
   totalAmount: string
   validUntil: string
   agencyName: string
+  orgSettings?: OrgSettings
 }): string {
+  const companyName = data.orgSettings?.companyName || data.agencyName
+  const org = data.orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
   return `
 <!DOCTYPE html>
 <html>
@@ -171,16 +248,13 @@ function generateQuotationEmailHtml(data: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">${data.agencyName}</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0;">Cotización de Viaje</p>
-  </div>
-  
+  ${generateEmailHeader(org, 'Cotización de Viaje', '135deg, #667eea 0%, #764ba2 100%')}
+
   <div style="background: #f9f9f9; padding: 30px; border: 1px solid #e0e0e0;">
     <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
-    
+
     <p>Te enviamos la cotización para tu viaje a <strong>${data.destination}</strong>.</p>
-    
+
     <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #667eea;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
@@ -201,17 +275,15 @@ function generateQuotationEmailHtml(data: {
         </tr>
       </table>
     </div>
-    
+
     <p>Adjuntamos el PDF con el detalle completo de la cotización.</p>
-    
+
     <p style="color: #666; font-size: 14px;">
       Si tienes alguna consulta, no dudes en contactarnos.
     </p>
   </div>
-  
-  <div style="text-align: center; padding: 20px; color: #888; font-size: 12px;">
-    <p>Este email fue enviado por ${data.agencyName}</p>
-  </div>
+
+  ${generateEmailFooter(org)}
 </body>
 </html>
   `
@@ -223,7 +295,11 @@ function generatePaymentConfirmationHtml(data: {
   paymentMethod: string
   destination: string
   agencyName: string
+  orgSettings?: OrgSettings
 }): string {
+  const companyName = data.orgSettings?.companyName || data.agencyName
+  const org = data.orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
   return `
 <!DOCTYPE html>
 <html>
@@ -232,15 +308,13 @@ function generatePaymentConfirmationHtml(data: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">✓ Pago Confirmado</h1>
-  </div>
-  
+  ${generateEmailHeader(org, 'Pago Confirmado', '135deg, #27ae60 0%, #2ecc71 100%')}
+
   <div style="background: #f9f9f9; padding: 30px; border: 1px solid #e0e0e0;">
     <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
-    
+
     <p>Hemos recibido tu pago exitosamente. ¡Gracias!</p>
-    
+
     <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #27ae60;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
@@ -257,15 +331,13 @@ function generatePaymentConfirmationHtml(data: {
         </tr>
       </table>
     </div>
-    
+
     <p style="color: #666; font-size: 14px;">
       Conserva este email como comprobante de tu pago.
     </p>
   </div>
-  
-  <div style="text-align: center; padding: 20px; color: #888; font-size: 12px;">
-    <p>${data.agencyName}</p>
-  </div>
+
+  ${generateEmailFooter(org)}
 </body>
 </html>
   `
@@ -277,7 +349,11 @@ function generatePaymentReminderHtml(data: {
   dueDate: string
   destination: string
   agencyName: string
+  orgSettings?: OrgSettings
 }): string {
+  const companyName = data.orgSettings?.companyName || data.agencyName
+  const org = data.orgSettings || { companyName, address: '', phone: '', email: '', website: '', logo: '' }
+
   return `
 <!DOCTYPE html>
 <html>
@@ -286,15 +362,13 @@ function generatePaymentReminderHtml(data: {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #f39c12 0%, #e74c3c 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">⏰ Recordatorio de Pago</h1>
-  </div>
-  
+  ${generateEmailHeader(org, 'Recordatorio de Pago', '135deg, #f39c12 0%, #e74c3c 100%')}
+
   <div style="background: #f9f9f9; padding: 30px; border: 1px solid #e0e0e0;">
     <p style="font-size: 18px;">Hola <strong>${data.customerName}</strong>,</p>
-    
+
     <p>Te recordamos que tienes un pago pendiente para tu viaje a <strong>${data.destination}</strong>.</p>
-    
+
     <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #f39c12;">
       <table style="width: 100%; border-collapse: collapse;">
         <tr>
@@ -307,17 +381,15 @@ function generatePaymentReminderHtml(data: {
         </tr>
       </table>
     </div>
-    
+
     <p>Por favor, realiza el pago antes de la fecha indicada para confirmar tu reserva.</p>
-    
+
     <p style="color: #666; font-size: 14px;">
       Si ya realizaste el pago, puedes ignorar este mensaje.
     </p>
   </div>
-  
-  <div style="text-align: center; padding: 20px; color: #888; font-size: 12px;">
-    <p>${data.agencyName}</p>
-  </div>
+
+  ${generateEmailFooter(org)}
 </body>
 </html>
   `

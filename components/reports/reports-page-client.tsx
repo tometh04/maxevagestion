@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle } from "lucide-react"
+import { BarChart3, TrendingUp, Wallet, Download, Percent, HelpCircle, Calendar, FileSearch } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -13,6 +13,8 @@ import {
 import { SalesReport } from "./sales-report"
 import { CashFlowReport } from "./cash-flow-report"
 import { MarginsReport } from "./margins-report"
+import { VencimientosReport } from "./vencimientos-report"
+import { ConciliacionReport } from "./conciliacion-report"
 import {
   Breadcrumb,
   BreadcrumbList,
@@ -54,7 +56,7 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <h1 className="text-3xl font-bold">Reportes</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Reportes</h1>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -89,6 +91,16 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
               Flujo de Caja
             </TabsTrigger>
           )}
+          <TabsTrigger value="vencimientos" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Vencimientos
+          </TabsTrigger>
+          {canSeeCashFlow && (
+            <TabsTrigger value="conciliacion" className="flex items-center gap-2">
+              <FileSearch className="h-4 w-4" />
+              Conciliación
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="sales" className="mt-6">
@@ -112,6 +124,16 @@ export function ReportsPageClient({ userRole, userId, sellers, agencies }: Repor
         {canSeeCashFlow && (
           <TabsContent value="cashflow" className="mt-6">
             <CashFlowReport agencies={agencies} />
+          </TabsContent>
+        )}
+
+        <TabsContent value="vencimientos" className="mt-6">
+          <VencimientosReport agencies={agencies} />
+        </TabsContent>
+
+        {canSeeCashFlow && (
+          <TabsContent value="conciliacion" className="mt-6">
+            <ConciliacionReport agencies={agencies} />
           </TabsContent>
         )}
       </Tabs>

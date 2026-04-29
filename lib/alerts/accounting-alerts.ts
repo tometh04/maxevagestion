@@ -32,7 +32,9 @@ export async function generateIVAAlert(
   try {
     const ivaStatus = await getMonthlyIVAToPay(supabase, year, month)
 
-    if (ivaStatus.iva_to_pay > threshold) {
+    const ivaToPay = ivaStatus.ars.iva_to_pay + ivaStatus.usd.iva_to_pay
+
+    if (ivaToPay > threshold) {
       // Verificar si ya existe una alerta de IVA para este mes
       const { data: existing } = await (supabase.from("alerts") as any)
         .select("id")
@@ -42,14 +44,19 @@ export async function generateIVAAlert(
         .maybeSingle()
 
       if (!existing) {
+        const parts: string[] = []
+        if (ivaStatus.ars.iva_to_pay > 0) {
+          parts.push(ivaStatus.ars.iva_to_pay.toLocaleString("es-AR", { style: "currency", currency: "ARS" }))
+        }
+        if (ivaStatus.usd.iva_to_pay > 0) {
+          parts.push(ivaStatus.usd.iva_to_pay.toLocaleString("es-AR", { style: "currency", currency: "USD" }))
+        }
+
         await (supabase.from("alerts") as any).insert({
           agency_id: agencyId,
           user_id: userId,
           type: "IVA_PENDING",
-          description: `IVA pendiente de pago: ${ivaStatus.iva_to_pay.toLocaleString("es-AR", {
-            style: "currency",
-            currency: "ARS",
-          })} (Mes: ${month}/${year})`,
+          description: `IVA pendiente de pago: ${parts.join(" + ")} (Mes: ${month}/${year})`,
           date_due: new Date(year, month, 10).toISOString(), // Vence el día 10 del mes siguiente
           status: "PENDING",
         })
@@ -230,6 +237,97 @@ export async function generateMissingDocsAlert(
 }
 
 /**
+ * Generar alerta de operaciones cobradas sin factura autorizada
+ * Se genera cuando una operación tiene pagos INCOME con status PAID
+ * pero no tiene ninguna factura autorizada en la tabla invoices
+ */
+export async function generateMissingInvoiceAlert(
+  supabase: SupabaseClient<Database>,
+  agencyId: string,
+  userId: string
+): Promise<void> {
+  try {
+    // Buscar operaciones con cobros realizados (INCOME + PAID) sin factura autorizada
+    // 1. Obtener operaciones de esta agencia con pagos INCOME PAID
+    const { data: paidOperations } = await (supabase
+      .from("payments") as any)
+      .select(`
+        operation_id,
+        operations!inner(id, file_code, agency_id),
+        amount,
+        currency
+      `)
+      .eq("direction", "INCOME")
+      .eq("status", "PAID")
+      .eq("operations.agency_id", agencyId)
+      .not("operation_id", "is", null)
+
+    if (!paidOperations || paidOperations.length === 0) return
+
+    // Agrupar por operation_id y sumar montos cobrados
+    const operationMap = new Map<string, { file_code: string; total_paid: number; currency: string }>()
+    for (const payment of paidOperations) {
+      const opId = payment.operation_id
+      const existing = operationMap.get(opId)
+      if (existing) {
+        existing.total_paid += parseFloat(payment.amount || "0")
+      } else {
+        operationMap.set(opId, {
+          file_code: payment.operations?.file_code || opId.slice(0, 8),
+          total_paid: parseFloat(payment.amount || "0"),
+          currency: payment.currency || "ARS",
+        })
+      }
+    }
+
+    // 2. Para cada operación, verificar si tiene factura autorizada
+    // (Array.from es necesario por el target ES5 del tsconfig)
+    for (const [operationId, info] of Array.from(operationMap.entries())) {
+      const { data: invoice } = await (supabase
+        .from("invoices") as any)
+        .select("id")
+        .eq("operation_id", operationId)
+        .eq("status", "authorized")
+        .limit(1)
+        .maybeSingle()
+
+      // Si ya tiene factura autorizada, skip
+      if (invoice) continue
+
+      // 3. Verificar que no exista alerta PENDING para esta operación
+      const { data: existingAlert } = await (supabase
+        .from("alerts") as any)
+        .select("id")
+        .eq("type", "MISSING_INVOICE")
+        .eq("agency_id", agencyId)
+        .like("description", `%${info.file_code}%`)
+        .eq("status", "PENDING")
+        .maybeSingle()
+
+      if (existingAlert) continue
+
+      // 4. Crear la alerta
+      const formattedAmount = info.total_paid.toLocaleString("es-AR", {
+        style: "currency",
+        currency: info.currency,
+      })
+
+      await (supabase.from("alerts") as any).insert({
+        agency_id: agencyId,
+        user_id: userId,
+        operation_id: operationId,
+        type: "MISSING_INVOICE",
+        description: `Operación ${info.file_code} cobrada (${formattedAmount}) sin factura autorizada`,
+        date_due: new Date().toISOString(),
+        status: "PENDING",
+      })
+    }
+  } catch (error) {
+    console.error("Error generating missing invoice alert:", error)
+  }
+}
+
+/**
  * Generar todas las alertas contables
  */
 export async function generateAllAccountingAlerts(
@@ -241,6 +339,7 @@ export async function generateAllAccountingAlerts(
     generateIVAAlert(supabase, agencyId, userId),
     generateCashBalanceAlert(supabase, agencyId, userId),
     generateFXLossAlert(supabase, agencyId, userId),
+    generateMissingInvoiceAlert(supabase, agencyId, userId),
   ])
 }
 

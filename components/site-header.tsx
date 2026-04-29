@@ -2,10 +2,7 @@
 
 import { useState } from "react"
 import { usePathname } from "next/navigation"
-import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
-import { ThemeToggle } from "@/components/theme-toggle"
-import { Button } from "@/components/ui/button"
 import { Search } from "lucide-react"
 import { CommandMenu } from "@/components/command-menu"
 import { NotificationBell } from "@/components/notifications/notification-bell"
@@ -44,7 +41,11 @@ const getPageTitle = (pathname: string): string => {
     }
   }
 
-  return "Lozada Rosario"
+  // Fallback neutro: si la ruta no matchea ninguna mapping, no mostramos título
+  // (antes había hardcoded "Lozada Rosario", que en el SaaS multi-tenant hacía
+  // que todas las agencias vieran el nombre de la agencia madrina en rutas
+  // no mapeadas).
+  return ""
 }
 
 export function SiteHeader() {
@@ -54,26 +55,20 @@ export function SiteHeader() {
 
   return (
     <>
-      <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
-        <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
+      <header className="flex h-(--header-height) shrink-0 items-center shadow-[0_1px_0_0_rgba(0,0,0,0.04)] bg-background/80 backdrop-blur-md transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+        <div className="flex w-full items-center gap-2 px-4 lg:px-6">
           <SidebarTrigger className="-ml-1" />
-          <Separator
-            orientation="vertical"
-            className="mx-2 data-[orientation=vertical]:h-4"
-          />
-          <h1 className="text-base font-medium">{title}</h1>
+          <h1 className="text-sm font-medium text-foreground">{title}</h1>
           <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+            <button
               onClick={() => setCommandMenuOpen(true)}
-              title="Buscar (⌘K o Ctrl+K)"
+              className="flex items-center gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors w-64"
             >
-              <Search className="h-4 w-4" />
-            </Button>
+              <Search className="h-3.5 w-3.5" />
+              <span className="flex-1 text-left">Buscar...</span>
+              <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-border/60 bg-background px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground">⌘K</kbd>
+            </button>
             <NotificationBell />
-            <ThemeToggle />
           </div>
         </div>
       </header>

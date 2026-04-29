@@ -29,7 +29,7 @@ import { Input } from "@/components/ui/input"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Upload, FileText, Loader2 } from "lucide-react"
+import { Upload, FileText, Loader2, FolderUp } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const documentTypeOptions = [
@@ -126,7 +126,7 @@ export function DocumentUploadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[500px] max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Subir Documento</DialogTitle>
           <DialogDescription>
@@ -134,74 +134,82 @@ export function DocumentUploadDialog({
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
             {error && (
-              <Alert className="text-red-600">
+              <Alert className="text-destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
-            <FormField
-              control={form.control}
-              name="type"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo de Documento</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecciona un tipo" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {documentTypeOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <FolderUp className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Archivo</h4>
+              </div>
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de Documento</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecciona un tipo" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {documentTypeOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="file"
-              render={({ field: { value, onChange, ...fieldProps } }) => (
-                <FormItem>
-                  <FormLabel>Archivo</FormLabel>
-                  <FormControl>
-                    <div className="space-y-2">
-                      <Input
-                        {...fieldProps}
-                        type="file"
-                        accept="image/*,.pdf"
-                        ref={fileInputRef}
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            onChange(file)
-                          }
-                        }}
-                        disabled={isUploading}
-                      />
-                      {selectedFile && (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <FileText className="h-4 w-4" />
-                          <span>{selectedFile.name}</span>
-                          <span className="text-xs">
-                            ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="file"
+                render={({ field: { value, onChange, ...fieldProps } }) => (
+                  <FormItem>
+                    <FormLabel>Archivo</FormLabel>
+                    <FormControl>
+                      <div className="space-y-2">
+                        <Input
+                          {...fieldProps}
+                          type="file"
+                          accept="image/*,.pdf"
+                          ref={fileInputRef}
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              onChange(file)
+                            }
+                          }}
+                          disabled={isUploading}
+                        />
+                        {selectedFile && (
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <FileText className="h-4 w-4" />
+                            <span>{selectedFile.name}</span>
+                            <span className="text-xs">
+                              ({(selectedFile.size / 1024 / 1024).toFixed(2)} MB)
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isUploading}>

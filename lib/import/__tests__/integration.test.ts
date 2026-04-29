@@ -1,3 +1,10 @@
+// Mock React's `cache` (used by lib/accounting/exchange-rates.ts) as identity
+// so importing the full pipeline graph works in jest's test env.
+jest.mock("react", () => ({
+  ...jest.requireActual("react"),
+  cache: <T extends (...args: unknown[]) => unknown>(fn: T) => fn,
+}))
+
 import { PIPELINES } from "../index"
 
 describe("PIPELINES registry", () => {

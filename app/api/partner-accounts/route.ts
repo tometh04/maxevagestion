@@ -104,8 +104,6 @@ export async function POST(request: Request) {
     // Limpiar y validar nombre
     const cleanedName = partner_name.trim()
 
-    console.log("[PartnerAccounts API] Creating partner:", { partner_name: cleanedName, user_id, notes })
-
     // Validar porcentaje si se proporciona
     let profitPercentage = profit_percentage ? parseFloat(profit_percentage) : 0
     if (profitPercentage < 0 || profitPercentage > 100) {
@@ -133,7 +131,6 @@ export async function POST(request: Request) {
       }, { status: 500 })
     }
 
-    console.log("[PartnerAccounts API] Partner created successfully:", partner?.id)
     return NextResponse.json({ partner })
   } catch (error: any) {
     console.error("[PartnerAccounts API] Exception in POST /api/partner-accounts:", error)

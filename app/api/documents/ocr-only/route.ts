@@ -56,9 +56,7 @@ export async function POST(request: Request) {
     // NUEVO: Si es PDF, extraer la imagen embebida
     // ============================================
     if (file.type === "application/pdf") {
-      console.log("📄 Procesando PDF...")
       try {
-        console.log(`📄 Procesando PDF de ${Math.round(fileBuffer.byteLength / 1024)}KB...`)
         const extractedImage = await extractImageFromPdf(Buffer.from(fileBuffer))
         if (!extractedImage) {
           console.error("❌ No se pudo extraer ninguna imagen del PDF")
@@ -69,7 +67,6 @@ export async function POST(request: Request) {
         }
         base64Image = extractedImage.base64
         mimeType = extractedImage.mimeType
-        console.log(`✅ Imagen extraída del PDF: ${mimeType}, ${Math.round(base64Image.length / 1024)}KB`)
       } catch (error) {
         console.error("❌ Error procesando PDF:", error)
         const errorMessage = error instanceof Error ? error.message : "Error desconocido"
@@ -140,7 +137,6 @@ RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas
     // Llamar a OpenAI Vision
     const openai = new OpenAI({ apiKey: openaiApiKey })
     
-    console.log("📄 Procesando documento con OCR...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -166,7 +162,6 @@ RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas
     })
 
     const responseText = completion.choices[0]?.message?.content || ""
-    console.log("📄 OpenAI response:", responseText.substring(0, 300))
 
     if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
       return NextResponse.json({ 
@@ -202,7 +197,6 @@ RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas
       }, { status: 200 })
     }
 
-    console.log("✅ Datos extraídos:", Object.keys(extractedData))
 
     return NextResponse.json({
       success: true,
@@ -225,15 +219,12 @@ RESPUESTA: Devuelve ÚNICAMENTE un objeto JSON válido con los campos que puedas
 async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string; mimeType: string } | null> {
   try {
     // Primero intentar extracción directa de bytes (más rápido y confiable para PDFs escaneados)
-    console.log("📄 Intentando extracción directa de bytes del PDF...")
     const extractedImage = extractImageFromRawPdf(pdfBuffer)
     if (extractedImage) {
-      console.log(`✅ Imagen encontrada con extracción directa: ${extractedImage.mimeType}`)
       return extractedImage
     }
 
     // Si falla, intentar con pdf-lib para acceder a recursos estructurados
-    console.log("📄 Intentando extracción con pdf-lib...")
     const pdfDoc = await PDFDocument.load(pdfBuffer, { 
       ignoreEncryption: true,
       updateMetadata: false 
@@ -241,7 +232,6 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
     
     const pages = pdfDoc.getPages()
     if (pages.length === 0) {
-      console.log("❌ PDF sin páginas")
       return null
     }
 
@@ -256,20 +246,17 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
         const pageNode = page.node
         const resources = pageNode.Resources()
         if (!resources) {
-          console.log(`⚠️ Página ${pageIndex + 1} sin recursos`)
           continue
         }
 
         // @ts-ignore - Buscar diccionario XObject
         const xObjectDict = resources.get(page.doc.context.obj('XObject'))
         if (!xObjectDict) {
-          console.log(`⚠️ Página ${pageIndex + 1} sin XObject dict`)
           continue
         }
 
         // @ts-ignore - Obtener claves del diccionario
         const keys = xObjectDict.keys() || []
-        console.log(`🔍 Página ${pageIndex + 1}: Encontrados ${keys.length} XObjects`)
 
         for (const key of keys) {
           try {
@@ -285,7 +272,6 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
               continue
             }
 
-            console.log(`🖼️ Imagen encontrada en página ${pageIndex + 1}, XObject: ${key}`)
 
             // Extraer datos de la imagen
             // @ts-ignore
@@ -299,7 +285,6 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
             }
 
             if (!stream) {
-              console.log(`⚠️ No se pudo obtener stream para ${key}`)
               continue
             }
 
@@ -355,14 +340,12 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
             const base64 = imageData.toString('base64')
             const size = imageData.length
 
-            console.log(`✅ Imagen extraída: ${mimeType}, ${Math.round(size / 1024)}KB`)
 
             // Guardar si es la más grande
             if (!largestImage || size > largestImage.size) {
               largestImage = { base64, mimeType, size }
             }
           } catch (e) {
-            console.log(`⚠️ Error procesando XObject ${key}:`, e)
             // Continuar con el siguiente objeto
             continue
           }
@@ -370,11 +353,9 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
 
         // Si encontramos una imagen en la primera página, usarla inmediatamente
         if (largestImage && pageIndex === 0) {
-          console.log(`✅ Usando imagen de primera página`)
           break
         }
       } catch (e) {
-        console.log(`⚠️ Error procesando página ${pageIndex + 1}:`, e)
         continue
       }
     }
@@ -383,14 +364,12 @@ async function extractImageFromPdf(pdfBuffer: Buffer): Promise<{ base64: string;
       return { base64: largestImage.base64, mimeType: largestImage.mimeType }
     }
 
-    console.log("❌ No se encontraron imágenes en el PDF con ningún método")
     return null
 
   } catch (error) {
     console.error("❌ Error general extrayendo imagen del PDF:", error)
     
     // Último intento: extracción directa de bytes
-    console.log("📄 Último intento: extracción directa de bytes...")
     const extractedImage = extractImageFromRawPdf(pdfBuffer)
     if (extractedImage) {
       return extractedImage
@@ -472,7 +451,6 @@ function extractImageFromRawPdf(pdfBuffer: Buffer): { base64: string; mimeType: 
   }
 
   if (largestJpeg) {
-    console.log(`✅ Imagen JPEG encontrada en bytes: ${Math.round(largestJpeg.length / 1024)}KB`)
     return {
       base64: largestJpeg.toString('base64'),
       mimeType: 'image/jpeg'
@@ -491,7 +469,6 @@ function extractImageFromRawPdf(pdfBuffer: Buffer): { base64: string; mimeType: 
       const size = pngData.length
       
       if (size >= minSize) {
-        console.log(`✅ Imagen PNG encontrada en bytes: ${Math.round(pngData.length / 1024)}KB`)
         return {
           base64: pngData.toString('base64'),
           mimeType: 'image/png'
@@ -524,13 +501,11 @@ function extractImageFromRawPdf(pdfBuffer: Buffer): { base64: string; mimeType: 
   }
 
   if (largestPng) {
-    console.log(`✅ Imagen PNG encontrada en bytes: ${Math.round(largestPng.length / 1024)}KB`)
     return {
       base64: largestPng.toString('base64'),
       mimeType: 'image/png'
     }
   }
 
-  console.log("⚠️ No se encontraron marcadores JPEG/PNG en los bytes del PDF")
   return null
 }

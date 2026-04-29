@@ -4,37 +4,156 @@ import {
   isOwnDataOnly,
   getAccessibleModules,
   shouldShowInSidebar,
+  usePermissions,
 } from '../../permissions'
 import type { UserRole, Module, Permission } from '../../permissions'
 
 describe('Permissions System', () => {
+  // ─── hasPermission ──────────────────────────────────────────────────
   describe('hasPermission', () => {
-    it('should return true for SUPER_ADMIN with read permission on dashboard', () => {
-      const result = hasPermission('SUPER_ADMIN', 'dashboard', 'read')
-      expect(result).toBe(true)
+    describe('SUPER_ADMIN', () => {
+      it('should have all permissions on all modules', () => {
+        const modules: Module[] = [
+          'dashboard', 'leads', 'operations', 'customers', 'operators',
+          'cash', 'accounting', 'alerts', 'reports', 'commissions', 'settings', 'documents', 'tasks',
+        ]
+        const permissions: Permission[] = ['read', 'write', 'delete', 'export']
+
+        for (const mod of modules) {
+          for (const perm of permissions) {
+            expect(hasPermission('SUPER_ADMIN', mod, perm)).toBe(true)
+          }
+        }
+      })
     })
 
-    it('should return true for SUPER_ADMIN with write permission on leads', () => {
-      const result = hasPermission('SUPER_ADMIN', 'leads', 'write')
-      expect(result).toBe(true)
+    describe('ADMIN', () => {
+      it('should have read and write on leads', () => {
+        expect(hasPermission('ADMIN', 'leads', 'read')).toBe(true)
+        expect(hasPermission('ADMIN', 'leads', 'write')).toBe(true)
+      })
+
+      it('should NOT have delete on most modules', () => {
+        expect(hasPermission('ADMIN', 'leads', 'delete')).toBe(false)
+        expect(hasPermission('ADMIN', 'operations', 'delete')).toBe(false)
+        expect(hasPermission('ADMIN', 'customers', 'delete')).toBe(false)
+      })
+
+      it('should have delete on alerts', () => {
+        expect(hasPermission('ADMIN', 'alerts', 'delete')).toBe(true)
+      })
+
+      it('should have read but NOT write on settings', () => {
+        expect(hasPermission('ADMIN', 'settings', 'read')).toBe(true)
+        expect(hasPermission('ADMIN', 'settings', 'write')).toBe(false)
+      })
     })
 
-    it('should return false for SELLER with delete permission on operations', () => {
-      const result = hasPermission('SELLER', 'operations', 'delete')
-      expect(result).toBe(false)
+    describe('CONTABLE', () => {
+      it('should NOT have read on leads', () => {
+        expect(hasPermission('CONTABLE', 'leads', 'read')).toBe(false)
+      })
+
+      it('should NOT have read on dashboard', () => {
+        expect(hasPermission('CONTABLE', 'dashboard', 'read')).toBe(false)
+      })
+
+      it('should NOT have read on customers', () => {
+        expect(hasPermission('CONTABLE', 'customers', 'read')).toBe(false)
+      })
+
+      it('should have read and write on accounting', () => {
+        expect(hasPermission('CONTABLE', 'accounting', 'read')).toBe(true)
+        expect(hasPermission('CONTABLE', 'accounting', 'write')).toBe(true)
+      })
+
+      it('should have read and write on cash', () => {
+        expect(hasPermission('CONTABLE', 'cash', 'read')).toBe(true)
+        expect(hasPermission('CONTABLE', 'cash', 'write')).toBe(true)
+      })
+
+      it('should have read-only on operations', () => {
+        expect(hasPermission('CONTABLE', 'operations', 'read')).toBe(true)
+        expect(hasPermission('CONTABLE', 'operations', 'write')).toBe(false)
+      })
+
+      it('should have read-only on commissions', () => {
+        expect(hasPermission('CONTABLE', 'commissions', 'read')).toBe(true)
+        expect(hasPermission('CONTABLE', 'commissions', 'write')).toBe(false)
+      })
     })
 
-    it('should return false for VIEWER with write permission on any module', () => {
-      const result = hasPermission('VIEWER', 'leads', 'write')
-      expect(result).toBe(false)
+    describe('SELLER', () => {
+      it('should have read and write on leads (own data only)', () => {
+        expect(hasPermission('SELLER', 'leads', 'read')).toBe(true)
+        expect(hasPermission('SELLER', 'leads', 'write')).toBe(true)
+        expect(hasPermission('SELLER', 'leads', 'delete')).toBe(false)
+      })
+
+      it('should NOT have any access to operators, cash, accounting', () => {
+        expect(hasPermission('SELLER', 'operators', 'read')).toBe(false)
+        expect(hasPermission('SELLER', 'cash', 'read')).toBe(false)
+        expect(hasPermission('SELLER', 'accounting', 'read')).toBe(false)
+      })
+
+      it('should NOT have access to settings', () => {
+        expect(hasPermission('SELLER', 'settings', 'read')).toBe(false)
+      })
+
+      it('should have read on commissions (own data only)', () => {
+        expect(hasPermission('SELLER', 'commissions', 'read')).toBe(true)
+        expect(hasPermission('SELLER', 'commissions', 'write')).toBe(false)
+      })
+
+      it('should be able to export own reports and commissions', () => {
+        expect(hasPermission('SELLER', 'reports', 'export')).toBe(true)
+        expect(hasPermission('SELLER', 'commissions', 'export')).toBe(true)
+      })
     })
 
-    it('should return false for CONTABLE with read permission on leads', () => {
-      const result = hasPermission('CONTABLE', 'leads', 'read')
-      expect(result).toBe(false)
+    describe('VIEWER', () => {
+      it('should have read on all modules except settings', () => {
+        const readableModules: Module[] = [
+          'dashboard', 'leads', 'operations', 'customers', 'operators',
+          'cash', 'accounting', 'alerts', 'reports', 'commissions', 'documents', 'tasks',
+        ]
+        for (const mod of readableModules) {
+          expect(hasPermission('VIEWER', mod, 'read')).toBe(true)
+        }
+      })
+
+      it('should NOT have read on settings', () => {
+        expect(hasPermission('VIEWER', 'settings', 'read')).toBe(false)
+      })
+
+      it('should NOT have write on any module', () => {
+        const modules: Module[] = [
+          'dashboard', 'leads', 'operations', 'customers', 'operators',
+          'cash', 'accounting', 'alerts', 'reports', 'commissions', 'settings', 'documents', 'tasks',
+        ]
+        for (const mod of modules) {
+          expect(hasPermission('VIEWER', mod, 'write')).toBe(false)
+        }
+      })
+
+      it('should be able to export reports only', () => {
+        expect(hasPermission('VIEWER', 'reports', 'export')).toBe(true)
+        expect(hasPermission('VIEWER', 'leads', 'export')).toBe(false)
+      })
+    })
+
+    describe('invalid role/module', () => {
+      it('should return false for unknown role', () => {
+        expect(hasPermission('UNKNOWN' as UserRole, 'leads', 'read')).toBe(false)
+      })
+
+      it('should return false for unknown module', () => {
+        expect(hasPermission('SUPER_ADMIN', 'nonexistent' as Module, 'read')).toBe(false)
+      })
     })
   })
 
+  // ─── canAccessModule ────────────────────────────────────────────────
   describe('canAccessModule', () => {
     it('should return true for SUPER_ADMIN accessing any module', () => {
       expect(canAccessModule('SUPER_ADMIN', 'dashboard')).toBe(true)
@@ -61,15 +180,28 @@ describe('Permissions System', () => {
     it('should return false for SELLER accessing settings', () => {
       expect(canAccessModule('SELLER', 'settings')).toBe(false)
     })
-  })
 
-  describe('isOwnDataOnly', () => {
-    it('should return true for SELLER on dashboard', () => {
-      expect(isOwnDataOnly('SELLER', 'dashboard')).toBe(true)
+    it('should return false for SELLER accessing cash', () => {
+      expect(canAccessModule('SELLER', 'cash')).toBe(false)
     })
 
-    it('should return true for SELLER on leads', () => {
+    it('should return false for VIEWER accessing settings', () => {
+      expect(canAccessModule('VIEWER', 'settings')).toBe(false)
+    })
+  })
+
+  // ─── isOwnDataOnly ─────────────────────────────────────────────────
+  describe('isOwnDataOnly', () => {
+    it('should return true for SELLER on dashboard, leads, operations, customers', () => {
+      expect(isOwnDataOnly('SELLER', 'dashboard')).toBe(true)
       expect(isOwnDataOnly('SELLER', 'leads')).toBe(true)
+      expect(isOwnDataOnly('SELLER', 'operations')).toBe(true)
+      expect(isOwnDataOnly('SELLER', 'customers')).toBe(true)
+    })
+
+    it('should return true for SELLER on alerts and commissions', () => {
+      expect(isOwnDataOnly('SELLER', 'alerts')).toBe(true)
+      expect(isOwnDataOnly('SELLER', 'commissions')).toBe(true)
     })
 
     it('should return false for SUPER_ADMIN on any module', () => {
@@ -79,65 +211,152 @@ describe('Permissions System', () => {
 
     it('should return false for ADMIN on any module', () => {
       expect(isOwnDataOnly('ADMIN', 'dashboard')).toBe(false)
+      expect(isOwnDataOnly('ADMIN', 'operations')).toBe(false)
     })
 
     it('should return false for CONTABLE on accounting', () => {
       expect(isOwnDataOnly('CONTABLE', 'accounting')).toBe(false)
     })
+
+    it('should return false for VIEWER on any module', () => {
+      expect(isOwnDataOnly('VIEWER', 'dashboard')).toBe(false)
+      expect(isOwnDataOnly('VIEWER', 'leads')).toBe(false)
+    })
   })
 
+  // ─── getAccessibleModules ───────────────────────────────────────────
   describe('getAccessibleModules', () => {
-    it('should return all modules for SUPER_ADMIN', () => {
+    it('should return all 13 modules for SUPER_ADMIN', () => {
       const modules = getAccessibleModules('SUPER_ADMIN')
-      expect(modules.length).toBeGreaterThan(10)
+      expect(modules.length).toBe(13)
       expect(modules).toContain('dashboard')
-      expect(modules).toContain('leads')
       expect(modules).toContain('settings')
     })
 
-    it('should not include dashboard for CONTABLE', () => {
+    it('should return all modules except settings for ADMIN', () => {
+      const modules = getAccessibleModules('ADMIN')
+      expect(modules).toContain('dashboard')
+      expect(modules).toContain('leads')
+      expect(modules).toContain('settings') // ADMIN has read on settings
+    })
+
+    it('should not include dashboard, leads, customers, settings, documents for CONTABLE', () => {
       const modules = getAccessibleModules('CONTABLE')
       expect(modules).not.toContain('dashboard')
       expect(modules).not.toContain('leads')
+      expect(modules).not.toContain('customers')
+      expect(modules).not.toContain('settings')
+      expect(modules).not.toContain('documents')
       expect(modules).toContain('accounting')
+      expect(modules).toContain('cash')
       expect(modules).toContain('operations')
     })
 
-    it('should not include settings for SELLER', () => {
+    it('should not include operators, cash, accounting, settings for SELLER', () => {
       const modules = getAccessibleModules('SELLER')
-      expect(modules).not.toContain('settings')
       expect(modules).not.toContain('operators')
+      expect(modules).not.toContain('cash')
+      expect(modules).not.toContain('accounting')
+      expect(modules).not.toContain('settings')
       expect(modules).toContain('dashboard')
       expect(modules).toContain('leads')
     })
+
+    it('should return all modules except settings for VIEWER', () => {
+      const modules = getAccessibleModules('VIEWER')
+      expect(modules).not.toContain('settings')
+      expect(modules).toContain('dashboard')
+      expect(modules).toContain('leads')
+      expect(modules).toContain('accounting')
+    })
   })
 
+  // ─── shouldShowInSidebar ────────────────────────────────────────────
   describe('shouldShowInSidebar', () => {
     it('should return true for all modules for SUPER_ADMIN', () => {
-      expect(shouldShowInSidebar('SUPER_ADMIN', 'dashboard')).toBe(true)
-      expect(shouldShowInSidebar('SUPER_ADMIN', 'leads')).toBe(true)
-      expect(shouldShowInSidebar('SUPER_ADMIN', 'settings')).toBe(true)
+      const allModules: Module[] = [
+        'dashboard', 'leads', 'operations', 'customers', 'operators',
+        'cash', 'accounting', 'alerts', 'reports', 'commissions', 'settings', 'documents', 'tasks',
+      ]
+      for (const mod of allModules) {
+        expect(shouldShowInSidebar('SUPER_ADMIN', mod)).toBe(true)
+      }
     })
 
-    it('should return false for dashboard for CONTABLE', () => {
-      expect(shouldShowInSidebar('CONTABLE', 'dashboard')).toBe(false)
+    it('should return true for all modules for ADMIN', () => {
+      expect(shouldShowInSidebar('ADMIN', 'dashboard')).toBe(true)
+      expect(shouldShowInSidebar('ADMIN', 'settings')).toBe(true)
     })
 
-    it('should return false for leads for CONTABLE', () => {
-      expect(shouldShowInSidebar('CONTABLE', 'leads')).toBe(false)
+    describe('CONTABLE sidebar', () => {
+      it('should show operations, operators, cash, accounting, alerts, reports, commissions, tasks', () => {
+        const visible: Module[] = ['operations', 'operators', 'cash', 'accounting', 'alerts', 'reports', 'commissions', 'tasks']
+        for (const mod of visible) {
+          expect(shouldShowInSidebar('CONTABLE', mod)).toBe(true)
+        }
+      })
+
+      it('should hide dashboard, leads, customers, settings, documents', () => {
+        const hidden: Module[] = ['dashboard', 'leads', 'customers', 'settings', 'documents']
+        for (const mod of hidden) {
+          expect(shouldShowInSidebar('CONTABLE', mod)).toBe(false)
+        }
+      })
     })
 
-    it('should return true for accounting for CONTABLE', () => {
-      expect(shouldShowInSidebar('CONTABLE', 'accounting')).toBe(true)
+    describe('SELLER sidebar', () => {
+      it('should show dashboard, leads, operations, customers, alerts, reports, commissions, documents, tasks', () => {
+        const visible: Module[] = ['dashboard', 'leads', 'operations', 'customers', 'alerts', 'reports', 'commissions', 'documents', 'tasks']
+        for (const mod of visible) {
+          expect(shouldShowInSidebar('SELLER', mod)).toBe(true)
+        }
+      })
+
+      it('should hide operators, cash, accounting, settings', () => {
+        const hidden: Module[] = ['operators', 'cash', 'accounting', 'settings']
+        for (const mod of hidden) {
+          expect(shouldShowInSidebar('SELLER', mod)).toBe(false)
+        }
+      })
     })
 
-    it('should return false for settings for VIEWER', () => {
-      expect(shouldShowInSidebar('VIEWER', 'settings')).toBe(false)
+    describe('VIEWER sidebar', () => {
+      it('should show all modules except settings', () => {
+        expect(shouldShowInSidebar('VIEWER', 'settings')).toBe(false)
+        expect(shouldShowInSidebar('VIEWER', 'dashboard')).toBe(true)
+        expect(shouldShowInSidebar('VIEWER', 'leads')).toBe(true)
+        expect(shouldShowInSidebar('VIEWER', 'accounting')).toBe(true)
+      })
+    })
+  })
+
+  // ─── usePermissions ────────────────────────────────────────────────
+  describe('usePermissions', () => {
+    it('should return permission helper functions', () => {
+      const perms = usePermissions('SELLER')
+
+      expect(perms.canRead('leads')).toBe(true)
+      expect(perms.canWrite('leads')).toBe(true)
+      expect(perms.canDelete('leads')).toBe(false)
+      expect(perms.canExport('leads')).toBe(false)
+      expect(perms.ownDataOnly('leads')).toBe(true)
+      expect(perms.canAccess('leads')).toBe(true)
     })
 
-    it('should return false for operators for SELLER', () => {
-      expect(shouldShowInSidebar('SELLER', 'operators')).toBe(false)
+    it('should deny CONTABLE from accessing leads via helper', () => {
+      const perms = usePermissions('CONTABLE')
+
+      expect(perms.canRead('leads')).toBe(false)
+      expect(perms.canAccess('leads')).toBe(false)
+    })
+
+    it('should allow SUPER_ADMIN everything via helper', () => {
+      const perms = usePermissions('SUPER_ADMIN')
+
+      expect(perms.canRead('settings')).toBe(true)
+      expect(perms.canWrite('settings')).toBe(true)
+      expect(perms.canDelete('settings')).toBe(true)
+      expect(perms.ownDataOnly('settings')).toBe(false)
     })
   })
 })
-

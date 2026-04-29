@@ -5,6 +5,7 @@
  * Los pagos recurrentes se generan automáticamente según su frecuencia.
  */
 
+import { addDays, addMonths, addYears } from "date-fns"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -37,24 +38,26 @@ export function calculateNextDueDate(
   lastDate: string,
   frequency: RecurringPaymentFrequency
 ): string {
+  // date-fns addMonths/addYears clampean al ultimo dia del mes destino:
+  // Jan 31 + 1 mes → Feb 28/29 (no Mar 3 como hace setMonth nativo).
   const date = new Date(lastDate)
-  const nextDate = new Date(date)
+  let nextDate: Date
 
   switch (frequency) {
     case "WEEKLY":
-      nextDate.setDate(date.getDate() + 7)
+      nextDate = addDays(date, 7)
       break
     case "BIWEEKLY":
-      nextDate.setDate(date.getDate() + 14)
+      nextDate = addDays(date, 14)
       break
     case "MONTHLY":
-      nextDate.setMonth(date.getMonth() + 1)
+      nextDate = addMonths(date, 1)
       break
     case "QUARTERLY":
-      nextDate.setMonth(date.getMonth() + 3)
+      nextDate = addMonths(date, 3)
       break
     case "YEARLY":
-      nextDate.setFullYear(date.getFullYear() + 1)
+      nextDate = addYears(date, 1)
       break
   }
 

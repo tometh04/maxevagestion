@@ -210,13 +210,13 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
             <div className="grid gap-4 md:grid-cols-2 mb-6">
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">Total ARS</div>
-                <div className="text-2xl font-bold text-amber-600">
+                <div className="text-2xl font-bold text-warning">
                   $ {Math.round(accountBalances.summary.total_ars || 0).toLocaleString("es-AR")}
                 </div>
               </div>
               <div className="space-y-1">
                 <div className="text-sm text-muted-foreground">Total USD</div>
-                <div className="text-2xl font-bold text-amber-600">
+                <div className="text-2xl font-bold text-warning">
                   US$ {Math.round(accountBalances.summary.total_usd || 0).toLocaleString("es-AR")}
                 </div>
               </div>
@@ -245,7 +245,7 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <span className={`font-semibold ${(account.current_balance ?? 0) >= 0 ? "text-amber-600" : "text-red-600"}`}>
+                              <span className={`font-semibold ${(account.current_balance ?? 0) >= 0 ? "text-warning" : "text-destructive"}`}>
                                 {account.currency === "USD" ? "US$" : "$"} {Math.round(account.current_balance ?? 0).toLocaleString("es-AR")}
                               </span>
                             </TableCell>
@@ -257,10 +257,10 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="space-y-1">
-                              <div className="font-semibold text-amber-600">
+                              <div className="font-semibold text-warning">
                                 $ {Math.round(agencyData.ars || 0).toLocaleString("es-AR")}
                               </div>
-                              <div className="font-semibold text-amber-600">
+                              <div className="font-semibold text-warning">
                                 US$ {Math.round(agencyData.usd || 0).toLocaleString("es-AR")}
                               </div>
                             </div>
@@ -283,14 +283,14 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Ingresos
             </CardTitle>
-            <ArrowUpCircle className="h-4 w-4 text-green-500" />
+            <ArrowUpCircle className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-xl font-bold text-success">
                 US$ {Math.round(totals.income_usd || 0).toLocaleString("es-AR")}
               </div>
-              <div className="text-lg font-semibold text-green-600">
+              <div className="text-lg font-semibold text-success">
                 $ {Math.round(totals.income_ars || 0).toLocaleString("es-AR")}
               </div>
             </div>
@@ -301,14 +301,14 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Egresos
             </CardTitle>
-            <ArrowDownCircle className="h-4 w-4 text-red-500" />
+            <ArrowDownCircle className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
-              <div className="text-xl font-bold text-red-600">
+              <div className="text-xl font-bold text-destructive">
                 US$ {Math.round(totals.expense_usd || 0).toLocaleString("es-AR")}
               </div>
-              <div className="text-lg font-semibold text-red-600">
+              <div className="text-lg font-semibold text-destructive">
                 $ {Math.round(totals.expense_ars || 0).toLocaleString("es-AR")}
               </div>
             </div>
@@ -323,10 +323,10 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
           </CardHeader>
           <CardContent>
             <div className="space-y-1">
-              <div className={`text-xl font-bold ${(totals.net_usd || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+              <div className={`text-xl font-bold ${(totals.net_usd || 0) >= 0 ? "text-success" : "text-destructive"}`}>
                 US$ {Math.round(totals.net_usd || 0).toLocaleString("es-AR")}
               </div>
-              <div className={`text-lg font-semibold ${(totals.net_ars || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+              <div className={`text-lg font-semibold ${(totals.net_ars || 0) >= 0 ? "text-success" : "text-destructive"}`}>
                 $ {Math.round(totals.net_ars || 0).toLocaleString("es-AR")}
               </div>
             </div>
@@ -397,23 +397,23 @@ export function CashFlowReport({ agencies }: CashFlowReportProps) {
                       <TableCell className="font-medium">
                         {categoryLabels[c.category] || c.category}
                       </TableCell>
-                      <TableCell className="text-right text-green-600">
+                      <TableCell className="text-right text-success">
                         {c.income_usd > 0 ? `US$ ${Math.round(c.income_usd).toLocaleString("es-AR")}` : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-red-600">
+                      <TableCell className="text-right text-destructive">
                         {c.expense_usd > 0 ? `US$ ${Math.round(c.expense_usd).toLocaleString("es-AR")}` : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-green-600">
+                      <TableCell className="text-right text-success">
                         {c.income_ars > 0 ? `$ ${Math.round(c.income_ars).toLocaleString("es-AR")}` : "-"}
                       </TableCell>
-                      <TableCell className="text-right text-red-600">
+                      <TableCell className="text-right text-destructive">
                         {c.expense_ars > 0 ? `$ ${Math.round(c.expense_ars).toLocaleString("es-AR")}` : "-"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <div className={`font-medium ${netUsd >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <div className={`font-medium ${netUsd >= 0 ? "text-success" : "text-destructive"}`}>
                           {netUsd !== 0 && `US$ ${Math.round(netUsd).toLocaleString("es-AR")}`}
                         </div>
-                        <div className={`text-sm ${netArs >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <div className={`text-sm ${netArs >= 0 ? "text-success" : "text-destructive"}`}>
                           {netArs !== 0 && `$ ${Math.round(netArs).toLocaleString("es-AR")}`}
                         </div>
                       </TableCell>

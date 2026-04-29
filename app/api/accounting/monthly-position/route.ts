@@ -2,7 +2,8 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export const dynamic = 'force-dynamic'
 
@@ -35,8 +36,6 @@ export async function GET(request: Request) {
     const fechaCorte = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
     const fechaInicioMes = `${year}-${String(month).padStart(2, "0")}-01`
 
-    console.log(`[Balance] Periodo: ${fechaInicioMes} a ${fechaCorte}, Agencia: ${agencyId}`)
-
     // Obtener TC del mes (si existe)
     let monthlyTC: number | null = null
     const { data: tcData } = await (supabase.from("monthly_exchange_rates") as any)
@@ -50,7 +49,7 @@ export async function GET(request: Request) {
     }
 
     // TC de referencia (el más reciente del sistema)
-    const latestTC = await getLatestExchangeRate(supabase) || 1000
+    const latestTC = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
     const tcParaCalculos = monthlyTC || latestTC
 
     // ===========================================
@@ -81,7 +80,7 @@ export async function GET(request: Request) {
           .from("ledger_movements")
           .select("amount_original, type")
           .eq("account_id", account.id)
-          .lte("created_at", `${fechaCorte}T23:59:59`)
+          .lte("created_at", endOfDayAR(fechaCorte))
 
         let balance = parseFloat(account.initial_balance || "0")
         
@@ -120,7 +119,7 @@ export async function GET(request: Request) {
       .from("operations")
       .select("id, file_code, destination, sale_amount_total, sale_currency, currency, departure_date, agency_id, created_at")
       .neq("status", "CANCELLED")
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     if (agencyId !== "ALL") {
       operationsQuery = operationsQuery.eq("agency_id", agencyId)
@@ -132,31 +131,35 @@ export async function GET(request: Request) {
       console.error("[Balance] Error fetching operations:", opsError)
     }
 
-    console.log(`[Balance] Operaciones encontradas: ${operations?.length || 0}`)
-
     if (operations && operations.length > 0) {
       const operationIds = (operations as any[]).map(op => op.id)
 
-      // Obtener pagos de clientes
-      const { data: customerPayments, error: paymentsError } = await supabase
-        .from("payments")
-        .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
-        .in("operation_id", operationIds)
-        .eq("direction", "INCOME")
-        .eq("payer_type", "CUSTOMER")
-        .eq("status", "PAID")
+      // Chunking: .in() revienta URL con >300 UUIDs (error silencioso "Bad Request")
+      const chunkSize = 200
+      const customerPayments: any[] = []
+      const opCustomers: any[] = []
 
-      if (paymentsError) {
-        console.error("[Balance] Error fetching customer payments:", paymentsError)
+      for (let i = 0; i < operationIds.length; i += chunkSize) {
+        const chunk = operationIds.slice(i, i + chunkSize)
+
+        const { data: paymentsChunk, error: paymentsError } = await supabase
+          .from("payments")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status")
+          .in("operation_id", chunk)
+          .eq("direction", "INCOME")
+          .eq("payer_type", "CUSTOMER")
+          .eq("status", "PAID")
+        if (paymentsError) {
+          console.error("[Balance] Error fetching customer payments:", paymentsError)
+        }
+        if (paymentsChunk) customerPayments.push(...paymentsChunk)
+
+        const { data: opCustChunk } = await supabase
+          .from("operation_customers")
+          .select("operation_id, customers:customer_id(id, first_name, last_name)")
+          .in("operation_id", chunk)
+        if (opCustChunk) opCustomers.push(...opCustChunk)
       }
-
-      console.log(`[Balance] Pagos de clientes encontrados: ${customerPayments?.length || 0}`)
-
-      // Obtener clientes de operaciones
-      const { data: opCustomers } = await supabase
-        .from("operation_customers")
-        .select("operation_id, customers:customer_id(id, first_name, last_name)")
-        .in("operation_id", operationIds)
 
       const customersByOp: Record<string, any> = {}
       if (opCustomers) {
@@ -229,8 +232,6 @@ export async function GET(request: Request) {
       cuentasPorCobrar.totalUSD = Math.round(cuentasPorCobrar.totalUSD * 100) / 100
     }
 
-    console.log(`[Balance] Cuentas por Cobrar: USD ${cuentasPorCobrar.totalUSD} (${cuentasPorCobrar.cantidadDeudores} deudores)`)
-
     // ===========================================
     // 2.5. CUENTAS POR COBRAR - SOCIOS (deuda de socios cuando gastaron más de lo asignado)
     // ===========================================
@@ -251,7 +252,7 @@ export async function GET(request: Request) {
         month,
         partner:partner_id(id, partner_name)
       `)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     // Obtener retiros de socios hasta la fecha de corte
     const { data: withdrawals, error: withdrawalsError } = await (supabase.from("partner_withdrawals") as any)
@@ -341,8 +342,6 @@ export async function GET(request: Request) {
       )
     }
 
-    console.log(`[Balance] Cuentas por Cobrar - Socios: USD ${cuentasPorCobrarSocios.totalUSD} (${cuentasPorCobrarSocios.cantidadDeudores} deudores)`)
-
     // ===========================================
     // 3. CUENTAS POR PAGAR (tabla operator_payments)
     // ===========================================
@@ -360,15 +359,13 @@ export async function GET(request: Request) {
         operators:operator_id (id, name)
       `)
       .in("status", ["PENDING", "OVERDUE"])
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     const { data: operatorPayments, error: opPayError } = await operatorPaymentsQuery
 
     if (opPayError) {
       console.error("[Balance] Error fetching operator payments:", opPayError)
     }
-
-    console.log(`[Balance] Operator payments encontrados: ${operatorPayments?.length || 0}`)
 
     if (operatorPayments) {
       for (const payment of operatorPayments as any[]) {
@@ -406,10 +403,6 @@ export async function GET(request: Request) {
       cuentasPorPagar.cantidadAcreedores = cuentasPorPagar.detalle.length
       cuentasPorPagar.totalUSD = Math.round(cuentasPorPagar.totalUSD * 100) / 100
     }
-
-    console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
-
-    console.log(`[Balance] Cuentas por Pagar: USD ${cuentasPorPagar.totalUSD.toFixed(2)} (${cuentasPorPagar.cantidadAcreedores} acreedores)`)
 
     // ===========================================
     // 4. GASTOS RECURRENTES PENDIENTES
@@ -462,8 +455,8 @@ export async function GET(request: Request) {
       .eq("direction", "INCOME")
       .eq("payer_type", "CUSTOMER")
       .eq("status", "PAID")
-      .gte("created_at", `${fechaInicioMes}T00:00:00`)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     let ingresosUSD = 0, ingresosARS = 0
     if (ingresosMes) {
@@ -478,8 +471,8 @@ export async function GET(request: Request) {
     const { data: costosMes } = await (supabase.from("operator_payments") as any)
       .select("amount, currency, paid_amount, paid_at")
       .eq("status", "PAID")
-      .gte("paid_at", `${fechaInicioMes}T00:00:00`)
-      .lte("paid_at", `${fechaCorte}T23:59:59`)
+      .gte("paid_at", startOfDayAR(fechaInicioMes))
+      .lte("paid_at", endOfDayAR(fechaCorte))
 
     let costosUSD = 0, costosARS = 0
     if (costosMes) {
@@ -497,8 +490,8 @@ export async function GET(request: Request) {
       .select("amount_original, currency")
       .eq("type", "EXPENSE")
       .is("operation_id", null)
-      .gte("created_at", `${fechaInicioMes}T00:00:00`)
-      .lte("created_at", `${fechaCorte}T23:59:59`)
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
 
     let gastosUSD = 0, gastosARS = 0
     if (gastosMes) {
@@ -510,7 +503,45 @@ export async function GET(request: Request) {
     }
     const gastosTotalUSD = gastosUSD + (gastosARS / tcParaCalculos)
 
-    const resultadoMes = ingresosTotalUSD - costosTotalUSD - gastosTotalUSD
+    // Comisiones pagadas en el mes
+    const { data: comisionesMes } = await supabase
+      .from("ledger_movements")
+      .select("amount_original, currency")
+      .eq("type", "COMMISSION")
+      .gte("created_at", startOfDayAR(fechaInicioMes))
+      .lte("created_at", endOfDayAR(fechaCorte))
+
+    let comisionesUSD = 0, comisionesARS = 0
+    if (comisionesMes) {
+      for (const c of comisionesMes as any[]) {
+        const amount = parseFloat(c.amount_original || "0")
+        if (c.currency === "USD") comisionesUSD += amount
+        else comisionesARS += amount
+      }
+    }
+    const comisionesTotalUSD = comisionesUSD + (comisionesARS / tcParaCalculos)
+
+    // Posición IVA del mes (pasivo corriente)
+    let posicionIVA = { debito: 0, credito: 0, saldo: 0 }
+    try {
+      const { data: ivaSales } = await (supabase.from("iva_sales") as any)
+        .select("iva_amount")
+        .gte("sale_date", fechaInicioMes)
+        .lte("sale_date", fechaCorte)
+
+      const { data: ivaPurchases } = await (supabase.from("iva_purchases") as any)
+        .select("iva_amount")
+        .gte("purchase_date", fechaInicioMes)
+        .lte("purchase_date", fechaCorte)
+
+      posicionIVA.debito = (ivaSales || []).reduce((s: number, r: any) => s + Number(r.iva_amount || 0), 0)
+      posicionIVA.credito = (ivaPurchases || []).reduce((s: number, r: any) => s + Number(r.iva_amount || 0), 0)
+      posicionIVA.saldo = posicionIVA.debito - posicionIVA.credito
+    } catch {
+      // IVA calculation optional
+    }
+
+    const resultadoMes = ingresosTotalUSD - costosTotalUSD - gastosTotalUSD - comisionesTotalUSD
 
     // ===========================================
     // CÁLCULOS FINALES
@@ -520,7 +551,8 @@ export async function GET(request: Request) {
     const activoNoCorriente = 0
     const totalActivo = activoCorriente + activoNoCorriente
 
-    const pasivoCorriente = cuentasPorPagar.totalUSD + gastosAPagarTotalUSD
+    const ivaAPagar = Math.max(0, posicionIVA.saldo) / tcParaCalculos
+    const pasivoCorriente = cuentasPorPagar.totalUSD + gastosAPagarTotalUSD + ivaAPagar
     const pasivoNoCorriente = 0
     const totalPasivo = pasivoCorriente + pasivoNoCorriente
 
@@ -579,6 +611,12 @@ export async function GET(request: Request) {
             saldoUSD: round(gastosAPagarTotalUSD),
             detalle: gastosAPagar.detalle
           },
+          ivaAPagar: {
+            debitoFiscal: round(posicionIVA.debito),
+            creditoFiscal: round(posicionIVA.credito),
+            saldoARS: round(posicionIVA.saldo),
+            saldoUSD: round(ivaAPagar),
+          },
           total: round(pasivoCorriente)
         },
         noCorriente: { total: round(pasivoNoCorriente) },
@@ -594,9 +632,13 @@ export async function GET(request: Request) {
         ingresos: { usd: round(ingresosUSD), ars: round(ingresosARS), total: round(ingresosTotalUSD) },
         costos: { usd: round(costosUSD), ars: round(costosARS), total: round(costosTotalUSD) },
         gastos: { usd: round(gastosUSD), ars: round(gastosARS), total: round(gastosTotalUSD) },
+        comisiones: { usd: round(comisionesUSD), ars: round(comisionesARS), total: round(comisionesTotalUSD) },
         resultado: round(resultadoMes),
-        margenBruto: ingresosTotalUSD > 0 
+        margenBruto: ingresosTotalUSD > 0
           ? round((ingresosTotalUSD - costosTotalUSD) / ingresosTotalUSD * 100)
+          : 0,
+        margenNeto: ingresosTotalUSD > 0
+          ? round(resultadoMes / ingresosTotalUSD * 100)
           : 0
       }
     })

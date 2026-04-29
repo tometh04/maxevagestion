@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { MessagesPageClient } from "@/components/whatsapp/messages-page-client"
+import { buildSellerMessageScopeFilter, getSellerOperationIds } from "@/lib/whatsapp/message-access"
 
 export default async function MessagesPage() {
   const { user } = await getCurrentUser()
@@ -14,6 +15,10 @@ export default async function MessagesPage() {
 
   const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
   const agencies = (userAgencies || []).map((ua: any) => ua.agencies).filter(Boolean)
+  const sellerOperationIds =
+    user.role === "SELLER" ? await getSellerOperationIds(supabase, user.id) : []
+  const canLoadMessages = user.role === "SUPER_ADMIN" || user.role === "SELLER" || agencyIds.length > 0
+  const canLoadTemplates = user.role === "SUPER_ADMIN" || agencyIds.length > 0
 
   // Obtener mensajes pendientes (hasta 2000 para cubrir todos los mensajes)
   let messagesQuery = (supabase.from("whatsapp_messages") as any)
@@ -21,33 +26,38 @@ export default async function MessagesPage() {
       *,
       message_templates:template_id (name, emoji_prefix, category),
       customers:customer_id (first_name, last_name, email),
-      operations:operation_id (destination, departure_date, checkin_date, checkout_date)
+      operations:operation_id (destination, departure_date, checkin_date, checkout_date, file_code, seller_id)
     `)
     .order("scheduled_for", { ascending: true })
     .limit(2000)
 
-  if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+  if (user.role === "SELLER") {
+    messagesQuery = messagesQuery.or(buildSellerMessageScopeFilter(user.id, sellerOperationIds))
+  } else if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
     messagesQuery = messagesQuery.in("agency_id", agencyIds)
   }
 
-  const { data: messages } = await messagesQuery
+  const { data: messages } = canLoadMessages ? await messagesQuery : { data: [] as any[] }
 
-  // Obtener templates
-  let templatesQuery = (supabase.from("message_templates") as any)
-    .select("*")
-    .eq("is_active", true)
-    .order("category", { ascending: true })
+  let templates: any[] = []
+  if ((user.role === "SUPER_ADMIN" || user.role === "ADMIN") && canLoadTemplates) {
+    let templatesQuery = (supabase.from("message_templates") as any)
+      .select("*")
+      .eq("is_active", true)
+      .order("category", { ascending: true })
 
-  if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
-    templatesQuery = templatesQuery.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+    if (user.role !== "SUPER_ADMIN" && agencyIds.length > 0) {
+      templatesQuery = templatesQuery.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+    }
+
+    const { data: loadedTemplates } = await templatesQuery
+    templates = loadedTemplates || []
   }
-
-  const { data: templates } = await templatesQuery
 
   return (
     <MessagesPageClient
       initialMessages={messages || []}
-      templates={templates || []}
+      templates={templates}
       agencies={agencies}
       userId={user.id}
       userRole={user.role}

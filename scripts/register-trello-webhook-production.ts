@@ -6,7 +6,7 @@
  *   npx tsx scripts/register-trello-webhook-production.ts <URL_PRODUCCION>
  * 
  * Ejemplo:
- *   npx tsx scripts/register-trello-webhook-production.ts https://maxevagestion.vercel.app
+ *   npx tsx scripts/register-trello-webhook-production.ts https://app.vibook.ai
  */
 
 import { createClient } from "@supabase/supabase-js"
@@ -180,7 +180,7 @@ async function main() {
     console.error("  npx tsx scripts/register-trello-webhook-production.ts <URL_PRODUCCION>")
     console.error("")
     console.error("Ejemplo:")
-    console.error("  npx tsx scripts/register-trello-webhook-production.ts https://maxevagestion.vercel.app")
+    console.error("  npx tsx scripts/register-trello-webhook-production.ts https://app.vibook.ai")
     process.exit(1)
   }
 

@@ -17,8 +17,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No tiene permiso para esta operación" }, { status: 403 })
     }
 
-    console.log("🔄 Iniciando generación de mensajes desde operaciones existentes...")
-
     // Obtener todas las operaciones con sus clientes
     const { data: operations, error: opError } = await supabase
       .from("operations")
@@ -49,8 +47,6 @@ export async function POST(request: Request) {
       console.error("Error obteniendo operaciones:", opError)
       return NextResponse.json({ error: "Error al obtener operaciones" }, { status: 500 })
     }
-
-    console.log(`📊 Procesando ${operations.length} operaciones...`)
 
     let operationsProcessed = 0
     let messagesGenerated = 0
@@ -209,15 +205,10 @@ export async function POST(request: Request) {
           
           // Generar mensajes desde las alertas creadas
           if (createdAlerts && createdAlerts.length > 0) {
-            console.log(`📝 Generando mensajes para ${createdAlerts.length} alertas de operación ${operation.id}...`)
             const msgsGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
             messagesGenerated += msgsGenerated
-            if (msgsGenerated === 0) {
-              console.log(`⚠️ No se generaron mensajes para las alertas de operación ${operation.id} (puede ser: sin template, sin teléfono, o mensaje ya existe)`)
-            }
           }
         } else {
-          console.log(`ℹ️ Operación ${operation.id}: No se crearon nuevas alertas (ya existen o no cumplen condiciones)`)
         }
 
         operationsProcessed++
@@ -226,13 +217,6 @@ export async function POST(request: Request) {
         continue
       }
     }
-
-    console.log(`✅ Procesadas ${operationsProcessed} operaciones`)
-    console.log(`   - Alertas creadas: ${alertsCreated}`)
-    console.log(`   - Alertas omitidas (ya existían): ${alertsSkipped}`)
-    console.log(`   - Mensajes generados: ${messagesGenerated}`)
-    console.log(`   - Operaciones sin fechas: ${operationsWithoutDates}`)
-    console.log(`   - Operaciones sin clientes: ${operationsWithoutCustomers}`)
 
     return NextResponse.json({
       success: true,

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { CalendarIcon, Loader2, Plus, Trash2 } from "lucide-react"
+import { CalendarIcon, Loader2, Plus, Trash2, Building2, MapPin, Users, DollarSign, Ticket } from "lucide-react"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
 import { format } from "date-fns"
@@ -57,6 +57,8 @@ const operationSchema = z.object({
   currency: z.enum(["ARS", "USD"]),
   reservation_code_air: z.string().optional().nullable(),
   reservation_code_hotel: z.string().optional().nullable(),
+  airline_name: z.string().optional().nullable(),
+  hotel_name: z.string().optional().nullable(),
 })
 
 type OperationFormValues = z.infer<typeof operationSchema>
@@ -72,10 +74,10 @@ const operationTypeOptions = [
 ]
 
 const standardStatusOptions = [
-  { value: "RESERVED", label: "Reservado", color: "bg-blue-500" },
-  { value: "CONFIRMED", label: "Confirmado", color: "bg-green-500" },
-  { value: "CANCELLED", label: "Cancelado", color: "bg-red-500" },
-  { value: "TRAVELLING", label: "En viaje", color: "bg-orange-500" },
+  { value: "RESERVED", label: "Reservado", color: "bg-info" },
+  { value: "CONFIRMED", label: "Confirmado", color: "bg-success" },
+  { value: "CANCELLED", label: "Cancelado", color: "bg-destructive" },
+  { value: "TRAVELLING", label: "En viaje", color: "bg-warning" },
   { value: "TRAVELLED", label: "Viajado", color: "bg-purple-500" },
 ]
 
@@ -98,10 +100,14 @@ interface Operation {
   sale_amount_total: number
   operator_cost: number
   currency: string
+  sale_currency?: string | null
+  operator_cost_currency?: string | null
   margin_amount?: number
   margin_percentage?: number
   reservation_code_air?: string | null
   reservation_code_hotel?: string | null
+  airline_name?: string | null
+  hotel_name?: string | null
 }
 
 interface EditOperationDialogProps {
@@ -154,6 +160,7 @@ export function EditOperationDialog({
         }
       } catch (error) {
         console.error("Error loading custom statuses:", error)
+        toast.error("Error al cargar estados personalizados")
       }
     }
     loadCustomStatuses()
@@ -183,7 +190,7 @@ export function EditOperationDialog({
               id: oo.id,
               operator_id: oo.operator_id || "",
               cost: Number(oo.cost || 0),
-              cost_currency: (oo.cost_currency || "USD") as "ARS" | "USD",
+              cost_currency: (oo.cost_currency || operation.operator_cost_currency || operation.currency || "USD") as "ARS" | "USD",
               product_type: oo.product_type || undefined,
               notes: oo.notes || undefined,
             }))
@@ -193,6 +200,7 @@ export function EditOperationDialog({
         }
       } catch (err) {
         console.error("Error loading operation operators:", err)
+        toast.error("Error al cargar operadores")
       }
       setOperatorsLoaded(true)
     }
@@ -230,6 +238,8 @@ export function EditOperationDialog({
       currency: (operation.currency as any) || "USD",
       reservation_code_air: operation.reservation_code_air || null,
       reservation_code_hotel: operation.reservation_code_hotel || null,
+      airline_name: operation.airline_name || null,
+      hotel_name: operation.hotel_name || null,
     },
   })
 
@@ -278,7 +288,8 @@ export function EditOperationDialog({
 
   // Funciones de múltiples operadores
   const addOperator = () => {
-    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: "USD", product_type: undefined }])
+    const currentCurrency = (form.getValues("currency") || "USD") as "ARS" | "USD"
+    setOperatorList([...operatorList, { operator_id: "", cost: 0, cost_currency: currentCurrency, product_type: undefined }])
   }
 
   const removeOperator = (index: number) => {
@@ -358,15 +369,16 @@ export function EditOperationDialog({
         origin: values.origin || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
         departure_date: values.departure_date.toISOString().split("T")[0],
-        // Mantener sale_currency sincronizado con currency para evitar inconsistencias
+        // Mantener sale_currency y operator_cost_currency sincronizados con currency
         sale_currency: values.currency,
+        operator_cost_currency: values.currency,
       }
 
       if (useMultipleOperators && operatorList.length > 0) {
         payload.operators = operatorList.map(op => ({
           operator_id: op.operator_id,
           cost: op.cost,
-          cost_currency: op.cost_currency || "USD",
+          cost_currency: op.cost_currency || values.currency || "USD",
           product_type: op.product_type || null,
           notes: op.notes || null,
         }))
@@ -401,7 +413,7 @@ export function EditOperationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[95vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-hidden">
         <DialogHeader>
           <DialogTitle>Editar Operación</DialogTitle>
           <DialogDescription>
@@ -425,13 +437,13 @@ export function EditOperationDialog({
                 <p className="text-sm text-muted-foreground">Margen Calculado</p>
                 <p className={cn(
                   "text-2xl font-bold",
-                  marginInfo.isPositive ? "text-green-600" : "text-red-600"
+                  marginInfo.isPositive ? "text-success" : "text-destructive"
                 )}>
                   {form.watch("currency")} {marginInfo.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                 </p>
                 <p className={cn(
                   "text-sm",
-                  marginInfo.isPositive ? "text-green-600" : "text-red-600"
+                  marginInfo.isPositive ? "text-success" : "text-destructive"
                 )}>
                   ({marginInfo.percentage.toFixed(1)}%)
                 </p>
@@ -441,7 +453,13 @@ export function EditOperationDialog({
         </Card>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* General */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Building2 className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">General</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -575,7 +593,7 @@ export function EditOperationDialog({
                           variant="ghost"
                           size="sm"
                           onClick={() => removeOperator(index)}
-                          className="text-red-600 hover:text-red-700 h-7 w-7 p-0"
+                          className="text-destructive hover:text-destructive/80 h-7 w-7 p-0"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -751,7 +769,14 @@ export function EditOperationDialog({
                 )}
               />
             </div>
+            </div>
 
+            {/* Ruta y Fechas */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Ruta y Fechas</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FormField
                 control={form.control}
@@ -878,7 +903,14 @@ export function EditOperationDialog({
                 }}
               />
             </div>
+            </div>
 
+            {/* Pasajeros */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium text-foreground/70">Pasajeros</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-4">
               <FormField
                 control={form.control}
@@ -962,7 +994,14 @@ export function EditOperationDialog({
                 )}
               />
             </div>
+            </div>
 
+            {/* Financiero */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs font-medium text-foreground/70">Financiero</span>
+              </div>
             <div className="grid gap-4 md:grid-cols-3">
               <FormField
                 control={form.control}
@@ -970,7 +1009,13 @@ export function EditOperationDialog({
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Moneda</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={(value) => {
+                      field.onChange(value)
+                      // Sincronizar moneda de todos los operadores en la lista
+                      if (operatorList.length > 0) {
+                        setOperatorList(operatorList.map(op => ({ ...op, cost_currency: value as "ARS" | "USD" })))
+                      }
+                    }} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />
@@ -1045,10 +1090,14 @@ export function EditOperationDialog({
                 />
               )}
             </div>
+            </div>
 
-            {/* Códigos de Reserva */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-foreground">Códigos de Reserva</h3>
+            {/* Codigos */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Ticket className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs font-medium text-foreground/70">Codigos de Reserva</span>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -1077,6 +1126,42 @@ export function EditOperationDialog({
                       <FormControl>
                         <Input
                           placeholder="Ej: XYZ789"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="airline_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Aerolínea</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: American Airlines"
+                          {...field}
+                          value={field.value || ""}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="hotel_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Hotel</FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Ej: Sheraton Miami"
                           {...field}
                           value={field.value || ""}
                         />

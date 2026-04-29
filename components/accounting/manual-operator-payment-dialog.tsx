@@ -31,7 +31,7 @@ import {
   FormDescription,
 } from "@/components/ui/form"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { Loader2 } from "lucide-react"
+import { Loader2, CreditCard, Landmark, StickyNote } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
 
@@ -60,7 +60,7 @@ export function ManualOperatorPaymentDialog({
   onOpenChange,
   onSuccess,
   operators,
-  defaultCurrency = "USD",
+  defaultCurrency = "ARS",
 }: ManualOperatorPaymentDialogProps) {
   const [loading, setLoading] = useState(false)
 
@@ -95,7 +95,12 @@ export function ManualOperatorPaymentDialog({
         throw new Error(error.error || "Error al crear pago")
       }
 
-      toast.success("Deuda a operador creada exitosamente")
+      const payload = await response.json().catch(() => ({}))
+      if (payload?.requires_approval) {
+        toast.success("Deuda creada. Queda pendiente de aprobación antes de poder pagarse.")
+      } else {
+        toast.success("Deuda a operador creada exitosamente")
+      }
       form.reset()
       onOpenChange(false)
       onSuccess()
@@ -118,70 +123,102 @@ export function ManualOperatorPaymentDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="operator_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Operador</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar operador" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {operators.map((operator) => (
-                        <SelectItem key={operator.id} value={operator.id}>
-                          {operator.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5">
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <CreditCard className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Pago</span>
+              </div>
 
-            <div className="grid gap-4 grid-cols-2">
               <FormField
                 control={form.control}
-                name="amount"
+                name="operator_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monto</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        placeholder="0.00"
-                        {...field}
-                      />
-                    </FormControl>
+                    <FormLabel>Operador</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar operador" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {operators.map((operator) => (
+                          <SelectItem key={operator.id} value={operator.id}>
+                            {operator.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
 
+              <div className="grid gap-4 grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monto</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.00"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Moneda</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Landmark className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Destino</span>
+              </div>
+
               <FormField
                 control={form.control}
-                name="currency"
+                name="due_date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Moneda</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Fecha de Vencimiento</FormLabel>
+                    <FormControl>
+                      <DateInputWithCalendar
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="dd/MM/yyyy"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -190,28 +227,13 @@ export function ManualOperatorPaymentDialog({
 
             <FormField
               control={form.control}
-              name="due_date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fecha de Vencimiento</FormLabel>
-                  <FormControl>
-                    <DateInputWithCalendar
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="dd/MM/yyyy"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notas (opcional)</FormLabel>
+                  <FormLabel className="flex items-center gap-1.5">
+                    <StickyNote className="h-3.5 w-3.5" />
+                    Notas (opcional)
+                  </FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Notas adicionales..."

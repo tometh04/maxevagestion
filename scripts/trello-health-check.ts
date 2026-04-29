@@ -222,7 +222,7 @@ async function healthCheck(): Promise<HealthCheckResult[]> {
 
   // 5. Verificar endpoints API
   console.log("\n5️⃣ Verificando endpoints API...")
-  const apiUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.maxevagestion.com"
+  const apiUrl = process.env.NEXT_PUBLIC_APP_URL || "https://app.vibook.ai"
   
   try {
     // Verificar endpoint de webhook (debe existir, aunque no podemos probarlo sin evento real)

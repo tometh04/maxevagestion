@@ -4,8 +4,21 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { z } from "zod"
+import { DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
+
+// Condición fiscal (tax_regime) - determina el tipo de facturación y tratamiento impositivo:
+// RESPONSABLE_INSCRIPTO: Emite FA-A, discrimina IVA, retiene
+// MONOTRIBUTISTA: Emite FA-C, no discrimina IVA
+// EXENTO: Emite FA-C, no cobra IVA
+// NO_RESPONSABLE: No responsable IVA
+const taxRegimeEnum = z.enum([
+  'RESPONSABLE_INSCRIPTO',
+  'MONOTRIBUTISTA',
+  'EXENTO',
+  'NO_RESPONSABLE',
+])
 
 // Schema de validación para configuración financiera
 const financialSettingsSchema = z.object({
@@ -27,6 +40,23 @@ const financialSettingsSchema = z.object({
   default_point_of_sale: z.number().optional(),
   monthly_close_day: z.number().min(1).max(31).optional(),
   auto_close_month: z.boolean().optional(),
+  // Tax settings
+  default_iva_rate: z.number().min(0).max(27).optional(),
+  tax_regime: taxRegimeEnum.optional(),
+  ganancias_rate: z.number().min(0).max(100).optional(),
+  retention_ganancias_rate: z.number().min(0).max(100).optional(),
+  retention_iva_rate: z.number().min(0).max(100).optional(),
+  iibb_jurisdiction: z.string().optional(),
+  iibb_rate: z.number().min(0).max(10).optional(),
+  iibb_convenio_multilateral: z.boolean().optional(),
+  iibb_jurisdictions: z.array(z.object({
+    jurisdiction: z.string(),
+    rate: z.number().min(0).max(100),
+    coeficiente: z.number().min(0).max(1),
+  })).optional(),
+  // Master toggle para desactivar todas las retenciones/percepciones automáticas
+  // (p.ej. agencias monotributistas o de prueba que no retienen).
+  withholdings_enabled: z.boolean().optional(),
 })
 
 // GET - Obtener configuración financiera
@@ -78,7 +108,7 @@ export async function GET(request: Request) {
           source: 'manual',
           auto_update: false,
         },
-        default_usd_rate: 1000.00,
+        default_usd_rate: DEFAULT_USD_ARS_FALLBACK_RATE,
         default_accounts: {},
         auto_create_accounts: false,
         enabled_payment_methods: ['CASH', 'BANK', 'MP'],

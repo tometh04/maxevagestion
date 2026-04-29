@@ -30,7 +30,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Loader2 } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Loader2, Upload, X, FileText } from "lucide-react"
 import { toast } from "sonner"
 
 type PayRecurringExpenseFormValues = {
@@ -74,6 +75,7 @@ export function PayRecurringExpenseDialog({
   const [loading, setLoading] = useState(false)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
   const [paymentCurrency, setPaymentCurrency] = useState<"ARS" | "USD">("USD")
+  const [receiptFile, setReceiptFile] = useState<File | null>(null)
 
   // Verificar si necesita tipo de cambio
   const needsExchangeRate = () => {
@@ -111,6 +113,7 @@ export function PayRecurringExpenseDialog({
     } else {
       form.reset()
       setFinancialAccounts([])
+      setReceiptFile(null)
     }
   }, [open, form])
 
@@ -172,8 +175,31 @@ export function PayRecurringExpenseDialog({
         throw new Error(error.error || "Error al procesar el pago")
       }
 
+      // Upload receipt if provided
+      if (receiptFile) {
+        try {
+          const formData = new FormData()
+          formData.append("file", receiptFile)
+          formData.append("recurring_payment_id", expense.id)
+
+          const receiptRes = await fetch("/api/expenses/receipts", {
+            method: "POST",
+            body: formData,
+          })
+
+          if (!receiptRes.ok) {
+            console.error("Error uploading receipt, but payment was processed")
+            toast.warning("Pago procesado pero no se pudo subir el comprobante")
+          }
+        } catch (receiptError) {
+          console.error("Error uploading receipt:", receiptError)
+          toast.warning("Pago procesado pero no se pudo subir el comprobante")
+        }
+      }
+
       toast.success("Pago procesado exitosamente")
       form.reset()
+      setReceiptFile(null)
       onOpenChange(false)
       onSuccess()
     } catch (error: any) {
@@ -207,7 +233,7 @@ export function PayRecurringExpenseDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5">
             <FormField
               control={form.control}
               name="financial_account_id"
@@ -267,7 +293,7 @@ export function PayRecurringExpenseDialog({
             )}
 
             {needsExchangeRate() && form.watch("exchange_rate") && (
-              <div className="bg-muted p-3 rounded-lg">
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
                 <div className="text-sm text-muted-foreground">
                   Monto a pagar en {paymentCurrency}:
                 </div>
@@ -319,6 +345,56 @@ export function PayRecurringExpenseDialog({
                 </FormItem>
               )}
             />
+
+            {/* Receipt upload */}
+            <div className="space-y-2">
+              <Label>Comprobante (Opcional)</Label>
+              {receiptFile ? (
+                <div className="flex items-center gap-2 p-3 border rounded-lg bg-muted/50">
+                  <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <span className="text-sm truncate flex-1">{receiptFile.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => setReceiptFile(null)}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <label
+                    htmlFor="receipt-upload-recurring"
+                    className="flex items-center gap-2 px-4 py-2 border rounded-lg cursor-pointer hover:bg-muted/50 transition-colors w-fit"
+                  >
+                    <Upload className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm">Adjuntar comprobante</span>
+                  </label>
+                  <input
+                    id="receipt-upload-recurring"
+                    type="file"
+                    className="hidden"
+                    accept=".jpg,.jpeg,.png,.webp,.pdf"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (file) {
+                        if (file.size > 10 * 1024 * 1024) {
+                          toast.error("El archivo no puede superar 10MB")
+                          return
+                        }
+                        setReceiptFile(file)
+                      }
+                      e.target.value = ""
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    JPG, PNG, WebP o PDF. Max 10MB.
+                  </p>
+                </div>
+              )}
+            </div>
 
             <DialogFooter>
               <Button

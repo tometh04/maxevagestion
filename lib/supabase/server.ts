@@ -26,8 +26,12 @@ export function createAdminClient() {
 }
 
 export async function createServerClient() {
-  // En desarrollo con DISABLE_AUTH, usar service role para bypasear RLS
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  // En desarrollo con DISABLE_AUTH, usar service role para bypasear RLS.
+  // Seguridad: en producción NUNCA devolver el admin client aunque DISABLE_AUTH=true.
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+    console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
+  }
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     return createAdminClient()
   }
 

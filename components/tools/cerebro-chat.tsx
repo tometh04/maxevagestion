@@ -180,7 +180,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
           </div>
 
           {/* Welcome Text */}
-          <h1 className="text-3xl font-bold mb-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight mb-2 text-center">
             Hola, {firstName}
           </h1>
           <p className="text-muted-foreground text-center mb-10 max-w-md">
@@ -193,7 +193,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
               <button
                 key={idx}
                 onClick={() => sendMessage(action.query)}
-                className="group flex flex-col items-start p-4 rounded-xl border border-border bg-card hover:bg-accent hover:border-orange-500/50 transition-all duration-200 text-left"
+                className="group flex flex-col items-start p-4 rounded-xl border border-border/40 bg-card hover:bg-accent hover:border-orange-500/50 transition-all duration-200 text-left"
               >
                 <div className="p-2 rounded-lg bg-orange-500/10 text-orange-500 mb-3 group-hover:bg-orange-500 group-hover:text-white transition-colors">
                   <action.icon className="h-5 w-5" />
@@ -214,7 +214,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isLoading}
-                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border-2 focus:border-orange-500 transition-colors"
+                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border border-border/60 focus:border-orange-500 transition-colors"
                 rows={1}
               />
               <Button
@@ -292,7 +292,7 @@ export function CerebroChat({ userId, userName }: CerebroChatProps) {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
                 disabled={isLoading}
-                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border-2 focus:border-orange-500 transition-colors"
+                className="min-h-[56px] max-h-[120px] pr-14 resize-none rounded-xl border border-border/60 focus:border-orange-500 transition-colors"
                 rows={1}
               />
               <Button

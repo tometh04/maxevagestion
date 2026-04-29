@@ -93,7 +93,7 @@ export async function PATCH(
     const { id: operatorId } = await params
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit } = body
+    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage } = body
 
     // Validations
     if (!name) {
@@ -101,16 +101,20 @@ export async function PATCH(
     }
 
     // Update operator
+    const updatePayload: any = {
+      name,
+      contact_name: contact_name || null,
+      contact_email: contact_email || null,
+      contact_phone: contact_phone || null,
+      credit_limit: credit_limit || null,
+      updated_at: new Date().toISOString(),
+    }
+    if (typeof admin_fee_percentage === "number") {
+      updatePayload.admin_fee_percentage = admin_fee_percentage
+    }
     const { data: operator, error: updateError } = await (supabase
       .from("operators") as any)
-      .update({
-        name,
-        contact_name: contact_name || null,
-        contact_email: contact_email || null,
-        contact_phone: contact_phone || null,
-        credit_limit: credit_limit || null,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq("id", operatorId)
       .select()
       .single()

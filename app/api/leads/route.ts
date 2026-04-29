@@ -6,7 +6,7 @@ import {
   calculateARSEquivalent,
   getOrCreateDefaultAccount,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
@@ -88,6 +88,31 @@ export async function GET(request: Request) {
     if (error) {
       console.error("Error fetching leads:", error)
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
+    }
+
+    // FIX bug "cards desaparecen del CRM" (sellers Micaela, Ramiro):
+    // El paginado de la query principal ordena por updated_at DESC y trae top N.
+    // Si un seller tiene muchos leads viejos asignados, quedan fuera del top N
+    // y se le "esconden" en el kanban. Para SELLER, hacemos un fetch adicional
+    // de TODOS sus leads asignados (sin límite) y los mergeamos sin duplicar por id.
+    // ADMIN/SUPER_ADMIN/CONTABLE/VIEWER no tocan esta lógica.
+    if (user.role === "SELLER" && agencyIds.length > 0) {
+      const existingIds = new Set(leads.map((l: any) => l.id))
+      const { data: ownLeads } = await supabase.from("leads").select(`
+        *,
+        agencies(name),
+        users:assigned_seller_id(name, email)
+      `)
+        .eq("assigned_seller_id", user.id)
+        .in("agency_id", agencyIds)
+        .is("archived_at", null)
+
+      if (ownLeads) {
+        const missing = (ownLeads as any[]).filter((l) => !existingIds.has(l.id))
+        if (missing.length > 0) {
+          leads = [...leads, ...missing]
+        }
+      }
     }
 
     // OPTIMIZADO: Solo cargar operaciones y clientes si hay leads WON (evitar consultas innecesarias)
@@ -342,18 +367,8 @@ export async function POST(request: Request) {
         let exchangeRate: number | null = null
         if (deposit_currency === "USD") {
           const rateDate = deposit_date ? new Date(deposit_date) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          
-          // Si no hay tasa para esa fecha, usar la más reciente disponible
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
-          }
-          
-          // Fallback: si aún no hay tasa, usar 1450 como último recurso
-          if (!exchangeRate) {
-            console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-            exchangeRate = 1450
-          }
+          const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "leads-create")
+          exchangeRate = rateResult.rate
         }
         
         const amountArsEquivalent = calculateARSEquivalent(
@@ -380,7 +395,6 @@ export async function POST(request: Request) {
           },
           supabase
         )
-        console.log(`✅ Created ledger movement for deposit of ${deposit_amount} ${deposit_currency} for lead ${lead.id}`)
       } catch (error) {
         console.error("Error creating ledger movement for deposit:", error)
         // No lanzamos error para no romper la creación del lead

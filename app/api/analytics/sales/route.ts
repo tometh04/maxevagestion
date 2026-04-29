@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -16,6 +16,16 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
 
+      // Validate date format if provided (mantener antes del fast-path RPC)
+      if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+        console.error("Invalid dateFrom format:", dateFrom)
+        return NextResponse.json({ error: "Formato de fecha inválido (dateFrom)" }, { status: 400 })
+      }
+      if (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+        console.error("Invalid dateTo format:", dateTo)
+        return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
+      }
+
       const supabase = await createServerClient()
 
       // Get user agencies
@@ -26,7 +36,60 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+      // ============================================
+      // FAST PATH: RPC analytics_sales_summary (A3)
+      // ============================================
+      // Intenta calcular vía SUM SQL en una sola query. Si falla por
+      // cualquier motivo (RPC no existe, error, edge case raro), cae al
+      // código viejo de abajo. Validado side-by-side: numbers matchean
+      // exacto vs el JS sum loop.
+      try {
+        const t0 = Date.now()
+        const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
+          "analytics_sales_summary",
+          {
+            p_user_id: user.id,
+            p_org_id: user.org_id || null,
+            p_role: user.role,
+            p_agency_ids: agencyIds,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+            p_agency_id: agencyId && agencyId !== "ALL" ? agencyId : null,
+            p_seller_id: sellerId && sellerId !== "ALL" ? sellerId : null,
+          }
+        )
+
+        if (!rpcError && Array.isArray(rpcData) && rpcData.length > 0) {
+          const row = rpcData[0] as any
+          const result = {
+            totalSales: Number(row.total_sales_usd) || 0,
+            totalMargin: Number(row.total_margin_usd) || 0,
+            totalCost: Number(row.total_cost_usd) || 0,
+            operationsCount: Number(row.operations_count) || 0,
+            avgMarginPercent: Number(row.avg_margin_percent) || 0,
+          }
+          console.log(`[analytics/sales] RPC fast-path ok in ${Date.now() - t0}ms`)
+          return NextResponse.json(result, {
+            headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+          })
+        }
+        // Si la RPC no existe en la DB todavía o devolvió shape raro,
+        // logueamos y caemos al fallback. NO throw — queremos seguir.
+        if (rpcError) {
+          console.warn("[analytics/sales] RPC failed, falling back to JS:", rpcError.message)
+        }
+      } catch (rpcEx: any) {
+        console.warn("[analytics/sales] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
+      }
+
+      // ============================================
+      // FALLBACK: lógica vieja (intacta) — fetch + JS sum
+      // ============================================
+
       let query = supabase.from("operations").select("sale_amount_total, sale_currency, margin_amount, operator_cost, currency, created_at, departure_date")
+
+      // Multi-tenant: scope por org del usuario (defense-in-depth)
+      if (user.org_id) query = query.eq("org_id", user.org_id)
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -75,13 +138,13 @@ export async function GET(request: Request) {
 
       // Batch: construir mapa de tasas de cambio en memoria (2 queries en vez de N)
       let getRate: (date: any) => number | null = () => null
-      let fallbackRate = 1200
+      let fallbackRate = DEFAULT_USD_ARS_FALLBACK_RATE
       try {
         const arsDates = operationsArray
           .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
           .map((op: any) => op.departure_date || op.created_at)
         getRate = await buildExchangeRateMap(supabase, arsDates)
-        fallbackRate = await getLatestExchangeRate(supabase) || 1200
+        fallbackRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
       } catch (err) {
         console.error("Error building exchange rate map for sales:", err)
       }
@@ -124,7 +187,9 @@ export async function GET(request: Request) {
         avgMarginPercent,
       }
 
-    return NextResponse.json(result)
+    return NextResponse.json(result, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/sales:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de ventas" }, { status: 500 })

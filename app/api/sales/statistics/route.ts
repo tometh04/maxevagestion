@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -19,18 +19,18 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
 
-    // Si no hay fechas, usar últimos 12 meses por defecto
+    // Si no hay fechas, usar últimos 30 días por defecto
     const now = new Date()
-    const defaultFrom = startOfMonth(subMonths(now, 11))
-    const defaultTo = endOfMonth(now)
-    
+    const defaultFrom = startOfDay(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000))
+    const defaultTo = endOfDay(now)
+
     const filterFrom = dateFrom ? parseISO(dateFrom) : defaultFrom
     const filterTo = dateTo ? parseISO(dateTo) : defaultTo
 
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Query de leads
+    // Query de leads (excluir archivados)
     let leadsQuery = (supabase.from("leads") as any)
       .select(`
         id,
@@ -42,10 +42,18 @@ export async function GET(request: Request) {
         assigned_seller_id,
         has_deposit,
         deposit_amount,
-        agency_id
+        deposit_currency,
+        agency_id,
+        archived_at
       `)
       .gte("created_at", filterFrom.toISOString())
       .lte("created_at", filterTo.toISOString())
+      .is("archived_at", null)
+
+    // Multi-tenant: scope por org del usuario
+    if (user.org_id) {
+      leadsQuery = leadsQuery.eq("org_id", user.org_id)
+    }
 
     // Filtrar por agencia
     if (agencyId && agencyId !== "ALL") {
@@ -61,16 +69,40 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener leads" }, { status: 500 })
     }
 
+    // Obtener IDs de leads que tienen operación asociada (= convertidos)
+    const leadIds = (leads || []).map((l: any) => l.id)
+    const convertedLeadIds = new Set<string>()
+
+    if (leadIds.length > 0) {
+      // Consultar operaciones que referencian estos leads
+      // Hacer en batches de 500 para evitar límites de Supabase
+      const batchSize = 500
+      for (let i = 0; i < leadIds.length; i += batchSize) {
+        const batch = leadIds.slice(i, i + batchSize)
+        const { data: ops } = await supabase
+          .from("operations")
+          .select("lead_id")
+          .in("lead_id", batch)
+          .not("lead_id", "is", null)
+
+        if (ops) {
+          ops.forEach((op: any) => {
+            if (op.lead_id) convertedLeadIds.add(op.lead_id)
+          })
+        }
+      }
+    }
+
     // Obtener vendedores
     const sellerIds = Array.from(new Set((leads || []).map((lead: any) => lead.assigned_seller_id).filter(Boolean)))
     let sellersMap: Record<string, string> = {}
-    
+
     if (sellerIds.length > 0) {
       const { data: sellers } = await supabase
         .from("users")
         .select("id, name")
         .in("id", sellerIds)
-      
+
       if (sellers) {
         sellers.forEach((s: any) => {
           sellersMap[s.id] = s.name || "Sin asignar"
@@ -88,18 +120,18 @@ export async function GET(request: Request) {
     }
 
     // Por origen (source)
-    const bySource: Record<string, { source: string, count: number, won: number, conversionRate: number }> = {
-      Instagram: { source: "Instagram", count: 0, won: 0, conversionRate: 0 },
-      WhatsApp: { source: "WhatsApp", count: 0, won: 0, conversionRate: 0 },
-      "Meta Ads": { source: "Meta Ads", count: 0, won: 0, conversionRate: 0 },
-      Other: { source: "Otro", count: 0, won: 0, conversionRate: 0 },
+    const bySource: Record<string, { source: string, count: number, converted: number, conversionRate: number }> = {
+      Instagram: { source: "Instagram", count: 0, converted: 0, conversionRate: 0 },
+      WhatsApp: { source: "WhatsApp", count: 0, converted: 0, conversionRate: 0 },
+      "Meta Ads": { source: "Meta Ads", count: 0, converted: 0, conversionRate: 0 },
+      Other: { source: "Otro", count: 0, converted: 0, conversionRate: 0 },
     }
 
     // Por región
-    const byRegion: Record<string, { region: string, count: number, won: number }> = {}
+    const byRegion: Record<string, { region: string, count: number, converted: number }> = {}
 
     // Por vendedor
-    const bySeller: Record<string, { id: string, name: string, leads: number, won: number, conversionRate: number }> = {}
+    const bySeller: Record<string, { id: string, name: string, leads: number, converted: number, conversionRate: number }> = {}
 
     // Determinar si agrupar por días o meses (si el rango es <= 31 días, agrupar por días)
     const daysRange = differenceInDays(endOfDay(filterTo), startOfDay(filterFrom))
@@ -115,7 +147,6 @@ export async function GET(request: Request) {
     }> = {}
 
     if (groupByDays) {
-      // Inicializar días en el rango
       const days = eachDayOfInterval({ start: startOfDay(filterFrom), end: endOfDay(filterTo) })
       days.forEach(day => {
         const key = format(day, "yyyy-MM-dd")
@@ -128,7 +159,6 @@ export async function GET(request: Request) {
         }
       })
     } else {
-      // Inicializar meses en el rango
       let currentDate = startOfMonth(filterFrom)
       while (currentDate <= filterTo) {
         const key = format(currentDate, "yyyy-MM")
@@ -144,46 +174,48 @@ export async function GET(request: Request) {
     }
 
     // Obtener tasa de cambio más reciente para depósitos en ARS
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Procesar leads
     let totalLeads = 0
-    let totalWon = 0
+    let totalConverted = 0
     let totalLost = 0
     let totalDepositsUsd = 0
 
     for (const lead of leads || []) {
       totalLeads++
 
+      const isConverted = convertedLeadIds.has(lead.id)
+      if (isConverted) totalConverted++
+
       // Pipeline
       if (pipeline[lead.status]) {
         pipeline[lead.status].count++
         if (lead.has_deposit && lead.deposit_amount) {
           const depositAmount = parseFloat(lead.deposit_amount) || 0
-          // Asumir que los depósitos están en ARS por defecto (puede necesitar ajuste según tu sistema)
-          totalDepositsUsd += depositAmount / latestExchangeRate
-          pipeline[lead.status].value += depositAmount / latestExchangeRate
+          const depositUsd = lead.deposit_currency === "USD" ? depositAmount : depositAmount / latestExchangeRate
+          totalDepositsUsd += depositUsd
+          pipeline[lead.status].value += depositUsd
         }
       }
 
       // Por estado
-      if (lead.status === "WON") totalWon++
       if (lead.status === "LOST") totalLost++
 
       // Por origen
       const source = lead.source || "Other"
       if (bySource[source]) {
         bySource[source].count++
-        if (lead.status === "WON") bySource[source].won++
+        if (isConverted) bySource[source].converted++
       }
 
       // Por región
       const region = lead.region || lead.destination || "OTROS"
       if (!byRegion[region]) {
-        byRegion[region] = { region, count: 0, won: 0 }
+        byRegion[region] = { region, count: 0, converted: 0 }
       }
       byRegion[region].count++
-      if (lead.status === "WON") byRegion[region].won++
+      if (isConverted) byRegion[region].converted++
 
       // Por vendedor
       if (lead.assigned_seller_id) {
@@ -192,45 +224,47 @@ export async function GET(request: Request) {
             id: lead.assigned_seller_id,
             name: sellersMap[lead.assigned_seller_id] || 'Sin asignar',
             leads: 0,
-            won: 0,
+            converted: 0,
             conversionRate: 0,
           }
         }
         bySeller[lead.assigned_seller_id].leads++
-        if (lead.status === "WON") bySeller[lead.assigned_seller_id].won++
+        if (isConverted) bySeller[lead.assigned_seller_id].converted++
       }
 
       // Por período (día o mes)
       if (lead.created_at) {
         const createdAt = new Date(lead.created_at)
-        const monthKey = groupByDays 
+        const monthKey = groupByDays
           ? format(createdAt, "yyyy-MM-dd")
           : format(createdAt, "yyyy-MM")
         if (monthlyStats[monthKey]) {
           monthlyStats[monthKey].newLeads++
-          if (lead.status === "WON") monthlyStats[monthKey].wonLeads++
+          if (isConverted) monthlyStats[monthKey].wonLeads++
           if (lead.status === "LOST") monthlyStats[monthKey].lostLeads++
         }
       }
     }
 
-    // Calcular tasas de conversión
+    // Calcular tasas de conversión (basado en convertidos a operación)
     Object.values(bySource).forEach(s => {
-      s.conversionRate = s.count > 0 ? (s.won / s.count) * 100 : 0
+      s.conversionRate = s.count > 0 ? (s.converted / s.count) * 100 : 0
     })
 
     Object.values(bySeller).forEach(s => {
-      s.conversionRate = s.leads > 0 ? (s.won / s.leads) * 100 : 0
+      s.conversionRate = s.leads > 0 ? (s.converted / s.leads) * 100 : 0
     })
 
-    // Conversion rate general
-    const overallConversionRate = totalLeads > 0 ? (totalWon / totalLeads) * 100 : 0
+    // Conversion rate general (leads convertidos a operación / total)
+    const overallConversionRate = totalLeads > 0 ? (totalConverted / totalLeads) * 100 : 0
+
+    // Leads activos = no convertidos a operación (excluyendo perdidos)
+    const activeLeads = totalLeads - totalConverted - totalLost
 
     // Top vendedores por conversión
     const topSellers = Object.values(bySeller)
-      .filter(s => s.leads >= 5) // Mínimo 5 leads para ser considerado
-      .sort((a, b) => b.conversionRate - a.conversionRate)
-      .slice(0, 5)
+      .sort((a, b) => b.leads - a.leads)
+      .slice(0, 10)
 
     // Top orígenes
     const topSources = Object.values(bySource)
@@ -242,12 +276,11 @@ export async function GET(request: Request) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6)
 
-    // Leads activos (no ganados ni perdidos)
-    const activeLeads = totalLeads - totalWon - totalLost
-
-    // Leads este mes
-    const thisMonth = format(now, "yyyy-MM")
-    const newThisMonth = monthlyStats[thisMonth]?.newLeads || 0
+    // Leads nuevos en el período actual
+    const currentPeriodKey = groupByDays
+      ? format(now, "yyyy-MM-dd")
+      : format(now, "yyyy-MM")
+    const newThisPeriod = monthlyStats[currentPeriodKey]?.newLeads || 0
 
     // Conversión de meses a array ordenado
     const monthlyTrend = Object.values(monthlyStats).sort((a, b) => a.month.localeCompare(b.month))
@@ -256,11 +289,11 @@ export async function GET(request: Request) {
       overview: {
         totalLeads,
         activeLeads,
-        wonLeads: totalWon,
+        wonLeads: totalConverted,
         lostLeads: totalLost,
         conversionRate: Math.round(overallConversionRate * 10) / 10,
         totalDeposits: Math.round(totalDepositsUsd * 100) / 100,
-        newThisMonth,
+        newThisMonth: newThisPeriod,
       },
       pipeline: Object.values(pipeline),
       distributions: {

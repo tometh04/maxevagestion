@@ -165,15 +165,12 @@ export async function POST(request: Request) {
       try {
         const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
         if (messagesGenerated > 0) {
-          console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para las alertas`)
         }
       } catch (error) {
         console.error("Error generando mensajes de WhatsApp:", error)
         // No lanzamos error para no romper la creación de alertas
       }
     }
-
-    console.log(`✅ Generadas ${alertsToCreate.length} alertas para operación ${operationId}`)
 
     return NextResponse.json({ 
       success: true, 

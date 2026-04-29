@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+// Card imports removed - using modern border/rounded divs
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -25,26 +25,61 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { COMPROBANTE_LABELS } from "@/lib/afip/types"
+import {
+  calculateInvoice,
+  formatInvoiceMoney,
+  getRecommendedAmountEntryMode,
+  ITEM_TAX_TREATMENT_LABELS,
+  shouldHideInvoiceTaxBreakdown,
+} from "@/lib/invoices/calculation"
+import type { ItemTaxTreatment } from "@/lib/invoices/calculation"
 import { NewCustomerDialog } from "@/components/customers/new-customer-dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface Customer {
   id: string
   first_name: string
   last_name: string
   email: string
-  cuit?: string
-  dni?: string
+  document_type?: string | null
+  document_number?: string | null
+}
+
+interface OperationCustomer {
+  id: string
+  customer_id: string
+  role: "MAIN" | "COMPANION"
+  customers?: Customer | null
 }
 
 interface Operation {
   id: string
   file_code: string
   destination: string
+  customer_id?: string | null
   total_cost?: number
   sale_currency?: "ARS" | "USD"
   sale_amount_total?: number
   operator_cost_total?: number
   operator_cost_currency?: "ARS" | "USD"
+  operator_cost?: number | string | null
+  operation_operators?: Array<{
+    cost?: number | string | null
+    cost_currency?: "ARS" | "USD" | null
+  }>
+}
+
+interface OperationResponse {
+  operation?: Operation
+  customers?: OperationCustomer[]
 }
 
 interface InvoiceItem {
@@ -52,14 +87,39 @@ interface InvoiceItem {
   cantidad: number
   precio_unitario: number
   iva_porcentaje: number
+  tax_treatment: ItemTaxTreatment
 }
 
-const formatCurrency = (value: number) => {
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency: 'ARS',
-    maximumFractionDigits: 2,
-  }).format(value)
+const createEmptyItems = (): InvoiceItem[] => [
+  { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21, tax_treatment: 'GRAVADO' }
+]
+
+const normalizeCustomer = (customer: Partial<Customer> & { id: string }): Customer => ({
+  id: customer.id,
+  first_name: customer.first_name || '',
+  last_name: customer.last_name || '',
+  email: customer.email || '',
+  document_type: customer.document_type || null,
+  document_number: customer.document_number || null,
+})
+
+const getCustomerFullName = (customer: Customer) =>
+  `${customer.first_name || ''} ${customer.last_name || ''}`.trim()
+
+const getCustomerDocumentText = (customer: Customer) =>
+  customer.document_number
+    ? `${customer.document_type || 'Doc'} ${customer.document_number}`
+    : ''
+
+const getCustomerAfipDocType = (customer: Pick<Customer, 'document_type' | 'document_number'>) => {
+  const docType = customer.document_type?.toUpperCase()
+  const hasDocument = Boolean(customer.document_number)
+
+  if (!hasDocument) return 99
+  if (docType === 'CUIT') return 80
+  if (docType === 'CUIL') return 86
+  if (docType === 'DNI') return 96
+  return 99
 }
 
 export default function NewInvoicePage() {
@@ -67,11 +127,16 @@ export default function NewInvoicePage() {
   const urlSearchParams = useSearchParams()
   const { toast } = useToast()
   const [saving, setSaving] = useState(false)
+  // AlertDialog persistente para cuando AFIP rechaza la autorización automática.
+  // Antes solo había un toast destructive que el user perdía al ser redirigido.
+  const [afipFailureAlert, setAfipFailureAlert] = useState<{ message: string; pendingRedirect: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
   const preselectedOperationId = urlSearchParams.get('operationId') || null
+  const preselectedCustomerId = urlSearchParams.get('customerId') || null
   
   // Data
   const [customers, setCustomers] = useState<Customer[]>([])
+  const [customerSearch, setCustomerSearch] = useState("")
   const [operations, setOperations] = useState<Operation[]>([])
   const [filteredOperations, setFilteredOperations] = useState<Operation[]>([])
   const [pointsOfSale, setPointsOfSale] = useState<Array<{
@@ -103,27 +168,63 @@ export default function NewInvoicePage() {
   // Estado para dialog de nuevo cliente
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false)
   
-  const [items, setItems] = useState<InvoiceItem[]>([
-    { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
-  ])
+  const [items, setItems] = useState<InvoiceItem[]>(createEmptyItems())
   
   // Estado para operación seleccionada y conversión
   const [selectedOperation, setSelectedOperation] = useState<Operation | null>(null)
   const [invoiceCurrency, setInvoiceCurrency] = useState<'PES' | 'DOL'>('PES')
   const [exchangeRate, setExchangeRate] = useState<number>(1)
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
+  const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
+  const [cotizacionLoading, setCotizacionLoading] = useState(false)
+  const [marginRemaining, setMarginRemaining] = useState<number | null>(null)
+  const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
+  const calculatedInvoice = calculateInvoice(items, amountEntryMode)
+  const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
+    amountEntryMode,
+    cbteTipo: formData.cbte_tipo,
+    receptorCondicionIva: formData.receptor_condicion_iva,
+  })
+  const activeCurrency = invoiceCurrency === 'DOL' ? 'DOL' : 'PES'
+  const formatMoney = (value: number) => formatInvoiceMoney(value, activeCurrency)
+  const getDefaultTaxTreatment = (cbteTipo: number): ItemTaxTreatment => cbteTipo === 19 ? 'EXENTO' : 'GRAVADO'
+  const createDefaultItem = (cbteTipo: number): InvoiceItem => {
+    const taxTreatment = getDefaultTaxTreatment(cbteTipo)
+    return {
+      descripcion: '',
+      cantidad: 1,
+      precio_unitario: 0,
+      iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
+      tax_treatment: taxTreatment,
+    }
+  }
 
   useEffect(() => {
     loadData()
   }, [])
 
-  // Auto-preseleccionar operación si viene por URL
   useEffect(() => {
-    if (!loading && preselectedOperationId && operations.length > 0) {
-      handleOperationChange(preselectedOperationId)
+    if (invoiceCurrency !== 'DOL' || !formData.agency_id) {
+      setCotizacionAfip(null)
+      return
     }
+    let cancelled = false
+    setCotizacionLoading(true)
+    const today = new Date().toISOString().split('T')[0]
+    fetch(`/api/invoices/exchange-rate?currency=DOL&date=${today}&agency_id=${formData.agency_id}`)
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        if (d.rate && d.rate > 0) {
+          setCotizacionAfip(d.rate)
+          if (exchangeRate === 1) setExchangeRate(d.rate)
+        }
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setCotizacionLoading(false) })
+    return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, preselectedOperationId])
+  }, [invoiceCurrency, formData.agency_id])
 
   const loadData = async () => {
     try {
@@ -171,128 +272,204 @@ export default function NewInvoicePage() {
 
   /**
    * Calcula automáticamente el tipo de comprobante y condición IVA
-   * según si el receptor tiene CUIT (Responsable Inscripto) o no (Consumidor Final).
+   * según el documento fiscal disponible del cliente.
    * - CUIT presente → Factura A (RI), DocTipo 80, CondIVA 1
-   * - Sin CUIT       → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
+   * - CUIL presente → Factura B (CF), DocTipo 86, CondIVA 5
+   * - DNI presente  → Factura B (CF), DocTipo 96, CondIVA 5
+   * - Sin documento → Factura B (CF), DocTipo 99, DocNro 0, CondIVA 5
    */
   const getReceptorDefaults = (customer: Customer) => {
-    if (customer.cuit) {
-      // Tiene CUIT → asumir Responsable Inscripto → Factura A
+    const docType = customer.document_type?.toUpperCase()
+    const docNumber = customer.document_number || ''
+    const cuit = docType === 'CUIT' ? docNumber : ''
+    const cuil = docType === 'CUIL' ? docNumber : ''
+    const dni = docType === 'DNI' ? docNumber : ''
+
+    if (cuit) {
       return {
-        cbte_tipo: 1,           // Factura A
-        receptor_doc_tipo: 80,  // CUIT
-        receptor_doc_nro: customer.cuit,
-        receptor_condicion_iva: 1, // RI
+        cbte_tipo: 1,
+        receptor_doc_tipo: 80,
+        receptor_doc_nro: cuit,
+        receptor_condicion_iva: 1,
       }
-    } else {
-      // Sin CUIT → Consumidor Final → Factura B
+    }
+
+    if (cuil) {
       return {
-        cbte_tipo: 6,           // Factura B
-        receptor_doc_tipo: customer.dni ? 96 : 99, // DNI o sin especificar
-        receptor_doc_nro: customer.dni || '0',
-        receptor_condicion_iva: 5, // Consumidor Final
+        cbte_tipo: 6,
+        receptor_doc_tipo: 86,
+        receptor_doc_nro: cuil,
+        receptor_condicion_iva: 5,
       }
+    }
+
+    return {
+      cbte_tipo: 6,
+      receptor_doc_tipo: dni ? 96 : 99,
+      receptor_doc_nro: dni || '0',
+      receptor_condicion_iva: 5,
     }
   }
 
-  const handleCustomerChange = async (customerId: string) => {
-    const customer = customers.find(c => c.id === customerId)
-    if (customer) {
-      const receptorDefaults = getReceptorDefaults(customer)
-      setFormData({
-        ...formData,
-        customer_id: customerId,
-        receptor_nombre: `${customer.first_name} ${customer.last_name}`,
-        ...receptorDefaults,
-        operation_id: '', // Limpiar operación cuando cambia el cliente
-      })
-      // Ajustar IVA de los items según el tipo de comprobante
-      if (receptorDefaults.cbte_tipo === 1) {
-        // Factura A: RI discrimina IVA → 21% por defecto
-        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
-      } else {
-        // Factura B: CF no discrimina IVA en item visual, pero igual enviamos la alícuota
-        setItems([{ descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }])
+  const upsertCustomer = (customer: Customer) => {
+    setCustomers(prev => {
+      const existingIndex = prev.findIndex(c => c.id === customer.id)
+      if (existingIndex === -1) {
+        return [customer, ...prev]
       }
 
-      // Limpiar operación seleccionada
-      setSelectedOperation(null)
-      
-      // Cargar operaciones del cliente
-      try {
-        const operationsRes = await fetch(`/api/customers/${customerId}/operations`)
-        if (operationsRes.ok) {
-          const operationsData = await operationsRes.json()
-          // Obtener detalles completos de cada operación
-          const operationsWithDetails = await Promise.all(
-            (operationsData.operations || []).map(async (op: any) => {
-              try {
-                const opRes = await fetch(`/api/operations/${op.id}`)
-                if (opRes.ok) {
-                  const opData = await opRes.json()
-                  return opData.operation
-                }
-              } catch (error) {
-                console.error('Error loading operation details:', error)
-              }
-              return op
-            })
-          )
-          setFilteredOperations(operationsWithDetails.filter(Boolean))
-        } else {
-          // Si no hay operaciones para este cliente, dejar lista vacía
-          setFilteredOperations([])
-        }
-      } catch (error) {
-        console.error('Error loading customer operations:', error)
-        setFilteredOperations([])
+      const next = [...prev]
+      next[existingIndex] = {
+        ...next[existingIndex],
+        ...customer,
       }
-    } else {
-      // Si no hay cliente seleccionado, mostrar todas las operaciones
+      return next
+    })
+  }
+
+  const fetchCustomerById = async (customerId: string): Promise<Customer | null> => {
+    try {
+      const response = await fetch(`/api/customers/${customerId}`)
+      if (!response.ok) {
+        return null
+      }
+
+      const data = await response.json()
+      if (!data?.customer?.id) {
+        return null
+      }
+
+      return normalizeCustomer(data.customer)
+    } catch (error) {
+      console.error('Error loading customer by id:', error)
+      return null
+    }
+  }
+
+  const fetchOperationById = async (operationId: string): Promise<OperationResponse | null> => {
+    try {
+      const response = await fetch(`/api/operations/${operationId}`)
+      if (!response.ok) {
+        return null
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error loading operation details:', error)
+      return null
+    }
+  }
+
+  const loadCustomerOperations = async (customerId: string) => {
+    if (!customerId) {
       setFilteredOperations(operations)
-      setFormData({
-        ...formData,
+      return
+    }
+
+    try {
+      const operationsRes = await fetch(`/api/customers/${customerId}/operations`)
+      if (!operationsRes.ok) {
+        setFilteredOperations([])
+        return
+      }
+
+      const operationsData = await operationsRes.json()
+      const operationsWithDetails = await Promise.all(
+        (operationsData.operations || []).map(async (op: any) => {
+          const opData = await fetchOperationById(op.id)
+          return opData?.operation || op
+        })
+      )
+
+      setFilteredOperations(operationsWithDetails.filter(Boolean))
+    } catch (error) {
+      console.error('Error loading customer operations:', error)
+      setFilteredOperations([])
+    }
+  }
+
+  const applyCustomerSelection = async (
+    customer: Customer,
+    options?: { preserveOperationId?: boolean; resetItems?: boolean }
+  ) => {
+    const normalizedCustomer = normalizeCustomer(customer)
+    const receptorDefaults = getReceptorDefaults(normalizedCustomer)
+
+    upsertCustomer(normalizedCustomer)
+
+    setFormData(prev => ({
+      ...prev,
+      customer_id: normalizedCustomer.id,
+      receptor_nombre: getCustomerFullName(normalizedCustomer),
+      ...receptorDefaults,
+      ...(options?.preserveOperationId ? {} : { operation_id: '' }),
+    }))
+
+    if (options?.resetItems !== false) {
+      setItems([createDefaultItem(receptorDefaults.cbte_tipo)])
+    }
+
+    if (!options?.preserveOperationId) {
+      setSelectedOperation(null)
+    }
+
+    await loadCustomerOperations(normalizedCustomer.id)
+  }
+
+  const handleCustomerChange = async (customerId: string) => {
+    if (!customerId) {
+      setFilteredOperations(operations)
+      setFormData(prev => ({
+        ...prev,
         customer_id: '',
         operation_id: '',
-      })
+      }))
       setSelectedOperation(null)
+      setItems([createDefaultItem(formData.cbte_tipo)])
+      return
+    }
+
+    let customer = customers.find(c => c.id === customerId)
+
+    if (!customer) {
+      customer = await fetchCustomerById(customerId) || undefined
+    }
+
+    if (customer) {
+      await applyCustomerSelection(customer)
     }
   }
 
   const handleOperationChange = async (operationId: string) => {
     const operation = filteredOperations.find(o => o.id === operationId) || operations.find(o => o.id === operationId)
     if (operation) {
-      // Obtener datos completos de la operación
       try {
-        const opRes = await fetch(`/api/operations/${operationId}`)
-        if (opRes.ok) {
-          const opData = await opRes.json()
+        const opData = await fetchOperationById(operationId)
+        if (opData?.operation) {
           const fullOperation = opData.operation
+          const nextInvoiceCurrency: 'PES' | 'DOL' = 'PES'
           
           setSelectedOperation(fullOperation)
           
-          // Si la operación está en USD, cargar tipo de cambio
+          let fetchedRate = 1
           if (fullOperation.sale_currency === 'USD') {
             setLoadingExchangeRate(true)
             try {
-              // Obtener tipo de cambio del día hábil anterior (según normativa AFIP)
               const today = new Date()
               const yesterday = new Date(today)
               yesterday.setDate(yesterday.getDate() - 1)
-              
-              // Intentar obtener TC del día hábil anterior
+
               const tcRes = await fetch(`/api/exchange-rates?date=${yesterday.toISOString().split('T')[0]}`)
               if (tcRes.ok) {
                 const tcData = await tcRes.json()
                 if (tcData.rate) {
-                  setExchangeRate(parseFloat(tcData.rate))
+                  fetchedRate = parseFloat(tcData.rate)
                 } else {
-                  // Si no hay TC del día anterior, obtener el más reciente
                   const latestRes = await fetch('/api/exchange-rates/latest')
                   if (latestRes.ok) {
                     const latestData = await latestRes.json()
                     if (latestData.rate) {
-                      setExchangeRate(parseFloat(latestData.rate))
+                      fetchedRate = parseFloat(latestData.rate)
                     }
                   }
                 }
@@ -302,130 +479,108 @@ export default function NewInvoicePage() {
             } finally {
               setLoadingExchangeRate(false)
             }
-            
-            // Por defecto, facturar en ARS cuando la operación está en USD
-            setInvoiceCurrency('PES')
-            setFormData({
-              ...formData,
+
+            setExchangeRate(fetchedRate)
+
+            setInvoiceCurrency(nextInvoiceCurrency)
+            setFormData(prev => ({
+              ...prev,
               operation_id: operationId,
-              moneda: 'PES',
-            })
+              moneda: nextInvoiceCurrency,
+            }))
           } else {
-            // Operación en ARS, facturar en ARS
-            setSelectedOperation(fullOperation)
-            setInvoiceCurrency('PES')
-            setFormData({
-              ...formData,
+            setInvoiceCurrency(nextInvoiceCurrency)
+            setFormData(prev => ({
+              ...prev,
               operation_id: operationId,
-              moneda: 'PES',
+              moneda: nextInvoiceCurrency,
               cotizacion: 1,
+            }))
+          }
+
+          // SP-2: fetch margin summary y precargar 1 ítem único con margen restante
+          // (reemplaza la precarga vieja de 2 items: venta + costo operador)
+          const summaryRes = await fetch(`/api/operations/${operationId}/margin-summary`)
+          if (!summaryRes.ok) {
+            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar margen" }))
+            toast({
+              title: "No se puede facturar esta operación",
+              description: err.error || "Error al cargar",
+              variant: "destructive",
             })
+            return
           }
-          
-          // Auto-completar items con información de la operación
-          // Agregar item de venta (siempre se factura)
-          const precioOriginalUSD = fullOperation.sale_amount_total || 0
-          const precioEnARS = fullOperation.sale_currency === 'USD' 
-            ? precioOriginalUSD * exchangeRate 
-            : precioOriginalUSD
-          
-          const montoVenta = invoiceCurrency === 'PES' ? precioEnARS : precioOriginalUSD
-          
-          // Calcular costo del operador
-          // Primero intentar usar operation_operators (formato nuevo)
-          let costoTotal = 0
-          let costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
-          
-          if (fullOperation.operation_operators && fullOperation.operation_operators.length > 0) {
-            // Sumar costos de todos los operadores
-            costoTotal = fullOperation.operation_operators.reduce((sum: number, op: any) => {
-              return sum + (parseFloat(op.cost) || 0)
-            }, 0)
-            // Usar la moneda del primer operador
-            if (fullOperation.operation_operators[0].cost_currency) {
-              costoOperadorCurrency = fullOperation.operation_operators[0].cost_currency
+          const summary = await summaryRes.json()
+
+          if (!summary.summary.can_invoice) {
+            const reasonText: Record<string, string> = {
+              no_margin: "La operación no tiene margen facturable",
+              no_customer: "La operación no tiene cliente asignado",
+              no_afip: "AFIP no está configurado para esta organización",
+              already_fully_invoiced: "La operación ya está facturada completa",
             }
-          } else if (fullOperation.operator_cost !== undefined) {
-            // Formato antiguo: operator_cost único
-            costoTotal = parseFloat(fullOperation.operator_cost) || 0
-            costoOperadorCurrency = fullOperation.operator_cost_currency || fullOperation.sale_currency || 'USD'
+            toast({
+              title: "No se puede facturar",
+              description: reasonText[summary.summary.reason_disabled] || "Operación no facturable",
+              variant: "destructive",
+            })
+            return
           }
-          
-          let costoEnARS = 0
-          if (costoOperadorCurrency === 'USD') {
-            costoEnARS = costoTotal * exchangeRate
-          } else {
-            costoEnARS = costoTotal
-          }
-          const montoCosto = invoiceCurrency === 'PES' ? costoEnARS : costoTotal
-          
-          // Crear items: venta y costo (opcional, editable)
+
+          // Guardar max permitido para validación UI
+          setMarginRemaining(summary.summary.remaining)
+
+          // Precargar UN solo item con el margen restante
+          const taxTreatment = getDefaultTaxTreatment(formData.cbte_tipo)
           const newItems: InvoiceItem[] = [
             {
-              descripcion: `Servicios turísticos - ${fullOperation.destination} (${fullOperation.file_code})`,
+              descripcion: `Comisión por intermediación turística - ${summary.operation.destination} (${summary.operation.file_code})`,
               cantidad: 1,
-              precio_unitario: montoVenta,
-              iva_porcentaje: 21,
-            }
+              precio_unitario: summary.summary.remaining,
+              iva_porcentaje: taxTreatment === "GRAVADO" ? 21 : 0,
+              tax_treatment: taxTreatment,
+            },
           ]
-          
-          // Agregar item de costo del operador si existe (opcional, editable)
-          if (costoTotal > 0) {
-            newItems.push({
-              descripcion: `Costo de operador - ${fullOperation.file_code}`,
-              cantidad: 1,
-              precio_unitario: montoCosto,
-              iva_porcentaje: 21,
-            })
-          }
-          
           setItems(newItems)
         }
       } catch (error) {
         console.error('Error loading operation details:', error)
-        // Fallback: usar datos básicos
         setSelectedOperation(operation)
-        setFormData({
-          ...formData,
+        setFormData(prev => ({
+          ...prev,
           operation_id: operationId,
-        })
+        }))
       }
     } else {
       setSelectedOperation(null)
-      setFormData({
-        ...formData,
+      setFormData(prev => ({
+        ...prev,
         operation_id: '',
-      })
+      }))
     }
   }
   
-  // Manejar cambio de moneda de facturación
   const handleInvoiceCurrencyChange = (currency: 'PES' | 'DOL') => {
     const oldCurrency = invoiceCurrency
     setInvoiceCurrency(currency)
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       moneda: currency === 'PES' ? 'PES' : 'DOL',
       cotizacion: currency === 'PES' && selectedOperation?.sale_currency === 'USD' 
         ? exchangeRate 
         : 1,
-    })
+    }))
     
-    // Si cambia la moneda y hay items, convertir precios
     if (selectedOperation && items.length > 0 && selectedOperation.sale_currency === 'USD') {
       const newItems = items.map(item => {
         let nuevoPrecio = item.precio_unitario
         
-        // Si estaba en ARS y ahora va a USD, convertir ARS -> USD
         if (oldCurrency === 'PES' && currency === 'DOL') {
           nuevoPrecio = item.precio_unitario / exchangeRate
         }
-        // Si estaba en USD y ahora va a ARS, convertir USD -> ARS
         else if (oldCurrency === 'DOL' && currency === 'PES') {
           nuevoPrecio = item.precio_unitario * exchangeRate
         }
-        // Si la operación está en ARS, no hacer conversión
-        // (aunque esto no debería pasar si selectedOperation.sale_currency === 'USD')
         
         return {
           ...item,
@@ -436,19 +591,16 @@ export default function NewInvoicePage() {
     }
   }
   
-  // Manejar cambio de tipo de cambio
   const handleExchangeRateChange = (rate: number) => {
     const oldRate = exchangeRate
     setExchangeRate(rate)
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       cotizacion: rate,
-    })
+    }))
     
-    // Reconvertir items si la operación está en USD y se factura en ARS
     if (selectedOperation?.sale_currency === 'USD' && invoiceCurrency === 'PES' && items.length > 0) {
       const newItems = items.map(item => {
-        // Convertir desde ARS actual a USD, luego a ARS con nuevo TC
         const precioUSD = item.precio_unitario / oldRate
         return {
           ...item,
@@ -459,19 +611,76 @@ export default function NewInvoicePage() {
     }
   }
 
-  // Manejar cambio de punto de venta (determina la agencia)
   const handlePointOfSaleChange = (agencyId: string, ptoVta: number) => {
-    setFormData({
-      ...formData,
+    setFormData(prev => ({
+      ...prev,
       agency_id: agencyId,
       pto_vta: ptoVta,
-    })
+    }))
   }
+
+  useEffect(() => {
+    if (loading || !preselectedOperationId) {
+      return
+    }
+
+    let cancelled = false
+
+    const preloadOperationBillingData = async () => {
+      const opData = await fetchOperationById(preselectedOperationId)
+
+      if (!opData?.operation) {
+        if (!cancelled) {
+          await handleOperationChange(preselectedOperationId)
+        }
+        return
+      }
+
+      // Si vino ?customerId=X en la URL, priorizamos ese (facturación múltiple
+      // por operación: el seller eligió a qué pasajero facturar).
+      const requestedCustomer = preselectedCustomerId
+        ? opData.customers?.find((oc) => oc.customer_id === preselectedCustomerId)
+        : null
+      const mainOperationCustomer =
+        requestedCustomer ||
+        opData.customers?.find(operationCustomer => operationCustomer.role === 'MAIN') ||
+        opData.customers?.[0]
+
+      let customerToSelect =
+        mainOperationCustomer?.customers
+          ? normalizeCustomer(mainOperationCustomer.customers)
+          : null
+
+      if (!customerToSelect && opData.operation.customer_id) {
+        customerToSelect =
+          customers.find(customer => customer.id === opData.operation?.customer_id) ||
+          await fetchCustomerById(opData.operation.customer_id)
+      }
+
+      if (customerToSelect && !cancelled) {
+        await applyCustomerSelection(customerToSelect, {
+          preserveOperationId: true,
+          resetItems: false,
+        })
+      }
+
+      if (!cancelled) {
+        await handleOperationChange(preselectedOperationId)
+      }
+    }
+
+    void preloadOperationBillingData()
+
+    return () => {
+      cancelled = true
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, preselectedOperationId])
 
   const addItem = () => {
     setItems([
       ...items,
-      { descripcion: '', cantidad: 1, precio_unitario: 0, iva_porcentaje: 21 }
+      createDefaultItem(formData.cbte_tipo)
     ])
   }
 
@@ -487,21 +696,20 @@ export default function NewInvoicePage() {
     setItems(newItems)
   }
 
-  // Calcular totales
-  const calculateItemTotal = (item: InvoiceItem) => {
-    const subtotal = item.cantidad * item.precio_unitario
-    const ivaImporte = subtotal * (item.iva_porcentaje / 100)
-    return { subtotal, ivaImporte, total: subtotal + ivaImporte }
-  }
-
-  const totals = items.reduce((acc, item) => {
-    const itemTotals = calculateItemTotal(item)
-    return {
-      subtotal: acc.subtotal + itemTotals.subtotal,
-      iva: acc.iva + itemTotals.ivaImporte,
-      total: acc.total + itemTotals.total,
+  const updateItemTaxTreatment = (index: number, taxTreatment: ItemTaxTreatment) => {
+    const newItems = [...items]
+    newItems[index] = {
+      ...newItems[index],
+      tax_treatment: taxTreatment,
+      iva_porcentaje:
+        taxTreatment === 'GRAVADO'
+          ? newItems[index].iva_porcentaje > 0
+            ? newItems[index].iva_porcentaje
+            : 21
+          : 0,
     }
-  }, { subtotal: 0, iva: 0, total: 0 })
+    setItems(newItems)
+  }
 
   const handleSubmit = async () => {
     try {
@@ -542,6 +750,7 @@ export default function NewInvoicePage() {
           description: "El tipo de cambio debe ser mayor a 1 para convertir USD a ARS",
           variant: "destructive",
         })
+        setSaving(false)
         return
       }
       
@@ -555,7 +764,24 @@ export default function NewInvoicePage() {
         setSaving(false)
         return
       }
-      
+
+      // SP-2: validación cliente-side del cap de margen
+      if (marginRemaining !== null) {
+        const totalFinal = items.reduce((acc, i) => acc + i.precio_unitario * i.cantidad, 0)
+        if (totalFinal > marginRemaining + 0.01) {
+          toast({
+            title: "No se puede facturar",
+            description: `Excede el margen restante (${new Intl.NumberFormat("es-AR", {
+              style: "currency",
+              currency: "ARS",
+            }).format(marginRemaining)})`,
+            variant: "destructive",
+          })
+          setSaving(false)
+          return
+        }
+      }
+
       const response = await fetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -565,22 +791,14 @@ export default function NewInvoicePage() {
           customer_id: formData.customer_id || null, // Puede ser null
           agency_id: formData.agency_id, // Requerido: viene del punto de venta
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
+          amount_entry_mode: amountEntryMode,
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
           cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
             ? exchangeRate
             : 1,
-          items: items.map(item => {
-            const itemTotals = calculateItemTotal(item)
-            return {
-              ...item,
-              subtotal: itemTotals.subtotal,
-              iva_importe: itemTotals.ivaImporte,
-              total: itemTotals.total,
-            }
-          }),
-          imp_neto: totals.subtotal,
-          imp_iva: totals.iva,
-          imp_total: totals.total,
+          fch_serv_desde: formData.fecha_servicio_desde,
+          fch_serv_hasta: formData.fecha_servicio_hasta,
+          items,
         }),
       })
 
@@ -604,11 +822,15 @@ export default function NewInvoicePage() {
             title: "✅ Factura autorizada por AFIP",
             description: `Nro: ${String(formData.pto_vta).padStart(4,'0')}-${String(authData.data?.cbte_nro).padStart(8,'0')} | CAE: ${authData.data?.cae} | Vto: ${authData.data?.cae_fch_vto}`,
           })
+          router.push('/operations/billing')
         } else {
-          toast({
-            title: "Factura creada, pero error al autorizar",
-            description: authData.error || "Podés autorizarla manualmente desde el listado.",
-            variant: "destructive",
+          // AFIP rechazó la autorización. NO redirigir — mostrar AlertDialog persistente
+          // con el error completo para que el user no pierda el detalle (antes el toast
+          // se iba al redirigir y la factura quedaba en draft sin que el user supiera
+          // por qué). Cuando cierre el dialog, redirige al listado donde puede reintentar.
+          setAfipFailureAlert({
+            message: authData.error || "AFIP no pudo autorizar la factura. Podés reintentar desde el listado.",
+            pendingRedirect: true,
           })
         }
       } else {
@@ -616,9 +838,8 @@ export default function NewInvoicePage() {
           title: "Factura creada",
           description: "La factura se creó correctamente.",
         })
+        router.push('/operations/billing')
       }
-
-      router.push('/operations/billing')
     } catch (error: any) {
       toast({
         title: "Error",
@@ -665,7 +886,7 @@ export default function NewInvoicePage() {
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Nueva Factura Electrónica</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Nueva Factura Electrónica</h1>
           <p className="text-muted-foreground">
             Crea una nueva factura para autorizar con AFIP
           </p>
@@ -676,12 +897,11 @@ export default function NewInvoicePage() {
         {/* Formulario principal */}
         <div className="lg:col-span-2 space-y-6">
           {/* Datos del comprobante */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tipo de Comprobante</CardTitle>
-              <CardDescription>Selecciona el tipo de factura a emitir</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Tipo de Comprobante</h3>
+              <p className="text-xs text-muted-foreground">Selecciona el tipo de factura a emitir</p>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Tipo de Comprobante *</Label>
@@ -700,11 +920,12 @@ export default function NewInvoicePage() {
                     <SelectContent>
                       <SelectItem value="6">Factura B</SelectItem>
                       <SelectItem value="1">Factura A</SelectItem>
-                      <SelectItem value="11">Factura C</SelectItem>
+                      <SelectItem value="11">Factura C (Monotributo)</SelectItem>
+                      <SelectItem value="19">Factura E (Exportación)</SelectItem>
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    B = CF/Exento · A = RI · C = Monotributista
+                    B = CF/Exento/Mono · A = RI · E = Exportación
                   </p>
                 </div>
                 <div>
@@ -778,16 +999,14 @@ export default function NewInvoicePage() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </div>
 
           {/* Datos del receptor */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Datos del Cliente</CardTitle>
-              <CardDescription>Información del receptor de la factura</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div>
+              <h3 className="text-sm font-semibold">Datos del Cliente</h3>
+              <p className="text-xs text-muted-foreground">Información del receptor de la factura</p>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
@@ -803,19 +1022,39 @@ export default function NewInvoicePage() {
                       Nuevo
                     </Button>
                   </div>
-                  <Select 
-                    value={formData.customer_id} 
+                  <Select
+                    value={formData.customer_id}
                     onValueChange={handleCustomerChange}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Buscar cliente..." />
                     </SelectTrigger>
                     <SelectContent>
-                      {customers.map(c => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.first_name} {c.last_name} {c.cuit ? `- ${c.cuit}` : ''}
-                        </SelectItem>
-                      ))}
+                      <div className="px-2 pb-2">
+                        <Input
+                          placeholder="Buscar por nombre, apellido o documento..."
+                          value={customerSearch}
+                          onChange={(e) => setCustomerSearch(e.target.value)}
+                          className="h-8 text-sm"
+                          autoFocus
+                        />
+                      </div>
+                      {customers
+                        .filter(c => {
+                          if (!customerSearch) return true
+                          const search = customerSearch.toLowerCase()
+                          return (
+                            c.first_name?.toLowerCase().includes(search) ||
+                            c.last_name?.toLowerCase().includes(search) ||
+                            `${c.first_name} ${c.last_name}`.toLowerCase().includes(search) ||
+                            c.document_number?.toLowerCase().includes(search)
+                          )
+                        })
+                        .map(c => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {getCustomerFullName(c)} {getCustomerDocumentText(c) ? `- ${getCustomerDocumentText(c)}` : ''}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -886,7 +1125,16 @@ export default function NewInvoicePage() {
                       const condicion = parseInt(v)
                       // Mapear condición IVA → tipo de comprobante automáticamente
                       const cbte_tipo = condicion === 1 ? 1 : 6 // RI → A, resto → B
-                      const receptor_doc_tipo = condicion === 1 ? 80 : (formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? 96 : 99)
+                      const selectedCustomer = customers.find(customer => customer.id === formData.customer_id)
+                      const fallbackDocType = selectedCustomer
+                        ? getCustomerAfipDocType(selectedCustomer)
+                        : [80, 86, 96].includes(formData.receptor_doc_tipo)
+                          ? formData.receptor_doc_tipo
+                          : 96
+                      const receptor_doc_tipo =
+                        formData.receptor_doc_nro && formData.receptor_doc_nro !== '0'
+                          ? fallbackDocType
+                          : 99
                       setFormData({ ...formData, receptor_condicion_iva: condicion, cbte_tipo, receptor_doc_tipo })
                     }}
                   >
@@ -905,7 +1153,7 @@ export default function NewInvoicePage() {
                   </p>
                 </div>
                 <div className="flex items-end">
-                  {formData.receptor_condicion_iva === 1 && !formData.receptor_doc_nro || formData.receptor_doc_nro === '0' ? (
+                  {formData.receptor_condicion_iva === 1 && (!formData.receptor_doc_nro || formData.receptor_doc_nro === '0') ? (
                     <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 w-full">
                       <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                       <span>Factura A requiere CUIT del receptor. Ingresá el CUIT en el campo de arriba.</span>
@@ -984,9 +1232,22 @@ export default function NewInvoicePage() {
                           step={0.01}
                           placeholder="Ej: 1500"
                         />
-                        <p className="text-xs text-muted-foreground mt-1">
-                          TC del día hábil anterior (según normativa AFIP)
-                        </p>
+                        {cotizacionAfip && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Oficial AFIP hoy: <strong>{cotizacionAfip.toFixed(2)}</strong>
+                            {cotizacionLoading && " (consultando...)"}
+                          </p>
+                        )}
+                        {!cotizacionAfip && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            TC del día hábil anterior (según normativa AFIP)
+                          </p>
+                        )}
+                        {cotizacionAfip && Math.abs(exchangeRate - cotizacionAfip) / cotizacionAfip > 0.02 && (
+                          <p className="text-xs text-orange-500 mt-1">
+                            ⚠️ Tu cotización difiere más del 2% del oficial. AFIP va a rechazar (error 10119).
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1003,26 +1264,22 @@ export default function NewInvoicePage() {
                   )}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
 
           {/* Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Conceptos / Items</CardTitle>
-                  <CardDescription>Detalle de los servicios a facturar</CardDescription>
-                </div>
-                <Button variant="outline" size="sm" onClick={addItem}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Agregar Item
-                </Button>
+          <div className="rounded-xl border border-border/40 p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Conceptos / Items</h3>
+                <p className="text-xs text-muted-foreground">Detalle de los servicios a facturar</p>
               </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={addItem}>
+                <Plus className="h-4 w-4 mr-2" />
+                Agregar Item
+              </Button>
+            </div>
               {items.map((item, index) => {
-                const itemTotals = calculateItemTotal(item)
+                const itemTotals = calculatedInvoice.items[index]
                 return (
                   <div key={index} className="p-4 border rounded-lg space-y-3 bg-muted/30">
                     <div className="flex items-center justify-between">
@@ -1047,7 +1304,7 @@ export default function NewInvoicePage() {
                       />
                     </div>
                     
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid gap-3 md:grid-cols-5">
                       <div>
                         <Label>Cantidad</Label>
                         <Input
@@ -1058,7 +1315,7 @@ export default function NewInvoicePage() {
                         />
                       </div>
                       <div>
-                        <Label>Precio Unit.</Label>
+                        <Label>{amountEntryMode === 'FINAL' ? 'Precio Final' : 'Precio Unit.'}</Label>
                         <Input
                           type="number"
                           value={item.precio_unitario}
@@ -1068,10 +1325,27 @@ export default function NewInvoicePage() {
                         />
                       </div>
                       <div>
+                        <Label>Tratamiento</Label>
+                        <Select
+                          value={item.tax_treatment}
+                          onValueChange={(value) => updateItemTaxTreatment(index, value as ItemTaxTreatment)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="GRAVADO">{ITEM_TAX_TREATMENT_LABELS.GRAVADO}</SelectItem>
+                            <SelectItem value="EXENTO">{ITEM_TAX_TREATMENT_LABELS.EXENTO}</SelectItem>
+                            <SelectItem value="NO_GRAVADO">{ITEM_TAX_TREATMENT_LABELS.NO_GRAVADO}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
                         <Label>IVA %</Label>
                         <Select 
-                          value={item.iva_porcentaje.toString()}
+                          value={item.tax_treatment === 'GRAVADO' ? item.iva_porcentaje.toString() : '0'}
                           onValueChange={(v) => updateItem(index, 'iva_porcentaje', parseFloat(v))}
+                          disabled={item.tax_treatment !== 'GRAVADO'}
                         >
                           <SelectTrigger>
                             <SelectValue />
@@ -1085,47 +1359,73 @@ export default function NewInvoicePage() {
                         </Select>
                       </div>
                       <div>
-                        <Label>Total c/IVA</Label>
+                        <Label>{amountEntryMode === 'FINAL' ? 'Total Final' : 'Total c/IVA'}</Label>
                         <Input
-                          value={formatCurrency(itemTotals.total)}
+                          value={formatMoney(itemTotals?.total || 0)}
                           disabled
                           className="bg-muted text-right font-medium"
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">
+                      {item.tax_treatment === 'GRAVADO'
+                        ? amountEntryMode === 'FINAL'
+                          ? 'El importe ingresado se interpreta como total final; el neto e IVA se calculan internamente.'
+                          : 'El importe ingresado se interpreta como neto; el total suma IVA.'
+                        : item.tax_treatment === 'EXENTO'
+                          ? 'Este concepto no calcula IVA y se informa como operación exenta en AFIP.'
+                          : 'Este concepto no calcula IVA y se informa como no gravado en AFIP.'}
+                    </p>
                   </div>
                 )
               })}
-            </CardContent>
-          </Card>
+          </div>
         </div>
 
         {/* Resumen */}
         <div className="space-y-6">
-          <Card className="sticky top-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calculator className="h-5 w-5" />
-                Resumen
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 p-5 space-y-4 sticky top-6">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Calculator className="h-4 w-4" />
+              Resumen
+            </h3>
               <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span>{formatCurrency(totals.subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">IVA</span>
-                  <span>{formatCurrency(totals.iva)}</span>
-                </div>
+                {!shouldHideTaxBreakdown && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Neto gravado</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_neto)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_tot_conc > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">No gravado</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_tot_conc)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_op_ex > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Exento</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_op_ex)}</span>
+                  </div>
+                )}
+                {!shouldHideTaxBreakdown && calculatedInvoice.totals.imp_iva > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">IVA</span>
+                    <span>{formatMoney(calculatedInvoice.totals.imp_iva)}</span>
+                  </div>
+                )}
                 <div className="border-t pt-2">
-                  <div className="flex justify-between font-bold text-lg">
-                    <span>Total</span>
-                    <span>{formatCurrency(totals.total)}</span>
+                  <div className="flex justify-between items-baseline">
+                    <span className="font-semibold">{shouldHideTaxBreakdown ? 'Total final' : 'Total'}</span>
+                    <span className="text-2xl font-semibold tabular-nums tracking-tight">{formatMoney(calculatedInvoice.totals.imp_total)}</span>
                   </div>
                 </div>
               </div>
+              {shouldHideTaxBreakdown && (
+                <p className="text-xs text-muted-foreground">
+                  Factura B a consumidor final: el importe cargado se toma como monto final y el IVA no se discrimina visualmente.
+                </p>
+              )}
 
               <div className="p-3 bg-muted rounded-lg space-y-1">
                 <p className="text-xs text-muted-foreground">
@@ -1161,31 +1461,81 @@ export default function NewInvoicePage() {
                   La factura se creará y autorizará en AFIP automáticamente.
                 </p>
               </div>
-            </CardContent>
-          </Card>
+          </div>
         </div>
       </div>
 
-      {/* Dialog para crear nuevo cliente */}
+      {/* Dialog para crear nuevo cliente. Pasa operationId para que el doc
+          OCR-eado se vincule a la operación (item 11). Pre-fillea con el
+          CUIT/DNI typed en receptor (item 10b) para no perder lo escrito. */}
       <NewCustomerDialog
         open={showNewCustomerDialog}
         onOpenChange={setShowNewCustomerDialog}
         onSuccess={(customer) => {
           if (customer) {
-            // Agregar el nuevo cliente a la lista y seleccionarlo
-            setCustomers(prev => [...prev, {
-              id: customer.id,
-              first_name: customer.first_name,
-              last_name: customer.last_name,
-              email: customer.email || '',
-              cuit: customer.cuit || undefined,
-              dni: customer.dni || undefined,
-            }])
-            handleCustomerChange(customer.id)
+            void applyCustomerSelection(normalizeCustomer(customer))
             setShowNewCustomerDialog(false)
           }
         }}
+        operationId={formData.operation_id || undefined}
+        prefillData={(() => {
+          const docNro = formData.receptor_doc_nro && formData.receptor_doc_nro !== '0' ? formData.receptor_doc_nro : undefined
+          if (!docNro) return undefined
+          // Map AFIP receptor_doc_tipo → customer document_type
+          // 80=CUIT, 86=CUIL, 96=DNI, 99=Sin especificar
+          const typeMap: Record<number, string> = { 80: "CUIT", 86: "CUIL", 96: "DNI" }
+          return {
+            document_type: typeMap[formData.receptor_doc_tipo],
+            document_number: docNro,
+            // Si el receptor name está cargado, lo dejo en first_name (el user puede separar después)
+            first_name: formData.receptor_nombre || undefined,
+          }
+        })()}
       />
+
+      {/* AlertDialog persistente cuando AFIP rechaza la autorización automática.
+          La factura quedó como draft pero el user necesita ver el motivo completo
+          antes de ser redirigido al listado. */}
+      <AlertDialog
+        open={afipFailureAlert !== null}
+        onOpenChange={(open) => {
+          if (!open && afipFailureAlert?.pendingRedirect) {
+            router.push('/operations/billing')
+          }
+          if (!open) setAfipFailureAlert(null)
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              AFIP rechazó la autorización
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>La factura quedó guardada como <strong>borrador</strong>. Podés reintentar la autorización desde el listado de facturas con el botón &quot;Autorizar&quot;.</p>
+                <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                  <p className="text-xs font-medium text-destructive mb-1">Error reportado por AFIP:</p>
+                  <p className="text-sm font-mono whitespace-pre-wrap break-words">{afipFailureAlert?.message}</p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Causas comunes: cotización USD fuera del rango ±2% oficial, certificado AFIP vencido, punto de venta no autorizado, o campos obligatorios faltantes según condición IVA del receptor.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => {
+              if (afipFailureAlert?.pendingRedirect) {
+                router.push('/operations/billing')
+              }
+              setAfipFailureAlert(null)
+            }}>
+              Entendido, ir al listado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

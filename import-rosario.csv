@@ -1,0 +1,839 @@
+Código,Fecha Operación,Nombre del Cliente,Email Cliente,Destino,Fecha Salida,Fecha Regreso,Adultos,Niños,Monto Venta,Monto Cobrado,Pendiente de Cobrar,Monto Operador,Pagado a Operador,Pendiente a Operador,Operador 1,Costo Operador 1,Operador 2,Costo Operador 2,Operador 3,Costo Operador 3,Moneda,Estado,Nombre Vendedor
+,Septiembre, Nuñez,,Bayahibe,13/03/2026,21/03/2026,6,,"$13,680","$5,730","$7,950","$12,381","$5,397","$6,984",Delfos,"$6,984",,,,,USD,CONFIRMED,Emi
+,Noviembre,Abud ,,Aruba,03/04/2026,11/04/2026,3,,"$5,070","$5,070",$0,"$4,616","$1,968","$2,648",Delfos,"$2,648",,,,,USD,CONFIRMED,Cande
+,Julio,Acevedo,,bayahibe,22/05/2026,31/05/2026,20,8,"$62,190","$28,850","$33,340","$57,714","$26,957","$30,757",Lozada,"$30,757",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Acosta Alfaro,,Punta Cana,13/03/2026,20/03/2026,3,,"$5,010","$5,010",$0,"$4,578","$2,318","$2,260",Lozada,"$2,260",,,,,USD,CONFIRMED,Julieta - Ana
+,Noviembre,Acosta Gramajo ,,Punta Cana,13/03/2026,20/03/2026,2,1,"$4,350","$2,410","$1,940","$3,918","$2,310","$1,608",Lozada,"$1,608",,,,,USD,CONFIRMED,Julieta - Ana Silva
+,Mayo,Aereo Martinez - Quinteros,,Aruba,15/03/2026,25/03/2026,4,4,"$5,095","$3,557","$1,538","$1,981","$1,981",$0,Eurovips,,,,,,USD,CONFIRMED,Santi
+,Octubre,Ahumada,,Punta Cana,25/02/2026,04/03/2026,2,,"$3,940","$3,940",$0,"$3,460","$1,495","$1,965",Lozada,"$1,965",,,,,USD,CONFIRMED,Rama
+,Noviembre,Airaldi ,,Punta Cana,22/02/2026,02/03/2026,4,,"$7,000","$7,000",$0,"$6,674","$3,467","$3,207",Lozada,"$3,207",,,,,USD,CONFIRMED,Rama
+,Septiembre,Albornoz,,Punta Cana,01/05/2026,09/05/2026,3,,"$5,550","$4,550","$1,000","$4,900","$2,277","$2,623",Lozada,"$2,623",,,,,USD,CONFIRMED,Cande - Santi
+,Octubre,Almiron,,Playa del Carmen,17/03/2026,23/03/2026,2,,"$3,900","$3,900",$0,"$3,550","$1,672","$1,878",Delfos,"$1,878",,,,,USD,CONFIRMED,Naza
+,Octubre,Almiron,,Punta Cana,20/05/2026,28/05/2026,2,0,"$3,180","$1,800","$1,380","$2,767","$1,458","$1,309",Delfos,"$1,309",,,,,USD,CONFIRMED,Mica
+,Noviembre,Alonso,maitealonso87@gmail.com,Puerto Plata,03/03/2026,10/03/2026,2,,"$3,100","$1,900","$1,200","$2,561","$1,528","$1,033",Lozada,$852,,,,,USD,CONFIRMED,Jose
+,Octubre,Angaroni,,bayahibe,20/04/2026,27/04/2026,4,,"$5,800","$3,100","$2,700","$4,958","$2,524","$2,434",Delfos,"$2,434",,,,,USD,CONFIRMED,Rama
+,Noviembre,Antonucci , mantonucci@consultoresdeempresas.com,Porto de Galinhas,28/02/2026,08/03/2026,2,,"$2,300","$2,300",$0,"$1,962",$991,$971,Lozada,$971,,,,,USD,CONFIRMED,Jose
+,Octubre,Aquilanti,,Maragogi,17/02/2026,27/02/2026,2,,"$2,880","$1,640","$1,240","$2,636","$1,355","$1,281",Lozada,"$1,181",Universal,100,,,USD,CONFIRMED,Cande
+,Agosto,Archilla ,,Punta Cana,13/04/2026,21/04/2026,2,0,"$4,000","$4,000",$0,"$3,700","$1,955","$1,745",Lozada,"$1,744",,,,,USD,CONFIRMED,Mica
+,Junio,Arevalo,,Porto de Galinhas,04/03/2026,12/03/2026,7,2,"$11,170","$8,370","$2,800","$9,895","$5,175","$4,720",Lozada,"$4,360",Universal,80,,,USD,CONFIRMED,Jose
+,Septiembre,Armellini,,Maceio,05/02/2026,13/02/2026,3,1,"$6,800","$6,800",$0,"$6,146","$2,848","$3,298",Lozada,"$2,405",,,,,USD,CONFIRMED,Cande
+,Julio,Bacarella ,,Punta Cana,01/03/2026,09/03/2026,2,0,"$4,400","$4,400",$0,"$4,210","$1,576","$2,634",Lozada,"$2,634",,,,,USD,CONFIRMED,Mica - Jose
+,Agosto,Balverdi,,Bayahibe,07/06/2026,18/06/2026,5,0,"$9,250","$4,500","$4,750","$8,270","$3,756","$4,514",Lozada,"$4,515",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Barbagallo,,Cuba,12/02/2026,22/02/2026,2,,"$3,980","$3,980",$0,"$3,706","$3,571",$135,Assist Card,135,,,,,USD,CONFIRMED,Rama
+,Octubre,Bermudez,,San Francisco,14/08/25,21/08/25,,,"$5,550","$5,160",$390,"$5,505","$5,505",$0,Eurovips,,,,,,USD,CONFIRMED,Santi
+,Septiembre,Biasizzo Gabelic,,Cuba,05/03/2026,15/03/2026,2,,"$4,380","$2,200","$2,180","$4,015","$1,985","$2,030",Lozada,"$1,920",Assist Card,110,,,USD,CONFIRMED,Naza
+,Agosto,Bommer,,Bayahibe,07/06/2026,18/06/2026,3,0,"$5,550","$2,700","$2,850","$4,850","$2,250","$2,600",Lozada,"$2,599",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Bonel ,verobonel@hotmail.com,Playa del Carmen,18/03/2026,26/03/2026,2,2,"$7,450","$3,500","$3,950","$6,717","$2,958","$3,759",Delfos,"$3,759",,,,,USD,CONFIRMED,Mica
+,Octubre,Borcard ,,Playa del Carmen,07/03/2026,14/03/2026,2,,"$4,190","$4,190",$0,"$3,825","$1,449","$2,376",Lozada,"$2,376",,,,,USD,CONFIRMED,Emi
+,Noviembre,Bortoli,,Bayahibe,12/04/2026,19/04/2026,1,,"$3,120","$1,500","$1,620","$2,719","$1,223","$1,496",Delfos,"$1,396",Universal,100,,,USD,CONFIRMED,Rama
+,Septiembre,Breccia ,,Playa del Carmen,01/03/2026,11/03/2026,2,0,"$3,400","$3,400",$0,"$2,987","$1,512","$1,475",Delfos,"$1,475",,,,,USD,CONFIRMED,Mica
+,Octubre,Bruschini,natii.b11@hotmail.com,Bayahibe,10/06/2026,17/06/2026,2,,"$3,420","$1,800","$1,620","$3,090","$1,648","$1,442",Delfos,"$1,442",,,,,USD,CONFIRMED,Emi
+,Octubre,Bueno,,Punta Cana,25/02/2026,04/03/2026,2,,"$3,580","$3,580",$0,"$3,134","$1,425","$1,709",Lozada,"$1,709",,,,,USD,CONFIRMED,Rama
+,Noviembre,Buralli ,,Punta Cana,13/03/2026,21/03/2026,2,,"$3,460","$1,400","$2,060","$3,103","$1,266","$1,837",Lozada,"$1,837",,,,,USD,CONFIRMED,Rama
+,Octubre,Burki,gabriela_burki@hotmail.com,Brasil,22/02/2026,04/03/2026,2,2,"$4,170","$4,170",$0,"$3,800","$1,881","$1,919",Lozada,"$1,876",,,,,USD,CONFIRMED,Mica
+,Octubre,Calabretta ,,Bayahibe,09/05/2026,16/05/2026,3,,"$6,090","$5,050","$1,040","$5,568","$2,276","$3,292",Lozada,"$3,292",,,,,USD,CONFIRMED,Cande
+,Octubre,Canzonieri,daragiovana@gmail.com,Brasil,13/01/2026,20/01/2026,3,0,"$4,580","$4,580",$0,"$4,064","$4,064",$0,360 Regional,,,,,,USD,CONFIRMED,Mica
+,Septiembre,Capdevilla,,Cuba,13/04/2026,23/04/2026,1,1,"$3,540","$1,400","$2,140","$3,270","$1,790","$1,480",Delfos,"$1,480",,,,,USD,CONFIRMED,Emi
+,Noviembre,Casadedio,,Buzios,29/01/2026,06/02/2026,,,"$4,520","$4,520",$0,"$4,130","$3,950",$180,Universal,180,,,,,USD,CONFIRMED,Cande
+,Septiembre,Ceratto ,,Puerto Plata,06/03/2026,13/03/2026,2,,"$2,840","$2,840",$0,"$2,492","$1,516",$976,Lozada,$976,,,,,USD,CONFIRMED,Emi
+,Julio,Chaya,,Egipto,28/07/2025,15/08/2025,,,"$3,800","$3,550",$250,"$3,623","$3,623",$0,Lozada,,,,,,USD,CONFIRMED,Santi - Maxi
+,Julio,Chaya,,Lima,14/08/25,21/08/25,,,"$4,200","$3,921",$279,"$3,800","$3,800",$0,Lozada,,,,,,USD,CONFIRMED,Santi - Maxi
+,Noviembre,Chaya,,Lima,14/08/25,21/08/25,,,"$1,060",,"$1,060","$1,050","$1,050",$0,Lozada,,,,,,USD,CONFIRMED,Santi
+,Agosto,Chiavassa,,Estados Unidos,20/04/2026,01/05/2026,4,0,"$7,880","$7,880",$0,"$7,380","$5,101","$2,279",Delfos,"$2,279",,,,,USD,CONFIRMED,Mica
+,Noviembre,Cillis ,,Punta Cana,08/04/2026,16/04/2026,2,2,"$6,800","$3,600","$3,200","$5,853","$3,023","$2,830",Lozada,"$2,650",Universal,180,,,USD,CONFIRMED,Cande
+,Noviembre,Clavero ,clavero.miri@gmail.com,Bayahibe,08/04/2026,16/04/2026,2,0,"$3,460","$1,800","$1,660","$3,166","$1,515","$1,651",Delfos,"$1,651",,,,,USD,CONFIRMED,Mica
+,Noviembre,Coppola , victoriaacoppolaa86@gmail.com,Curacao,11/05/2026,18/05/2026,1,,"$1,930","$1,930",$0,"$1,744",$794,$950,Lozda,$950,,,,,USD,CONFIRMED,Rama
+,Noviembre,Corbalan ,brisacorbalann@gmail.com,Cuba,16/02/2026,22/02/2026,2,0,"$3,370","$3,370",$0,"$3,050","$2,957",$93,Universal,$90,,,,,USD,CONFIRMED,Mica - Jose
+,Octubre,Corbella,,Maragogi,15/04/2026,22/04/2026,,,"$5,590","$1,900","$3,690","$3,570","$1,670","$1,900",Lozada,"$1,900",,,,,USD,CONFIRMED,Santi - Naza
+,Octubre,Costa,,Maragogi,16/03/2026,23/03/2026,2,,"$2,360","$2,000",$360,"$2,138","$1,082","$1,056",Lozada,"$1,056",,,,,USD,CONFIRMED,Cande
+,Septiembre,Cudos,,Cancun,17/03/2026,26/03/2026,4,,"$6,200","$6,200",$0,"$5,645","$2,335","$3,310",Lozada,"$3,310",,,,,USD,CONFIRMED,Jose
+,Agosto,Curto Romero ,,Bayahibe,27/05/2026,04/06/2026,4,4,"$17,850","$7,200","$10,650","$15,870","$6,618","$9,252",Lozada,"$9,253",,,,,USD,CONFIRMED,Mica
+,Noviembre,De Arma,,Bayahibe,06/03/2026,20/03/2026,2,,"$10,050","$4,000","$6,050","$9,407","$4,255","$5,152",Lozada,"$1,296",Universal,100,Delfos,3756,USD,CONFIRMED,Jose
+,Noviembre,De Isla,deisla.julieta@gmail.com,Bayahibe,14/04/2026,22/04/2026,5,1,"$11,860","$6,780","$5,080","$10,763","$4,151","$6,612",Delfos,"$6,612",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Dealbera ,,Bayahibe,06/03/2026,13/03/2026,2,,"$5,260","$4,000","$1,260","$4,556","$1,470","$3,086",Delfos,"$2,986",Universal,100,,,USD,CONFIRMED,Rama - Jose
+,Septiembre,Del Moro,,Punta Cana,11/04/2026,19/04/2026,2,,"$3,960","$2,960","$1,000","$3,485","$1,583","$1,902",Lozada,"$1,810",Universal,90,,,USD,CONFIRMED,Santi
+,Septiembre,Di Franco ,,Puerto Plata,06/03/2026,13/03/2026,5,,"$6,830","$4,460","$2,370","$6,238","$3,458","$2,780",Lozada,"$2,300",Universal,480,,,USD,CONFIRMED,Jose
+,Noviembre,Diaz ,arianadmac@gmail.com,Punta Cana,11/04/2026,18/04/2026,2,,"$3,680","$1,950","$1,730","$3,400","$1,880","$1,520",Eurovips,"$1,520",,,,,USD,CONFIRMED,Emi
+,Noviembre,Diaz - Tognoli ,,Punta Cana,30/05/2026,07/06/2026,2,1,"$4,150","$2,000","$2,150","$3,638","$1,663","$1,975",Delfos,"$1,975",,,,,USD,CONFIRMED,Santi
+,Octubre,Dolber,,Bayahibe,08/06/2026,18/06/2026,1,1,"$4,300","$2,000","$2,300","$3,940","$1,755","$2,185",Delfos,"$2,185",,,,,USD,CONFIRMED,Santi
+,Noviembre,Dormisch , dormischsofia@gmail.com,Republica Dominicana,13/03/2026,21/03/2026,2,,"$5,350","$5,350",$0,"$4,716","$1,970","$2,746",Lozda,"$2,746",,,,,USD,CONFIRMED,Jose
+,Septiembre,Dottavio,nagipiadeporte@gmail.com,Macerio,06/02/2026,23/02/2026,5,1,"$7,920","$7,920",$0,"$6,503","$3,984","$2,519",Delfos,"$2,519",,,,,USD,CONFIRMED,Mica - Jose
+,Octubre,Drake,,Bayahibe,13/05/2026,21/05/2026,2,,"$3,020","$2,820",$200,"$2,708","$1,495","$1,213",Delfos,"$1,213",,,,,USD,CONFIRMED,Emi
+,Octubre,Dri,,Punta Cana,08/04/2026,16/04/2026,3,,"$5,250","$3,000","$2,250","$4,652","$2,276","$2,376",Delfos,"$2,376",,,,,USD,CONFIRMED,Santi - Jose
+,Julio,Erosa,,Brasil,04/03/2026,19/03/2026,2,,"$2,800","$2,000",$800,"$2,500","$1,361","$1,139",Lozada,"$1,139",,,,,USD,CONFIRMED,Santi - Jose
+,Julio,Escobar,,Varadero,28/02/2026,10/03/2026,2,,"$3,140","$1,890","$1,250","$2,790","$1,296","$1,494",Delfos,"$1,494",,,,,USD,CONFIRMED,Cande
+,Septiembre,Evangelista,,Puerto Plata,06/03/2026,13/03/2026,2,0,"$2,720","$1,700","$1,020","$2,600","$1,501","$1,099",Lozada,"$1,009",Universal,70,,,USD,CONFIRMED,Mica
+,Octubre,Faget,ailenv089@gmail.com,Punta Cana,05/03/2026,13/03/2026,2,,"$3,600","$2,600","$1,000","$3,318","$1,633","$1,685",Lozada,"$1,685",,,,,USD,CONFIRMED,Naza
+,Noviembre,Fenoglio,,Aruba,12/05/2026,20/05/2026,2,1,"$5,000","$2,500","$2,500","$4,120","$1,822","$2,298",Lozada,"$2,298",,,,,USD,CONFIRMED,Santi
+,Octubre,Ferrero,,Punta Cana,06/05/2026,13/05/2026,2,,"$3,080","$3,080",$0,"$2,759","$1,260","$1,499",Lozada,"$1,499",,,,,USD,CONFIRMED,Julieta - Ana Silva
+,Noviembre,Ferreyra ,leandroferreyra@gmail.com,Punta Cana,06/03/2026,14/03/2026,2,1,"$4,120","$2,500","$1,620","$3,801","$2,231","$1,570",Lozada,"$1,558",,,,,USD,CONFIRMED,Naza - Emi
+,Noviembre,Fiscarelli,,Bayahibe,21/04/2026,29/04/2026,4,,"$8,640","$6,380","$2,260","$7,922","$3,843","$4,079",Lozada,"$4,040",,,,,USD,CONFIRMED,Naza-Emi
+,Julio,Fuentes - Spesot - Storti ,,Bayahibe,05/06/2026,13/06/2026,10,,"$19,100","$8,530","$10,570","$16,540","$8,590","$7,950",Lozada,"$7,410",Universal,540,,,USD,CONFIRMED,Santi
+,Septiembre,Gagnone,,Punta Cana,14/02/2026,23/02/2026,2,,"$4,720","$4,720",$0,"$4,357","$2,072","$2,285",Delfos,"$2,285",,,,,USD,CONFIRMED,Emi
+,Noviembre,Galarza Azzoni,sofinoe@hotmail.com,Bayahibe,28/04/2026,06/05/2026,2,,"$3,500","$1,800","$1,700","$3,136","$1,517","$1,619",Delfos,"$1,619",,,,,USD,CONFIRMED,Jose
+,Julio,Galazzi,,Bayahibe,15/05/2026,23/05/2026,2,0,"$3,020","$1,800","$1,220","$2,792","$1,554","$1,238",Lozada,"$1,650",,,,,USD,CONFIRMED,Mica
+,Noviembre,Galizzi,,Playa del Carmen,03/04/2026,11/04/2026,,,"$3,600","$3,600",$0,"$3,162","$1,511","$1,651",Lozada,"$1,651",,,,,USD,CONFIRMED,Jose
+,Octubre,Galli,,Bayahibe,14/03/2026,21/03/2026,2,,"$4,100","$1,600","$2,500","$3,722","$1,261","$2,461",Lozada,"$2,461",,,,,USD,CONFIRMED,Naza
+,Noviembre,Garcia Stur,,Rio de janeiro,02/04/2026,12/04/2026,2,,"$1,700","$1,200",$500,"$1,536","$1,044",$492,Lozada,$492,,,,,USD,CONFIRMED,Santi
+,Agosto,Gercek,,Bayahibe,05/06/2026,11/06/2026,35,5,"$97,316","$40,325","$56,991","$87,890","$42,708","$45,182",Lozada,"$45,182",,,,,USD,CONFIRMED,Santi
+,Noviembre,Ghilino , ghilinosergio@gmail.com,Punta Cana,22/04/2026,30/04/2026,2,,"$5,830","$5,830",$0,"$5,332","$2,643","$2,689",Delfos,"$2,689",,,,,USD,CONFIRMED,Rama
+,Julio,Giacomini,,Varadero,19/05/2026,28/05/2026,3,,"$7,166","$3,957","$3,209","$6,948","$4,006","$2,942",Delfos,"$2,070",Universal,130,,,USD,CONFIRMED,Santi
+,Octubre,Gomez,,Bayahibe,23/04/2026,30/04/2026,2,1,"$3,350","$1,700","$1,650","$2,952","$1,596","$1,356",Lozada,,,,,,USD,CONFIRMED,Julieta - Ana Silva
+,Octubre,Gomez ,,Aruba,26/02/2026,07/03/2026,2,,"$2,700","$1,300","$1,400","$2,524","$1,267","$1,257",Lozada,"$1,257",,,,,USD,CONFIRMED,Cande
+,Julio,Hakanson,,Arrial do Cabo,07/01/2026,17/01/2026,3,1,"$4,750","$4,750",$0,"$4,340","$2,178","$2,162",Lozada,"$2,162",,,,,USD,CONFIRMED,Jose
+,Octubre,Heck,,Punta Cana,02/03/2026,12/03/2026,2,,"$6,040","$6,040",$0,"$5,480","$1,897","$3,583",Lozada,"$3,473",Universal,110,,,USD,CONFIRMED,Santi - Cande
+,Septiembre,Heck - Santinelli ,,San Andres,25/02/2026,05/03/2026,4,,"$7,200","$7,200",$0,"$6,557","$6,398",$159,Universal,160,,,,,USD,CONFIRMED,Santi
+,Octubre,Heidegger,florenciaheideggersj@gmail.com,Cuba,20/03/2026,01/04/2026,2,,"$4,500","$3,000","$1,500","$4,008","$1,733","$2,275",Delfos,"$2,175",Universal,100,,,USD,CONFIRMED,Jose
+,Noviembre,Heit,,Bayahibe,15/03/2026,18/03/2026,2,,"$1,070",$500,$570,$845,$0,$845,Delfos,$845,,,,,USD,CONFIRMED,Rama
+,Noviembre,Hernandez , marcela_hernandez5@hotmail.com,Bayahibe,28/04/2026,06/05/2026,4,,"$6,400","$3,600","$2,800","$5,750","$3,035","$2,715",Delfos,"$2,715",,,,,USD,CONFIRMED,Jose
+,Noviembre,Herrera,Rogerivanh@hotmail.com,Mexico,06/03/2026,16/03/2026,3,,"$5,460","$4,520",$940,"$5,020","$2,572","$2,448",Lozada,"$2,448",,,,,USD,CONFIRMED,Emi
+,Agosto,Jaime ,,Cuba,13/01/2026,22/01/2026,4,,"$10,350","$10,350",$0,"$9,710","$9,490",$220,Delfos,"$3,883",Universal,220,,,USD,CONFIRMED,Rama
+,Julio,Juarez,,Orlando,17/05/2026,29/05/2026,2,2,"$5,450","$3,700","$1,750","$4,600","$3,510","$1,090",Lozada,"$1,090",,,,,USD,CONFIRMED,Mica
+,Octubre,Lattes,,Aruba,17/03/2026,27/03/2026,2,,"$3,060","$3,060",$0,"$2,636","$1,180","$1,456",Lozada,"$1,406",Universal,50,,,USD,CONFIRMED,Jose
+,Septiembre,Lazarte Curaz,,Panama,06/03/2026,16/03/2026,2,1,"$6,890","$6,890",$0,"$6,437","$3,267","$3,170",Lozada,"$3,170",,,,,USD,CONFIRMED,Mica - Jose
+OP-20250101-001,Noviembre,Leoni ,,Brasil,03/04/2026,11/04/2026,6,,"$9,240","$9,240",$0,"$8,552","$8,312",$240,Universal,240,,,,,USD,CONFIRMED,Rama
+,Julio,Lepore,,Paris,03/03/2026,18/03/2026,2,2,"$10,250","$5,980","$4,270","$9,180","$4,967","$4,213",Delfos,"$3,452",Tarjeta Maxi,760,,,USD,CONFIRMED,Mica
+,Octubre,Llobet,Santiagollobet@outlook.es,Costa Mujeres,06/03/2026,14/03/2026,2,1,"$5,160","$2,160","$3,000","$4,640","$2,071","$2,569",Lozada,"$2,569",,,,,USD,CONFIRMED,Emi
+,Octubre,Logica,,Playa del Carmen,01/05/2026,10/05/2026,3,,"$6,360","$3,300","$3,060","$5,816","$2,844","$2,972",Lozada,"$2,972",,,,,USD,CONFIRMED,Cande - Rama
+,Julio,Lopez ,,Porto de Galinhas,13/03/2026,21/03/2026,2,2,"$4,720","$4,720",$0,"$3,920","$2,075","$1,845",Lozada,"$1,645",Universal,200,,,USD,CONFIRMED,Cande
+,Julio,Lorenzon Aguirre,,Curacao,16/05/2026,25/05/2026,3,0,"$2,660","$2,060",$600,"$2,406","$1,846",$560,Delfos,$560,,,,,USD,CONFIRMED,Mica
+,Agosto,Ludueña,,Cuba,16/03/2026,29/03/2026,2,,"$4,160","$4,160",$0,"$3,790","$1,980","$1,810",Lozada,"$1,730",Universal,80,,,USD,CONFIRMED,Emi
+,Octubre,Luque Delugo,Florencia.luque@outlook.com,Punta Cana,04/03/2026,13/03/2026,2,,"$4,320","$2,700","$1,620","$3,932","$1,763","$2,169",Lozada,"$2,169",,,,,USD,CONFIRMED,Emi
+,Octubre,Luraschi,,Bayahibe,11/03/2026,19/03/2026,6,1,"$7,820","$4,120","$3,700","$6,820",$0,"$6,820",Delfos,"$6,820",,,,,USD,CONFIRMED,Mica - Juli 
+,Octubre,Marconi,,Aruba,24/05/2026,31/05/2026,2,,"$2,660","$1,600","$1,060","$2,482","$1,543",$939,Delfos,$939,,,,,USD,CONFIRMED,Naza - Nico trip
+,Octubre,Margonari,guido_97_rc@hotmail.com,Bayahibe,05/07/2026,14/07/2026,6,2,"$15,600","$8,800","$6,800","$14,351","$7,904","$6,447",Lozada,"$6,447",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Marizza,marizzajulieta@gmail.com,Cancun,06/03/2026,14/03/2026,2,,"$4,160","$1,400","$2,760","$3,461","$1,268","$2,193",Lozada,"$2,193",,,,,USD,CONFIRMED,Emi
+,Noviembre,Martinez,guillejmartinez@hotmail.com,Bayahibe,03/02/2026,11-02-2026,10,0,"$37,690","$37,690",$0,"$33,060","$33,007",$53,Lozada,$53,,,,,USD,CONFIRMED,Mica
+,Junio,Marzaz,,Punta Cana,1/3/2026,10/02/2026,2,0,"$4,820","$2,920","$1,900","$4,390","$1,589","$2,801",Lozada,"$2,731",Universal,70,,,USD,CONFIRMED,Mica
+,Julio,Mecanico,,Bayahibe,20/05/2026,28/05/2026,5,0,"$7,690","$4,500","$3,190","$7,141","$3,887","$3,254",Lozada,"$3,254",,,,,USD,CONFIRMED,Mica
+,Octubre,Mezquida,shei.mezquida@live.com,Mexico,21/07/2026,29/07/2026,2,1,"$5,530","$3,000","$2,530","$4,893","$2,861","$2,032",Lozada,"$2,032",,,,,USD,CONFIRMED,Emi
+,Octubre,Miskevich,,Jamaica,03/03/2026,10/03/2026,2,,"$4,600","$4,600",$0,"$4,166","$1,554","$2,612",Lozada,"$2,612",,,,,USD,CONFIRMED,Cande - Yama
+,Agosto,Mitre,,Punta Cana,01/09/2025,25/09/2025,,,"$6,070","$6,040",$30,"$5,450","$5,450",$0,Lozada,,,,,,USD,CONFIRMED,Santi
+,Noviembre,Molina ,Lautaroomolina1997@gmail.com,Punta Cana,13/03/2026,20/03/2026,2,,"$3,170","$2,100","$1,070","$2,910","$1,560","$1,350",Lozada,"$1,350",,,,,USD,CONFIRMED,Emi
+,Septiembre,Montanez,,Jamaica,04/04/2026,12/04/2026,2,,"$4,040","$1,400","$2,640","$3,745","$1,374","$2,371",Lozada,"$2,371",,,,,USD,CONFIRMED,Rama
+,Octubre,Montefiore Berdinelli ,celimontefiore@hotmail.com,Aruba,17/03/2026,24/03/2026,4,,"$6,160","$3,000","$3,160","$5,651","$2,464","$3,187",Lozada,"$3,187",,,,,USD,CONFIRMED,Naza
+,Noviembre,Monti ,franco_monti09@hotmail.com,Playa del Carmen,25/03/2026,02/04/2026,2,,"$3,520","$1,800","$1,720","$3,186","$1,560","$1,626",Delfos,"$1,626",,,,,USD,CONFIRMED,Naza
+,Agosto,Mossotti Gera,,Rio de janeiro,14/08/25,21/08/25,,,$870,$432,$438,$870,$870,$0,Lozada,,,,,,USD,CONFIRMED,Santi
+,Agosto,Navache,,Colombia,24/01/2026,06/02/2026,2,0,"$4,600","$4,600",$0,"$4,313","$2,670","$1,643",Lozada,"$1,643",,,,,USD,CONFIRMED,Mica
+,Agosto,Nocito,,Porto de Galinhas,20/03/2026,28/03/2026,6,0,"$8,400","$3,600","$4,800","$7,270","$3,065","$4,205",Lozada,"$4,205",,,,,USD,CONFIRMED,Mica - Jose
+,Septiembre,Nunziati,,Punta Cana,19/04/2026,28/04/2026,2,,"$4,040","$1,800","$2,240","$3,358","$1,379","$1,979",Lozada,"$1,979",,,,,USD,CONFIRMED,Naza
+,Octubre,Otero ,,Europa,13/03/2026,02/04/2026,4,,"$7,895","$7,895",$0,"$5,744","$1,138","$4,606",Delfos,"$4,606",,,,,USD,CONFIRMED,Rama - Maxi
+,Noviembre,Paratcha ,eugeniaparatcha@hotmail.com,Porto de Galinhas,28/02/2026,08-03-2026,2,0,"$2,100","$1,400",$700,"$1,754","$1,154",$600,Lozada,$600,,,,,USD,CONFIRMED,Mica - Jose
+,Octubre,Paulini,,Aruba,06/04/2026,15/04/2026,2,,"$4,200","$1,970","$2,230","$3,760","$1,716","$2,044",Delfos,"$1,944",Universal,100,,,USD,CONFIRMED,Santi
+,Mayo,Paz / Piazza,,Bayahibe,01/04/2026,09/04/2025,6,,"$12,780","$12,780",$0,"$11,430","$4,560","$6,870",Lozada,"$6,630",Universal,240,,,USD,CONFIRMED,Jose
+,Octubre,Peroni,,Playa del Carmen,18/03/2026,26/03/2026,2,,"$4,200","$1,900","$2,300","$3,811","$1,439","$2,372",Delfos,"$2,281",Universal,90,,,USD,CONFIRMED,Santi
+,Octubre,Perrune,,Playa del Carmen,06/04/2026,13/04/2026,2,1,"$5,550","$2,500","$3,050","$5,078","$2,486","$2,592",Delfos,"$2,592",,,,,USD,CONFIRMED,Emi
+,Noviembre,Philipp ,,Bayahibe,08/04/2026,22/04/2026,3,,"$11,070","$8,300","$2,770","$9,100","$3,021","$6,079",Lozada,"$6,079",,,,,USD,CONFIRMED,Cande
+,Septiembre,Piacentini Lago ,,Bayahibe,09/02/2026,19/02/2026,2,3,"$16,500","$16,500",$0,"$15,300","$5,295","$10,005",Lozada,"$10,005",,,,,USD,CONFIRMED,Jose
+,Octubre,Piñal,,Dubai,16/09/2026,27/09/2026,2,,"$13,140","$8,497","$4,643","$12,690","$10,318","$2,372",Lozada,,,,,,USD,CONFIRMED,Maxi - Naza
+,Agosto,Poudes,,Rio de Janeiro,01/03/2026,11/03/2026,5,,"$4,250","$3,702",$548,"$4,000","$2,350","$1,650",Lozada,"$1,650",,,,,USD,CONFIRMED,Jose
+,Octubre,Prestifilippo,,Punta Cana,06/03/2026,14/03/2026,2,,"$3,900","$2,800","$1,100","$3,453","$1,383","$2,070",Lozada,"$2,070",,,,,USD,CONFIRMED,Naza
+,Octubre,Quinteros,,Aruba,1/3/2026,15/03/26,,,"$2,860",$0,"$2,860","$2,803","$2,803",$0,Eurovips,,,,,,USD,CONFIRMED,Santi
+,Septiembre,Quinteros Salvatelli,,Bayahibe,26/05/2026,03/06/2026,2,2,"$5,800","$3,600","$2,200","$5,420","$3,240","$2,180",Lozada,"$2,180",,,,,USD,CONFIRMED,Jose
+,Septiembre,Ravaioli ,,Punta Cana,05/04/2026,14/04/2026,2,,"$3,660","$3,660",$0,"$3,310","$1,375","$1,935",Lozada,"$1,935",,,,,USD,CONFIRMED,Cande
+,Septiembre,Righi,daniagro_22@hotmail.com,Bayahibe,20/05/2026,30/05/2026,4,,"$7,000","$3,200","$3,800","$6,300","$2,920","$3,380",Lozada,"$3,380",,,,,USD,CONFIRMED,Naza
+,Julio,Rivada,,Punta Cana,13/02/2026,22/02/2026,5,,"$14,000","$12,500","$1,500","$10,644","$4,927","$5,717",Lozada,"$8,635",,,,,USD,CONFIRMED,Naza
+,Octubre,Rivero,claudiarivero45@gmail.com,Bayahibe,28/05/2026,07/06/2026,4,0,"$6,680","$4,963","$1,717","$6,040","$3,034","$3,006",Lozada,"$3,006",,,,,USD,CONFIRMED,Mica
+,Agosto,Romero,,Bayahibe,29/05/2026,06/06/2026,2,1,"$6,400","$3,500","$2,900","$5,842","$2,942","$2,900",Lozada,"$2,700",Universal,200,,,USD,CONFIRMED,Rama
+,Agosto,Ronchini ,,Cancun,19/01/2026,26/01/2026,2,,$300,$0,$300,$300,$0,$300,Lozada,"$1,696",,,,,USD,CONFIRMED,Jose
+,Septiembre,Rossi,,Panama,06/03/2026,16/03/2026,2,0,"$5,540","$5,540",$0,"$5,012","$2,098","$2,914",Lozada,"$2,914",,,,,USD,CONFIRMED,Mica - Jose
+,Noviembre,Rossi,,Pipa,21/01/2026,29/01/2026,2,,"$2,660","$2,660",$0,"$2,240","$1,439",$801,Lozada,$701,Universal,100,,,USD,CONFIRMED,Cande
+,Octubre,Ruani, alejoleproso74@gmail.com,Playa del Carmen,01/03//2026,10/03/2026,2,,"$3,800","$3,800",$0,"$3,465","$1,711","$1,754",Delfos,"$1,655",Universal,100,,,USD,CONFIRMED,Jose
+,Noviembre,Salinas ,,Punta Cana,08/04/2026,16/042026,2,,"$3,220","$2,000","$1,220","$2,785","$1,555","$1,230",Lozada,"$1,230",,,,,USD,CONFIRMED,Cande
+,Octubre,Salvatelli,,Bayahibe,27/05/2026,04/06/2026,2,1,"$4,700","$2,300","$2,400","$4,274","$2,162","$2,112",Delfos,"$2,112",,,,,USD,CONFIRMED,Jose
+,Noviembre,Sanchez ,sroberto@gmail.com,Canasvieiras,17/03/2026,24/03/2026,2,,"$1,960","$1,960",$0,"$1,697",$801,$896,Lozada,$896,,,,,USD,CONFIRMED,Naza
+,Julio,Santa Cruz Riilli,,Brasil,11/2/2026,19/02/2026,2,2,"$5,320","$5,320",$0,"$4,730","$2,328","$2,402",Lozada,"$2,573",,,,,USD,CONFIRMED,Cande
+,Noviembre,Schellino , andy.schellino@gmail.com,Bayahibe,24/06/2026,07/07/2026,2,,"$7,180","$2,000","$5,180","$5,596","$1,537","$4,059",Lozada,"$3,879",Universal,180,,,USD,CONFIRMED,Jose
+,Septiembre,Silvestre,,Maceio,22/01/2026,30/01/2026,6,,"$8,940","$8,940",$0,"$8,000","$7,738",$262,Universal,262,,,,,USD,CONFIRMED,Rama
+,Julio,Simean,,Bayahibe,19/04/2026,27/04/2026,3,,"$5,250","$3,000","$2,250","$4,600","$2,280","$2,320",Lozada,"$2,170",Universal,150,,,USD,CONFIRMED,Jose
+,Octubre,Simonella,farmaciasimonella@gmail.com,Porto de Galinhas,06/03/2026,14/03/2026,2,1,"$3,500","$1,800","$1,700","$3,190","$1,727","$1,463",Lozada,"$1,463",,,,,USD,CONFIRMED,Emi
+,Noviembre,Slavkes,,San Andres,07/04/2026,15/04/2026,2,,"$3,300","$1,600","$1,700","$3,011","$1,492","$1,519",Lozada,"$1,519",,,,,USD,CONFIRMED,Rama
+,Junio,Tejerizo,,Colombia,13/05/2026,21/05/2026,4,0,"$6,000","$6,000",$0,"$5,065","$3,468","$1,597",Delfos,"$1,597",,,,,USD,CONFIRMED,Mica
+,Noviembre,Testaferri,ltestaferri@gmail.com,Bayahibe,13/05/2026,21/05/2026,7,,"$10,620","$7,180","$3,440","$9,750","$5,323","$4,427",Delfos,"$4,427",,,,,USD,CONFIRMED,Jose
+,Mayo,Tomei ,,Playa del Carmen,08/02/2026,17/02/2026,2,0,"$2,980","$2,980",$0,"$2,734","$2,643",$91,Universal,90,,,,,USD,CONFIRMED,Mica
+,Octubre,Torres,leandrojaviertorres@hotmail.com,Mexico,22/03/2026,31/03/2026,4,0,"$11,580","$5,400","$6,180","$10,215","$4,266","$5,949",Delfos,"$5,949",,,,,USD,CONFIRMED,Mica
+,Noviembre,Torres ,martin torres1408@gmail.com,Bayahibe,08/04/2026,16/04/2026,2,1,"$5,380","$2,000","$3,380","$4,506","$1,606","$2,900",Lozada,"$2,900",,,,,USD,CONFIRMED,Naza
+,Noviembre,Torres ,,Bayahibe,11/04/2026,19/04/2026,4,2,"$8,700","$5,200","$3,500","$7,760","$3,986","$3,774",Delos,"$3,774",,,,,USD,CONFIRMED,Jose - Maxi
+,Agosto,Tossolini,,Bayahibe,28/02/2026,09/03/2026,2,,"$5,280","$5,280",$0,"$4,956","$2,283","$2,673",Lozada,"$2,573",Universal,100,,,USD,CONFIRMED,Emi
+,Marzo,Traslados Mossotti,,Rio de janeiro,14/08/25,21/08/25,,,$320,$248,$72,$307,$307,$0,Lozada,,,,,,USD,CONFIRMED,Santi
+,Octubre,Traverso,,Aruba,25/01/2026,02/02/2026,3,,"$13,900","$13,900",$0,"$12,904","$12,754",$150,Universal,150,,,,,USD,CONFIRMED,Santi
+,Septiembre,Tripiana ,,Playa del Carmen,06/04/2026,15/04/2026,2,1,"$6,200","$4,200","$2,000","$5,725","$3,437","$2,288",Delfos,"$2,288",,,,,USD,CONFIRMED,Emi
+,Agosto,Trivisonno,,Bayahibe,27/05/2026,03/06/2026,2,0,"$3,300","$3,100",$200,"$3,006","$1,592","$1,414",Lozada,"$1,655",,,,,USD,CONFIRMED,Mica - Jose
+,Septiembre,Vaccaroni ,,Bayahibe,07/03/2026,15/03/2026,,,"$15,275","$13,150","$2,125","$13,825","$5,869","$7,956",Lozada,"$7,956",,,,,USD,CONFIRMED,Pau
+,Noviembre,Valadez,,Playa del Carmen,10/04/2026,28/04/2026,3,,"$4,950","$2,400","$2,550","$4,401","$2,271","$2,130",Delfos,"$2,130",,,,,USD,CONFIRMED,Rama - Cande
+,Octubre,Valeri ,,Bayahibe,13/05/2026,20/05/2026,2,,"$3,340","$1,600","$1,740","$3,058","$1,517","$1,541",Lozada,"$1,541",,,,,USD,CONFIRMED,Rama
+,Noviembre,Veglio ,vegliomartin43@gmail.com,San Andres,04/02/2026,13/02/2026,2,,"$4,800","$4,800",$0,"$4,335","$2,313","$2,022",Lozada,"$1,922",Universal,100,,,USD,CONFIRMED,Jose
+,Noviembre,Verdelli,fran.bu12@gmail.com,crucero msc,13/03/2026,21/03/2026,2,,"$3,490","$3,490",$0,"$3,174","$1,000","$2,174",MSC,"$2,174",,,,,USD,CONFIRMED,Rama
+,Octubre,Veron,,Punta Cana,30/05/2026,06/06/2026,2,1,"$4,250","$2,500","$1,750","$3,930","$2,276","$1,654",Lozada,"$1,504",Universal,150,,,USD,CONFIRMED,Rama
+,Octubre,Wyngaard,,Punta Cana,02/04/2026,10/04/2026,2,1,"$4,720","$2,500","$2,220","$4,317","$2,214","$2,103",Lozada,"$2,103",,,,,USD,CONFIRMED,Naza
+,Noviembre,Zanotti,,Bayahibe,06/03/2026,14/03/2026,8,,"$18,960","$10,740","$8,220","$17,585","$7,170","$10,415",Delfos,"$10,415",,,,,USD,CONFIRMED,Cande
+,Septiembre,Zurbriggen,,Mexico,02/03/2026,15/03/2026,2,,"$5,940","$5,900",$40,"$5,261","$1,755","$3,506",Delfos,"$3,506",,,,,USD,CONFIRMED,Rama - Emi
+,Diciembre,Gallo,,Punta Cana,20/02/26,28/02/26,,,"$11,030","$5,400","$5,630","$10,001","$5,342","$4,659",Eurovips,"$4,659",,,,,USD,CONFIRMED,Rama - Emi
+,Diciembre,Sumerano,Cristian_lre_07@hotmail.com,Punta cana,8/4/2026,16/04,4,,"$6,600","$2,800","$3,800","$6,068","$2,745","$3,323",Eurovips,,,,,,USD,CONFIRMED,Cande
+,Diciembre,Jalit,,Aruba,10/5/2026,20/05/26,,,"$13,400","$3,500","$9,900","$11,868","$2,293","$9,575",Lozada,"$9,575",,,,,USD,CONFIRMED,Santi
+,Diciembre,Ramos,,Punta cana,20/02/26,28/02/26,,,"$3,050","$3,050",$0,"$2,748",$840,"$1,908",Lozada,"$1,862",Universal,45,,,USD,CONFIRMED,Santi
+,Diciembre,Gercek Boda 2,,Punta cana,05/06/2026,11/06/2026,,,"$12,810","$5,380","$7,430",,,$0,Eurovips,,,,,,USD,CONFIRMED,Santi
+,Diciembre,Tevas,,Bayahibe,22/03/26,29/03/26,,,"$5,100","$2,200","$2,900","$4,500","$1,418","$3,082",Lozada,"$3,082",,,,,USD,CONFIRMED,Santi
+,Diciembre,Acuña,,Mexico,10/4/2026,18/04/26,,,"$3,600","$2,500","$1,100","$3,108","$1,522","$1,586",Lozada,"$1,522",,,,,USD,CONFIRMED,Jose
+,Diciembre,Castelli,agustinacastellibastianelli@gmail.com,punta cana,24/04/2026,02/05,2,,"$3,200","$2,400",$800,"$2,890","$1,159","$1,731",Lozada,"$1,159",,,,,USD,CONFIRMED,Mica
+,Diciembre,Brustia,Gabrielbrustia@yahoo.com.ar,Punta Cana,24/04/2026,02/05,2,,"$3,200","$1,400","$1,800","$2,890","$1,159","$1,731",Lozada,"$1,159",,,,,USD,CONFIRMED,Cande
+,Diciembre,Giordano,Leandro2128@hotmail.com,Puerto Plata,06/03,13/03,3,,"$4,290","$3,402",$888,"$3,971","$2,307","$1,664",Lozada,"$2,307",,,,,USD,CONFIRMED,Cande
+,Diciembre,Flores,Rosanaflores_44@hotmail.com.ar,Punta Cana,29/04,07/05,2,,"$3,200","$1,400","$1,800","$2,624","$1,159","$1,465",Lozada,"$1,159",,,,,USD,CONFIRMED,Cande
+,Diciembre,Lingua,emilianolingua23@hotmail.com,Aruba,17/03,24/13,3,,"$5,400","$4,000","$1,400","$4,997","$2,027","$2,970",Delfos,"$2,027",,,,,USD,CONFIRMED,Cande
+,Diciembre,Favot,,Punta Cana,23/03/26,30/03/26,,,"$3,660","$1,600","$2,060","$3,355","$1,592","$1,763",Eurovips,"$1,763",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Sanchez,,Bayahibe,2/3/2026,09/03/26,,,"$2,020","$2,020",$0,"$1,795",$675,"$1,120",Lozada,$675,,,,,USD,CONFIRMED,Naza
+,Diciembre,Segovia,sandralissegovia@gmail.com,Maragogi,14/03,21/033,2,,"$2,580","$1,800",$780,"$2,296","$1,637",$659,Lozada,"$1,637",,,,,USD,CONFIRMED,Cande
+,Diciembre,Nuñez,agustina.remolins@hotmail.com,punta cana,13/05,21/05,2,2,"$4,880","$2,900","$1,980","$4,483","$2,615","$1,868",Delfos,"$2,615",,,,,USD,CONFIRMED,Mica
+,Diciembre,Bernasconi,,Punta Cana,21/04/26,29/04/26,,,"$5,100","$2,100","$3,000","$4,547","$2,127","$2,420",Lozada,"$2,127",,,,,USD,CONFIRMED,Naza
+,Diciembre,Passaglia,,Punta Cana,8/4/2026,16/04/26,,,"$3,640","$1,600","$2,040","$3,251","$1,307","$1,944",Delfos,"$1,307",,,,,USD,CONFIRMED,Naza
+,Diciembre,Romero,aco_ago@hotmail.com,playa del carmen,18/03,25/03,2,1,"$4,100","$4,100",$0,"$3,692","$1,878","$1,814",Delfos,"$1,878",,,,,USD,CONFIRMED,Mica
+,Diciembre,Gananopulo,,Punta Cana,26/04/26,06/05/26,,,"$2,800",,"$2,800","$2,615","$1,307","$1,308",Delfos,"$1,307",,,,,USD,CONFIRMED,Jose
+,Diciembre,Martelotto,,Cuba,8/4/2026,16/04/26,,,"$2,650","$1,600","$1,050","$2,397","$1,580",$817,Delfos,"$1,580",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Segers,Charliesegers@hotmail.com,Punta Cana,8/4/2026,16/04,2,,"$3,060","$1,600","$1,460","$2,779","$1,346","$1,433",Lozada,"$1,346",,,,,USD,CONFIRMED,Cande
+,Diciembre,Leopardo,alu.dl@hotmail.com.ar,Playa del Carmen,21/03,31/03,6,,"$10,440","$4,500","$5,940","$9,296","$3,530","$5,766",Delfos,"$3,530",,,,,USD,CONFIRMED,Cande
+,Diciembre,Hergender,,Punta Cana,23/03/26,30/03/26,,,"$3,550","$1,400","$2,150","$3,181","$1,308","$1,873",Eurovips,"$1,308",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Riccomi,,Miami,15/12/25,28/12/25,,,"$6,670","$5,059","$1,611","$6,529","$6,529",$0,Lozada,"$6,529",,,,,USD,CONFIRMED,Santi
+,Diciembre,Pietro,,Bayahibe,14/05,21/05,4,-,"$7,640","$4,000","$3,640","$7,000","$2,834","$4,166",Delfos,"$2,834",,,,,USD,CONFIRMED,Malena
+,Diciembre,Cavigliasso,,Punta Cana,13/05/26,20/05/26,,,"$3,850","$2,643","$1,207","$3,540","$2,077","$1,463",Eurovips,"$2,077",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Andrada,,Bayahibe,6/5/2026,14/05/26,,,"$3,160","$3,160",$0,"$2,861","$1,376","$1,485",Delfos,"$1,376",,,,,USD,CONFIRMED,Naza
+,Diciembre,España,carina_espana@hotmail.com,Punta Cana,29/04,07/05,3,,"$5,040","$4,140",$900,"$4,470","$2,063","$2,407",Delfos,"$2,407",,,,,USD,CONFIRMED,Emi di Vito
+,Diciembre,Bombino,loubombino11@gmail.com,porto de galinhas,1/4/2026,08/04,2,,"$2,300","$2,300",$0,"$1,960","$1,247",$713,Delfos,$713,,,,,USD,CONFIRMED,Mica
+,Diciembre,Amaru,mlauraferla@gmail.com,Maceio+maragogi,16/02,26/02,2,,"$2,840","$1,420","$1,420","$2,545","$2,545",$0,Delfos,,,,,,USD,CONFIRMED,Emi di vito
+,Diciembre,Toranzo,,Florianopolis,21/01/26,28/01/26,,,"$8,350","$8,350",$0,"$7,358","$7,058",$300,Assist Card,$300,,,,,USD,CONFIRMED,Jose
+,Diciembre,Melita,isabelmelita@gmail.com,bayahibe,12/4/2026,21/04,2,,"$3,840","$2,000","$1,840","$3,420","$1,470","$1,950",Delfos,"$1,950",,,,,USD,CONFIRMED,Mica
+,Diciembre,Jador,stellajador321@gmail.com,bayahibe,3/6/2026,11/6,5,-,"$9,200","$5,900","$3,300","$8,062","$3,323","$4,739",Delfos,"$4,739",,,,,USD,CONFIRMED,Malena
+,Diciembre,Ceaglio,,Barcelona,2/4/2026,14/04/26,,,"$1,980","$1,450",$530,"$1,785",$790,$995,Lozada,$995,,,,,USD,CONFIRMED,Rama
+,Diciembre,Di Marco,virginia_pellegrini@yahoo.com.ar,punta cana,29/04,07/05,2,1,"$4,200","$2,300","$1,900","$3,623","$1,919","$1,704",Lozada,"$1,704",,,,,USD,CONFIRMED,Mica
+,Diciembre,Perez, maflorenciaperez@outtlook.com,Arraial Do Cabo,26/02,05/03,2,,"$1,820","$1,820",$0,"$1,655",$665,$990,Delfos,$990,,,,,USD,CONFIRMED,Cande
+,Diciembre,D Alessandro,antodale@outlook.com,bayahibe,16/06,25/06,2,-,"$3,720","$1,800","$1,920","$3,375","$1,518","$1,857",Lozada,"$1,857",,,,,USD,CONFIRMED,Malena
+,Diciembre,Montederisia,lmontederisia@gmail.com,Punta Cana,05/03,13/04,2,,"$4,300","$2,150","$2,150","$3,857","$1,970","$1,887",Eurovips,"$1,887",,,,,USD,CONFIRMED,Cande
+,Diciembre,Serafini,,Buzios,8/2/2026,16/02/26,,,"$4,050","$4,050",$0,"$3,349","$1,235","$2,114",Lozada,"$2,114",,,,,USD,CONFIRMED,Santi
+,Diciembre,Cavanagh,lic.georginacavanagh@gmail.com,playa del carmen,19/04,28/04,2,,"$4,100","$2,000","$2,100","$3,630","$1,427","$2,203",Lozada,"$2,203",,,,,USD,CONFIRMED,Mica
+,Diciembre,Garino,,playa del carmen,18/03/26,25/03/26,,,"$3,880","$2,200","$1,680","$3,571","$1,836","$1,735",Lozada,"$1,735",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Zen,,Buzios,17/02/26,25/02/26,,,"$2,640","$2,640",$0,"$2,322","$2,272",$50,Universal,$50,,,,,USD,CONFIRMED,Rama
+,Diciembre,Marcaccini, jorgemarca45@gmail.com,Maceio,28/02,08/03,2,,"$2,460","$2,100",$360,"$2,241","$1,187","$1,054",Lozada,$974,Universal,80,,,USD,CONFIRMED,Jose
+,Diciembre,Lettieri,,Iguazu,16/04/26,19/04/26,,,"$3,320","$1,600","$1,720","$3,025","$1,540","$1,485",Eurovips,"$1,485",,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Joffre,,Florianopolis,25/12/25,02/01/26,,,$620,,$620,$661,$661,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Diciembre,Sciasci,,Santiago de Chile,29/03/26,04/04/26,,,"$1,020",$560,$460,$910,$518,$392,Delfos,$392,,,,,USD,CONFIRMED,Emi Roca
+,Diciembre,Zapata, analiarosa2017@gmail.com,Playa del carmen,26/06,04/07,2,,"$3,500","$2,000","$1,500","$3,138","$1,501","$1,637",Lozada,"$1,546",universal,90,,,USD,CONFIRMED,Jose
+,Diciembre,Alvear,,porto de galinhas,14/03/26,23/03/26,,,"$8,100","$8,100",$0,"$7,270","$1,449","$5,821",Lozada,"$5,720",Asisst CArd,100,,,USD,CONFIRMED,Santi
+,Diciembre,Beraldi,,Miami,20/03/26,28/03/26,,,"$4,635","$4,635",$0,"$4,290","$2,622","$1,668",Lozada,"$1,668",,,,,USD,CONFIRMED,Santi
+,Diciembre,Carrizo,,Bayahibe,13/05/26,21/05/26,,,"$6,780","$4,300","$2,480","$6,130","$2,719","$3,411",Lozada,"$3,411",,,,,USD,CONFIRMED,Naza
+,Diciembre,Anibaldi,aanibaldi@avalian.com,Bayahibe,17/06,25/06,2,,"$3,240","$1,600","$1,640","$2,920","$1,461","$1,459",Lozada,"$1,459",,,,,USD,CONFIRMED,Cande
+,Diciembre,Nardi,antonellanardi@hotmail.com,punta cana,29/04,07/05,2,,"$3,300","$2,000","$1,300","$2,928","$1,199","$1,729",Eurovips,"$1,729",,,,,USD,CONFIRMED,Mica
+,Diciembre,Settecasi,francosettecasi@gmail.com,punta cana,22/03,31/03,2,,"$4,580","$1,600","$2,980","$4,021","$1,307","$2,714",Eurovips,"$2,714",,,,,USD,CONFIRMED,Mica
+,Diciembre,Suarez,suarez98.jas@gmail.com,punta cana,25/03,02/04,2,,"$4,200","$2,000","$2,200","$3,640","$1,360","$2,280",Lozada,"$2,280",,,,,USD,CONFIRMED,Jose
+,Diciembre,Lorenzini,,Cuba,26/04,04/05,2,,"$3,240","$1,800","$1,440","$2,995","$1,632","$1,363",Delfos,"$1,363",,,,,USD,CONFIRMED,Cande
+,Diciembre,Raguseo,marianelaraguseo@yahoo.com.ar,Punta Cana,4/2/2026,12/02,2,,"$5,020","$5,020",$0,"$4,613","$2,682","$1,931",Lozada,"$1,831",Universal,100,,,USD,CONFIRMED,Emi Di Vito
+,Diciembre,Sanchez,,Bayahibe,6/5/2026,16/05/26,,,"$5,460","$2,000","$3,460","$4,956","$1,704","$3,252",Eurovips,"$3,252",,,,,USD,CONFIRMED,Rama
+,Diciembre,Gonzalez,m.eugenia_epe@hotmail.com,Punta Cana,11/2/2026,18/02,3,1,"$8,825","$8,825",$0,"$7,995","$3,563","$4,432",Eurovips,"$4,432",,,,,USD,CONFIRMED,Cande
+,Diciembre,Pedrocco,marti.pedrocco@gmail.com,maceio,17/02,25/02,8,,"$11,660","$11,660",$0,"$10,695","$6,602","$4,093",Lozada,"$4,093",,,,,USD,CONFIRMED,Mica
+,Diciembre,Perez,mauroperez9898@gmail.com,punta cana,22/03,31/03,2,,"$4,000","$2,000","$2,000","$3,638","$1,418","$2,220",Eurovips,"$2,220",,,,,USD,CONFIRMED,Mica
+,Diciembre,Artana,victoria.artana@gmail.com,playa del carmen,2/3/2026,09/03,2,-,"$4,140","$2,000","$2,140","$3,613","$1,516","$2,097",Delfos,"$2,097",,,,,USD,CONFIRMED,Malena
+,Diciembre,Ejmami, Turcoej99@gmail.com,bayahibe,20/02,27/02,2,1,"$7,660","$4,000","$3,660","$6,961","$2,966","$3,995",Delfos,"$3,995",,,,,USD,CONFIRMED,Jose
+,Diciembre,Fernandez,,porto de galinhas,22/02/26,03/03/26,,,"$2,340","$1,900",$440,"$2,093","$2,093",$0,Delfos,$0,,,,,USD,CONFIRMED,Rama
+,Diciembre,Orio,,Punta Cana,21/04/26,28/04/26,,,"$3,540","$1,500","$2,040","$3,190","$1,507","$1,683",Eurovips,"$1,683",,,,,USD,CONFIRMED,Emi roca
+,Diciembre,Borzatta,antonela_0805@hotmail.com,Brasil,12/3/2026,21/03,2,2,"$4,440","$2,220","$2,220","$3,970","$1,532","$2,438",Lozada,"$2,438",,,,,USD,CONFIRMED,Cande
+,Diciembre,Ruinato,,Bayahibe,20/01/26,29/01/26,,,"$7,640","$7,640",$0,"$6,931","$6,831",$100,Universal,$100,,,,,USD,CONFIRMED,Naza
+,Diciembre,Giardilli,,playa del carmen,5/4/2026,14/04/26,,,"$4,520","$3,800",$720,"$4,064","$1,523","$2,541",Lozada,"$2,541",,,,,USD,CONFIRMED,Rama
+,Diciembre,Mendez,marti.pedrocco@gmail.com,maceio,17/02,25/02,2,,"$2,840","$1,700","$1,140","$2,494","$1,371","$1,123",Lozada,"$1,123",,,,,USD,CONFIRMED,Mica
+,Diciembre,Olmedo,,Maceio ,21/02/26,01/03/26,,,"$2,270","$1,400",$870,"$2,077","$1,236",$841,Lozada,$841,,,,,USD,CONFIRMED,Santi
+,Diciembre,Cavallero,danielcavallero@hotmail.com.ar,Cartagena+san andres,3/2/2026,13/02,4,2,"$12,700","$12,700",$0,"$12,062","$9,782","$2,280",Lozada,"$2,280",,,,,USD,CONFIRMED,Emi di vito
+,Diciembre,Libonati,,Punta Cana,20/02/26,28/02/26,,,"$9,960","$9,960",$0,"$9,261","$4,221","$5,040",Eurovips,"$5,040",,,,,USD,CONFIRMED,Rama
+,Diciembre,Barbarroja,,Punta Cana,26/02/26,08/03/26,,,"$4,260","$4,260",$0,"$3,836","$1,548","$2,288",Delfos,"$2,288",,,,,USD,CONFIRMED,Naza
+,Diciembre,Correa,,Punta Cana,9/2/2026,17/02/26,,,"$6,480","$3,000","$3,480","$5,832","$2,682","$3,150",Lozada,"$3,150",,,,,USD,CONFIRMED,Santi
+,Diciembre,Abella,,Punta Cana,20/03/26,28/03/26,,,"$4,500","$2,600","$1,900","$4,009","$1,785","$2,224",Eurovips,"$2,224",,,,,USD,CONFIRMED,Naza
+,Diciembre,Bertinat,mbertinat@hotmail.com,bayahibe,20/05,28/05,4,,"$6,560","$3,805","$2,755","$6,031","$3,031","$3,000",Delfos,"$3,000",,,,,USD,CONFIRMED,Mica
+,Diciembre,Peretti,pauloperetti_7@hotmail.com,Maceio,28/02,08/03,5,,"$6,000","$6,000",$0,"$5,335","$3,462","$1,873",Lozada,"$1,873",,,,,USD,CONFIRMED,Emi di Vito
+,Diciembre,Olarrega,gimenaolarreaga@fcv.unr.edu.ar,punta cana,17/04,25/04,2,-,"$3,220","$2,510",$710,"$2,962","$1,515","$1,447",Lozada,"$1,447",,,,,USD,CONFIRMED,MAlena
+,Diciembre,Traghetti,,Buzios,1/3/2026,09/03/26,,,"$2,540","$1,200","$1,340","$2,292","$1,922",$370,Delfos,$370,,,,,USD,CONFIRMED,Emi Roca
+,Agosto,Estefanesco,Magaliestefanesco@hotmail.com,Porto de Galinha,22/04,30/04,5,2,"$10,440","$6,300","$4,140","$10,082","$5,595","$4,487",Lozada,"$4,487",,,,,USD,CONFIRMED,Cande
+,Octubre,Garcia,,Colombia,9/6/2026,16/06,2,,"$3,100","$3,100",$0,"$2,659","$1,537","$1,122",Lozada,"$1,122",,,,,USD,CONFIRMED,Jose
+,Octubre,Paolini,,Sydney,9/2/2026,25/02/26,,,$950,$510,$440,$588,$588,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Bonvecchi,,Miami,14/12/25,28/12/25,,,"$5,400","$2,200","$3,200","$4,939","$4,939",$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Noviembre,Angelini,,playa del carmen,15/05/26,23/05/26,,,"$14,150","$5,100","$9,050","$13,014","$7,385","$5,629",Delfos,"$5,180",Universal,450,,,USD,CONFIRMED,Santi
+,Enero,Motyluk (agrega a Schellino),andy.schellino@gmail.com,Bayahibe,24/06,07/07,3,,"$2,800",$840,"$1,960","$1,990",,"$1,990",Lozada,"$1,990",,,,,USD,CONFIRMED,Jose
+,Enero,Ortenzi,juli_ortenzi@hotmail.com,punta cana,4/3/2026,12/3,6,-,"$10,140","$5,400","$4,740","$9,927","$4,202","$5,725",Lozada,"$5,725",,,,,USD,CONFIRMED,Malena
+,Enero,Frenquelli,,Buzios,4/2/2026,15/02/26,,,"$2,880","$2,880",$0,"$2,572",,"$2,572",Lozada,"$2,572",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Abud,delfinaabud11@gmail.com,cabo frio,3/3/2026,12/03,2,-,"$2,010","$1,000","$1,010","$1,780",$974,$806,Delfos,$806,,,,,USD,CONFIRMED,Malena
+,Enero,Mangoni,amilcardiego56@gmail.com,punta cana,23/03,31/03,2,-,"$3,400","$2,100","$1,300","$3,083","$1,228","$1,855",Lozada,"$1,855",,,,,USD,CONFIRMED,Malena
+,Enero,Tetaz,,punta cana,12/4/2026,19/04/26,,,"$4,040","$4,000",$40,"$3,683","$2,402","$1,281",Lozada,"$1,281",,,,,USD,CONFIRMED,Naza
+,Enero,Beraldi Serventich,,San Pablo,28/01/26,01/02/26,,,$340,$87,$253,$287,$287,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Perucca,,playa del carmen,17/03/26,25/03/26,,,"$3,360","$1,360","$2,000","$2,941","$1,278","$1,663",Delfos,"$1,663",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Espertino,sofiespe15@gmail.com,dominicana,28/04,09/05,2,,"$6,180","$2,600","$3,580","$5,609","$1,983","$3,626",Lozada,"$3,626",,,,,USD,CONFIRMED,Mica
+,Enero,Cicchilitti,victoria.cichillitti@gmail.com,bayahibe,19/05,27/05,2,,"$3,380","$2,690",$690,"$3,069","$1,583","$1,486",Delfos,"$1,486",,,,,USD,CONFIRMED,Mica
+,Enero,Timon,,Curacao,20/03/26,30/03/26,,,"$6,280","$6,280",$0,"$5,198","$1,361","$3,837",Eurovips,"$3,837",,,,,USD,CONFIRMED,Rama
+,Enero,Incremona,Silincremona@yahoo.com.ar,Aruba,3/5/2026,11/05,4,,"$5,360","$3,858","$1,502","$4,940","$2,625","$2,315",Delfos,"$2,315",,,,,USD,CONFIRMED,Cande
+,Enero,Laserna,,Rio de janeiro,7/2/2026,15/02/26,,,"$3,570","$3,570",$0,"$3,165","$1,801","$1,364",Lozada,"$1,364",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Russemberger,amelia_russemberger@yahoo.com.ar,imbassai,18/03,26/03,2,,"$3,900","$2,000","$1,900","$3,206",$834,"$2,372",Delfos,"$2,372",,,,,USD,CONFIRMED,Mica
+,Enero,Daulon,camiladaulon@hotmail.com,punta cana,28/02,08/03,2,,"$4,200","$4,200",$0,"$3,755","$1,463","$2,292",Delfos,"$2,292",,,,,USD,CONFIRMED,Emi di vito
+,Enero,Ferreyra,,Porto de Galinhas,15/02/26,28/02/26,,,"$4,650","$4,650",$0,"$4,172","$1,710","$2,462",Lozada,"$2,462",,,,,USD,CONFIRMED,Rama
+,Enero,Marzaz,julietamarzaz88@gmail.com,punta cana,23/03,31/03,4,,"$8,600","$2,300","$6,300","$7,603","$3,307","$4,296",Delfos,"$4,296",,,,,USD,CONFIRMED,Mica
+,Enero,Casañas,,Porto Seguro,8/3/2026,15/03/26,,,"$1,200","$1,200",$0,$955,,$955,Delfos,$955,,,,,USD,CONFIRMED,Rama
+,Enero,Lo Bianco,,Miami,1/2/2026,10/02/26,,,$870,$640,$230,$800,$800,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Rodriguez,paularodriguezpinget@gmail.com,puerto plata,3/3/2026,10/03,1,,"$1,950","$1,170",$780,"$1,688",$755,$933,Lozada,$933,,,,,USD,CONFIRMED,Emi di Vito
+,Enero,Melin Lancelotti,,Bayahibe,30/07/26,07/08/26,,,"$9,400","$4,725","$4,675","$8,495","$3,294","$5,201",Eurovips,"$5,201",,,,,USD,CONFIRMED,Santi
+,Enero,D angelo,dangelomf23@gmail.com,Punta Cana,31/05,09/06,2,,"$3,400","$1,900","$1,500","$2,814","$1,417","$1,397",Eurovips,"$1,397",,,,,USD,CONFIRMED,Cande
+,Enero,Mana,manaluciano73@gmail.com,aruba,14/06,22/06,2,2,"$5,080","$3,000","$2,080","$4,501","$2,378","$2,123",Eurovips,"$2,123",,,,,USD,CONFIRMED,Mica
+,Enero,Viola,,Bayahibe,17/06/26,24/06/26,,,"$2,900","$1,600","$1,300","$2,619","$1,517","$1,102",Eurovips,"$1,102",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Bernachea,nbernachea@hotmail.com,punta cana,29/04,07/05,2,,"$3,800","$2,300","$1,500","$3,341","$1,481","$1,860",Delfos,"$1,860",,,,,USD,CONFIRMED,Emi di Vito
+,Enero,Ferraris,rocio.luraschi@gmail.com,Buzios,23/03,30/03,2,,"$2,000","$1,600",$400,"$1,778","$1,001",$777,Lozada,$777,,,,,USD,CONFIRMED,Cande
+,Enero,Gutierrez,,Cabo Frio,7/2/2026,14/02/26,,,"$12,100","$8,250","$3,850","$11,247","$7,383","$3,864",Delfos,"$3,864",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Beraldi,,Madrid,1/6/2026,07/06/26,,,$115,,$115,$89,$89,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Levit,,Bangkok,18/12/25,10/01/26,,,$230,,$230,$200,,$200,Tucano,$200,,,,,USD,CONFIRMED,Santi
+,Enero,Pagura,candelapagura@hotmail.com,Cuba,5/3/2026,15/03,2,,"$3,600","$3,600",$0,"$3,263","$1,872","$1,391",Delfos,"$1,391",,,,,USD,CONFIRMED,Emi di Vito
+,Enero,Trejo, alejandratrejo1971@gmail.com,Playa del carmen,30/03,06/04,3,,"$4,950","$2,100","$2,850","$4,409","$1,943","$2,466",Lozada,"$2,466",,,,,USD,CONFIRMED,Jose
+,Enero,Agulo,,Punta Cana,10/1/2026,15/01/26,,,$860,$560,$300,$803,$803,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Entile,,buzios+ rio de janeiro,10/3/2026,20/03,2,2,"$6,100","$2,700","$3,400","$5,550","$2,402","$3,148",Lozada,"$3,148",,,,,USD,CONFIRMED,Malena
+,Enero,Decroce,,Crucero msc fantasia,5/3/2026,13/03/2026,3,,"$5,670","$3,000","$2,670","$4,130","$4,130",$0,MSC,$0,,,,,USD,CONFIRMED,Jose
+,Enero,Beraldi,,Miami,1/2/2026,10/02/26,,,"$1,120",,"$1,120","$1,005","$1,005",$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Ruiz,,Playa del Carmen,10/3/2026,17/03/26,,,"$4,500","$2,700","$1,800","$4,027","$1,937","$2,090",Lozada,"$2,090",,,,,USD,CONFIRMED,Jose
+,Enero,Closa,,Maragogi,21/03/26,29/03/26,,,"$4,800","$2,400","$2,400","$4,537","$2,408","$2,129",Eurovips,"$2,129",,,,,USD,CONFIRMED,Santi
+,Enero,Basso,,Aruba,28/04/26,07/05/26,,,"$5,750","$3,000","$2,750","$5,208","$2,599","$2,609",Lozada,"$2,609",,,,,USD,CONFIRMED,Santi
+,Enero,Tejerizo,ptejerizo@hotmail.com,bayahibe,20/11,28/11,2,,"$3,000","$1,400","$1,600","$2,773","$1,517","$1,256",Lozada,"$1,256",,,,,USD,CONFIRMED,Mica
+,Enero,Reale,,Punta Cana,27/03/26,02/04/26,,,"$2,320",$500,"$1,820","$1,957",,"$1,957",Lozada,"$1,957",,,,,USD,CONFIRMED,Santi
+,Enero,Bawul,,Bayahibe,7/6/2026,15/06,2,,"$4,560","$1,410","$3,150","$4,141","$1,677","$2,464",Eurovips,"$2,464",,,,,USD,CONFIRMED,Jose
+,Enero,Turner,,Hawaii,25/01/26,31/01/26,,,"$3,800",,"$3,800","$3,675","$3,675",$0,Eurovips,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Ayala,Julietayala378@gmail.com,bayahibe,11/5/2026,18/05,3,,"$4,650","$2,790","$1,860","$4,024","$2,366","$1,658",Delfos,"$1,658",,,,,USD,CONFIRMED,Emi Di vito
+,Enero,SAndilo,,Bayahibe,5/2/2026,15/02/26,,,$150,,$150,$114,,$114,Lozada,$114,,,,,USD,CONFIRMED,Santi
+,Enero,Zanchetta,,Maragogi,15/04/26,24/04/26,,,"$4,860","$1,200","$3,660","$4,296",$934,"$3,362",Lozada,"$3,362",,,,,USD,CONFIRMED,Rama
+,Enero,Bravo,bravostefann@gmail.com,New York,23/03,31/03,2,,"$3,120","$1,800","$1,320","$2,931","$1,641","$1,290",Lozada,"$1,290",,,,,USD,CONFIRMED,Cande
+,Enero,Moscetta,,Playa del Carmen,21/04/26,28/04/26,,,"$3,460","$1,500","$1,960","$3,125","$1,362","$1,763",Lozada,"$1,763",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Ramati,,Playa del Carmen,29/04/26,07/05/26,,,"$3,180",,"$3,180","$2,922","$1,572","$1,350",Lozada,"$1,350",,,,,USD,CONFIRMED,Rama
+,Enero,Kuzyk,adrianak1250@gmail.com,san francisco + los angeles,23/03,03/04,3,,"$9,000","$4,500","$4,500","$8,411","$4,720","$3,691",Delfos,"$3,691",,,,,USD,CONFIRMED,Mica
+,Enero,Cammi,Carolinacammi@hotmail.com,Maragogi,6/5/2026,14/05,2,1,"$3,330","$1,800","$1,530","$3,050","$1,420","$1,630",Lozada,"$1,630",,,,,USD,CONFIRMED,Cande
+,Enero,Gonzalez,msgonzalez2103@icloud.com,punta cana ,22/03,31/03,6,,"$11,520","$3,500","$8,020","$10,742","$4,826","$5,916",Eurovips,"$5,916",,,,,USD,CONFIRMED,Mica
+,Enero,Cavigliasso,,Punta Cana,13/05/26,30/05/26,,,"$3,240","$2,100","$1,140","$2,765","$1,499","$1,266",Eurovips,"$1,266",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Imperaile,,Punta Cana,4/3/2026,12/03/26,,,"$5,520","$3,000","$2,520","$5,032","$2,372","$2,660",Lozada,"$2,660",,,,,USD,CONFIRMED,Rama
+,Enero,Mc Garell,,Miami,13/02/26,20/02/26,,,"$8,540",,"$8,540","$8,173","$8,173",$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Mc Garell,,Miami,22/03/26,30/03/26,,,"$1,190",,"$1,190","$1,165","$1,165",$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Beraldi,,Miami,13/02/26,20/02/26,,,$320,,$320,,,$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Turner,,Hawaii,5/1/2026,10/01/26,,,$250,,$250,$136,$136,$0,Eurovips,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Rossetti,rograan@hotmail.com,Mexico,08/04,21/04,,,"$4,620","$2,600","$2,020","$4,143","$2,240","$1,903",Eurovips,"$1,903",,,,,USD,CONFIRMED,Cande
+,Enero,Carnevale,mfercarnavale@gmail.com,punta cana,12/3/2026,21/03,2,,"$3,940","$3,130",$810,"$3,665","$1,731","$1,934",Eurovips,"$1,934",,,,,USD,CONFIRMED,Mica
+,Enero,Carosso,alxpagg@gmail.com,Bayahibe,24/06,01/07,2,,"$3,560","$1,900","$1,660","$3,100","$1,560","$1,540",Lozada,"$1,540",,,,,USD,CONFIRMED,Jose
+,Enero,Cina,,Mexico,10/3/2026,20/03/26,,,"$6,160",,"$6,160","$5,501","$1,721","$3,780",Lozada,"$3,780",,,,,USD,CONFIRMED,Rama
+,Enero,Moya,,Isla San Andres,25/01/26,30/01/26,,,$595,$595,$0,$521,,$521,Lozada,$521,,,,,USD,CONFIRMED,Santi
+,Enero,Albornoz,mpaulina.albornoz1@gmail.com,Rio de Janeiro,4/4/2026,11/04,2,,"$1,900","$1,200",$700,"$1,755","$1,025",$730,Lozada,$730,,,,,USD,CONFIRMED,Cande
+,Enero,Mengarelli,bassonicolas43@gmail.com,cuba,15/04,23/04,3,,"$4,250","$4,250",$0,"$3,977","$2,866","$1,111",Delfos,"$1,111",,,,,USD,CONFIRMED,Mica
+,Enero,Pereyra,Evelyn-pereyra@hotmail.com,Punta Cana,11/3/2026,19/03,2,,"$4,240","$2,050","$2,190","$3,765",,"$3,765",Eurovips,"$3,765",,,,,USD,CONFIRMED,Cande
+,Enero,Laure,,Bayahibe,22/05,30/05,2,,"$3,400","$1,800","$1,600","$3,038","$1,560","$1,478",Delfos,"$1,478",,,,,USD,CONFIRMED,Jose
+,Enero,Coca,ariel.lkd@hotmail.ces,new york,10/9/2026,22/09,4,,"$14,120","$5,650","$8,470","$12,773","$4,714","$8,059",Delfos,"$8,059",,,,,USD,CONFIRMED,Mica
+,Enero,Gutierrez,,Cabo Frio,7/2/2026,14/02/2026,4,,"$5,150","$5,150",$0,"$4,463","$3,661",$802,Lozada,$802,,,,,USD,CONFIRMED,Jose
+,Enero,Biagi,,Bayahibe,10/9/2026,18/09/26,,,"$14,580","$7,200","$7,380","$13,241","$3,256","$9,985",Eurovips,"$9,985",,,,,USD,CONFIRMED,Santi
+,Enero,Remision Beraldi Finalissima,,Qatar,20/03/26,28/03/26,,,"$1,280",,"$1,280","$1,182","$1,182",$0,Lozada,$0,,,,,USD,CONFIRMED,Santi
+,Enero,Rodriguez Nieves,,new york,30/03/26,17/04/26,,,"$3,100","$3,100",$0,"$2,795",,"$2,795",Eurovips,"$2,795",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Rios,,Bayahibe,11/4/2026,19/04/2026,2,,"$4,400","$2,200","$2,200","$3,730",,"$3,730",Eurovips,"$1,760",Delfos,1970,,,USD,CONFIRMED,Jose
+,Enero,Raparo,,Cuba,4/12/2026,08/12/26,,,"$3,650","$1,800","$1,850","$3,340",,"$3,340",Eurovips,"$3,340",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Favot cambio hotel,,Punta Cana,23/03/26,30/03/26,,,$160,,$160,$110,,$110,Eurovips,$110,,,,,USD,CONFIRMED,Emi Roca
+,Enero,Hergerender,,Punta Cana,23/03/26,30/03/26,,,$290,,$290,$200,,$200,Tucano,$200,,,,,USD,CONFIRMED,Emi Roca
+,Enero,Aereo Emi,,Dublin,25/03/26,25/03/26,,,$670,$670,$0,$670,,$670,Eurovips,$670,,,,,USD,CONFIRMED,Emi
+,Enero,Ronchini,,Cancun,18/01/2026,25/01/2026,,,$300,,$300,$300,,$300,Lozada,$300,,,,,USD,CONFIRMED,Jose
+,Enero,Lancellotti,paulancellotti@gmail.com,Bayahibe,27/11,5/12,2,,"$5,160","$2,600","$2,560","$4,630",,"$4,630",Eurovips,"$4,630",,,,,USD,CONFIRMED,Cande
+,Enero,Chavez,,Bayahibe,24/06/2026,01/07/2026,2,,"$3,560","$1,900","$1,660","$3,080",,"$3,080",Eurovips,"$3,080",,,,,USD,CONFIRMED,Jose
+,Enero,Benitez,dbenitezcastello@gmail.com,Aruba,31/05,09/06,2,,"$3,460","$1,400","$2,060","$2,980",,"$2,980",Eurovips,"$2,980",,,,,USD,CONFIRMED,Cande
+,Enero,Garavano,,Buzios,21/02/26,07/03/26,,,"$3,900","$1,400","$2,500","$3,495",,"$3,495",Eurovips,"$3,495",,,,,USD,CONFIRMED,Santi
+,Enero,Ybalo,ingridybalo@hotmail.com,Mexico,9/4/2026,19/04,4,,"$4,190","$3,490",$700,"$4,047",,"$4,047",Eurovips,"$4,047",,,,,USD,CONFIRMED,Cande
+,Enero,Iachini,,Madrid,3/10/2026,25/10/26,,,"$1,310","$1,310",$0,"$1,260",,"$1,260",Eurovips,"$1,260",,,,,USD,CONFIRMED,Naza
+,Enero,Scalona,,Madrid,30/09/26,18/10/26,,,"$1,440","$1,440",$0,"$1,393",,"$1,393",Eurovips,"$1,393",,,,,USD,CONFIRMED,Naza
+,Enero,Ramirez,rodymas@hotmail.com,dominicana,8/3/2026,15/03,2,,"$4,640","$2,320","$2,320","$4,090",,"$4,090",Eurovips,"$4,090",,,,,USD,CONFIRMED,Mica
+,Enero,Gallardo,jesaibarra@hotmail.com,punta cana,13/05,23/05,2,,"$4,580","$2,300","$2,280","$3,650",,"$3,650",Eurovips,"$3,650",,,,,USD,CONFIRMED,Mica
+,Enero,Hoteles Cortada,,Nueva York,4/5/2026,12/05/26,,,"$1,300",$680,$620,"$1,150",,"$1,150",Delfos,"$1,150",,,,,USD,CONFIRMED,Mica
+,Enero,Ustarez,,San Andres,16/04/26,24/04/26,,,"$3,520","$1,800","$1,720","$3,210",,"$3,210",Eurovips,"$3,210",,,,,USD,CONFIRMED,Naza
+,Enero,Bartolelli,,cayo santa maria,6/5/2026,14/05/2026,6,,"$8,700","$5,880","$2,820","$8,350",,"$8,350",Eurovips,"$8,350",,,,,USD,CONFIRMED,Jose
+,Enero,Rodriguez Nieves,,new york,30/03/26,17/04/26,,,"$4,950","$4,950",$0,"$4,490",,"$4,490",Eurovips,"$4,490",,,,,USD,CONFIRMED,Emi Roca
+,Enero,Zanni,florenciaceirano@hotmail.com,Aruba,10/6/2026,17/06/2026,2,2,"$8,100","$2,850","$5,250",,,"$7,276",Eurovips,"$7,276",,,,,USD,CONFIRMED,Jose
+,Enero,Cifre,Noeliacifre@yahoo.com.ar,Aruba,10/6/2026,17/06/2026,2,2,"$8,100","$2,850","$5,250",,,"$7,276",Eurovips,"$7,276",,,,,USD,CONFIRMED,Jose
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,Lozada,,,,,,,,

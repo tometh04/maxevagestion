@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { generateAllAlerts, type AlertGenerationSettings } from "@/lib/alerts/generate"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 
 /**
  * Endpoint para cron jobs - Generar todas las alertas
@@ -12,15 +12,9 @@ import { createServerClient } from "@/lib/supabase/server"
  */
 export async function POST(request: Request) {
   try {
-    // Verificar autorización
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
-    const vercelCronSecret = request.headers.get("x-vercel-cron-secret")
-
-    const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
-    const hasValidToken = authHeader === `Bearer ${cronSecret}`
-
-    if (!isVercelCron && !hasValidToken && cronSecret) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
@@ -28,7 +22,8 @@ export async function POST(request: Request) {
     let alertSettings: AlertGenerationSettings | undefined
 
     try {
-      const supabase = await createServerClient()
+      // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.
+      const supabase = createAdminClient()
 
       // Obtener la primera agencia con settings (normalmente hay una sola)
       const { data: settings } = await (supabase as any)
@@ -58,9 +53,6 @@ export async function POST(request: Request) {
           upcomingTripEnabled: upcomingTrip?.enabled ?? true,
         }
 
-        console.log("📋 Alert settings loaded from DB:", JSON.stringify(alertSettings))
-      } else {
-        console.log("📋 No operation_settings found, using defaults")
       }
     } catch (settingsError) {
       console.error("Error loading alert settings, using defaults:", settingsError)

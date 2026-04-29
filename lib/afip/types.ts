@@ -217,9 +217,13 @@ export interface Invoice {
   receptor_condicion_iva?: CondicionIVA
   
   // Montos
+  amount_entry_mode?: 'NET' | 'FINAL'
   imp_neto: number
   imp_iva: number
   imp_total: number
+  imp_tot_conc?: number
+  imp_op_ex?: number
+  imp_trib?: number
   moneda: string
   cotizacion: number
   
@@ -257,6 +261,7 @@ export interface InvoiceItem {
   // IVA
   iva_id: TipoIVA
   iva_porcentaje: number
+  tax_treatment?: 'GRAVADO' | 'EXENTO' | 'NO_GRAVADO'
   iva_importe: number
   
   total: number

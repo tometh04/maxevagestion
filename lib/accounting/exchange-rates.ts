@@ -4,6 +4,7 @@
  * Maneja la obtención y gestión de tasas de cambio para conversión de monedas
  */
 
+import { cache } from "react"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
@@ -69,13 +70,16 @@ export async function getExchangeRate(
 }
 
 /**
- * Obtener la tasa de cambio más reciente disponible
+ * Obtener la tasa de cambio más reciente disponible.
+ * Wrappeada con React.cache: distintos supabase clients (= distintos users)
+ * NO comparten cache; misma instancia + mismo par currency = 1 sola query
+ * por request.
  */
-export async function getLatestExchangeRate(
+export const getLatestExchangeRate = cache(async (
   supabase: SupabaseClient<Database>,
   fromCurrency: "USD" = "USD",
   toCurrency: "ARS" = "ARS"
-): Promise<number | null> {
+): Promise<number | null> => {
   const { data, error } = await (supabase.from("exchange_rates") as any)
     .select("rate")
     .eq("from_currency", fromCurrency)
@@ -91,6 +95,56 @@ export async function getLatestExchangeRate(
   }
 
   return parseFloat(data.rate)
+})
+
+/**
+ * Obtener exchange rate con fallback seguro.
+ * Intenta: 1) tasa por fecha, 2) tasa más reciente, 3) FALLBACK_RATE con warning visible.
+ * Usar esta función en vez de hardcodear 1450 en cada API route.
+ */
+/**
+ * Default fallback exchange rate USD→ARS when no rate is available in the database.
+ * Used across API routes as a last-resort value.
+ *
+ * Prioridad:
+ *   1. `USD_ARS_EMERGENCY_RATE` env var (preferido — permite ajustar sin deploy)
+ *   2. Constante hardcodeada (último recurso, aprox. mercado 2026)
+ *
+ * IMPORTANTE: si termina usándose el fallback, se loguea un 🚨 con alta visibilidad.
+ * Esto indica que falta cargar tasas en la tabla `exchange_rates`.
+ */
+const parsedEnvRate = Number(process.env.USD_ARS_EMERGENCY_RATE)
+export const DEFAULT_USD_ARS_FALLBACK_RATE =
+  Number.isFinite(parsedEnvRate) && parsedEnvRate > 0 ? parsedEnvRate : 1500
+
+const FALLBACK_RATE = DEFAULT_USD_ARS_FALLBACK_RATE
+let _lastFallbackWarning = 0
+
+export async function getExchangeRateWithFallback(
+  supabase: SupabaseClient<Database>,
+  date: Date | string,
+  context: string = "unknown"
+): Promise<{ rate: number; source: "exact" | "latest" | "fallback" }> {
+  // 1) Tasa exacta por fecha
+  const exactRate = await getExchangeRate(supabase, date)
+  if (exactRate) {
+    return { rate: exactRate, source: "exact" }
+  }
+
+  // 2) Tasa más reciente
+  const latestRate = await getLatestExchangeRate(supabase)
+  if (latestRate) {
+    console.warn(`⚠️ [${context}] No hay tasa de cambio para ${typeof date === "string" ? date : date.toISOString().split("T")[0]}, usando última disponible: ${latestRate}`)
+    return { rate: latestRate, source: "latest" }
+  }
+
+  // 3) Fallback hardcodeado — loguear con alta visibilidad (máximo 1 vez por minuto para no spamear)
+  const now = Date.now()
+  if (now - _lastFallbackWarning > 60000) {
+    console.error(`🚨 [${context}] NO HAY TASAS DE CAMBIO EN LA BASE DE DATOS. Usando fallback de emergencia: ${FALLBACK_RATE}. ¡Cargar tasas de cambio urgente!`)
+    _lastFallbackWarning = now
+  }
+  return { rate: FALLBACK_RATE, source: "fallback" }
 }
 
 /**

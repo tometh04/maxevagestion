@@ -34,7 +34,7 @@ export async function GET() {
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
     // Query - simplificada
-    const { data: schemes, error } = await (supabase.from("commission_schemes") as any)
+    const { data: schemes, error } = await (supabase.from("commission_rules") as any)
       .select(`*`)
       .in("agency_id", agencyIds)
       .eq("is_active", true)
@@ -88,13 +88,13 @@ export async function POST(request: Request) {
 
     // Si es default, quitar default de otros
     if (validatedData.is_default) {
-      await (supabase.from("commission_schemes") as any)
+      await (supabase.from("commission_rules") as any)
         .update({ is_default: false })
         .eq("agency_id", agencyIds[0])
     }
 
     // Crear esquema
-    const { data: scheme, error } = await (supabase.from("commission_schemes") as any)
+    const { data: scheme, error } = await (supabase.from("commission_rules") as any)
       .insert({
         agency_id: agencyIds[0],
         ...validatedData,

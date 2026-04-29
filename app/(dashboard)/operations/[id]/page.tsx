@@ -1,5 +1,6 @@
 import { getCurrentUser, getUserAgencies } from "@/lib/auth"
-import { createServerClient } from "@/lib/supabase/server"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
 
@@ -25,7 +26,8 @@ export default async function OperationDetailPage({
       operation_customers(
         *,
         customers:customer_id(*)
-      )
+      ),
+      operation_operators(*, operators:operator_id(id, name))
     `)
     .eq("id", id)
     .single()
@@ -39,7 +41,10 @@ export default async function OperationDetailPage({
 
   // Check permissions
   const userRole = user.role as string
-  if (userRole === "SELLER" && op.seller_id !== user.id) {
+  const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
+  const operationAccessScope = resolveOperationAccessScope(user, op, agencyIds)
+
+  if (!operationAccessScope) {
     notFound()
   }
 
@@ -50,17 +55,21 @@ export default async function OperationDetailPage({
   const { operation_customers, ...operationWithoutCustomers } = op
 
   // Get documents (de la operación Y del lead asociado si existe)
-  const { data: opDocs } = await supabase
+  // Usar admin client porque los documentos se insertan con service role (bypasa RLS)
+  // y el anon client no puede leerlos. El acceso del usuario ya fue verificado arriba.
+  const adminClient = createAdminClient()
+
+  const { data: opDocs } = await adminClient
     .from("documents")
     .select("*")
     .eq("operation_id", id)
     .order("uploaded_at", { ascending: false })
-  
+
   const documents: Array<any> = opDocs ? [...opDocs] : []
-  
+
   // Si la operación tiene un lead asociado, traer también sus documentos
   if (op.lead_id) {
-    const { data: leadDocs } = await supabase
+    const { data: leadDocs } = await adminClient
       .from("documents")
       .select("*")
       .eq("lead_id", op.lead_id)
@@ -97,7 +106,23 @@ export default async function OperationDetailPage({
   // Get operation services (servicios adicionales: asiento, transfer, visa, etc.)
   const { data: operationServices } = await (supabase
     .from("operation_services") as any)
-    .select("id, service_type, name, price, cost, currency, generates_commission")
+    .select("id, service_type, description, operator_id, operator_payment_id, sale_amount, cost_amount, sale_currency, cost_currency, generates_commission, operators:operator_id(id, name)")
+    .eq("operation_id", id)
+    .order("created_at", { ascending: true })
+
+  // Get linked operator debts to keep operator selector aligned with payable breakdown
+  const { data: operatorPayments } = await (supabase
+    .from("operator_payments") as any)
+    .select("id, operator_id, amount, paid_amount, status, operators:operator_id(id, name)")
+    .eq("operation_id", id)
+    .order("created_at", { ascending: true })
+
+  // Get operators assigned to the operation (may include operators without operator_payment)
+  // Needed so the "Pagar a operador" dialog can list ALL assigned operators,
+  // not only the ones that already have a pending operator_payment.
+  const { data: operationOperators } = await (supabase
+    .from("operation_operators") as any)
+    .select("operator_id, operators:operator_id(id, name)")
     .eq("operation_id", id)
     .order("created_at", { ascending: true })
 
@@ -149,8 +174,12 @@ export default async function OperationDetailPage({
       sellers={sellers}
       operators={operators}
       userRole={userRole}
+      operationAccessScope={operationAccessScope}
+      canAddServicesOnAgencyOperations={Boolean(user.can_add_services_on_agency_operations)}
       commissionRecords={commissionRecords || []}
       operationServices={operationServices || []}
+      operatorPayments={operatorPayments || []}
+      operationOperators={operationOperators || []}
     />
   )
 }

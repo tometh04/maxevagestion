@@ -11,7 +11,7 @@ export default async function OperationsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Operaciones</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Operaciones</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a operaciones</p>
         </div>
       </div>
@@ -48,9 +48,14 @@ export default async function OperationsPage() {
       operators={(operators || []).map((o: any) => ({ id: o.id, name: o.name }))}
       userRole={user.role}
       userId={user.id}
+      canViewAgencyOperationsSupport={Boolean(user.can_view_agency_operations_support)}
       userAgencyIds={agencies.map((a) => a.id)}
       defaultAgencyId={agencies[0]?.id}
-      defaultSellerId={user.role === "SELLER" ? user.id : undefined}
+      defaultSellerId={
+        user.role === "SELLER" && !user.can_view_agency_operations_support
+          ? user.id
+          : undefined
+      }
     />
   )
 }

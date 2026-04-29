@@ -10,8 +10,6 @@ export const runtime = 'nodejs' // Asegurar que use Node.js runtime
 
 export async function POST(request: Request) {
   const startTime = Date.now()
-  console.log(`[Trello Sync] Iniciando sincronización a las ${new Date().toISOString()}`)
-  
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
@@ -22,8 +20,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta agencyId" }, { status: 400 })
     }
     
-    console.log(`[Trello Sync] Agency ID: ${agencyId}, Force Full Sync: ${forceFullSync}`)
-
     // Get Trello settings
     const { data: trelloSettings } = await supabase
       .from("settings_trello")
@@ -39,16 +35,10 @@ export async function POST(request: Request) {
     const lastSyncAt = settings.last_sync_at
     const isIncrementalSync = !forceFullSync && lastSyncAt
 
-    console.log(`🔄 Iniciando sincronización ${isIncrementalSync ? 'incremental' : 'completa'}`)
-    if (isIncrementalSync) {
-      console.log(`📅 Última sincronización: ${lastSyncAt}`)
-    }
-
     // Obtener solo tarjetas activas (no archivadas) con idList para saber en qué lista están
     // Para sincronización incremental, obtenemos todas las cards pero filtraremos por dateLastActivity
     const cardsUrl = `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList`
 
-    console.log(`[Trello Sync] Obteniendo cards de Trello...`)
     const cardsResponse = await fetch(cardsUrl, {
       signal: AbortSignal.timeout(30000) // Timeout de 30s para obtener cards
     })
@@ -62,10 +52,8 @@ export async function POST(request: Request) {
     }
 
     let allCards = await cardsResponse.json()
-    console.log(`[Trello Sync] ${allCards.length} cards obtenidas de Trello`)
-    
+
     // Obtener solo listas activas (no archivadas) del board para validación y limpieza
-    console.log(`[Trello Sync] Obteniendo listas de Trello...`)
     const listsResponse = await fetch(
       `https://api.trello.com/1/boards/${settings.board_id}/lists?key=${settings.trello_api_key}&token=${settings.trello_token}&filter=open&fields=id,name`,
       {
@@ -76,7 +64,6 @@ export async function POST(request: Request) {
     let allLists: any[] = []
     if (listsResponse.ok) {
       allLists = await listsResponse.json()
-      console.log(`[Trello Sync] ${allLists.length} listas obtenidas`)
       // Actualizar mapeo de listas si hay nuevas
       const activeLists = allLists // Ya vienen solo las activas con filter=open
       const listStatusMapping: Record<string, string> = settings.list_status_mapping || {}
@@ -112,7 +99,6 @@ export async function POST(request: Request) {
             list_region_mapping: listRegionMapping,
           })
           .eq("agency_id", agencyId)
-        console.log("✅ Mapeo de listas actualizado")
       }
     }
     
@@ -127,22 +113,7 @@ export async function POST(request: Request) {
       // Re-fetch para obtener el total (ya que filtramos allCards)
       const totalCardsResponse = await fetch(cardsUrl)
       const totalCards = await totalCardsResponse.ok ? await totalCardsResponse.json() : []
-      console.log(`📊 Cards a sincronizar: ${allCards.length} de ${totalCards.length} totales`)
-    } else {
-      console.log(`📊 Sincronizando todas las cards activas: ${allCards.length}`)
     }
-
-    // MEJORADO: Agrupar cards por lista para logging
-    const cardsByList = allCards.reduce((acc: Record<string, number>, card: any) => {
-      const listId = card.idList || "unknown"
-      acc[listId] = (acc[listId] || 0) + 1
-      return acc
-    }, {})
-    
-    console.log("📋 Cards por lista en Trello:", Object.entries(cardsByList).map(([listId, count]) => {
-      const listName = allLists.find((l: any) => l.id === listId)?.name || "Unknown"
-      return `${listName}: ${count}`
-    }).join(", "))
 
     const cards = allCards
     
@@ -183,7 +154,6 @@ export async function POST(request: Request) {
           if (error.message?.includes("429") || error.message?.includes("Rate limit") || error.message?.includes("Too Many Requests")) {
             rateLimited++
             const waitTime = Math.min(2000 * Math.pow(2, attempt), 30000) // Max 30 segundos
-            console.log(`⚠️ Rate limit persistente para card ${cardId}, esperando ${waitTime}ms antes de reintentar...`)
             await delay(waitTime)
             continue
           }
@@ -204,18 +174,10 @@ export async function POST(request: Request) {
     const DELAY_BETWEEN_CARDS = 100 // 100ms entre cada card
     const DELAY_BETWEEN_BATCHES = 2000 // 2 segundos entre batches
 
-    console.log(`[Trello Sync] Iniciando sincronización de ${cards.length} cards...`)
-    const syncStartTime = Date.now()
-    
     for (let i = 0; i < cards.length; i++) {
       const card = cards[i]
       
       // Log cada 50 cards para tracking
-      if (i % 50 === 0 && i > 0) {
-        const elapsed = Date.now() - syncStartTime
-        console.log(`[Trello Sync] Progreso: ${i}/${cards.length} cards (${Math.floor(elapsed/1000)}s)`)
-      }
-      
       try {
         // Fetch full card details with ALL information (con retry)
         const fullCard = await fetchCardWithRetry(card.id)
@@ -230,7 +192,6 @@ export async function POST(request: Request) {
           
           if (!deleteError) {
             deleted++
-            console.log(`🗑️ Lead eliminado (card no existe): ${card.id}`)
           }
           continue
         }
@@ -245,7 +206,6 @@ export async function POST(request: Request) {
           
           if (!deleteError) {
             deleted++
-            console.log(`🗑️ Lead eliminado (card archivada): ${fullCard.id}`)
           }
           continue
         }
@@ -269,10 +229,6 @@ export async function POST(request: Request) {
         synced++
 
         // Log progress every 25 cards
-        if (synced % 25 === 0) {
-          console.log(`📊 Progreso: ${synced}/${cards.length} tarjetas procesadas (${created} nuevas, ${updated} actualizadas, ${errors} errores, ${rateLimited} rate limits)`)
-        }
-
         // Delay entre cards para evitar rate limits
         if (i < cards.length - 1) {
           await delay(DELAY_BETWEEN_CARDS)
@@ -280,7 +236,6 @@ export async function POST(request: Request) {
 
         // Delay más largo entre batches
         if ((i + 1) % BATCH_SIZE === 0 && i < cards.length - 1) {
-          console.log(`⏸️ Pausa de ${DELAY_BETWEEN_BATCHES}ms después de procesar batch de ${BATCH_SIZE} tarjetas...`)
           await delay(DELAY_BETWEEN_BATCHES)
         }
       } catch (error: any) {
@@ -288,7 +243,6 @@ export async function POST(request: Request) {
         errors++
         // Si hay muchos rate limits seguidos, esperar más
         if (rateLimited > 5 && rateLimited % 5 === 0) {
-          console.log(`⚠️ Muchos rate limits detectados, esperando 5 segundos antes de continuar...`)
           await delay(5000)
         }
       }
@@ -296,8 +250,6 @@ export async function POST(request: Request) {
 
     // MEJORADO: Limpieza de leads huérfanos (solo en sincronización completa)
     if (forceFullSync) {
-      console.log("🧹 Limpiando leads huérfanos...")
-      
       // 1. Eliminar leads de listas que ya no existen o están archivadas
       // allLists ya contiene solo listas activas (filter=open)
       const activeListIds = new Set(allLists.map((list: any) => list.id))
@@ -319,11 +271,10 @@ export async function POST(request: Request) {
               .delete()
               .in("id", orphanedIds)
             orphanedDeleted += orphanedIds.length
-            console.log(`🗑️ ${orphanedIds.length} leads eliminados (listas archivadas/eliminadas)`)
           }
         }
       }
-      
+
       // 2. Eliminar leads con external_id que no existe en Trello (solo para la agencia actual)
       const trelloCardIds = new Set(allCards.map((c: any) => c.id))
       const { data: allTrelloLeads } = await (supabase.from("leads") as any)
@@ -340,29 +291,9 @@ export async function POST(request: Request) {
             .delete()
             .in("id", orphanedIds)
           orphanedDeleted += orphanedIds.length
-          console.log(`🗑️ ${orphanedIds.length} leads eliminados (cards no existen en Trello o están archivadas)`)
         }
       }
-      
-      // 3. Log de leads por lista en BD para comparar con Trello
-      const { data: leadsByListInBD } = await (supabase.from("leads") as any)
-        .select("trello_list_id")
-        .eq("source", "Trello")
-        .eq("agency_id", agencyId)
-        .not("trello_list_id", "is", null)
-      
-      if (leadsByListInBD) {
-        const leadsByListCount = leadsByListInBD.reduce((acc: Record<string, number>, lead: any) => {
-          const listId = lead.trello_list_id
-          acc[listId] = (acc[listId] || 0) + 1
-          return acc
-        }, {})
-        
-        console.log("📊 Leads por lista en BD:", Object.entries(leadsByListCount).map(([listId, count]) => {
-          const listName = allLists.find((l: any) => l.id === listId)?.name || "Unknown"
-          return `${listName}: ${count}`
-        }).join(", "))
-      }
+
     }
 
     // Actualizar checkpoint de última sincronización solo si fue exitosa
@@ -374,8 +305,6 @@ export async function POST(request: Request) {
 
       if (updateError) {
         console.error("⚠️ Error actualizando last_sync_at:", updateError)
-      } else {
-        console.log(`✅ Checkpoint actualizado: ${now}`)
       }
     }
 

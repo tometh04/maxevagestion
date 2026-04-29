@@ -170,7 +170,7 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
             <CardTitle className="text-sm font-medium">Pagadas</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">{formatCurrency(totalPaid, "ARS")}</div>
+            <div className="text-2xl font-bold text-warning">{formatCurrency(totalPaid, "ARS")}</div>
           </CardContent>
         </Card>
 
@@ -207,7 +207,7 @@ export function CommissionsReport({ filters }: CommissionsReportProps) {
                   <TableRow key={seller.sellerId}>
                     <TableCell className="font-medium">{seller.sellerName}</TableCell>
                     <TableCell className="text-right">{formatCurrency(seller.totalCommissions, "ARS")}</TableCell>
-                    <TableCell className="text-right text-amber-600">
+                    <TableCell className="text-right text-warning">
                       {formatCurrency(seller.paidCommissions, "ARS")}
                     </TableCell>
                     <TableCell className="text-right text-yellow-600">

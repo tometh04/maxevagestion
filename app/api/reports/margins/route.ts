@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export async function GET(request: Request) {
   try {
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
     }
 
     // Obtener tasa de cambio más reciente como fallback
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Calcular totales - TODO en USD (según requisito: todo el sistema en USD)
     const totals: any = {
@@ -165,7 +165,8 @@ export async function GET(request: Request) {
         const cost = Number(op.operator_cost) || 0
         const margin = Number(op.margin_amount) || 0
 
-        if (op.currency === "ARS") {
+        const saleCur = op.sale_currency || op.currency || "USD"
+        if (saleCur === "ARS") {
           bySeller[sellerId].total_sale_ars += sale
           bySeller[sellerId].total_cost_ars += cost
           bySeller[sellerId].total_margin_ars += margin
@@ -222,7 +223,8 @@ export async function GET(request: Request) {
         const cost = Number(op.operator_cost) || 0
         const margin = Number(op.margin_amount) || 0
 
-        if (op.currency === "ARS") {
+        const saleCur = op.sale_currency || op.currency || "USD"
+        if (saleCur === "ARS") {
           byOperator[operatorId].total_cost_ars += cost
           byOperator[operatorId].total_margin_ars += margin
         } else {
@@ -273,7 +275,8 @@ export async function GET(request: Request) {
         const sale = Number(op.sale_amount_total) || 0
         const margin = Number(op.margin_amount) || 0
 
-        if (op.currency === "ARS") {
+        const saleCur = op.sale_currency || op.currency || "USD"
+        if (saleCur === "ARS") {
           byProduct[productType].total_sale_ars += sale
           byProduct[productType].total_margin_ars += margin
         } else {

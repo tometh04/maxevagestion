@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -29,13 +29,18 @@ import { TemplatesDialog } from "./templates-dialog"
 
 interface Message {
   id: string
+  customer_id?: string | null
+  payment_id?: string | null
   customer_name: string
-  phone: string
+  phone?: string | null
   message: string
-  whatsapp_link: string
+  whatsapp_link?: string | null
   status: string
   scheduled_for: string
   sent_at?: string
+  channel?: "WHATSAPP" | "INTERNAL"
+  message_kind?: "STANDARD" | "SELLER_RECEIPT"
+  recipient_name?: string | null
   message_templates?: {
     name: string
     emoji_prefix: string
@@ -49,6 +54,7 @@ interface Message {
   operations?: {
     destination: string
     departure_date: string
+    file_code?: string | null
   }
 }
 
@@ -83,6 +89,7 @@ export function MessagesPageClient({
   const [loading, setLoading] = useState(false)
   const [templatesOpen, setTemplatesOpen] = useState(false)
   const [dateFilter, setDateFilter] = useState<"TODAY" | "TOMORROW" | "THIS_WEEK" | "ALL">("TODAY")
+  const canManageAutomations = userRole === "SUPER_ADMIN" || userRole === "ADMIN"
 
   // Filtrar mensajes por fecha y estado
   const filteredMessages = messages.filter((msg) => {
@@ -119,7 +126,9 @@ export function MessagesPageClient({
       return (
         msg.customer_name.toLowerCase().includes(searchLower) ||
         msg.message.toLowerCase().includes(searchLower) ||
-        msg.operations?.destination?.toLowerCase().includes(searchLower)
+        msg.operations?.destination?.toLowerCase().includes(searchLower) ||
+        msg.operations?.file_code?.toLowerCase().includes(searchLower) ||
+        msg.recipient_name?.toLowerCase().includes(searchLower)
       )
     }
     return true
@@ -196,10 +205,15 @@ export function MessagesPageClient({
       })
 
       if (response.ok) {
+        const targetMessage = messages.find((message) => message.id === messageId)
         setMessages(messages.map((m) =>
           m.id === messageId ? { ...m, status: "SENT", sent_at: new Date().toISOString() } : m
         ))
-        toast.success("Mensaje marcado como enviado")
+        toast.success(
+          targetMessage?.channel === "INTERNAL"
+            ? "Recibo marcado como revisado"
+            : "Mensaje marcado como enviado"
+        )
       }
     } catch (error) {
       toast.error("Error al actualizar mensaje")
@@ -215,10 +229,15 @@ export function MessagesPageClient({
       })
 
       if (response.ok) {
+        const targetMessage = messages.find((message) => message.id === messageId)
         setMessages(messages.map((m) =>
           m.id === messageId ? { ...m, status: "SKIPPED" } : m
         ))
-        toast.success("Mensaje omitido")
+        toast.success(
+          targetMessage?.channel === "INTERNAL"
+            ? "Recibo archivado"
+            : "Mensaje omitido"
+        )
       }
     } catch (error) {
       toast.error("Error al actualizar mensaje")
@@ -230,20 +249,23 @@ export function MessagesPageClient({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2">
-            <MessageSquare className="h-8 w-8" />
-            Centro de Mensajes
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {userRole === "SELLER" ? "Bandeja de Recibos" : "Centro de Mensajes"}
           </h1>
           <p className="text-muted-foreground">
-            Gestiona mensajes WhatsApp para tus clientes
+            {userRole === "SELLER"
+              ? "Revisa recibos internos y mensajes asociados a tus operaciones"
+              : "Gestiona mensajes internos y WhatsApp para tus clientes"}
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={generateMessages} disabled={loading}>
-            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-            Generar Mensajes
-          </Button>
-          {(userRole === "SUPER_ADMIN" || userRole === "ADMIN") && (
+          {canManageAutomations && (
+            <Button variant="outline" onClick={generateMessages} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+              Generar Mensajes
+            </Button>
+          )}
+          {canManageAutomations && (
             <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
               <Settings className="h-4 w-4 mr-2" />
               Templates
@@ -253,49 +275,37 @@ export function MessagesPageClient({
       </div>
 
       {/* Stats - KPIs clickeables como filtros */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card 
-          className={`${filter === "PENDING" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+      <div className="grid gap-3 grid-cols-3">
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "PENDING" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("PENDING")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Pendientes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{counts.PENDING}</div>
-          </CardContent>
-        </Card>
-        <Card 
-          className={`${filter === "SENT" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <Clock className="h-3.5 w-3.5" />
+            Pendientes
+          </p>
+          <div className="text-2xl font-semibold tabular-nums mt-1">{counts.PENDING}</div>
+        </button>
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "SENT" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("SENT")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              Enviados
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-green-600">{counts.SENT}</div>
-          </CardContent>
-        </Card>
-        <Card 
-          className={`${filter === "SKIPPED" ? "ring-2 ring-primary" : ""} cursor-pointer transition-all hover:shadow-md`}
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <CheckCircle className="h-3.5 w-3.5 text-success" />
+            Enviados / Revisados
+          </p>
+          <div className="text-2xl font-semibold tabular-nums text-success mt-1">{counts.SENT}</div>
+        </button>
+        <button
+          className={`rounded-xl border border-border/40 p-4 text-left transition-all hover:shadow-sm ${filter === "SKIPPED" ? "ring-2 ring-primary/50 border-primary/30" : ""}`}
           onClick={() => setFilter("SKIPPED")}
         >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              <XCircle className="h-4 w-4 text-muted-foreground" />
-              Omitidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-muted-foreground">{counts.SKIPPED}</div>
-          </CardContent>
-        </Card>
+          <p className="text-xs font-medium text-muted-foreground flex items-center gap-2">
+            <XCircle className="h-3.5 w-3.5 text-muted-foreground" />
+            Omitidos / Archivados
+          </p>
+          <div className="text-2xl font-semibold tabular-nums text-muted-foreground mt-1">{counts.SKIPPED}</div>
+        </button>
       </div>
 
       {/* Filters */}
@@ -326,15 +336,15 @@ export function MessagesPageClient({
           title="No hay mensajes"
           description={
             filter === "PENDING"
-              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} pendientes de envío. Hacé clic en 'Generar Mensajes' para crear nuevos.`
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} pendientes.`
               : filter === "SENT"
-              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} enviados.`
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} enviados o revisados.`
               : filter === "SKIPPED"
-              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} omitidos.`
+              ? `No hay mensajes ${dateFilter === "TODAY" ? "de hoy" : dateFilter === "TOMORROW" ? "de mañana" : dateFilter === "THIS_WEEK" ? "de esta semana" : ""} omitidos o archivados.`
               : "No hay mensajes que mostrar con los filtros actuales."
           }
           action={
-            filter === "PENDING"
+            filter === "PENDING" && canManageAutomations
               ? { label: "Generar Mensajes", onClick: generateMessages }
               : undefined
           }

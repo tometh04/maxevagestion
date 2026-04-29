@@ -30,7 +30,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { DatePicker } from "@/components/ui/date-picker"
-import { Loader2 } from "lucide-react"
+import { Loader2, CreditCard, DollarSign, Calendar } from "lucide-react"
 import { toast } from "sonner"
 
 interface FinancialAccount {
@@ -176,26 +176,86 @@ export function NewPaymentDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <div className="grid gap-4 grid-cols-2">
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Tipo de Pago */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <CreditCard className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Tipo de Pago</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="payer_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo</FormLabel>
+                      <Select
+                        onValueChange={handlePayerTypeChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="CUSTOMER">Cliente paga</SelectItem>
+                          <SelectItem value="OPERATOR">Pago a operador</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="direction"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Dirección</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                        disabled
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="INCOME">Ingreso</SelectItem>
+                          <SelectItem value="EXPENSE">Egreso</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
               <FormField
                 control={form.control}
-                name="payer_type"
+                name="method"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Tipo</FormLabel>
-                    <Select 
-                      onValueChange={handlePayerTypeChange} 
-                      value={field.value}
-                    >
+                    <FormLabel>Método de Pago</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="CUSTOMER">Cliente paga</SelectItem>
-                        <SelectItem value="OPERATOR">Pago a operador</SelectItem>
+                        {paymentMethods.map((method) => (
+                          <SelectItem key={method.value} value={method.value}>
+                            {method.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -205,23 +265,32 @@ export function NewPaymentDialog({
 
               <FormField
                 control={form.control}
-                name="direction"
+                name="financial_account_id"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Dirección</FormLabel>
-                    <Select 
-                      onValueChange={field.onChange} 
-                      value={field.value}
-                      disabled
-                    >
+                    <FormLabel>Cuenta Financiera *</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue />
+                          <SelectValue placeholder="Seleccionar cuenta" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="INCOME">Ingreso</SelectItem>
-                        <SelectItem value="EXPENSE">Egreso</SelectItem>
+                        {financialAccounts
+                          .filter((acc) => acc.currency === form.watch("currency"))
+                          .map((account) => (
+                            <SelectItem key={account.id} value={account.id}>
+                              {account.name} ({account.currency})
+                              {account.current_balance !== undefined && (
+                                <span className="text-xs text-muted-foreground ml-2">
+                                  - Balance: {account.current_balance.toLocaleString("es-AR", {
+                                    style: "currency",
+                                    currency: account.currency,
+                                  })}
+                                </span>
+                              )}
+                            </SelectItem>
+                          ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -230,80 +299,69 @@ export function NewPaymentDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="method"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Método de Pago</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {paymentMethods.map((method) => (
-                        <SelectItem key={method.value} value={method.value}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Monto y Fecha */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <DollarSign className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Monto y Fecha</h4>
+              </div>
+              <div className="grid gap-x-5 gap-y-4 grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monto</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          placeholder="0.00"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            <FormField
-              control={form.control}
-              name="financial_account_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cuenta Financiera *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar cuenta" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {financialAccounts
-                        .filter((acc) => acc.currency === form.watch("currency"))
-                        .map((account) => (
-                          <SelectItem key={account.id} value={account.id}>
-                            {account.name} ({account.currency})
-                            {account.current_balance !== undefined && (
-                              <span className="text-xs text-muted-foreground ml-2">
-                                - Balance: {account.current_balance.toLocaleString("es-AR", {
-                                  style: "currency",
-                                  currency: account.currency,
-                                })}
-                              </span>
-                            )}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Moneda</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="ARS">ARS</SelectItem>
+                          <SelectItem value="USD">USD</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-            <div className="grid gap-4 grid-cols-2">
               <FormField
                 control={form.control}
-                name="amount"
+                name="date_due"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Monto</FormLabel>
+                    <FormLabel>Fecha de Vencimiento</FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        min="0.01"
-                        placeholder="0.00"
-                        {...field}
+                      <DatePicker
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Seleccionar fecha"
                       />
                     </FormControl>
                     <FormMessage />
@@ -313,61 +371,21 @@ export function NewPaymentDialog({
 
               <FormField
                 control={form.control}
-                name="currency"
+                name="reference"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Moneda</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ARS">ARS</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Referencia (opcional)</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Número de comprobante, factura, etc."
+                        {...field}
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
-
-            <FormField
-              control={form.control}
-              name="date_due"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Fecha de Vencimiento</FormLabel>
-                  <FormControl>
-                    <DatePicker
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="Seleccionar fecha"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="reference"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Referencia (opcional)</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="Número de comprobante, factura, etc."
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <DialogFooter>
               <Button 

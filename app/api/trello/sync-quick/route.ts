@@ -40,8 +40,6 @@ export async function POST(request: Request) {
     const cutoffDate = new Date()
     cutoffDate.setMinutes(cutoffDate.getMinutes() - RECENT_MINUTES)
 
-    console.log(`⚡ Iniciando sincronización rápida (últimos ${RECENT_MINUTES} minutos)`)
-
     // Obtener todas las tarjetas activas del board (solo IDs, fecha de última actividad e idList)
     const cardsResponse = await fetch(
       `https://api.trello.com/1/boards/${settings.board_id}/cards/open?key=${settings.trello_api_key}&token=${settings.trello_token}&fields=id,name,dateLastActivity,idList`
@@ -63,8 +61,6 @@ export async function POST(request: Request) {
     // Limitar a máximo 50 tarjetas para asegurar que termine rápido
     const cardsToSync = recentCards.slice(0, 50)
     
-    console.log(`📊 Tarjetas a sincronizar: ${cardsToSync.length} de ${allCards.length} totales (últimos ${RECENT_MINUTES} min)`)
-
     if (cardsToSync.length === 0) {
       return NextResponse.json({
         success: true,
@@ -164,7 +160,6 @@ export async function POST(request: Request) {
     for (let i = 0; i < cardsToSync.length; i += CONCURRENT_LIMIT) {
       // Verificar timeout antes de cada batch
       if (Date.now() - startTime > MAX_TIME_MS) {
-        console.log(`⏱️ Timeout alcanzado, deteniendo sincronización. Procesadas: ${synced}/${cardsToSync.length}`)
         break
       }
 
@@ -195,8 +190,6 @@ export async function POST(request: Request) {
       .eq("agency_id", agencyId)
 
     const timeElapsed = Date.now() - startTime
-
-    console.log(`✅ Sincronización rápida completada en ${timeElapsed}ms: ${synced} tarjetas (${created} nuevas, ${updated} actualizadas, ${deleted} eliminadas)`)
 
     return NextResponse.json({
       success: true,

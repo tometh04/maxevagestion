@@ -341,10 +341,19 @@ export async function getIVAStatus(
     return {
       year: targetYear,
       month: targetMonth,
-      totalSalesIVA: ivaStatus.total_sales_iva,
-      totalPurchasesIVA: ivaStatus.total_purchases_iva,
-      ivaToPay: ivaStatus.iva_to_pay,
-      status: ivaStatus.iva_to_pay > 0 ? "PENDING" : "PAID",
+      ars: {
+        totalSalesIVA: ivaStatus.ars.total_sales_iva,
+        totalPurchasesIVA: ivaStatus.ars.total_purchases_iva,
+        ivaToPay: ivaStatus.ars.iva_to_pay,
+        status: ivaStatus.ars.iva_to_pay > 0 ? "PENDING" : "PAID",
+      },
+      usd: {
+        totalSalesIVA: ivaStatus.usd.total_sales_iva,
+        totalPurchasesIVA: ivaStatus.usd.total_purchases_iva,
+        ivaToPay: ivaStatus.usd.iva_to_pay,
+        status: ivaStatus.usd.iva_to_pay > 0 ? "PENDING" : "PAID",
+      },
+      exempt_count: ivaStatus.exempt_count,
     }
   } catch (error) {
     console.error("Error getting IVA status:", error)

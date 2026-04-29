@@ -1,9 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import dynamic from "next/dynamic"
 import { OperationsFilters } from "./operations-filters"
 import { OperationsTable } from "./operations-table"
-import { NewOperationDialog } from "./new-operation-dialog"
+// Lazy load: new-operation-dialog pesa ~1650 líneas y solo se abre al
+// clickear "Nueva operación".
+const NewOperationDialog = dynamic(
+  () => import("./new-operation-dialog").then((m) => ({ default: m.NewOperationDialog })),
+  { ssr: false }
+)
 import { Button } from "@/components/ui/button"
 import { Plus, HelpCircle } from "lucide-react"
 import {
@@ -34,6 +40,7 @@ interface OperationsPageClientProps {
   operators: Array<{ id: string; name: string }>
   userRole: string
   userId: string
+  canViewAgencyOperationsSupport: boolean
   userAgencyIds: string[]
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -45,6 +52,7 @@ export function OperationsPageClient({
   operators,
   userRole,
   userId,
+  canViewAgencyOperationsSupport,
   userAgencyIds,
   defaultAgencyId,
   defaultSellerId,
@@ -110,7 +118,7 @@ export function OperationsPageClient({
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Operaciones</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Operaciones</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -125,9 +133,13 @@ export function OperationsPageClient({
               </Tooltip>
             </TooltipProvider>
           </div>
-          <p className="text-muted-foreground">Gestiona todas las operaciones de viajes</p>
+          <p className="text-muted-foreground">
+            {canViewAgencyOperationsSupport && userRole === "SELLER"
+              ? "Vista operativa de postventa para todas las operaciones de tus agencias"
+              : "Gestiona todas las operaciones de viajes"}
+          </p>
         </div>
-        <Button onClick={() => setNewOperationDialogOpen(true)}>
+        <Button size="sm" onClick={() => setNewOperationDialogOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
           Nueva Operación
         </Button>
@@ -144,6 +156,7 @@ export function OperationsPageClient({
         initialFilters={filters}
         userRole={userRole}
         userId={userId}
+        canViewAgencyOperationsSupport={canViewAgencyOperationsSupport}
         userAgencyIds={userAgencyIds}
       />
 

@@ -10,7 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { GripVertical, Loader2 } from "lucide-react"
+import { GripVertical, Loader2, ListOrdered } from "lucide-react"
 import {
   DndContext,
   closestCenter,
@@ -145,29 +145,37 @@ export function EditListOrderDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-2">
-          {listNames.length === 0 ? (
-            <div className="text-center text-muted-foreground py-8">
-              No hay listas para ordenar
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                <ListOrdered className="h-3.5 w-3.5 text-blue-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Orden de Listas</h4>
             </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragEnd={handleDragEnd}
-            >
-              <SortableContext
-                items={listNames}
-                strategy={verticalListSortingStrategy}
+            {listNames.length === 0 ? (
+              <div className="text-center text-muted-foreground py-8">
+                No hay listas para ordenar
+              </div>
+            ) : (
+              <DndContext
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
               >
-                <div className="space-y-2">
-                  {listNames.map((name) => (
-                    <SortableItem key={name} id={name} name={name} />
-                  ))}
-                </div>
-              </SortableContext>
-            </DndContext>
-          )}
+                <SortableContext
+                  items={listNames}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="space-y-2">
+                    {listNames.map((name) => (
+                      <SortableItem key={name} id={name} name={name} />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            )}
+          </div>
         </div>
 
         <DialogFooter>

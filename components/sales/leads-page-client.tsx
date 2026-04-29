@@ -57,7 +57,7 @@ interface LeadsPageClientProps {
   initialLeads: Lead[]
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
-  operators: Array<{ id: string; name: string }>
+  operators: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   defaultAgencyId?: string
   defaultSellerId?: string
   hasTrelloLeads?: boolean
@@ -112,7 +112,12 @@ export function LeadsPageClient({
     }
   }, [])
 
-  const LEADS_LIMIT = 200
+  // Cap del primer batch de leads que carga el kanban. Se subió de 200 a 1000
+  // porque algunos sellers tienen 100+ leads asignados viejos que quedaban fuera
+  // del top 200 ordenado por updated_at DESC y se les "desaparecían" del CRM.
+  // Plus el SELLER path del API trae además TODOS los leads del seller logueado
+  // (sin límite) — ver app/api/leads/route.ts. Así el seller siempre ve los suyos.
+  const LEADS_LIMIT = 1000
   const [leadsPage, setLeadsPage] = useState(1)
   const [leadsHasMore, setLeadsHasMore] = useState(false)
   const [leadsTotal, setLeadsTotal] = useState(0)
@@ -285,7 +290,7 @@ export function LeadsPageClient({
         <div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold">Leads</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">Leads</h1>
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -303,8 +308,8 @@ export function LeadsPageClient({
             <div
               className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs ${
                 realtimeConnected
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  ? 'bg-success/10 text-success'
+                  : 'bg-warning/10 text-warning'
               }`}
               title={realtimeConnected ? "Conectado - Los cambios se actualizan automáticamente" : "Conectando..."}
             >
@@ -330,7 +335,7 @@ export function LeadsPageClient({
             <div className="flex items-center gap-2">
               <Label htmlFor="agency-select" className="whitespace-nowrap">Agencia:</Label>
               <Select value={selectedAgencyId} onValueChange={setSelectedAgencyId}>
-                <SelectTrigger id="agency-select" className="w-[180px]">
+                <SelectTrigger id="agency-select" className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                   <SelectValue placeholder="Seleccionar agencia" />
                 </SelectTrigger>
                 <SelectContent>
@@ -348,6 +353,7 @@ export function LeadsPageClient({
           )}
           <Button
             variant="outline"
+            size="sm"
             onClick={handleRefresh}
             disabled={refreshing}
           >
@@ -363,7 +369,7 @@ export function LeadsPageClient({
               </>
             )}
           </Button>
-          <Button onClick={() => setNewLeadDialogOpen(true)}>
+          <Button size="sm" onClick={() => setNewLeadDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nuevo Lead
           </Button>

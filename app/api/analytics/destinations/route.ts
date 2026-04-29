@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
-import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -16,6 +16,16 @@ export async function GET(request: Request) {
     const agencyId = searchParams.get("agencyId")
     const limit = searchParams.get("limit") || "5"
 
+    // Validate date format ANTES del fast-path RPC
+    if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+      console.error("Invalid dateFrom format:", dateFrom)
+      return NextResponse.json({ error: "Formato de fecha inválido (dateFrom)" }, { status: 400 })
+    }
+    if (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+      console.error("Invalid dateTo format:", dateTo)
+      return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
+    }
+
       const supabase = await createServerClient()
 
       // Get user agencies
@@ -26,8 +36,54 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+      // ============================================
+      // FAST PATH: RPC analytics_destinations_summary
+      // ============================================
+      // GROUP BY destination en SQL en vez de fetch + JS reduce.
+      // Si la RPC falla, cae al código viejo intacto.
+      try {
+        const t0 = Date.now()
+        const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
+          "analytics_destinations_summary",
+          {
+            p_user_id: user.id,
+            p_org_id: (user as any).org_id || null,
+            p_role: user.role,
+            p_agency_ids: agencyIds,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+            p_agency_id: agencyId && agencyId !== "ALL" ? agencyId : null,
+            p_limit: parseInt(limit, 10) || 5,
+          }
+        )
+        if (!rpcError && Array.isArray(rpcData)) {
+          const destinations = rpcData.map((row: any) => ({
+            destination: row.destination,
+            totalSales: Number(row.total_sales) || 0,
+            totalMargin: Number(row.total_margin) || 0,
+            operationsCount: Number(row.operations_count) || 0,
+            avgMarginPercent: Number(row.avg_margin_percent) || 0,
+          }))
+          console.log(`[analytics/destinations] RPC fast-path ok in ${Date.now() - t0}ms → ${destinations.length} rows`)
+          return NextResponse.json({ destinations }, {
+            headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+          })
+        }
+        if (rpcError) {
+          console.warn("[analytics/destinations] RPC failed, falling back to JS:", rpcError.message)
+        }
+      } catch (rpcEx: any) {
+        console.warn("[analytics/destinations] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
+      }
+
+      // ============================================
+      // FALLBACK: lógica vieja (intacta)
+      // ============================================
       // Select sale_currency and departure_date for currency conversion
-      let query = supabase.from("operations").select("destination, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at")
+      let query = supabase.from("operations").select("destination, destination_id, sale_amount_total, sale_currency, margin_amount, currency, departure_date, created_at, destinations:destination_id(name)")
+
+      // Multi-tenant: scope por org del usuario
+      if (user.org_id) query = query.eq("org_id", user.org_id)
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -71,20 +127,20 @@ export async function GET(request: Request) {
 
       // Build exchange rate map for ARS operations
       let getRate: (date: any) => number | null = () => null
-      let fallbackRate = 1200
+      let fallbackRate = DEFAULT_USD_ARS_FALLBACK_RATE
       try {
         const arsDates = operationsArray
           .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
           .map((op: any) => op.departure_date || op.created_at)
         getRate = await buildExchangeRateMap(supabase, arsDates)
-        fallbackRate = await getLatestExchangeRate(supabase) || 1200
+        fallbackRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
       } catch (err) {
         console.error("Error building exchange rate map for destinations:", err)
       }
 
-      // Group by destination, converting ARS to USD
+      // Group by destination, using canonical name from destinations table when available
       const destinationStats = operationsArray.reduce((acc: any, op: any) => {
-        const destination = op.destination || "Sin destino"
+        const destination = op.destinations?.name || op.destination || "Sin destino"
 
         if (!acc[destination]) {
           acc[destination] = {
@@ -124,7 +180,9 @@ export async function GET(request: Request) {
         .sort((a: any, b: any) => b.totalSales - a.totalSales)
         .slice(0, Number(limit))
 
-    return NextResponse.json({ destinations })
+    return NextResponse.json({ destinations }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/destinations:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de destinos" }, { status: 500 })

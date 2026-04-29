@@ -1,0 +1,3 @@
+file_code,customer_document,operator_name,seller_email,agency_name,destination,departure_date,return_date,adults,children,sale_amount,operator_cost,currency,status
+OP-20260101-001,12345678,Despegar,vendedor1@miagencia.com,Rosario,Cancún,2026-05-15,2026-05-22,2,0,500000,400000,ARS,CONFIRMED
+OP-20260101-002,87654321,Almundo,vendedor1@miagencia.com,Rosario,Río de Janeiro,2026-06-10,2026-06-17,2,1,800000,650000,ARS,RESERVED

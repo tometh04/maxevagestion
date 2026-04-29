@@ -51,7 +51,7 @@ export function CustomersPageClient() {
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Clientes</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Clientes</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

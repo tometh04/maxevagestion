@@ -7,8 +7,9 @@ import {
   validateSufficientBalance,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
       cash_box_id,
       type,
       category,
+      category_id,
       amount,
       currency,
       financial_account_id,
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
       notes,
       is_touristic,
       movement_category,
+      affects_balance,
     } = body
 
     // Validate required fields
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
       user_id: user.id,
       type,
       category,
+      category_id: category_id || null,
       amount: amountNum,
       currency,
       movement_date,
@@ -122,18 +126,8 @@ export async function POST(request: Request) {
     let exchangeRate: number | null = null
     if (currency === "USD") {
       const rateDate = movement_date ? new Date(movement_date) : new Date()
-      exchangeRate = await getExchangeRate(supabase, rateDate)
-
-      // Si no hay tasa para esa fecha, usar la más reciente disponible
-      if (!exchangeRate) {
-        exchangeRate = await getLatestExchangeRate(supabase)
-      }
-
-      // Fallback: si aún no hay tasa, usar 1450 como último recurso
-      if (!exchangeRate) {
-        console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-        exchangeRate = 1450
-      }
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "cash-movements")
+      exchangeRate = rateResult.rate
     }
 
     const amountARS = calculateARSEquivalent(
@@ -188,6 +182,7 @@ export async function POST(request: Request) {
         receipt_number: null,
         notes: notes || null,
         created_by: user.id,
+        affects_balance: affects_balance !== false,
         // Pasar la fecha efectiva del movimiento para que el filtro de Caja funcione
         // con fechas retroactivas (ej. egreso cargado hoy pero con fecha 13/02)
         movement_date: movement_date || new Date().toISOString(),
@@ -219,16 +214,54 @@ export async function GET(request: Request) {
 
     const dateFrom = searchParams.get("dateFrom") ?? undefined
     const dateTo = searchParams.get("dateTo") ?? undefined
+    const dateType = (searchParams.get("dateType") ?? "MOVIMIENTO").toUpperCase()
     const typeParam = searchParams.get("type") ?? "ALL"
     const currencyParam = searchParams.get("currency") ?? "ALL"
     const agencyId = searchParams.get("agencyId")
     const financialAccountId = searchParams.get("financialAccountId")
+    const customerQuery = (searchParams.get("customerQuery") ?? "").trim()
 
     // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") ?? "1"))
     const requestedLimit = parseInt(searchParams.get("limit") ?? "50")
     const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
+
+    // Si hay búsqueda por cliente, pre-resolvemos las operation_ids que matchean.
+    // Flujo: customers (first/last name ilike) → operation_customers → operation_ids.
+    // Después filtramos cash_movements por esos operation_ids (incluyendo
+    // movimientos sin operación si la query queda vacía).
+    let restrictToOperationIds: string[] | null = null
+    if (customerQuery) {
+      const words = customerQuery.split(/\s+/).filter(Boolean)
+      let custQ = (supabase.from("customers") as any).select("id")
+      for (const word of words) {
+        custQ = custQ.or(
+          `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+        )
+      }
+      const { data: matchingCustomers } = await custQ.limit(500)
+      const customerIds = (matchingCustomers || []).map((c: any) => c.id)
+      if (customerIds.length === 0) {
+        // Sin clientes matching → resultado vacío
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      const { data: opCustomerRows } = await (supabase.from("operation_customers") as any)
+        .select("operation_id")
+        .in("customer_id", customerIds)
+      restrictToOperationIds = Array.from(
+        new Set(((opCustomerRows as any[]) || []).map((r) => r.operation_id).filter(Boolean))
+      ) as string[]
+      if (restrictToOperationIds.length === 0) {
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+    }
 
     // Consultar cash_movements directamente — garantiza:
     // 1. Todos los movimientos (con Y sin operación asociada)
@@ -238,6 +271,8 @@ export async function GET(request: Request) {
       .select(
         `
         id, type, category, amount, currency, movement_date, notes, financial_account_id,
+        reversed_at, reverses_movement_id, reversed_by_movement_id, reversal_reason,
+        ledger_movements:ledger_movement_id (affects_balance),
         users:user_id (id, name),
         operations:operation_id (
           id,
@@ -265,18 +300,56 @@ export async function GET(request: Request) {
         query = query.eq("financial_account_id", financialAccountId)
       }
     }
-    if (dateFrom) {
-      query = query.gte("movement_date", dateFrom)
-    }
-    if (dateTo) {
-      // Incluir el día completo hasta las 23:59:59
-      query = query.lte("movement_date", `${dateTo}T23:59:59`)
+    // Mapeo dateType → comportamiento de filtro:
+    // - MOVIMIENTO (default): cash_movements.movement_date
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae en [from,to]
+    //   y restringir cash_movements.operation_id IN (...). Movimientos sin operation_id quedan fuera.
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = (supabase.from("operations") as any).select("id")
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const opIds = (matchingOps || []).map((o: any) => o.id)
+      if (opIds.length === 0) {
+        return NextResponse.json({
+          movements: [],
+          pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+        })
+      }
+      // Si ya hay restricción por cliente, intersectar
+      if (restrictToOperationIds && restrictToOperationIds.length > 0) {
+        const set = new Set(opIds)
+        restrictToOperationIds = restrictToOperationIds.filter((id) => set.has(id))
+        if (restrictToOperationIds.length === 0) {
+          return NextResponse.json({
+            movements: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+      } else {
+        restrictToOperationIds = opIds
+      }
+    } else {
+      // Default MOVIMIENTO: filtrar por movement_date con timezone AR
+      if (dateFrom) {
+        query = query.gte("movement_date", startOfDayAR(dateFrom))
+      }
+      if (dateTo) {
+        // Incluir el día completo hasta las 23:59:59 en hora AR (fix bug
+        // "egresos no aparecen al filtrar fechas": antes se usaba UTC y se
+        // perdían movimientos cargados después de las 21h hora local)
+        query = query.lte("movement_date", endOfDayAR(dateTo))
+      }
     }
     if (typeParam && typeParam !== "ALL") {
       query = query.eq("type", typeParam)
     }
     if (currencyParam && currencyParam !== "ALL") {
       query = query.eq("currency", currencyParam)
+    }
+    // Filtro por cliente (restrictToOperationIds ya fue pre-calculado arriba)
+    if (restrictToOperationIds && restrictToOperationIds.length > 0) {
+      query = query.in("operation_id", restrictToOperationIds)
     }
     // SELLER solo ve sus propios movimientos
     if (user.role === "SELLER") {
@@ -290,25 +363,34 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener movimientos" }, { status: 500 })
     }
 
-    let movements = (rawMovements || []).map((m: any) => ({
-      id: m.id,
-      type: m.type as "INCOME" | "EXPENSE",
-      category: m.category,
-      amount: m.amount,
-      currency: m.currency,
-      movement_date: m.movement_date,
-      notes: m.notes ?? null,
-      operations: m.operations
-        ? {
-            id: m.operations.id,
-            destination: m.operations.destination ?? null,
-            file_code: m.operations.file_code ?? null,
-            agency_id: m.operations.agency_id ?? null,
-            agencies: null,
-          }
-        : null,
-      users: m.users ? { name: m.users.name } : null,
-    }))
+    let movements = (rawMovements || []).map((m: any) => {
+      const linkedLedger = Array.isArray(m.ledger_movements) ? m.ledger_movements[0] : m.ledger_movements
+
+      return {
+        id: m.id,
+        type: m.type as "INCOME" | "EXPENSE",
+        category: m.category,
+        amount: m.amount,
+        currency: m.currency,
+        movement_date: m.movement_date,
+        notes: m.notes ?? null,
+        affects_balance: linkedLedger?.affects_balance ?? true,
+        reversed_at: m.reversed_at ?? null,
+        reverses_movement_id: m.reverses_movement_id ?? null,
+        reversed_by_movement_id: m.reversed_by_movement_id ?? null,
+        reversal_reason: m.reversal_reason ?? null,
+        operations: m.operations
+          ? {
+              id: m.operations.id,
+              destination: m.operations.destination ?? null,
+              file_code: m.operations.file_code ?? null,
+              agency_id: m.operations.agency_id ?? null,
+              agencies: null,
+            }
+          : null,
+        users: m.users ? { name: m.users.name } : null,
+      }
+    })
 
     // Filtro de agencia (solo si viene el parámetro)
     if (agencyId && agencyId !== "ALL") {
@@ -377,7 +459,7 @@ export async function DELETE(request: Request) {
         const { error: delLm } = await (supabase.from("ledger_movements") as any)
           .delete()
           .eq("id", movement.ledger_movement_id)
-        if (!delLm) console.log(`✅ Ledger movement ${movement.ledger_movement_id} eliminado`)
+        // ledger movement deleted with the cash movement
       }
     } else {
       const ledgerType = movement.type === "INCOME" ? "INCOME" : "EXPENSE"
@@ -396,7 +478,6 @@ export async function DELETE(request: Request) {
         const toDelete = ledgerRows[0]
         accountIdToInvalidate = toDelete.account_id
         await (supabase.from("ledger_movements") as any).delete().eq("id", toDelete.id)
-        console.log(`✅ Ledger movement ${toDelete.id} (fallback match) eliminado`)
       }
     }
 
@@ -410,7 +491,6 @@ export async function DELETE(request: Request) {
     }
 
     if (accountIdToInvalidate) invalidateBalanceCache(accountIdToInvalidate)
-    console.log(`✅ Cash movement ${movementId} eliminado`)
 
     return NextResponse.json({
       success: true,

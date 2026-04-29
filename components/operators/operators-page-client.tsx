@@ -70,7 +70,7 @@ export function OperatorsPageClient({ initialOperators }: OperatorsPageClientPro
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold">Operadores</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Operadores</h1>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

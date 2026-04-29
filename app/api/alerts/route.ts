@@ -14,6 +14,10 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
     const sellerId = searchParams.get("sellerId")
+    // BUGFIX: el endpoint ignoraba `limit` y traía TODAS las alerts (miles
+    // potencialmente). Default 100, máx 500. La UI nunca muestra más.
+    const requestedLimit = parseInt(searchParams.get("limit") || "100", 10)
+    const limit = Math.min(Math.max(requestedLimit, 1), 500)
 
     // Build query
     let query = supabase
@@ -40,6 +44,7 @@ export async function GET(request: Request) {
       `,
       )
       .order("date_due", { ascending: true })
+      .limit(limit)
 
     // Filter by role
     if (user.role === "SELLER") {
@@ -142,7 +147,9 @@ export async function GET(request: Request) {
         .from("whatsapp_messages")
         .select("id, message, whatsapp_link, status, scheduled_for, phone, customer_name, operation_id")
         .in("operation_id", operationIds)
+        .eq("channel", "WHATSAPP")
         .eq("status", "PENDING")
+        .limit(1000)
 
       if (messages) {
         const typedMessages = messages as Array<{
@@ -151,7 +158,7 @@ export async function GET(request: Request) {
           whatsapp_link: string
           status: string
           scheduled_for: string
-          phone: string
+          phone: string | null
           customer_name: string
           operation_id: string | null
         }>

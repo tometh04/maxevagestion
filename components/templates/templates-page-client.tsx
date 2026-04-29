@@ -8,9 +8,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { 
-  Loader2, Plus, FileText, Search, Star, Eye, Edit2, Trash2, 
-  MoreHorizontal, Copy, Download
+import {
+  Loader2, Plus, FileText, Search, Star, Eye, Edit2, Trash2,
+  MoreHorizontal, Copy, Download, Info, Lightbulb
 } from "lucide-react"
 import {
   Breadcrumb,
@@ -92,6 +92,16 @@ const templateTypeIcons: Record<string, string> = {
   receipt: '🧾',
   contract: '📄',
   general: '📝',
+}
+
+const templateTypeDescriptions: Record<string, string> = {
+  invoice: 'Genera facturas de venta para clientes',
+  budget: 'Genera presupuestos con detalle de servicios',
+  voucher: 'Genera vouchers de confirmación de servicios',
+  itinerary: 'Genera itinerarios de viaje para pasajeros',
+  receipt: 'Genera recibos de pago recibidos',
+  contract: 'Genera contratos de servicio',
+  general: 'Template de propósito general',
 }
 
 export function TemplatesPageClient() {
@@ -294,9 +304,9 @@ export function TemplatesPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Templates PDF</h1>
-          <p className="text-muted-foreground">
-            Gestiona los templates para generar documentos PDF
+          <h1 className="text-2xl font-semibold tracking-tight">Templates PDF</h1>
+          <p className="text-muted-foreground text-sm">
+            Crea y personaliza templates HTML para generar facturas, presupuestos, vouchers y otros documentos PDF desde tus operaciones.
           </p>
         </div>
         <Button onClick={() => setIsCreateOpen(true)}>
@@ -306,43 +316,131 @@ export function TemplatesPageClient() {
       </div>
 
       {/* Filtros */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar templates..."
-                  className="pl-10"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar templates..."
+              className="pl-10"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+        </div>
+        <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todos los tipos</SelectItem>
+            {Object.entries(templateTypeLabels).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {templateTypeIcons[value]} {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* KPI Summary */}
+      {templates.length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="rounded-xl border-border/40">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total templates</p>
+              <p className="text-2xl font-semibold mt-1">{templates.length}</p>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/40 col-span-1 md:col-span-2">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Por tipo</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {Object.entries(
+                  templates.reduce<Record<string, number>>((acc, t) => {
+                    acc[t.template_type] = (acc[t.template_type] || 0) + 1
+                    return acc
+                  }, {})
+                ).map(([type, count]) => (
+                  <Badge key={type} variant="secondary" className="text-xs font-normal">
+                    {templateTypeIcons[type]} {count} {templateTypeLabels[type] || type}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="rounded-xl border-border/40">
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Defaults</p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(() => {
+                  const typesWithDefault = new Set(
+                    templates.filter(t => t.is_default).map(t => t.template_type)
+                  )
+                  const allTypes = Array.from(new Set(templates.map(t => t.template_type)))
+                  const typesWithoutDefault = allTypes.filter(t => !typesWithDefault.has(t))
+                  return (
+                    <>
+                      {typesWithoutDefault.length === 0 ? (
+                        <Badge variant="secondary" className="text-xs font-normal bg-emerald-500/10 text-emerald-600 border-emerald-500/20">
+                          Todos configurados
+                        </Badge>
+                      ) : (
+                        typesWithoutDefault.map(type => (
+                          <Badge key={type} variant="secondary" className="text-xs font-normal bg-amber-500/10 text-amber-600 border-amber-500/20">
+                            {templateTypeLabels[type] || type}: Sin default
+                          </Badge>
+                        ))
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Empty state info banner */}
+      {templates.length === 0 && !search && typeFilter === "ALL" && (
+        <Card className="rounded-xl border-border/40 border-dashed bg-muted/30">
+          <CardContent className="p-6">
+            <div className="flex gap-4">
+              <div className="flex-shrink-0 flex items-start pt-0.5">
+                <div className="rounded-full bg-primary/10 p-2.5">
+                  <Lightbulb className="h-5 w-5 text-primary" />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <h3 className="font-medium text-sm">Para que sirven los templates?</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Los templates te permiten generar documentos PDF personalizados (facturas, presupuestos, vouchers) directamente desde cada operacion.
+                    Cada tipo de documento puede tener su propio diseno con variables dinamicas que se completan automaticamente con los datos de la operacion.
+                  </p>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm">Como empezar</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Crea tu primer template o usa uno de los templates base predefinidos. Al crear un template nuevo, podes cargar un template base desde la pestana &quot;Contenido HTML&quot;.
+                  </p>
+                </div>
+                <Button onClick={() => setIsCreateOpen(true)} size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Crear primer template
+                </Button>
               </div>
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los tipos</SelectItem>
-                {Object.entries(templateTypeLabels).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {templateTypeIcons[value]} {label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Grid de templates */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates.map((template) => (
-          <Card 
+          <Card
             key={template.id}
-            className="cursor-pointer hover:shadow-md transition-shadow"
+            className="group cursor-pointer hover:shadow-md transition-shadow rounded-xl border-border/40"
             onClick={() => {
               setSelectedTemplate(template)
               setIsViewOpen(true)
@@ -350,13 +448,13 @@ export function TemplatesPageClient() {
           >
             <CardHeader className="pb-2">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-2xl">{templateTypeIcons[template.template_type]}</span>
                   <Badge variant="outline">
                     {templateTypeLabels[template.template_type]}
                   </Badge>
                   {template.is_default && (
-                    <Badge className="bg-amber-500">
+                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>
@@ -410,6 +508,9 @@ export function TemplatesPageClient() {
                   {template.description}
                 </CardDescription>
               )}
+              <p className="text-xs text-muted-foreground/70 mt-1">
+                {templateTypeDescriptions[template.template_type]}
+              </p>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -421,20 +522,17 @@ export function TemplatesPageClient() {
             </CardContent>
           </Card>
         ))}
-        
-        {filteredTemplates.length === 0 && (
+
+        {filteredTemplates.length === 0 && (search || typeFilter !== "ALL") && (
           <div className="col-span-full text-center py-12 text-muted-foreground">
-            {search || typeFilter !== "ALL"
-              ? "No se encontraron templates con los filtros aplicados"
-              : "No hay templates. Crea tu primer template."
-            }
+            No se encontraron templates con los filtros aplicados
           </div>
         )}
       </div>
 
       {/* Dialog crear template */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto px-6 py-5">
           <DialogHeader>
             <DialogTitle>Nuevo Template PDF</DialogTitle>
             <DialogDescription>
@@ -596,7 +694,7 @@ export function TemplatesPageClient() {
               <p className="text-sm text-muted-foreground">
                 Variables disponibles para el tipo de template seleccionado ({templateTypeLabels[formData.template_type]}):
               </p>
-              <div className="border rounded-md p-4 max-h-[400px] overflow-y-auto">
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 max-h-[400px] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b">
@@ -648,7 +746,7 @@ export function TemplatesPageClient() {
                     {templateTypeLabels[selectedTemplate.template_type]}
                   </Badge>
                   {selectedTemplate.is_default && (
-                    <Badge className="bg-amber-500">
+                    <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/20">
                       <Star className="h-3 w-3 mr-1" />
                       Default
                     </Badge>
@@ -676,7 +774,7 @@ export function TemplatesPageClient() {
 
                 <div>
                   <Label>Vista previa del HTML</Label>
-                  <div className="border rounded-md p-4 bg-muted/50 max-h-[400px] overflow-auto">
+                  <div className="rounded-xl border border-border/40 bg-muted/20 p-4 max-h-[400px] overflow-auto">
                     <pre className="text-xs whitespace-pre-wrap">
                       {selectedTemplate.html_content.substring(0, 2000)}
                       {selectedTemplate.html_content.length > 2000 && '...'}

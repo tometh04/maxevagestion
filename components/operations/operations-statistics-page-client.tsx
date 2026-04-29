@@ -288,8 +288,8 @@ export function OperationsStatisticsPageClient() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+            <div className="p-1.5 rounded bg-info/10">
+              <DollarSign className="h-3.5 w-3.5 text-info" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
@@ -300,12 +300,12 @@ export function OperationsStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-green-100 dark:bg-green-900/30">
-              <TrendingUp className="h-3.5 w-3.5 text-green-600" />
+            <div className="p-1.5 rounded bg-success/10">
+              <TrendingUp className="h-3.5 w-3.5 text-success" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
-              <p className="text-base font-semibold text-green-600">{formatFullCurrency(stats.overview.totalMargin)}</p>
+              <p className="text-base font-semibold text-success">{formatFullCurrency(stats.overview.totalMargin)}</p>
               <p className="text-[10px] text-muted-foreground">{stats.overview.avgMarginPercentage}%</p>
             </div>
           </div>
@@ -313,24 +313,24 @@ export function OperationsStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="p-1.5 rounded bg-success/10">
+              <DollarSign className="h-3.5 w-3.5 text-success" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Cobrado</p>
-              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalCollected)}</p>
+              <p className="text-base font-semibold text-success">{formatFullCurrency(stats.overview.totalCollected)}</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-red-100 dark:bg-red-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-red-600" />
+            <div className="p-1.5 rounded bg-destructive/10">
+              <DollarSign className="h-3.5 w-3.5 text-destructive" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Pendiente</p>
-              <p className="text-base font-semibold text-red-600">{formatFullCurrency(stats.overview.totalDebt)}</p>
+              <p className="text-base font-semibold text-destructive">{formatFullCurrency(stats.overview.totalDebt)}</p>
             </div>
           </div>
         </Card>
@@ -458,7 +458,7 @@ export function OperationsStatisticsPageClient() {
                       {formatCurrency(dest.totalSales)}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={dest.avgMargin >= 15 ? "text-green-600" : dest.avgMargin >= 10 ? "text-amber-600" : "text-muted-foreground"}>
+                      <span className={dest.avgMargin >= 15 ? "text-success" : dest.avgMargin >= 10 ? "text-warning" : "text-muted-foreground"}>
                         {dest.avgMargin.toFixed(0)}%
                       </span>
                     </TableCell>

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getAccountBalance, createLedgerMovement, calculateARSEquivalent, invalidateBalanceCache } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { canPerformAction } from "@/lib/permissions-api"
 
 export async function DELETE(
@@ -26,11 +26,16 @@ export async function DELETE(
     const { transfer_to_account_id } = body
 
     const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
-      .select("id, name, currency, is_active")
+      .select("id, name, currency, is_active, org_id")
       .eq("id", id)
       .single()
 
     if (accountError || !account) {
+      return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
+    }
+
+    // Multi-tenant: solo permitir eliminar cuentas de la misma org
+    if (user.org_id && account.org_id !== user.org_id) {
       return NextResponse.json({ error: "Cuenta no encontrada" }, { status: 404 })
     }
 
@@ -51,7 +56,6 @@ export async function DELETE(
 
     // Si es la última cuenta, se permite eliminar todo (incluyendo movimientos)
     if (isLastAccount) {
-      console.log(`⚠️ Última cuenta financiera. Se eliminarán todos los movimientos contables.`)
       
       // Eliminar TODOS los movimientos contables del sistema
       // Usar una condición que siempre sea verdadera (id IS NOT NULL siempre es true para registros válidos)
@@ -64,7 +68,6 @@ export async function DELETE(
         return NextResponse.json({ error: "Error al eliminar movimientos contables" }, { status: 500 })
       }
       
-      console.log(`✅ Todos los movimientos contables eliminados`)
     } else if (Math.abs(balance) > 1e-6) {
       // Si NO es la última cuenta y tiene saldo, requiere transferencia
       if (!transfer_to_account_id) {
@@ -102,9 +105,8 @@ export async function DELETE(
       let exchangeRate: number | null = null
 
       if (account.currency === "USD") {
-        exchangeRate = await getExchangeRate(supabase, new Date())
-        if (!exchangeRate) exchangeRate = await getLatestExchangeRate(supabase)
-        if (!exchangeRate) exchangeRate = 1450
+        const rateResult = await getExchangeRateWithFallback(supabase, new Date(), "financial-account-close")
+        exchangeRate = rateResult.rate
       }
 
       const amountARS = account.currency === "ARS"
@@ -187,7 +189,6 @@ export async function DELETE(
       }
 
       const verifyBalance = await getAccountBalance(target.id, supabase)
-      console.log(`[DELETE account] Transferido ${amount} ${account.currency} a ${target.name}. Balance destino: ${verifyBalance}`)
       if (Math.abs(verifyBalance) < 1e-6 && amount > 1e-6) {
         console.warn(`[DELETE account] Balance destino sigue ~0 tras transferir ${amount}. Revisar getAccountBalance/chart.`)
       }

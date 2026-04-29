@@ -3,7 +3,6 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -11,8 +10,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Card, CardContent } from "@/components/ui/card"
-import { X } from "lucide-react"
+import { Search, X } from "lucide-react"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { format, parseISO, isValid } from "date-fns"
+
+const leadsDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+]
 
 const statusOptions = [
   { value: "ALL", label: "Todos los estados" },
@@ -46,13 +50,25 @@ interface LeadsFiltersProps {
   }) => void
 }
 
+function toDate(s: string): Date | undefined {
+  if (!s) return undefined
+  try {
+    const d = parseISO(s)
+    return isValid(d) ? d : undefined
+  } catch { return undefined }
+}
+
+function toStr(d: Date | undefined): string {
+  return d ? format(d, "yyyy-MM-dd") : ""
+}
+
 export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
   const [status, setStatus] = useState("ALL")
   const [region, setRegion] = useState("ALL")
   const [sellerId, setSellerId] = useState("ALL")
   const [search, setSearch] = useState("")
-  const [dateFrom, setDateFrom] = useState("")
-  const [dateTo, setDateTo] = useState("")
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
 
   const handleApplyFilters = () => {
     onFilterChange({
@@ -60,8 +76,8 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
       region,
       sellerId,
       search,
-      dateFrom,
-      dateTo,
+      dateFrom: toStr(dateFrom),
+      dateTo: toStr(dateTo),
     })
   }
 
@@ -70,8 +86,8 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     setRegion("ALL")
     setSellerId("ALL")
     setSearch("")
-    setDateFrom("")
-    setDateTo("")
+    setDateFrom(undefined)
+    setDateTo(undefined)
     onFilterChange({
       status: "ALL",
       region: "ALL",
@@ -87,109 +103,83 @@ export function LeadsFilters({ sellers, onFilterChange }: LeadsFiltersProps) {
     region !== "ALL" ||
     sellerId !== "ALL" ||
     search !== "" ||
-    dateFrom !== "" ||
-    dateTo !== ""
+    dateFrom !== undefined ||
+    dateTo !== undefined
 
   return (
-    <Card>
-      <CardContent className="pt-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="search">Buscar</Label>
-            <Input
-              id="search"
-              placeholder="Nombre, teléfono, email..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  handleApplyFilters()
-                }
-              }}
-            />
-          </div>
+    <div className="flex items-center gap-2 flex-wrap">
+      <div className="relative flex-1 min-w-[180px] max-w-xs">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+        <Input
+          placeholder="Nombre, teléfono, email..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              handleApplyFilters()
+            }
+          }}
+          className="pl-9 h-8 text-xs rounded-full"
+        />
+      </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="status">Estado</Label>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger id="status">
-                <SelectValue placeholder="Seleccionar estado" />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <Select value={status} onValueChange={setStatus}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar estado" />
+        </SelectTrigger>
+        <SelectContent>
+          {statusOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-          <div className="space-y-2">
-            <Label htmlFor="region">Región</Label>
-            <Select value={region} onValueChange={setRegion}>
-              <SelectTrigger id="region">
-                <SelectValue placeholder="Seleccionar región" />
-              </SelectTrigger>
-              <SelectContent>
-                {regionOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <Select value={region} onValueChange={setRegion}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar región" />
+        </SelectTrigger>
+        <SelectContent>
+          {regionOptions.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-          <div className="space-y-2">
-            <Label htmlFor="seller">Vendedor</Label>
-            <Select value={sellerId} onValueChange={setSellerId}>
-              <SelectTrigger id="seller">
-                <SelectValue placeholder="Seleccionar vendedor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos los vendedores</SelectItem>
-                {sellers.map((seller) => (
-                  <SelectItem key={seller.id} value={seller.id}>
-                    {seller.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+      <Select value={sellerId} onValueChange={setSellerId}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Seleccionar vendedor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos los vendedores</SelectItem>
+          {sellers.map((seller) => (
+            <SelectItem key={seller.id} value={seller.id}>
+              {seller.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-          <div className="space-y-2">
-            <Label htmlFor="dateFrom">Fecha desde</Label>
-            <Input
-              id="dateFrom"
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-            />
-          </div>
+      <DateTypeFilter
+        types={leadsDateTypes}
+        includeNone={false}
+        value={{ type: "CREACION", from: dateFrom, to: dateTo }}
+        onChange={(v) => {
+          setDateFrom(v.from)
+          setDateTo(v.to)
+        }}
+      />
 
-          <div className="space-y-2">
-            <Label htmlFor="dateTo">Fecha hasta</Label>
-            <Input
-              id="dateTo"
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-2">
-          <Button onClick={handleApplyFilters}>Aplicar Filtros</Button>
-          {hasActiveFilters && (
-            <Button variant="outline" onClick={handleClearFilters}>
-              <X className="mr-2 h-4 w-4" />
-              Limpiar
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      <Button variant="outline" size="sm" onClick={handleApplyFilters} className="h-8 rounded-full text-xs">Aplicar Filtros</Button>
+      {hasActiveFilters && (
+        <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-8 rounded-full text-xs">
+          <X className="mr-1 h-3.5 w-3.5" />
+          Limpiar
+        </Button>
+      )}
+    </div>
   )
 }
-

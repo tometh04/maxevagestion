@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
 import { generatePaymentReminders } from "@/lib/alerts/payment-reminders"
 
 /**
@@ -9,16 +8,9 @@ import { generatePaymentReminders } from "@/lib/alerts/payment-reminders"
  */
 export async function POST(request: Request) {
   try {
-    // Verificar autorización: Vercel Cron envía un header especial o usar CRON_SECRET
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
-    const vercelCronSecret = request.headers.get("x-vercel-cron-secret")
-    
-    // Permitir si viene de Vercel Cron o si tiene el token correcto
-    const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
-    const hasValidToken = authHeader === `Bearer ${cronSecret}`
-    
-    if (!isVercelCron && !hasValidToken && cronSecret) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 

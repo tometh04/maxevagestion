@@ -45,7 +45,10 @@ import {
 } from "recharts"
 import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
 import { Label } from "@/components/ui/label"
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns"
+import { format, subDays } from "date-fns"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { QuotationsDashboard } from "@/components/sales/quotations-dashboard"
+import { supabase as supabaseClient } from "@/lib/supabase/client"
 
 interface SalesStatistics {
   overview: {
@@ -67,19 +70,19 @@ interface SalesStatistics {
     bySource: Array<{
       source: string
       count: number
-      won: number
+      converted: number
       conversionRate: number
     }>
     byRegion: Array<{
       region: string
       count: number
-      won: number
+      converted: number
     }>
     bySeller: Array<{
       id: string
       name: string
       leads: number
-      won: number
+      converted: number
       conversionRate: number
     }>
   }
@@ -97,7 +100,7 @@ interface SalesStatistics {
       id: string
       name: string
       leads: number
-      won: number
+      converted: number
       conversionRate: number
     }>
     topSources: Array<{
@@ -154,6 +157,55 @@ const getSourceIcon = (source: string) => {
   }
 }
 
+function QuotationsTab() {
+  const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
+  const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
+  const [userInfo, setUserInfo] = useState<{ role: string; id: string }>({ role: "SELLER", id: "" })
+  const [ready, setReady] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const { data: { user } } = await supabaseClient.auth.getUser()
+        const [sellersRes, agenciesRes] = await Promise.all([
+          supabaseClient.from("users").select("id, name").eq("role", "SELLER").order("name"),
+          supabaseClient.from("agencies").select("id, name").order("name"),
+        ])
+        setSellers((sellersRes.data as any) || [])
+        setAgencies((agenciesRes.data as any) || [])
+        if (user) {
+          const { data: userData } = await supabaseClient.from("users").select("id, role").eq("auth_id", user.id).single()
+          if (userData) {
+            setUserInfo({ role: (userData as any).role, id: (userData as any).id })
+          }
+        }
+      } catch (err) {
+        console.error("Error loading quotation filters:", err)
+      } finally {
+        setReady(true)
+      }
+    }
+    load()
+  }, [])
+
+  if (!ready) {
+    return (
+      <div className="flex items-center justify-center min-h-[300px]">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  return (
+    <QuotationsDashboard
+      sellers={sellers}
+      agencies={agencies}
+      currentUserRole={userInfo.role}
+      currentUserId={userInfo.id}
+    />
+  )
+}
+
 export function SalesStatisticsPageClient() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -161,8 +213,8 @@ export function SalesStatisticsPageClient() {
   
   // Filtros de fecha
   const now = new Date()
-  const defaultFrom = startOfMonth(subMonths(now, 11))
-  const defaultTo = endOfMonth(now)
+  const defaultFrom = subDays(now, 30)
+  const defaultTo = now
   
   const [dateFrom, setDateFrom] = useState<Date | undefined>(defaultFrom)
   const [dateTo, setDateTo] = useState<Date | undefined>(defaultTo)
@@ -270,7 +322,7 @@ export function SalesStatisticsPageClient() {
     .map(s => ({
       name: s.source,
       value: s.count,
-      won: s.won,
+      converted: s.converted,
       color: SOURCE_COLORS[s.source] || '#6b7280',
     }))
 
@@ -289,58 +341,48 @@ export function SalesStatisticsPageClient() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Header con filtros */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-semibold">Estadísticas</h1>
-            <TooltipProvider>
-              <UITooltip>
-                <TooltipTrigger asChild>
-                  <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="font-medium mb-1">¿Cómo funciona?</p>
-                  <p className="text-xs mb-2"><strong>Estadísticas de Ventas:</strong> Métricas sobre tus leads: total, activos, ganados, perdidos, tasa de conversión y depósitos.</p>
-                  <p className="text-xs mb-2"><strong>Gráficos:</strong> Visualización de tendencias por período, distribución por origen (Instagram, WhatsApp, etc.) y top vendedores por conversión.</p>
-                  <p className="text-xs">Los leads pueden convertirse en operaciones desde su detalle. Todos los análisis se muestran en USD para consistencia.</p>
-                </TooltipContent>
-              </UITooltip>
-            </TooltipProvider>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Métricas de ventas en USD
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Desde</Label>
-              <DateInputWithCalendar
-                value={dateFrom}
-                onChange={handleDateFromChange}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Hasta</Label>
-              <DateInputWithCalendar
-                value={dateTo}
-                onChange={handleDateToChange}
-                placeholder="dd/MM/yyyy"
-                minDate={dateFrom}
-              />
-            </div>
-          </div>
-        </div>
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold">Estadísticas</h1>
       </div>
 
-      {/* KPIs compactos */}
+      <Tabs defaultValue="leads" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="leads">Leads</TabsTrigger>
+          <TabsTrigger value="cotizaciones">Cotizaciones</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="leads" className="space-y-4">
+          {/* Filtros de fecha */}
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+            <p className="text-xs text-muted-foreground">Métricas de ventas en USD</p>
+            <div className="flex items-center gap-2">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Desde</Label>
+                <DateInputWithCalendar
+                  value={dateFrom}
+                  onChange={handleDateFromChange}
+                  placeholder="dd/MM/yyyy"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Hasta</Label>
+                <DateInputWithCalendar
+                  value={dateTo}
+                  onChange={handleDateToChange}
+                  placeholder="dd/MM/yyyy"
+                  minDate={dateFrom}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* KPIs compactos */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-blue-100 dark:bg-blue-900/30">
-              <Users className="h-3.5 w-3.5 text-blue-600" />
+            <div className="p-1.5 rounded bg-info/10">
+              <Users className="h-3.5 w-3.5 text-info" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Leads</p>
@@ -352,40 +394,40 @@ export function SalesStatisticsPageClient() {
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-orange-100 dark:bg-orange-900/30">
-              <Target className="h-3.5 w-3.5 text-orange-600" />
+            <div className="p-1.5 rounded bg-primary/10">
+              <Target className="h-3.5 w-3.5 text-primary" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Activos</p>
-              <p className="text-base font-semibold text-orange-600">{stats.overview.activeLeads}</p>
-              <p className="text-[10px] text-muted-foreground">en proceso</p>
+              <p className="text-base font-semibold text-primary">{stats.overview.activeLeads}</p>
+              <p className="text-[10px] text-muted-foreground">sin convertir</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-green-100 dark:bg-green-900/30' : stats.overview.conversionRate >= 10 ? 'bg-yellow-100 dark:bg-yellow-900/30' : 'bg-red-100 dark:bg-red-900/30'}`}>
-              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-green-600' : stats.overview.conversionRate >= 10 ? 'text-yellow-600' : 'text-red-600'}`} />
+            <div className={`p-1.5 rounded ${stats.overview.conversionRate >= 20 ? 'bg-success/10' : stats.overview.conversionRate >= 10 ? 'bg-warning/10' : 'bg-destructive/10'}`}>
+              <Percent className={`h-3.5 w-3.5 ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`} />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Conversión</p>
-              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-green-600' : stats.overview.conversionRate >= 10 ? 'text-yellow-600' : 'text-red-600'}`}>
+              <p className={`text-base font-semibold ${stats.overview.conversionRate >= 20 ? 'text-success' : stats.overview.conversionRate >= 10 ? 'text-warning' : 'text-destructive'}`}>
                 {stats.overview.conversionRate}%
               </p>
-              <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} ganados</p>
+              <p className="text-[10px] text-muted-foreground">{stats.overview.wonLeads} convertidos</p>
             </div>
           </div>
         </Card>
 
         <Card className="p-3">
           <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
+            <div className="p-1.5 rounded bg-success/10">
+              <DollarSign className="h-3.5 w-3.5 text-success" />
             </div>
             <div>
               <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Depósitos</p>
-              <p className="text-base font-semibold text-emerald-600">{formatFullCurrency(stats.overview.totalDeposits)}</p>
+              <p className="text-base font-semibold text-success">{formatFullCurrency(stats.overview.totalDeposits)}</p>
             </div>
           </div>
         </Card>
@@ -459,7 +501,7 @@ export function SalesStatisticsPageClient() {
                   <Line 
                     type="monotone" 
                     dataKey="wonLeads" 
-                    name="Ganados"
+                    name="Convertidos"
                     stroke="#22c55e" 
                     strokeWidth={2}
                     dot={{ r: 3 }}
@@ -550,7 +592,7 @@ export function SalesStatisticsPageClient() {
                       {seller.leads}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={seller.conversionRate >= 25 ? "text-green-600" : seller.conversionRate >= 15 ? "text-amber-600" : "text-muted-foreground"}>
+                      <span className={seller.conversionRate >= 25 ? "text-success" : seller.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
                         {seller.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>
@@ -579,7 +621,7 @@ export function SalesStatisticsPageClient() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="text-[10px] h-7 px-2">Origen</TableHead>
                   <TableHead className="text-[10px] h-7 px-2 text-right">Leads</TableHead>
-                  <TableHead className="text-[10px] h-7 px-2 text-right">Ganados</TableHead>
+                  <TableHead className="text-[10px] h-7 px-2 text-right">Convertidos</TableHead>
                   <TableHead className="text-[10px] h-7 px-2 text-right">Conversión</TableHead>
                 </TableRow>
               </TableHeader>
@@ -596,10 +638,10 @@ export function SalesStatisticsPageClient() {
                       {source.count}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right tabular-nums">
-                      {(source as any).won || 0}
+                      {(source as any).converted || 0}
                     </TableCell>
                     <TableCell className="text-xs py-1.5 px-2 text-right">
-                      <span className={source.conversionRate >= 25 ? "text-green-600" : source.conversionRate >= 15 ? "text-amber-600" : "text-muted-foreground"}>
+                      <span className={source.conversionRate >= 25 ? "text-success" : source.conversionRate >= 15 ? "text-warning" : "text-muted-foreground"}>
                         {source.conversionRate.toFixed(1)}%
                       </span>
                     </TableCell>
@@ -618,11 +660,17 @@ export function SalesStatisticsPageClient() {
         </Card>
       </div>
 
-      {/* Info adicional */}
-      <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
-        <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} ganados • {stats.overview.lostLeads} perdidos</span>
-        <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
-      </div>
+          {/* Info adicional */}
+          <div className="flex items-center justify-between text-[10px] text-muted-foreground px-1">
+            <span>{stats.overview.activeLeads} activos • {stats.overview.wonLeads} convertidos • {stats.overview.lostLeads} perdidos</span>
+            <span>Total depósitos: {formatFullCurrency(stats.overview.totalDeposits)}</span>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="cotizaciones">
+          <QuotationsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

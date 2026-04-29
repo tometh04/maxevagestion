@@ -38,14 +38,14 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
       setLoading(true)
       const today = new Date().toISOString().split("T")[0]
       const nextMonth = new Date()
-      nextMonth.setDate(nextMonth.getDate() + 30)
+      nextMonth.setDate(nextMonth.getDate() + 90)
       const nextMonthStr = nextMonth.toISOString().split("T")[0]
       
       const params = new URLSearchParams()
       params.set("dateFrom", today)
       params.set("dateTo", nextMonthStr)
       params.set("status", "CONFIRMED")
-      params.set("limit", "5")
+      params.set("limit", "50")
       if (agencyId && agencyId !== "ALL") {
         params.set("agencyId", agencyId)
       }
@@ -53,9 +53,34 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
         params.set("sellerId", sellerId)
       }
       
-      const response = await fetch(`/api/operations?${params.toString()}`)
-      const data = await response.json()
-      setOperations(data.operations || [])
+      // PERF: usamos el endpoint lightweight /api/operations/upcoming-trips
+      // (projection mínima, sin nested joins). Si fallara, fallback al
+      // /api/operations original (mismo shape de respuesta {operations}).
+      let data: { operations?: Operation[] } = { operations: [] }
+      try {
+        const response = await fetch(`/api/operations/upcoming-trips?${params.toString()}`)
+        if (response.ok) {
+          data = await response.json()
+        } else {
+          throw new Error(`Status ${response.status}`)
+        }
+      } catch {
+        // Fallback automático al endpoint completo
+        const fallback = await fetch(`/api/operations?${params.toString()}`)
+        if (fallback.ok) {
+          data = await fallback.json()
+        }
+      }
+      // Filter only future departures (departure_date >= today)
+      const todayDate = new Date()
+      todayDate.setHours(0, 0, 0, 0)
+      const futureOps = (data.operations || [])
+        .filter((op: Operation) => new Date(op.departure_date) >= todayDate)
+        .sort((a: Operation, b: Operation) =>
+          new Date(a.departure_date).getTime() - new Date(b.departure_date).getTime()
+        )
+        .slice(0, 10)
+      setOperations(futureOps)
     } catch (error) {
       console.error("Error fetching upcoming trips:", error)
     } finally {
@@ -84,7 +109,7 @@ export function UpcomingTripsCard({ agencyId, sellerId }: UpcomingTripsCardProps
         <div>
           <CardTitle className="text-sm font-medium flex items-center gap-2">
             <Plane className="h-4 w-4" />
-            Próximos Viajes
+            Próximas Salidas
           </CardTitle>
           <CardDescription className="text-xs">Salidas confirmadas</CardDescription>
         </div>

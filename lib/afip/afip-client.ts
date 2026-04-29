@@ -179,6 +179,57 @@ export async function getTaxpayerData(
 }
 
 /**
+ * Obtiene la cotización oficial de AFIP para una moneda en una fecha dada.
+ * Esto es lo que AFIP usa al validar facturas: si cotización enviada
+ * difiere más del ±2% de este valor, rechaza con error 10119.
+ *
+ * @param monId - Código de moneda AFIP (ej: "DOL" para USD)
+ * @param date - Fecha para consultar cotización. Si no se pasa, usa hoy.
+ * @returns { MonId, MonCotiz, FchCotiz } o error
+ */
+export async function getAfipExchangeRate(
+  config: AfipConfig,
+  monId: string,
+  date?: Date
+): Promise<{
+  success: boolean
+  data?: { MonId: string; MonCotiz: number; FchCotiz: string }
+  error?: string
+}> {
+  try {
+    const afip = createAfipInstance(config)
+    const fchCotiz = formatDate(date || new Date())
+
+    // El SDK expone getExchangeRate(MonId, Date) o, en versiones viejas,
+    // el método está en FEParamGetCotizacion. Intentamos el camino estándar.
+    const rate = await afip.ElectronicBilling.getExchangeRate(monId, fchCotiz)
+
+    // La respuesta del SDK puede venir como número directo o como objeto
+    const cotiz =
+      typeof rate === 'number'
+        ? rate
+        : Number(rate?.MonCotiz ?? rate?.cotizacion ?? 0)
+
+    if (!cotiz || cotiz <= 0) {
+      return {
+        success: false,
+        error: `AFIP no devolvió cotización válida para ${monId} el ${fchCotiz}`,
+      }
+    }
+
+    return {
+      success: true,
+      data: { MonId: monId, MonCotiz: cotiz, FchCotiz: fchCotiz },
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      error: error.message || 'Error al consultar cotización AFIP',
+    }
+  }
+}
+
+/**
  * Obtiene los puntos de venta habilitados para web services (WSFEv1)
  */
 export async function getPointsOfSale(config: AfipConfig): Promise<{

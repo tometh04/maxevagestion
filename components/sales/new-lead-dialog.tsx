@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { DestinationCombobox } from "@/components/ui/destination-combobox"
+import { getLeadRegionForDestination } from "@/lib/destinations"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -28,10 +29,11 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
-import { CalendarIcon } from "lucide-react"
+import { CalendarIcon, User, MapPin, UserCheck, StickyNote } from "lucide-react"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 const REGION_TO_LIST: Record<string, string> = {
   ARGENTINA: "Leads - Argentina",
@@ -116,6 +118,17 @@ export function NewLeadDialog({
   const watchedAgencyId = form.watch("agency_id")
 
   const watchedRegion = form.watch("region")
+  const watchedDestination = form.watch("destination")
+
+  // Auto-asignar región cuando cambia el destino
+  useEffect(() => {
+    if (watchedDestination) {
+      const detectedRegion = getLeadRegionForDestination(watchedDestination)
+      if (detectedRegion) {
+        form.setValue("region", detectedRegion as any)
+      }
+    }
+  }, [watchedDestination, form])
 
   // Auto-asignar lista cuando cambia la región
   useEffect(() => {
@@ -141,9 +154,12 @@ export function NewLeadDialog({
         const data = await response.json()
 
         if (data.listNames && Array.isArray(data.listNames) && data.listNames.length > 0) {
-          // Filtrar solo listas que empiecen con "Leads - " (excluir las viejas de Trello)
-          const validLists = data.listNames.filter((name: string) => name.startsWith("Leads - "))
-          setCrmLists(validLists)
+          // Antes filtrábamos por `name.startsWith("Leads - ")` para dejar
+          // afuera listas legacy de Trello. En el SaaS multi-tenant cada
+          // tenant nombra sus listas como quiera, así que ahora aceptamos
+          // cualquiera. Si querés filtrar, hacelo por tabla (p.ej. no
+          // mostrar listas con source = trello) no por prefijo de nombre.
+          setCrmLists(data.listNames as string[])
         } else {
           setCrmLists([])
         }
@@ -192,7 +208,7 @@ export function NewLeadDialog({
       onSuccess()
     } catch (error: any) {
       console.error("Error creating lead:", error)
-      alert(error.message || "Error al crear lead")
+      toast.error(error.message || "Error al crear lead")
     } finally {
       setLoading(false)
     }
@@ -200,123 +216,104 @@ export function NewLeadDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>Nuevo Lead</DialogTitle>
           <DialogDescription>Crear un nuevo lead manualmente</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="agency_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Agencia *</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col overflow-hidden flex-1">
+            <div className="px-6 py-5 space-y-5 overflow-y-auto flex-1">
+            {/* Contacto */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Contacto</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="contact_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre de Contacto *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar agencia" />
-                        </SelectTrigger>
+                        <Input placeholder="Nombre completo" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {agencies.map((agency) => (
-                          <SelectItem key={agency.id} value={agency.id}>
-                            {agency.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="assigned_seller_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Vendedor Asignado</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                      value={field.value || "none"}
-                    >
+                <FormField
+                  control={form.control}
+                  name="contact_phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Sin asignar" />
-                        </SelectTrigger>
+                        <Input placeholder="+54 9 11 1234-5678" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Sin asignar</SelectItem>
-                        {sellers.map((seller) => (
-                          <SelectItem key={seller.id} value={seller.id}>
-                            {seller.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="contact_email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="email@ejemplo.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="contact_instagram"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Instagram</FormLabel>
+                      <FormControl>
+                        <Input placeholder="@usuario" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            {/* Viaje */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Viaje</span>
+              </div>
               <FormField
                 control={form.control}
-                name="source"
+                name="destination"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Origen</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="Manychat">Manychat</SelectItem>
-                        <SelectItem value="Instagram">Instagram</SelectItem>
-                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
-                        <SelectItem value="Meta Ads">Meta Ads</SelectItem>
-                        <SelectItem value="Referido">Referido</SelectItem>
-                        <SelectItem value="Cliente">Cliente</SelectItem>
-                        <SelectItem value="Other">Otro</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Destino *</FormLabel>
+                    <FormControl>
+                      <DestinationCombobox
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Ej: Cancún, París, etc."
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Estado</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="NEW">Nuevo</SelectItem>
-                        <SelectItem value="IN_PROGRESS">En Progreso</SelectItem>
-                        <SelectItem value="QUOTED">Cotizado</SelectItem>
-                        <SelectItem value="WON">Ganado</SelectItem>
-                        <SelectItem value="LOST">Perdido</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
               <FormField
                 control={form.control}
                 name="region"
@@ -345,141 +342,191 @@ export function NewLeadDialog({
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="destination"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Destino *</FormLabel>
-                  <FormControl>
-                    <DestinationCombobox
-                      value={field.value}
-                      onChange={field.onChange}
-                      placeholder="Ej: Cancún, París, etc."
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Asignación */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <UserCheck className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs font-medium text-foreground/70">Asignación</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="assigned_seller_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Vendedor Asignado</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                        value={field.value || "none"}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sin asignar" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">Sin asignar</SelectItem>
+                          {sellers.map((seller) => (
+                            <SelectItem key={seller.id} value={seller.id}>
+                              {seller.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-            {/* Selector de Lista del CRM */}
-            {watchedAgencyId && (
+                <FormField
+                  control={form.control}
+                  name="agency_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Agencia *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar agencia" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {agencies.map((agency) => (
+                            <SelectItem key={agency.id} value={agency.id}>
+                              {agency.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
-                name="list_name"
+                name="status"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Lista del CRM</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value || REGION_TO_LIST[watchedRegion] || "Leads - Otros"}
-                      disabled={loadingLists}
-                    >
+                    <FormLabel>Estado</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder={loadingLists ? "Cargando listas..." : "Seleccionar lista"} />
+                          <SelectValue />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {crmLists.length > 0 ? (
-                          crmLists.map((listName) => (
-                            <SelectItem key={listName} value={listName}>
-                              {listName}
-                            </SelectItem>
-                          ))
-                        ) : (
-                          // Fallback: mostrar listas por defecto si no hay listas configuradas
-                          Object.values(REGION_TO_LIST).map((listName) => (
-                            <SelectItem key={listName} value={listName}>
-                              {listName}
-                            </SelectItem>
-                          ))
-                        )}
+                        <SelectItem value="NEW">Nuevo</SelectItem>
+                        <SelectItem value="IN_PROGRESS">En Progreso</SelectItem>
+                        <SelectItem value="QUOTED">Cotizado</SelectItem>
+                        <SelectItem value="WON">Ganado</SelectItem>
+                        <SelectItem value="LOST">Perdido</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-            )}
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="contact_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre de Contacto *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Nombre completo" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="contact_phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Teléfono *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+54 9 11 1234-5678" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="contact_email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="email@ejemplo.com" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="contact_instagram"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Instagram</FormLabel>
-                    <FormControl>
-                      <Input placeholder="@usuario" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notas</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Notas adicionales sobre el lead..." {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+              {/* Selector de Lista del CRM */}
+              {watchedAgencyId && (
+                <FormField
+                  control={form.control}
+                  name="list_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Lista del CRM</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value || REGION_TO_LIST[watchedRegion] || "Leads - Otros"}
+                        disabled={loadingLists}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={loadingLists ? "Cargando listas..." : "Seleccionar lista"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {crmLists.length > 0 ? (
+                            crmLists.map((listName) => (
+                              <SelectItem key={listName} value={listName}>
+                                {listName}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            // Nota (2026-04-20): antes había un fallback a
+                            // Object.values(REGION_TO_LIST) que mostraba 7 listas
+                            // hardcoded de Lozada (Argentina/Caribe/etc). En un
+                            // SaaS multi-tenant esas listas no deben filtrarse
+                            // al UI del resto de orgs. Si el tenant todavía no
+                            // creó su lista, mostramos un placeholder claro.
+                            <div className="px-3 py-4 text-xs text-muted-foreground">
+                              Aún no creaste ninguna lista.<br />
+                              Cerrá este diálogo y creá una lista desde el botón
+                              “+ Nueva Lista” arriba a la derecha del CRM.
+                            </div>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+            </div>
 
-            <div className="border-t pt-4">
-              <h3 className="text-sm font-semibold mb-4">Información Contable</h3>
+            {/* Detalles */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <StickyNote className="h-3.5 w-3.5 text-sky-500" />
+                <span className="text-xs font-medium text-foreground/70">Detalles</span>
+              </div>
+              <FormField
+                control={form.control}
+                name="notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Notas</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Notas adicionales sobre el lead..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="source"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Origen</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="Manychat">Manychat</SelectItem>
+                        <SelectItem value="Instagram">Instagram</SelectItem>
+                        <SelectItem value="WhatsApp">WhatsApp</SelectItem>
+                        <SelectItem value="Meta Ads">Meta Ads</SelectItem>
+                        <SelectItem value="Referido">Referido</SelectItem>
+                        <SelectItem value="Cliente">Cliente</SelectItem>
+                        <SelectItem value="Other">Otro</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <CalendarIcon className="h-3.5 w-3.5 text-amber-500" />
+                <span className="text-xs font-medium text-foreground/70">Información Contable</span>
+              </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <FormField
                   control={form.control}
@@ -624,6 +671,7 @@ export function NewLeadDialog({
               )}
             </div>
 
+            </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
                 Cancelar

@@ -383,7 +383,7 @@ GROUP BY fa.currency
 10. **Tipo de Operación ASSISTANCE:** Se agregó 'ASSISTANCE' (Asistencia al Viajero) como tipo de operación válido
 `
 
-const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de MAXEVA GESTION para agencias de viajes.
+const SYSTEM_PROMPT = `Eres "Cerebro", el asistente inteligente de Vibook para agencias de viajes.
 
 🎯 TU PROPÓSITO:
 Ayudar a los usuarios a obtener información precisa sobre CUALQUIER dato del sistema mediante consultas SQL directas.
@@ -718,8 +718,6 @@ async function executeQuery(supabase: any, query: string): Promise<{ success: bo
       return { success: false, error: "Solo SELECT permitido" }
     }
     
-    console.log("[Cerebro] Query:", cleanedQuery.substring(0, 200))
-    
     const { data, error } = await supabase.rpc('execute_readonly_query', { query_text: cleanedQuery })
     
     if (error) {
@@ -728,7 +726,6 @@ async function executeQuery(supabase: any, query: string): Promise<{ success: bo
     }
     
     const result = Array.isArray(data) ? data : (data ? [data] : [])
-    console.log("[Cerebro] Results:", result.length)
     return { success: true, data: result }
   } catch (error: any) {
     console.error("[Cerebro] Exception:", error.message)

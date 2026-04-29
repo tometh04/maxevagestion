@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Calendar, Calculator, Loader2, Plus, Trash2 } from "lucide-react"
+import { Calendar, Calculator, Loader2, Plus, Trash2, Settings2 } from "lucide-react"
 import { toast } from "sonner"
 import { format, addDays, addWeeks, addMonths } from "date-fns"
 import { es } from "date-fns/locale"
@@ -189,7 +189,7 @@ export function PaymentPlanGenerator({
           Generar Plan de Pagos
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
@@ -200,9 +200,9 @@ export function PaymentPlanGenerator({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
           {/* Información del total */}
-          <div className="rounded-lg bg-muted/50 p-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Monto total a financiar:</span>
               <span className="text-xl font-bold">{currency} {totalAmount.toLocaleString("es-AR")}</span>
@@ -210,54 +210,62 @@ export function PaymentPlanGenerator({
           </div>
 
           {/* Configuración */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="downPayment">Anticipo / Seña</Label>
-              <Input
-                id="downPayment"
-                type="number"
-                min="0"
-                max={totalAmount}
-                value={downPayment}
-                onChange={(e) => setDownPayment(Number(e.target.value))}
-                placeholder="0"
-              />
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <Settings2 className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Configuración</h4>
             </div>
+            <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="downPayment">Anticipo / Seña</Label>
+                <Input
+                  id="downPayment"
+                  type="number"
+                  min="0"
+                  max={totalAmount}
+                  value={downPayment}
+                  onChange={(e) => setDownPayment(Number(e.target.value))}
+                  placeholder="0"
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="numberOfPayments">Número de cuotas</Label>
-              <Input
-                id="numberOfPayments"
-                type="number"
-                min="1"
-                max="24"
-                value={numberOfPayments}
-                onChange={(e) => setNumberOfPayments(Number(e.target.value))}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="numberOfPayments">Número de cuotas</Label>
+                <Input
+                  id="numberOfPayments"
+                  type="number"
+                  min="1"
+                  max="24"
+                  value={numberOfPayments}
+                  onChange={(e) => setNumberOfPayments(Number(e.target.value))}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="frequency">Frecuencia</Label>
-              <Select value={frequency} onValueChange={(v) => setFrequency(v as FrequencyType)}>
-                <SelectTrigger id="frequency">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="weekly">Semanal</SelectItem>
-                  <SelectItem value="biweekly">Quincenal</SelectItem>
-                  <SelectItem value="monthly">Mensual</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="frequency">Frecuencia</Label>
+                <Select value={frequency} onValueChange={(v) => setFrequency(v as FrequencyType)}>
+                  <SelectTrigger id="frequency">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="weekly">Semanal</SelectItem>
+                    <SelectItem value="biweekly">Quincenal</SelectItem>
+                    <SelectItem value="monthly">Mensual</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Fecha primera cuota</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="startDate">Fecha primera cuota</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
             </div>
           </div>
 
@@ -268,52 +276,60 @@ export function PaymentPlanGenerator({
 
           {/* Tabla de pagos */}
           {payments.length > 0 && (
-            <div className="space-y-4">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Concepto</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
-                    <TableHead className="w-10"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {payments.map((payment, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{payment.description}</TableCell>
-                      <TableCell>
-                        <Input
-                          type="date"
-                          value={format(payment.dueDate, "yyyy-MM-dd")}
-                          onChange={(e) => updatePaymentDate(index, e.target.value)}
-                          className="w-36"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Input
-                          type="number"
-                          value={payment.amount}
-                          onChange={(e) => updatePaymentAmount(index, Number(e.target.value))}
-                          className="w-28 text-right"
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removePayment(index)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
-                      </TableCell>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <Calendar className="h-3.5 w-3.5 text-emerald-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Plan de Cuotas</h4>
+              </div>
+              <div className="border border-border/30 rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {payments.map((payment, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{payment.description}</TableCell>
+                        <TableCell>
+                          <Input
+                            type="date"
+                            value={format(payment.dueDate, "yyyy-MM-dd")}
+                            onChange={(e) => updatePaymentDate(index, e.target.value)}
+                            className="w-36"
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Input
+                            type="number"
+                            value={payment.amount}
+                            onChange={(e) => updatePaymentAmount(index, Number(e.target.value))}
+                            className="w-28 text-right"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removePayment(index)}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
 
               {/* Resumen */}
-              <div className="rounded-lg border p-4 space-y-2">
+              <div className="rounded-lg border border-border/30 bg-background p-4 space-y-2">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total planificado:</span>
                   <span className="font-semibold">{currency} {totalPlanned.toLocaleString("es-AR")}</span>
@@ -328,7 +344,7 @@ export function PaymentPlanGenerator({
 
               {Math.abs(difference) > 1 && (
                 <p className="text-sm text-destructive">
-                  ⚠️ El total planificado no coincide con el monto total. Ajusta los montos antes de guardar.
+                  El total planificado no coincide con el monto total. Ajusta los montos antes de guardar.
                 </p>
               )}
             </div>

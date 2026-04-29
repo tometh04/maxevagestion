@@ -8,11 +8,12 @@ import {
   getOrCreateDefaultAccount,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import {
   mapDepositMethodToLedgerMethod,
   getAccountTypeForDeposit,
 } from "@/lib/accounting/deposit-utils"
+import { logAudit, getClientIP } from "@/lib/audit"
 
 export async function DELETE(
   request: Request,
@@ -59,14 +60,38 @@ export async function DELETE(
       )
     }
 
-    // Delete lead — usar admin client para bypassear RLS
+    // Delete lead — admin client para cascada sobre FKs, pero acotado por
+    // org_id conocido (SaaS Pilar 2: defensa-en-profundidad, cierra race
+    // conditions donde el lead podría mutar de org entre el SELECT y el DELETE).
     const adminClient = createAdminClient()
-    const { error } = await (adminClient.from("leads") as any).delete().eq("id", id)
+    let deleteQuery = (adminClient.from("leads") as any).delete().eq("id", id)
+    if (lead.org_id) deleteQuery = deleteQuery.eq("org_id", lead.org_id)
+    const { error } = await deleteQuery
 
     if (error) {
       console.error("Error deleting lead:", error)
       return NextResponse.json({ error: "Error al eliminar lead" }, { status: 500 })
     }
+
+    // Audit log — quién borró qué lead y sus datos clave
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "DELETE",
+      entity_type: "lead",
+      entity_id: id,
+      details: {
+        contact_name: lead?.contact_name || null,
+        contact_phone: lead?.contact_phone || null,
+        contact_email: lead?.contact_email || null,
+        status: lead?.status || null,
+        source: lead?.source || null,
+        assigned_seller_id: lead?.assigned_seller_id || null,
+        agency_id: lead?.agency_id || null,
+        user_role: user.role,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
@@ -135,12 +160,28 @@ export async function PATCH(
     if (updateData.assigned_seller_id === "none" || updateData.assigned_seller_id === null) {
       updateData.assigned_seller_id = null
     }
+    if (updateData.deposit_account_id === "none" || updateData.deposit_account_id === null) {
+      updateData.deposit_account_id = null
+    }
+    if (updateData.deposit_currency === "none" || updateData.deposit_currency === null) {
+      updateData.deposit_currency = null
+    }
+    if (updateData.has_deposit === false) {
+      updateData.deposit_amount = null
+      updateData.deposit_currency = null
+      updateData.deposit_method = null
+      updateData.deposit_date = null
+      updateData.deposit_account_id = null
+    }
 
-    // Usar admin client para bypassear RLS — cualquier usuario con permiso puede editar cualquier lead
+    // SaaS Pilar 2: admin client para cross-org read after write, pero
+    // acotado por org_id conocido del lead que ya validamos via RLS arriba.
     const adminClient = createAdminClient()
-    const { error } = await (adminClient.from("leads") as any)
+    let updateQuery = (adminClient.from("leads") as any)
       .update(updateData)
       .eq("id", id)
+    if (lead.org_id) updateQuery = updateQuery.eq("org_id", lead.org_id)
+    const { error } = await updateQuery
 
     if (error) {
       console.error("Error updating lead:", error)
@@ -193,16 +234,8 @@ export async function PATCH(
             let exchangeRate: number | null = null
             if (depositCurrency === "USD") {
               const rateDate = depositDate ? new Date(depositDate) : new Date()
-              exchangeRate = await getExchangeRate(supabase, rateDate)
-
-              if (!exchangeRate) {
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-                exchangeRate = 1450
-              }
+              const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "leads-update")
+              exchangeRate = rateResult.rate
             }
 
             const amountArsEquivalent = calculateARSEquivalent(
@@ -231,7 +264,6 @@ export async function PATCH(
               if (updateError) {
                 console.error("Error updating ledger movement:", updateError)
               } else {
-                console.log(`✅ Updated ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
               }
             } else {
               await createLedgerMovement(
@@ -252,7 +284,6 @@ export async function PATCH(
                 },
                 supabase
               )
-              console.log(`✅ Created ledger movement for deposit of ${depositAmount} ${depositCurrency} for lead ${id}`)
             }
           } catch (error) {
             console.error("Error creating/updating ledger movement for deposit:", error)
@@ -268,7 +299,6 @@ export async function PATCH(
         } else {
           // Invalidar cache de balance de la cuenta afectada
           if (movementAccountId) invalidateBalanceCache(movementAccountId)
-          console.log(`✅ Deleted ledger movement for lead ${id} (deposit removed)`)
         }
       }
     }

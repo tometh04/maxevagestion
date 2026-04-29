@@ -5,8 +5,7 @@ import { createServerClient } from "@/lib/supabase/server"
 
 function getDefaultDateRange() {
   const today = new Date()
-  const from = new Date()
-  from.setDate(today.getDate() - 30)
+  const from = new Date(today.getFullYear(), 0, 1) // 1° de enero del año actual
 
   return {
     dateFrom: from.toISOString().split("T")[0],
@@ -39,9 +38,10 @@ export default async function CashMovementsPage() {
   const defaultFilters: CashFiltersState = {
     dateFrom: dates.dateFrom,
     dateTo: dates.dateTo,
+    dateType: "MOVIMIENTO",
     agencyId: "ALL",
-    currency: "ARS",
+    currency: "ALL",
   }
 
-  return <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} />
+  return <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} userRole={user.role} />
 }

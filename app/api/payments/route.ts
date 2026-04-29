@@ -1,19 +1,106 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
-  getOrCreateDefaultAccount,
   validateSufficientBalance,
   getMainPassengerName,
   invalidateBalanceCache,
 } from "@/lib/accounting/ledger"
 import {
-  getExchangeRate,
-  getLatestExchangeRate,
+  getExchangeRateWithFallback,
 } from "@/lib/accounting/exchange-rates"
+import {
+  applyOperatorPaymentSettlement,
+  findMatchingOperatorPayment,
+  revertOperatorPaymentSettlement,
+} from "@/lib/accounting/operator-payment-settlement"
+import {
+  createPaymentCounterpartMovement,
+  mapPaymentMethodToLedgerMethod,
+  removePaymentCounterpartMovement,
+} from "@/lib/accounting/payment-counterparts"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { logAudit, getClientIP } from "@/lib/audit"
+import {
+  coercePositiveNumber,
+  getCustomerIncomeReferenceCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
+import { resolveServicePaymentLink } from "@/lib/payments/service-payment-link"
+import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
+import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
+import { annotatePaymentAsJournalEntry } from "@/lib/accounting/journal-entries"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { loadApprovalRules, getCurrentArsPerUsd } from "@/lib/payments/load-rules"
+import { requiresApproval, convertToArs } from "@/lib/payments/approval"
+import { notifyApprovers } from "@/lib/payments/notify-approvers"
+
+const CUSTOMER_INCOME_EXCHANGE_RATE_ERROR =
+  "Debe ingresar el tipo de cambio cuando el cobro está en una moneda distinta a la moneda de venta"
+
+async function getOperationOperatorIdsForPayments(
+  supabase: any,
+  operationId: string,
+  operationData?: {
+    operator_id?: string | null
+    operation_operators?: Array<{ operator_id?: string | null }> | null
+  } | null
+) {
+  const operatorIds = new Set<string>()
+
+  if (operationData?.operator_id) {
+    operatorIds.add(operationData.operator_id)
+  }
+
+  for (const relation of operationData?.operation_operators || []) {
+    if (relation?.operator_id) {
+      operatorIds.add(relation.operator_id)
+    }
+  }
+
+  const [servicesResult, operatorPaymentsResult, ivaPurchasesResult] = await Promise.all([
+    (supabase.from("operation_services") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId)
+      .not("operator_id", "is", null),
+    (supabase.from("operator_payments") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId),
+    (supabase.from("iva_purchases") as any)
+      .select("operator_id")
+      .eq("operation_id", operationId),
+  ])
+
+  if (!servicesResult.error) {
+    for (const service of servicesResult.data || []) {
+      if (service?.operator_id) {
+        operatorIds.add(service.operator_id)
+      }
+    }
+  }
+
+  if (!operatorPaymentsResult.error) {
+    for (const operatorPayment of operatorPaymentsResult.data || []) {
+      if (operatorPayment?.operator_id) {
+        operatorIds.add(operatorPayment.operator_id)
+      }
+    }
+  }
+
+  if (!ivaPurchasesResult.error) {
+    for (const purchaseIva of ivaPurchasesResult.data || []) {
+      if (purchaseIva?.operator_id) {
+        operatorIds.add(purchaseIva.operator_id)
+      }
+    }
+  }
+
+  return operatorIds
+}
 
 /**
  * POST /api/payments
@@ -26,11 +113,27 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+
+    // Verificar acceso al módulo de caja
+    if (!canAccessModule(user.role, "cash")) {
+      return NextResponse.json({ error: "No tiene permisos para acceder a este módulo" }, { status: 403 })
+    }
+
+    // Rate limit por usuario para evitar doble-submit / bots / scripting
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
+
+    // Bypass de detección de duplicados cuando el user ya confirmó vía dialog
+    const url = new URL(request.url)
+    const forceCreate = url.searchParams.get("force") === "true"
+
     const body = await request.json()
 
     const {
       operation_id,
       operation_service_id, // Vincular pago a un servicio adicional específico
+      operator_id,
+      operator_payment_id,
       payer_type,
       direction,
       method,
@@ -42,33 +145,161 @@ export async function POST(request: Request) {
       date_due,
       status,
       notes,
+      apply_rg5617,
+      apply_rg3819,
     } = body
 
+    const finalStatus = status || "PENDING"
+    const providedExchangeRateNumber = coercePositiveNumber(providedExchangeRate)
+
     // operation_id ahora es opcional (para pagos manuales)
-    // financial_account_id es requerido siempre
-    if (!payer_type || !direction || !amount || !currency || !financial_account_id) {
-      return NextResponse.json({ error: "Faltan campos requeridos (financial_account_id es obligatorio)" }, { status: 400 })
+    // financial_account_id es obligatorio solo si el pago se registra como PAID
+    if (!payer_type || !direction || !amount || !currency || (finalStatus === "PAID" && !financial_account_id)) {
+      return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
     }
 
-    // Validar que la cuenta financiera existe
-    const { data: financialAccount, error: accountError } = await (supabase.from("financial_accounts") as any)
-      .select("id, currency")
-      .eq("id", financial_account_id)
-      .eq("is_active", true)
-      .single()
+    if (financial_account_id) {
+      const { data: account, error: accountError } = await (supabase.from("financial_accounts") as any)
+        .select("id, currency")
+        .eq("id", financial_account_id)
+        .eq("is_active", true)
+        .single()
 
-    if (accountError || !financialAccount) {
-      return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
-    }
+      if (accountError || !account) {
+        return NextResponse.json({ error: "Cuenta financiera no encontrada o inactiva" }, { status: 404 })
+      }
 
-    // Validar que la moneda de la cuenta coincide con la del pago
-    if (financialAccount.currency !== currency) {
-      return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      if (account.currency !== currency) {
+        return NextResponse.json({ error: `La cuenta financiera debe estar en ${currency}` }, { status: 400 })
+      }
     }
 
     // Validaciones de montos
-    if (amount < 0) {
-      return NextResponse.json({ error: "El monto no puede ser negativo" }, { status: 400 })
+    if (!amount || amount <= 0) {
+      return NextResponse.json({ error: "El monto debe ser mayor a cero" }, { status: 400 })
+    }
+
+    // Detección de pago duplicado: pagos similares (misma op/operador, mismo monto, misma moneda,
+    // misma dirección) creados en los últimos 7 días. Si encuentra coincidencia y el caller no
+    // pasó force=true, retorna 409 con la lista para que el frontend muestre alerta y permita confirmar.
+    if (!forceCreate) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      let dupQ = (supabase.from("payments") as any)
+        .select(
+          "id, amount, currency, direction, payer_type, status, date_paid, date_due, created_at, reference, operation_id, operator_id"
+        )
+        .eq("amount", amount)
+        .eq("currency", currency)
+        .eq("direction", direction)
+        .gte("created_at", sevenDaysAgo)
+        .neq("source", "OPERATOR_BULK")
+      if (operation_id) {
+        dupQ = dupQ.eq("operation_id", operation_id)
+      } else if (operator_id) {
+        dupQ = dupQ.eq("operator_id", operator_id).is("operation_id", null)
+      } else {
+        // Sin operation_id ni operator_id no hay forma de detectar duplicados (caso raro). Skip.
+        dupQ = null
+      }
+      if (dupQ) {
+        const { data: duplicates } = await dupQ.limit(5)
+        if (duplicates && duplicates.length > 0) {
+          return NextResponse.json(
+            {
+              error: "Posible pago duplicado detectado",
+              code: "DUPLICATE_PAYMENT",
+              duplicates: duplicates.map((d: any) => ({
+                id: d.id,
+                amount: Number(d.amount),
+                currency: d.currency,
+                date_paid: d.date_paid,
+                date_due: d.date_due,
+                created_at: d.created_at,
+                reference: d.reference,
+                status: d.status,
+              })),
+            },
+            { status: 409 }
+          )
+        }
+      }
+    }
+
+    // SELLER: verificar que la operación le pertenece
+    if (user.role === "SELLER" && operation_id) {
+      const { data: operationOwnership } = await (supabase.from("operations") as any)
+        .select("id")
+        .eq("id", operation_id)
+        .eq("seller_id", user.id)
+        .maybeSingle()
+
+      if (!operationOwnership) {
+        return NextResponse.json({ error: "No tiene permiso para registrar pagos en esta operación" }, { status: 403 })
+      }
+    }
+
+    let operationData: any = null
+    if (operation_id) {
+      const { data: operation, error: operationError } = await (supabase.from("operations") as any)
+        .select(`
+          seller_id,
+          operator_id,
+          agency_id,
+          sale_currency,
+          currency,
+          destination,
+          operation_operators(
+            operator_id
+          )
+        `)
+        .eq("id", operation_id)
+        .single()
+
+      if (operationError || !operation) {
+        return NextResponse.json({ error: "Operación no encontrada" }, { status: 404 })
+      }
+
+      operationData = operation
+    }
+
+    let operationServiceData: any = null
+    if (operation_service_id) {
+      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
+        .select("id, operation_id, operator_id, operator_payment_id, sale_currency")
+        .eq("id", operation_service_id)
+        .maybeSingle()
+
+      if (operationServiceError) {
+        console.error("Error loading operation service for payment:", operationServiceError)
+        return NextResponse.json({ error: "Error al obtener el servicio seleccionado" }, { status: 500 })
+      }
+
+      if (!operationService) {
+        return NextResponse.json({ error: "El servicio seleccionado no existe o ya no está disponible" }, { status: 404 })
+      }
+
+      if (operation_id && operationService.operation_id !== operation_id) {
+        return NextResponse.json({ error: "El servicio seleccionado no pertenece a esta operación" }, { status: 400 })
+      }
+
+      operationServiceData = operationService
+    }
+
+    const requiresCustomerIncomeManualExchangeRate = requiresCustomerIncomeExchangeRate({
+      payerType: payer_type,
+      direction,
+      paymentCurrency: currency,
+      saleCurrency: getCustomerIncomeReferenceCurrency({
+        operation: operationData,
+        service: operationServiceData,
+      }),
+    })
+
+    if (requiresCustomerIncomeManualExchangeRate && !providedExchangeRateNumber) {
+      return NextResponse.json(
+        { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
+        { status: 400 }
+      )
     }
 
     // Validaciones de fechas
@@ -98,33 +329,172 @@ export async function POST(request: Request) {
       }
     }
 
+    let resolvedOperatorId: string | null = null
+    let resolvedOperatorPaymentId: string | null = null
+
+    if (payer_type === "OPERATOR" && operation_service_id) {
+      const serviceLinkResolution = resolveServicePaymentLink({
+        operationId: operation_id || null,
+        operationServiceId: operation_service_id,
+        explicitOperatorId: operator_id || null,
+        service: operationServiceData || null,
+      })
+
+      if (!serviceLinkResolution.ok) {
+        return NextResponse.json({ error: serviceLinkResolution.error }, { status: serviceLinkResolution.status })
+      }
+
+      resolvedOperatorId = serviceLinkResolution.operatorId
+      resolvedOperatorPaymentId = serviceLinkResolution.operatorPaymentId
+    }
+
+    if (payer_type === "OPERATOR") {
+      const operationOperatorIds = operation_id
+        ? await getOperationOperatorIdsForPayments(supabase, operation_id, operationData)
+        : new Set<string>()
+
+      if (!resolvedOperatorId && operator_id) {
+        resolvedOperatorId = operator_id
+      }
+
+      if (operation_id && resolvedOperatorId && operationOperatorIds.size > 0 && !operationOperatorIds.has(resolvedOperatorId)) {
+        return NextResponse.json({ error: "El operador seleccionado no pertenece a esta operación" }, { status: 400 })
+      }
+
+      if (operation_id) {
+        let matchedOperatorPayment = null
+
+        try {
+          matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+            operationId: operation_id,
+            operatorId: resolvedOperatorId,
+            operatorPaymentId: resolvedOperatorPaymentId || operator_payment_id || null,
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Error al identificar la deuda del operador"
+          const status = message.startsWith("Error obteniendo deuda de operador") ? 500 : 400
+          return NextResponse.json({ error: message }, { status })
+        }
+
+        if (!matchedOperatorPayment) {
+          if (operation_service_id) {
+            return NextResponse.json({
+              error: "No hay deuda pendiente para el proveedor vinculado a este servicio",
+            }, { status: 400 })
+          }
+
+          // Si el operador está asignado a la operación (en operation_operators)
+          // pero aún no tiene operator_payment creado, lo creamos on-the-fly usando
+          // el cost de operation_operators. Esto soporta el caso de operaciones
+          // con múltiples operadores donde el registro de deuda se genera
+          // recién al momento de registrar el pago.
+          if (resolvedOperatorId && operation_id && operationOperatorIds.has(resolvedOperatorId)) {
+            const { data: opOperator } = await (supabase.from("operation_operators") as any)
+              .select("cost, cost_currency")
+              .eq("operation_id", operation_id)
+              .eq("operator_id", resolvedOperatorId)
+              .maybeSingle()
+
+            const opCost = opOperator?.cost != null ? parseFloat(opOperator.cost) : 0
+            const opCurrency = opOperator?.cost_currency || currency || "USD"
+
+            // Crear operator_payment solo si hay cost > 0
+            if (opCost > 0) {
+              const { data: newOpPayment, error: createOpPayError } = await (supabase.from("operator_payments") as any)
+                .insert({
+                  operation_id,
+                  operator_id: resolvedOperatorId,
+                  amount: opCost,
+                  currency: opCurrency,
+                  paid_amount: 0,
+                  status: "PENDING",
+                  due_date: new Date().toISOString().split("T")[0],
+                })
+                .select("id, operator_id")
+                .single()
+
+              if (createOpPayError || !newOpPayment) {
+                console.error("[payments POST] No se pudo crear operator_payment on-the-fly:", createOpPayError)
+                return NextResponse.json(
+                  { error: "No se pudo registrar la deuda del operador para esta operación" },
+                  { status: 500 }
+                )
+              }
+
+              resolvedOperatorId = (newOpPayment as any).operator_id
+              resolvedOperatorPaymentId = (newOpPayment as any).id
+            } else {
+              return NextResponse.json(
+                { error: "El operador seleccionado no tiene costo registrado en la operación" },
+                { status: 400 }
+              )
+            }
+          } else if (resolvedOperatorId) {
+            return NextResponse.json({ error: "No hay deuda pendiente para el operador seleccionado en esta operación" }, { status: 400 })
+          } else {
+            return NextResponse.json({
+              error: operationOperatorIds.size > 1
+                ? "Debe seleccionar el operador al que corresponde el pago"
+                : "No hay deuda pendiente a operador para esta operación",
+            }, { status: 400 })
+          }
+        } else {
+          resolvedOperatorId = matchedOperatorPayment.operator_id
+          resolvedOperatorPaymentId = matchedOperatorPayment.id
+        }
+      }
+    }
+
     // Calcular amount_usd para el pago
     // Si es USD: amount_usd = amount
     // Si es ARS: amount_usd = amount / exchange_rate
     let amountUsd: number | null = null
     if (currency === "USD") {
       amountUsd = parseFloat(amount)
-    } else if (currency === "ARS" && providedExchangeRate) {
-      amountUsd = parseFloat(amount) / parseFloat(providedExchangeRate)
+    } else if (currency === "ARS" && providedExchangeRateNumber) {
+      amountUsd = parseFloat(amount) / providedExchangeRateNumber
+    }
+
+    // Approval gate: load rules and check if this payment requires approval
+    const agencyIdForApproval = operationData?.agency_id ?? null
+    let needsApproval = false
+    if (agencyIdForApproval) {
+      try {
+        const [approvalRules, arsPerUsd] = await Promise.all([
+          loadApprovalRules(agencyIdForApproval, supabase),
+          getCurrentArsPerUsd(supabase),
+        ])
+        const amountArs = convertToArs(parseFloat(amount), currency as "ARS" | "USD", arsPerUsd)
+        needsApproval = requiresApproval(amountArs, user.role, approvalRules)
+      } catch (approvalErr) {
+        console.warn("[payments POST] Error evaluating approval rules, defaulting to no-approval:", approvalErr)
+      }
     }
 
     // 1. Crear el pago en tabla payments
     // IMPORTANTE: Si status no se especifica, crear como PENDING para evitar crear movimientos contables duplicados
     // Los movimientos contables se crearán cuando se marque como PAID
-    const paymentData = {
-        operation_id,
-        operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
-        payer_type,
-        direction,
+    const paymentData: Record<string, any> = {
+      operation_id,
+      operation_service_id: operation_service_id || null, // Vincula con servicio adicional si aplica
+      operator_id: resolvedOperatorId,
+      operator_payment_id: resolvedOperatorPaymentId,
+      source: "MANUAL",
+      payer_type,
+      direction,
       method: method || "Otro",
       amount,
-        currency,
-      exchange_rate: providedExchangeRate ? parseFloat(providedExchangeRate) : null,
+      currency,
+      exchange_rate: providedExchangeRateNumber,
       amount_usd: amountUsd,
       date_paid: date_paid || null,
       date_due: date_due || date_paid,
-      status: status || "PENDING", // Cambiar default a PENDING para evitar duplicados
+      status: needsApproval ? "PENDING" : finalStatus,
       reference: notes || null,
+      created_by_user_id: user.id,
+    }
+    if (needsApproval) {
+      paymentData.approval_status = "PENDING_APPROVAL"
     }
 
     const { data: payment, error: paymentError } = await (supabase.from("payments") as any)
@@ -137,24 +507,40 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: `Error al crear pago: ${paymentError.message}` }, { status: 500 })
     }
 
+    // Audit log for payment creation
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "PAYMENT_CREATE",
+      entity_type: "payment",
+      entity_id: payment.id,
+      details: { amount, currency, direction, payer_type },
+      ip_address: getClientIP(request) || undefined,
+    })
+
+    // Approval gate: if approval is required, skip ledger/cash creation and return early
+    if (needsApproval) {
+      try {
+        await notifyApprovers(payment, agencyIdForApproval, supabase, user.id)
+      } catch (notifyErr) {
+        console.warn("[payments POST] notifyApprovers failed (non-fatal):", notifyErr)
+      }
+      return NextResponse.json({ payment, requires_approval: true })
+    }
+
     // Solo crear movimientos contables si el pago está PAID explícitamente
     // Si status no se especifica, el default es PENDING, así que no crear movimientos
-    if (status === "PAID") {
+    if (finalStatus === "PAID") {
       try {
         // 2. Obtener datos de la operación para seller_id y operator_id (si existe operation_id)
         let sellerId: string | null = null
         let operatorId: string | null = null
         let agencyId: string | undefined = undefined
 
-        if (operation_id) {
-          const { data: operation } = await (supabase.from("operations") as any)
-            .select("seller_id, operator_id, agency_id")
-            .eq("id", operation_id)
-            .single()
-
-          sellerId = operation?.seller_id || null
-          operatorId = operation?.operator_id || null
-          agencyId = operation?.agency_id
+        if (operationData) {
+          sellerId = operationData.seller_id || null
+          operatorId = resolvedOperatorId || operationData.operator_id || null
+          agencyId = operationData.agency_id
         }
 
         // 3. Calcular tasa de cambio
@@ -163,18 +549,17 @@ export async function POST(request: Request) {
         let exchangeRate: number | null = null
         
         if (currency === "USD") {
-          // Para USD, buscar tasa de cambio
-          const rateDate = date_paid ? new Date(date_paid) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
+          if (requiresCustomerIncomeManualExchangeRate) {
+            exchangeRate = providedExchangeRateNumber
+          } else {
+            // Para USD, buscar tasa de cambio
+            const rateDate = date_paid ? new Date(date_paid) : new Date()
+            const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create")
+            exchangeRate = rateResult.rate
           }
-          if (!exchangeRate) {
-            exchangeRate = 1450 // Fallback
-          }
-        } else if (currency === "ARS" && providedExchangeRate) {
+        } else if (currency === "ARS" && providedExchangeRateNumber) {
           // Para ARS, usar la tasa proporcionada
-          exchangeRate = parseFloat(providedExchangeRate)
+          exchangeRate = providedExchangeRateNumber
         }
 
         // Calcular equivalente en ARS
@@ -220,27 +605,8 @@ export async function POST(request: Request) {
           }
         }
 
-        console.log(`💰 Creando movimiento contable en cuenta seleccionada:`, {
-          accountId: accountId,
-          accountName: selectedAccount.name,
-          accountCurrency: selectedAccount.currency,
-          direction: direction,
-          amount: amount,
-          currency: currency,
-          type: direction === "INCOME" ? "INCOME" : (payer_type === "OPERATOR" ? "OPERATOR_PAYMENT" : "EXPENSE")
-        })
-
         // 5. Mapear método de pago a método de ledger
-        const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
-          "Transferencia": "BANK",
-          "Efectivo": "CASH",
-          "Tarjeta Crédito": "OTHER",
-          "Tarjeta Débito": "OTHER",
-          "MercadoPago": "MP",
-          "PayPal": "OTHER",
-          "Otro": "OTHER",
-        }
-        const ledgerMethod = methodMap[method || "Otro"] || "OTHER"
+        const ledgerMethod = mapPaymentMethodToLedgerMethod(method)
 
         // 6. Determinar tipo de ledger movement
         const ledgerType = direction === "INCOME" 
@@ -251,7 +617,24 @@ export async function POST(request: Request) {
         const passengerName = operation_id ? await getMainPassengerName(operation_id, supabase) : null
         const operationCode = operation_id ? operation_id.slice(0, 8) : "N/A"
         
-        // 7. Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
+        // 7. Verificar que no exista un movimiento duplicado (misma operación, tipo, monto, cuenta)
+        if (operation_id) {
+          const { data: existingMovements } = await (supabase.from("ledger_movements") as any)
+            .select("id")
+            .eq("operation_id", operation_id)
+            .eq("type", ledgerType)
+            .eq("amount_original", parseFloat(amount))
+            .eq("account_id", accountId)
+            .limit(1)
+          if (existingMovements && existingMovements.length > 0) {
+            return NextResponse.json(
+              { error: "Ya existe un movimiento con el mismo monto para esta operación en esta cuenta. Verificá que no sea duplicado." },
+              { status: 409 }
+            )
+          }
+        }
+
+        // Crear movimiento PRINCIPAL en libro mayor (ledger_movements) usando la cuenta seleccionada
         // Este es el ÚNICO movimiento que afecta el balance de la cuenta financiera seleccionada
         const { id: ledgerMovementId } = await createLedgerMovement(
           {
@@ -280,18 +663,6 @@ export async function POST(request: Request) {
           supabase
         )
         
-        console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
-          ledgerMovementId: ledgerMovementId,
-          accountId: accountId,
-          accountName: selectedAccount.name,
-          accountCurrency: selectedAccount.currency,
-          type: ledgerType,
-          direction: direction,
-          amount: amount,
-          currency: currency,
-          effect: direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
-        })
-
         // 8. Actualizar payment con referencia al ledger_movement
         const { error: linkError } = await (supabase.from("payments") as any)
           .update({ ledger_movement_id: ledgerMovementId })
@@ -309,32 +680,227 @@ export async function POST(request: Request) {
           }
         }
 
-        // NOTA: Solo creamos UN movimiento contable usando la cuenta financiera seleccionada
-        // El movimiento ya fue creado arriba (línea 203-224) usando accountId = financial_account_id
-        // No creamos un segundo movimiento duplicado en otra cuenta
-        console.log(`✅ Pago ${payment.id} creado con movimiento contable en cuenta ${accountId}`)
+        // 9. Crear cash_movement para que aparezca en la vista de caja
+        const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
+          .select("id")
+          .eq("currency", currency)
+          .eq("is_default", true)
+          .eq("is_active", true)
+          .eq("agency_id", agencyId || "")
+          .maybeSingle()
+
+        const { error: cashMovementError } = await (supabase.from("cash_movements") as any)
+          .insert({
+            operation_id: operation_id || null,
+            payment_id: payment.id,
+            cash_box_id: (defaultCashBox as any)?.id || null,
+            financial_account_id: accountId,
+            user_id: user.id,
+            type: direction === "INCOME" ? "INCOME" : "EXPENSE",
+            category: direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            amount: parseFloat(amount),
+            currency: currency,
+            movement_date: date_paid || new Date().toISOString().split("T")[0],
+            notes: notes || null,
+            is_touristic: true,
+          })
+
+        if (cashMovementError) {
+          console.warn(`⚠️ Error creando cash_movement para pago ${payment.id}:`, cashMovementError)
+        }
 
         // 10. Si es pago a operador, marcar operator_payment como PAID
-        if (payer_type === "OPERATOR") {
-          const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-            .select("id")
-            .eq("operation_id", operation_id)
-            .eq("status", "PENDING")
-            .limit(1)
-            .maybeSingle()
+        if (payer_type === "OPERATOR" && resolvedOperatorPaymentId) {
+          await applyOperatorPaymentSettlement(
+            supabase,
+            resolvedOperatorPaymentId,
+            parseFloat(amount),
+            ledgerMovementId
+          )
+        }
 
-          if (operatorPayment) {
-            await (supabase.from("operator_payments") as any)
-              .update({ 
-                status: "PAID",
-                ledger_movement_id: ledgerMovementId,
-                updated_at: new Date().toISOString()
-              })
-              .eq("id", operatorPayment.id)
+        const counterpartResult = await createPaymentCounterpartMovement({
+          supabase,
+          paymentId: payment.id,
+          operationId: operation_id || null,
+          direction,
+          payerType: payer_type,
+          currency,
+          amount: parseFloat(amount),
+          method,
+          reference: notes || null,
+          datePaid: date_paid || new Date().toISOString().split("T")[0],
+          exchangeRate,
+          selectedFinancialAccountId: accountId,
+          sellerId,
+          operatorId: payer_type === "OPERATOR" ? operatorId : null,
+          userId: user.id,
+        })
+
+        // ============================================
+        // PERCEPCIONES AUTOMÁTICAS (RG 5617 / RG 3819)
+        // Solo para cobros de cliente con operación
+        // ============================================
+        const perceptionMovementIds: string[] = []
+        if (direction === "INCOME" && operation_id) {
+          try {
+            const { data: billingInfo } = await (supabase.from("billing_info") as any)
+              .select("cuit")
+              .eq("operation_id", operation_id)
+              .maybeSingle()
+
+            const excludedTypes: WithholdingType[] = []
+            if (!apply_rg5617) excludedTypes.push("PERCEPCION_RG5617_30")
+            if (!apply_rg3819) excludedTypes.push("PERCEPCION_RG3819_5")
+
+            const createdWithholdings = await autoCreateWithholdings(supabase, {
+              amount: parseFloat(amount),
+              currency,
+              type: "CUSTOMER_PAYMENT",
+              counterpart_cuit: billingInfo?.cuit || undefined,
+              counterpart_name: passengerName || undefined,
+              tax_period: (date_paid || new Date().toISOString().split("T")[0]).substring(0, 7),
+              withholding_date: date_paid || new Date().toISOString().split("T")[0],
+              operation_id,
+              source_type: "PAYMENT",
+              source_id: payment.id,
+              direction: "PRACTICED",
+              created_by: user.id,
+              agency_id: agencyId,
+              payment_method: method || undefined,
+              destination: operationData?.destination || undefined,
+              excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
+            })
+
+            // Asientos contables para percepciones (doble entrada)
+            const perceptionRecords = createdWithholdings.filter((w: any) =>
+              w.type === "PERCEPCION_RG5617_30" || w.type === "PERCEPCION_RG3819_5"
+            )
+
+            if (perceptionRecords.length > 0) {
+              // IDEMPOTENCY GUARD: si ya existen ledger_movements de percepcion
+              // para esta operación, no crear duplicados.
+              const { data: existingPercMovements } = await (supabase.from("ledger_movements") as any)
+                .select("id")
+                .eq("operation_id", operation_id)
+                .ilike("notes", "%Percepción RG%")
+                .limit(1)
+
+              if (existingPercMovements && existingPercMovements.length > 0) {
+                console.log(
+                  `[payments POST] Ledger movements de percepción ya existen para op ${operation_id}. Skipping duplicate creation.`
+                )
+              } else {
+              const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
+                .select("id")
+                .eq("account_code", "2.1.04")
+                .eq("is_active", true)
+                .maybeSingle()
+
+              let percAfipAccountId: string | null = null
+              if (percChartAccount) {
+                const { data: percFinAccount } = await (supabase.from("financial_accounts") as any)
+                  .select("id")
+                  .eq("chart_account_id", percChartAccount.id)
+                  .eq("currency", "ARS")
+                  .eq("is_active", true)
+                  .maybeSingle()
+                percAfipAccountId = percFinAccount?.id || null
+              }
+
+              if (percAfipAccountId) {
+                const percName = passengerName || "Cliente"
+                const percOpCode = operation_id.slice(0, 8)
+
+                for (const perc of perceptionRecords) {
+                  const percAmount = parseFloat(perc.amount)
+                  const percLabel = perc.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"
+
+                  const { id: percIncomeId } = await createLedgerMovement(
+                    {
+                      operation_id,
+                      type: "INCOME",
+                      concept: `Percepción ${percLabel} - ${percName} (${percOpCode})`,
+                      currency: "ARS",
+                      amount_original: percAmount,
+                      exchange_rate: null,
+                      amount_ars_equivalent: percAmount,
+                      method: ledgerMethod,
+                      account_id: accountId,
+                      seller_id: sellerId,
+                      notes: `Percepción ${percLabel} cobrada al cliente`,
+                      created_by: user.id,
+                      movement_date: date_paid || undefined,
+                    },
+                    supabase
+                  )
+                  perceptionMovementIds.push(percIncomeId)
+
+                  const { id: percExpenseId } = await createLedgerMovement(
+                    {
+                      operation_id,
+                      type: "EXPENSE",
+                      concept: `Percepción ${percLabel} - ${percName} (${percOpCode})`,
+                      currency: "ARS",
+                      amount_original: percAmount,
+                      exchange_rate: null,
+                      amount_ars_equivalent: percAmount,
+                      method: ledgerMethod,
+                      account_id: percAfipAccountId,
+                      seller_id: sellerId,
+                      notes: `Percepción ${percLabel} a depositar AFIP`,
+                      created_by: user.id,
+                      movement_date: date_paid || undefined,
+                    },
+                    supabase
+                  )
+                  perceptionMovementIds.push(percExpenseId)
+                }
+              } else {
+                console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada.")
+              }
+              } // end else (no existing percepciones) - idempotency guard
+            }
+          } catch (percError) {
+            console.error("Error calculando percepciones:", percError)
+            // No romper el flujo principal
           }
         }
 
-        console.log(`✅ Pago ${payment.id} creado con ledger ${ledgerMovementId}`)
+        // ============================================
+        // ASIENTO CONTABLE AUTOMÁTICO (partida doble)
+        // Anota los movimientos existentes como journal entry
+        // ============================================
+        try {
+          const paymentDate = date_paid || new Date().toISOString().split("T")[0]
+          const jeDescription = direction === "INCOME"
+            ? passengerName
+              ? `Cobro - ${passengerName} (${operationCode})`
+              : `Cobro de cliente - Op. ${operationCode}`
+            : passengerName
+              ? `Pago a operador - ${passengerName} (${operationCode})`
+              : `Pago a operador - Op. ${operationCode}`
+
+          await annotatePaymentAsJournalEntry(
+            {
+              mainMovementId: ledgerMovementId,
+              counterpartMovementId: counterpartResult?.id || null,
+              perceptionMovementIds,
+              description: jeDescription,
+              date: paymentDate,
+              amount: amountARS,
+              currency: currency as "ARS" | "USD",
+              operation_id: operation_id || null,
+              direction: direction === "INCOME" ? "INCOME" : "EXPENSE",
+              financialAccountId: accountId,
+              created_by: user.id,
+            },
+            supabase
+          )
+        } catch (jeError) {
+          console.error("Error creando asiento contable automático:", jeError)
+          // No romper el flujo principal — el pago ya fue registrado
+        }
 
       } catch (accountingError) {
         const errorMsg = accountingError instanceof Error ? accountingError.message : String(accountingError)
@@ -359,7 +925,7 @@ export async function POST(request: Request) {
     }
 
     // Generar alertas a 30 días si el pago está asociado a una operación
-    if (operation_id && status === "PENDING") {
+    if (operation_id && finalStatus === "PENDING") {
       try {
         // Obtener datos de la operación para generar alertas
         const { data: operation } = await (supabase.from("operations") as any)
@@ -374,6 +940,87 @@ export async function POST(request: Request) {
       } catch (error) {
         console.error("Error generating payment alerts:", error)
         // No lanzamos error para no romper la creación del pago
+      }
+    }
+
+    // ============================================
+    // ALERTA: Operación cobrada sin factura
+    // Se genera al registrar cobro PAID si la operación no tiene factura autorizada
+    // ============================================
+    if (finalStatus === "PAID" && direction === "INCOME" && operation_id) {
+      try {
+        // Resolver agency_id y file_code de la operación (las variables del scope
+        // interno de creación del cash_movement no están accesibles acá).
+        const { data: opForAlert } = await (supabase.from("operations") as any)
+          .select("agency_id, file_code")
+          .eq("id", operation_id)
+          .maybeSingle()
+
+        const alertAgencyId = opForAlert?.agency_id || null
+        const opCode = opForAlert?.file_code || operation_id.slice(0, 8)
+
+        if (!alertAgencyId) {
+          // Sin agency_id no podemos crear la alerta — la operación debería tener una;
+          // logueamos para que el equipo investigue datos huérfanos.
+          console.warn(
+            `[missing-invoice-alert] operation ${operation_id} sin agency_id, skip alert`
+          )
+        } else {
+          const { data: authorizedInvoice } = await (supabase.from("invoices") as any)
+            .select("id")
+            .eq("operation_id", operation_id)
+            .eq("status", "authorized")
+            .limit(1)
+            .maybeSingle()
+
+          if (!authorizedInvoice) {
+            const alertDescription = `Operación ${opCode} cobrada sin factura autorizada`
+
+            // Verificar que no exista alerta PENDING duplicada
+            const { data: existingAlert } = await (supabase.from("alerts") as any)
+              .select("id")
+              .eq("type", "MISSING_INVOICE")
+              .eq("agency_id", alertAgencyId)
+              .like("description", `%${opCode}%`)
+              .eq("status", "PENDING")
+              .maybeSingle()
+
+            if (!existingAlert) {
+              await (supabase.from("alerts") as any).insert({
+                agency_id: alertAgencyId,
+                user_id: user.id,
+                operation_id,
+                type: "MISSING_INVOICE",
+                description: alertDescription,
+                date_due: new Date().toISOString(),
+                status: "PENDING",
+              })
+            }
+          }
+        }
+      } catch (alertError) {
+        console.error("Error generating missing invoice alert:", alertError)
+      }
+    }
+
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'PAYMENT_CREATED',
+        p_entity_type: 'payment',
+        p_entity_id: payment.id,
+        p_details: { amount, currency, direction, operation_id }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
+
+    if (finalStatus === "PAID" && direction === "INCOME" && payer_type === "CUSTOMER") {
+      try {
+        await upsertSellerReceiptMessage(supabase, payment.id)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
       }
     }
 
@@ -394,59 +1041,152 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const operationId = searchParams.get("operationId")
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const dateType = (searchParams.get("dateType") ?? "CREACION").toUpperCase()
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
     const direction = searchParams.get("direction")
+    const status = searchParams.get("status")
+    const payerType = searchParams.get("payerType")
     const contactName = searchParams.get("contactName")
-    
-    // Paginación: usar page en vez de offset para mejor UX
+
+    // Paginación
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"))
     const requestedLimit = parseInt(searchParams.get("limit") || "50")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200
+    const limit = Math.min(requestedLimit, 200)
     const offset = (page - 1) * limit
 
-    // Query base con relación a operations para obtener agency_id, destination y contact_name
-    let query = supabase.from("payments").select(`
+    // SELLER: solo ve pagos de sus operaciones
+    let allowedOperationIds: string[] | null = null
+    if (user.role === "SELLER") {
+      const { data: sellerOps } = await (supabase.from("operations") as any)
+        .select("id")
+        .eq("seller_id", user.id)
+      allowedOperationIds = (sellerOps || []).map((op: any) => op.id)
+      if (!allowedOperationIds || allowedOperationIds.length === 0) {
+        return NextResponse.json({
+          payments: [],
+          pagination: { total: 0, page: 1, limit, totalPages: 0, hasMore: false }
+        })
+      }
+    }
+
+    // Query base con relación a operations y clientes
+    let query = (supabase.from("payments") as any).select(`
       *,
+      operators:operator_id(
+        id,
+        name,
+        contact_email
+      ),
       operations:operation_id(
         id,
         destination,
+        file_code,
         agency_id,
-        contact_name,
+        seller_id,
         agencies:agency_id(
           id,
           name
+        ),
+        operation_customers(
+          role,
+          customers:customer_id(
+            id,
+            first_name,
+            last_name
+          )
         )
+      ),
+      ledger_movements:ledger_movement_id(
+        id,
+        created_at,
+        receipt_number,
+        method,
+        notes,
+        account_id,
+        financial_accounts:account_id(name)
       )
     `, { count: "exact" })
-    
+      .neq("source", "OPERATOR_BULK")
+
     if (operationId) {
       query = query.eq("operation_id", operationId)
     }
 
-    // Aplicar filtro de direction (INCOME o EXPENSE)
+    // SELLER: filtrar por operaciones propias
+    if (allowedOperationIds) {
+      query = query.in("operation_id", allowedOperationIds)
+    }
+
+    // Filtro de direction (INCOME o EXPENSE)
     if (direction && direction !== "ALL") {
       query = query.eq("direction", direction)
     }
 
-    // Aplicar filtros de fecha (usar date_due como referencia principal)
-    if (dateFrom) {
-      query = query.gte("date_due", dateFrom)
-    }
-    if (dateTo) {
-      query = query.lte("date_due", dateTo)
+    // Filtro de status (PENDING, PAID, OVERDUE)
+    if (status && status !== "ALL") {
+      query = query.eq("status", status)
     }
 
-    // Aplicar filtro de moneda
+    // Filtro de payer_type (CUSTOMER, OPERATOR)
+    if (payerType && payerType !== "ALL") {
+      query = query.eq("payer_type", payerType)
+    }
+
+    // Filtros de fecha según dateType:
+    // - CREACION (default): payments.created_at — campo siempre presente, equivale al comportamiento legacy
+    // - PAGO: payments.date_paid — pagos efectivamente realizados (rows con date_paid NULL quedan fuera)
+    // - VENCIMIENTO: payments.date_due — vencimientos (rows con date_due NULL quedan fuera)
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae en [from,to]
+    //   y restringir payments.operation_id IN (...). Pagos sin operación quedan fuera.
+    // Si se filtra por una operación específica, no filtrar por fecha (mostrar todos los pagos de esa operación)
+    if (!operationId && (dateFrom || dateTo)) {
+      if (dateType === "OPERACION") {
+        let opQuery = (supabase.from("operations") as any).select("id")
+        if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+        if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+        const { data: matchingOps } = await opQuery.limit(5000)
+        const opIds = (matchingOps || []).map((o: any) => o.id)
+        if (opIds.length === 0) {
+          return NextResponse.json({
+            payments: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+        // Intersectar con allowedOperationIds (SELLER) si existe
+        const finalIds = allowedOperationIds
+          ? opIds.filter((id: string) => (allowedOperationIds as string[]).includes(id))
+          : opIds
+        if (finalIds.length === 0) {
+          return NextResponse.json({
+            payments: [],
+            pagination: { total: 0, page, limit, totalPages: 0, hasMore: false },
+          })
+        }
+        query = query.in("operation_id", finalIds)
+      } else if (dateType === "PAGO") {
+        if (dateFrom) query = query.gte("date_paid", dateFrom)
+        if (dateTo) query = query.lte("date_paid", dateTo)
+      } else if (dateType === "VENCIMIENTO") {
+        if (dateFrom) query = query.gte("date_due", dateFrom)
+        if (dateTo) query = query.lte("date_due", dateTo)
+      } else {
+        // CREACION (default)
+        if (dateFrom) query = query.gte("created_at", startOfDayAR(dateFrom))
+        if (dateTo) query = query.lte("created_at", endOfDayAR(dateTo))
+      }
+    }
+
+    // Filtro de moneda
     if (currency && currency !== "ALL") {
       query = query.eq("currency", currency)
     }
 
-    // Aplicar paginación y ordenamiento
+    // Paginación y ordenamiento
     const { data: payments, error, count } = await query
       .order("date_due", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
@@ -466,15 +1206,27 @@ export async function GET(request: Request) {
     }
     if (contactName && contactName.trim()) {
       const search = contactName.trim().toLowerCase()
-      filteredPayments = filteredPayments.filter((p: any) =>
-        p.operations?.contact_name?.toLowerCase().includes(search) ||
-        p.contact_name?.toLowerCase().includes(search)
-      )
+      filteredPayments = filteredPayments.filter((p: any) => {
+        // Buscar en destino de la operación
+        if (p.operations?.destination?.toLowerCase().includes(search)) return true
+        // Buscar en nombre de clientes vinculados a la operación
+        const customers = p.operations?.operation_customers || []
+        for (const oc of customers) {
+          const c = oc.customers
+          if (c) {
+            const fullName = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase()
+            if (fullName.includes(search)) return true
+          }
+        }
+        // Buscar en referencia del pago
+        if (p.reference?.toLowerCase().includes(search)) return true
+        return false
+      })
     }
 
     const totalPages = count ? Math.ceil(count / limit) : 0
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       payments: filteredPayments,
       pagination: {
         total: count || 0,
@@ -499,11 +1251,23 @@ export async function DELETE(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
     const paymentId = searchParams.get("paymentId")
 
     if (!paymentId) {
       return NextResponse.json({ error: "paymentId es requerido" }, { status: 400 })
+    }
+
+    // Rate limit por usuario: eliminar pagos es destructivo
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments:DELETE", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
+
+    // Validación de permisos por rol:
+    // - VIEWER: no puede eliminar pagos
+    // - SELLER: solo puede eliminar pagos de operaciones donde él es seller_id
+    // - ADMIN, SUPER_ADMIN, CONTABLE: pueden eliminar cualquier pago
+    if (user.role === "VIEWER") {
+      return NextResponse.json({ error: "No tienes permisos para eliminar pagos" }, { status: 403 })
     }
 
     // 1. Obtener el pago con su ledger_movement_id
@@ -516,13 +1280,79 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
 
+    // SELLER: verificar que la operación asociada le pertenece
+    if (user.role === "SELLER") {
+      if (!payment.operation_id) {
+        return NextResponse.json(
+          { error: "No tienes permisos para eliminar este pago" },
+          { status: 403 }
+        )
+      }
+      const { data: operation, error: opError } = await (supabase.from("operations") as any)
+        .select("id, seller_id")
+        .eq("id", payment.operation_id)
+        .single()
+
+      if (opError || !operation || operation.seller_id !== user.id) {
+        return NextResponse.json(
+          { error: "No tienes permisos para eliminar pagos de esta operación" },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Audit log en BD (tabla audit_log vía lib/audit.ts)
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "PAYMENT_DELETE",
+      entity_type: "payment",
+      entity_id: payment.id,
+      details: {
+        amount: payment.amount,
+        currency: payment.currency,
+        operation_id: payment.operation_id,
+        payer_type: payment.payer_type,
+        direction: payment.direction,
+        status: payment.status,
+        user_role: user.role,
+      },
+      ip_address: getClientIP(request) || undefined,
+    })
+
+    if (payment.source === "OPERATOR_BULK") {
+      return NextResponse.json(
+        { error: "Los pagos generados desde Pago Masivo no se pueden eliminar desde esta pantalla." },
+        { status: 400 }
+      )
+    }
+
     // 2. Eliminar movimiento de caja relacionado
-    const { error: cashError } = await (supabase.from("cash_movements") as any)
+    const { data: deletedCash, error: cashError } = await (supabase.from("cash_movements") as any)
       .delete()
       .eq("payment_id", paymentId)
+      .select("id")
 
     if (cashError) {
-      console.warn("Warning: Could not delete cash movement:", cashError)
+      console.warn("Warning: Could not delete cash movement by payment_id:", cashError)
+    }
+
+    // Fallback: si no se encontró por payment_id, buscar huérfanos por operation_id + amount + type
+    // (movimientos creados sin payment_id por versiones anteriores del código)
+    if (!deletedCash?.length && payment.operation_id && payment.status === "PAID") {
+      const expectedType = payment.direction === "INCOME" ? "INCOME" : "EXPENSE"
+      const { error: orphanError } = await (supabase.from("cash_movements") as any)
+        .delete()
+        .eq("operation_id", payment.operation_id)
+        .eq("type", expectedType)
+        .eq("amount", payment.amount)
+        .eq("currency", payment.currency)
+        .is("payment_id", null)
+
+      if (orphanError) {
+        console.warn("Warning: Could not delete orphaned cash movement:", orphanError)
+      } else {
+      }
     }
 
     // 3. Si hay ledger_movement_id, eliminar el movimiento del libro mayor
@@ -554,14 +1384,23 @@ export async function DELETE(request: Request) {
         .eq("id", ledgerMovementId)
         .single()
 
-      // Desmarcar operator_payment si existe
-      await (supabase.from("operator_payments") as any)
-        .update({
-          status: "PENDING",
-          ledger_movement_id: null,
-          updated_at: new Date().toISOString()
+      if (payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
+        await revertOperatorPaymentSettlement(supabase, {
+          operatorPaymentId: payment.operator_payment_id,
+          paymentAmount: parseFloat(payment.amount),
+          currentPaymentId: paymentId,
+          removedLedgerMovementId: ledgerMovementId,
         })
-        .eq("ledger_movement_id", ledgerMovementId)
+      } else {
+        // Desmarcar operator_payment legado si existe
+        await (supabase.from("operator_payments") as any)
+          .update({
+            status: "PENDING",
+            ledger_movement_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("ledger_movement_id", ledgerMovementId)
+      }
 
       // Eliminar el ledger movement
       const { error: ledgerError } = await (supabase.from("ledger_movements") as any)
@@ -577,6 +1416,34 @@ export async function DELETE(request: Request) {
       }
     }
 
+    if (!ledgerMovementId && payment.status === "PAID" && payment.payer_type === "OPERATOR" && payment.operator_payment_id) {
+      await revertOperatorPaymentSettlement(supabase, {
+        operatorPaymentId: payment.operator_payment_id,
+        paymentAmount: parseFloat(payment.amount),
+        currentPaymentId: paymentId,
+        removedLedgerMovementId: null,
+      })
+    }
+
+    if (payment.operation_id && payment.status === "PAID") {
+      try {
+        await removePaymentCounterpartMovement({
+          supabase,
+          paymentId,
+          operationId: payment.operation_id,
+          direction: payment.direction,
+          payerType: payment.payer_type,
+          currency: payment.currency,
+          amount: parseFloat(payment.amount),
+          reference: payment.reference || null,
+          datePaid: payment.date_paid || null,
+          excludeLedgerMovementId: ledgerMovementId || null,
+        })
+      } catch (counterpartError) {
+        console.warn("Warning: Could not delete counterpart CpC/CpP ledger movement:", counterpartError)
+      }
+    }
+
     // 4. Eliminar el pago
     const { error: deleteError } = await (supabase.from("payments") as any)
       .delete()
@@ -586,11 +1453,6 @@ export async function DELETE(request: Request) {
       console.error("Error deleting payment:", deleteError)
       return NextResponse.json({ error: "Error al eliminar pago" }, { status: 500 })
     }
-
-    console.log(`✅ Pago ${paymentId} eliminado junto con sus movimientos contables`)
-    console.log(`  ✓ Cash movement eliminado`)
-    console.log(`  ✓ Ledger movement eliminado (si existía)`)
-    console.log(`  ✓ Operator payment revertido a PENDING (si estaba marcado como pagado)`)
 
     // Invalidar caché del dashboard (los KPIs cambian al eliminar un pago)
     revalidateTag(CACHE_TAGS.DASHBOARD)
@@ -648,18 +1510,101 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
     }
 
+    if (existingPayment.source === "OPERATOR_BULK") {
+      return NextResponse.json(
+        { error: "Los pagos generados desde Pago Masivo no se pueden editar desde esta pantalla." },
+        { status: 400 }
+      )
+    }
+
+    let linkedOperatorId: string | null = existingPayment.operator_id || null
+    let linkedOperatorPaymentId: string | null = existingPayment.operator_payment_id || null
+    let existingOperationData: any = null
+    let existingOperationServiceData: any = null
+
+    if (existingPayment.operation_id) {
+      const { data: operation, error: operationError } = await (supabase.from("operations") as any)
+        .select("seller_id, operator_id, agency_id, sale_currency, currency")
+        .eq("id", existingPayment.operation_id)
+        .single()
+
+      if (operationError || !operation) {
+        return NextResponse.json({ error: "Operación asociada al pago no encontrada" }, { status: 404 })
+      }
+
+      existingOperationData = operation
+    }
+
+    if (existingPayment.operation_service_id) {
+      const { data: operationService, error: operationServiceError } = await (supabase.from("operation_services") as any)
+        .select("id, operation_id, sale_currency")
+        .eq("id", existingPayment.operation_service_id)
+        .maybeSingle()
+
+      if (operationServiceError) {
+        console.error("Error loading operation service for payment edit:", operationServiceError)
+        return NextResponse.json({ error: "Error al obtener el servicio asociado al pago" }, { status: 500 })
+      }
+
+      existingOperationServiceData = operationService || null
+    }
+
+    if (existingPayment.payer_type === "OPERATOR") {
+      if (!linkedOperatorPaymentId && existingPayment.ledger_movement_id) {
+        const { data: linkedByLedger } = await (supabase.from("operator_payments") as any)
+          .select("id, operator_id")
+          .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+          .maybeSingle()
+
+        if (linkedByLedger) {
+          linkedOperatorPaymentId = linkedByLedger.id
+          linkedOperatorId = linkedOperatorId || linkedByLedger.operator_id || null
+        }
+      }
+
+      if (!linkedOperatorPaymentId && existingPayment.operation_id) {
+        const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+          operationId: existingPayment.operation_id,
+          operatorId: linkedOperatorId,
+        })
+
+        if (matchedOperatorPayment) {
+          linkedOperatorPaymentId = matchedOperatorPayment.id
+          linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
+        }
+      }
+    }
+
     // Determinar valores finales (usar nuevos si se proporcionan, o mantener existentes)
     const finalAmount = amount !== undefined ? parseFloat(amount) : parseFloat(existingPayment.amount)
     const finalCurrency = currency || existingPayment.currency
     const finalMethod = method || existingPayment.method
     const finalDatePaid = date_paid || existingPayment.date_paid
-    const finalExchangeRate = providedExchangeRate !== undefined ? (providedExchangeRate ? parseFloat(providedExchangeRate) : null) : (existingPayment.exchange_rate ? parseFloat(existingPayment.exchange_rate) : null)
+    const finalExchangeRate = providedExchangeRate !== undefined
+      ? coercePositiveNumber(providedExchangeRate)
+      : coercePositiveNumber(existingPayment.exchange_rate)
     const finalAccountId = financial_account_id || null
     const finalNotes = notes !== undefined ? notes : existingPayment.reference
+    const requiresCustomerIncomeManualExchangeRate = requiresCustomerIncomeExchangeRate({
+      payerType: existingPayment.payer_type,
+      direction: existingPayment.direction,
+      paymentCurrency: finalCurrency,
+      saleCurrency: getCustomerIncomeReferenceCurrency({
+        operation: existingOperationData,
+        service: existingOperationServiceData,
+      }),
+    })
 
     // Validaciones
     if (finalAmount <= 0) {
       return NextResponse.json({ error: "El monto debe ser mayor a 0" }, { status: 400 })
+    }
+
+    if (requiresCustomerIncomeManualExchangeRate && !finalExchangeRate) {
+      return NextResponse.json(
+        { error: CUSTOMER_INCOME_EXCHANGE_RATE_ERROR },
+        { status: 400 }
+      )
     }
 
     if (finalDatePaid) {
@@ -701,14 +1646,23 @@ export async function PATCH(request: Request) {
     const wasPaid = existingPayment.status === "PAID" && existingPayment.ledger_movement_id
 
     if (wasPaid) {
-      // 2a. Revertir operator_payment a PENDING si aplica
-      await (supabase.from("operator_payments") as any)
-        .update({
-          status: "PENDING",
-          ledger_movement_id: null,
-          updated_at: new Date().toISOString()
+      if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
+        await revertOperatorPaymentSettlement(supabase, {
+          operatorPaymentId: linkedOperatorPaymentId,
+          paymentAmount: parseFloat(existingPayment.amount),
+          currentPaymentId: paymentId,
+          removedLedgerMovementId: existingPayment.ledger_movement_id,
         })
-        .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+      } else {
+        // 2a. Revertir operator_payment legado si aplica
+        await (supabase.from("operator_payments") as any)
+          .update({
+            status: "PENDING",
+            ledger_movement_id: null,
+            updated_at: new Date().toISOString()
+          })
+          .eq("ledger_movement_id", existingPayment.ledger_movement_id)
+      }
 
       // 2b. Eliminar cash_movement vinculado
       await (supabase.from("cash_movements") as any)
@@ -719,6 +1673,19 @@ export async function PATCH(request: Request) {
       await (supabase.from("ledger_movements") as any)
         .delete()
         .eq("id", existingPayment.ledger_movement_id)
+
+      await removePaymentCounterpartMovement({
+        supabase,
+        paymentId,
+        operationId: existingPayment.operation_id,
+        direction: existingPayment.direction,
+        payerType: existingPayment.payer_type,
+        currency: existingPayment.currency,
+        amount: parseFloat(existingPayment.amount),
+        reference: existingPayment.reference || null,
+        datePaid: existingPayment.date_paid || null,
+        excludeLedgerMovementId: existingPayment.ledger_movement_id,
+      })
     }
 
     // 3. Actualizar registro del pago
@@ -731,6 +1698,10 @@ export async function PATCH(request: Request) {
       amount_usd: amountUsd,
       reference: finalNotes || null,
       updated_at: new Date().toISOString(),
+    }
+    if (existingPayment.payer_type === "OPERATOR") {
+      updateData.operator_id = linkedOperatorId
+      updateData.operator_payment_id = linkedOperatorPaymentId
     }
     // Marcar como PAID si se solicita
     if (markAsPaid) {
@@ -757,25 +1728,22 @@ export async function PATCH(request: Request) {
         let sellerId: string | null = null
         let operatorId: string | null = null
 
-        if (existingPayment.operation_id) {
-          const { data: operation } = await (supabase.from("operations") as any)
-            .select("seller_id, operator_id, agency_id")
-            .eq("id", existingPayment.operation_id)
-            .single()
+        let agencyId: string | null = null
 
-          sellerId = operation?.seller_id || null
-          operatorId = operation?.operator_id || null
-        }
+        sellerId = existingOperationData?.seller_id || null
+        operatorId = linkedOperatorId || existingOperationData?.operator_id || null
+        agencyId = existingOperationData?.agency_id || null
 
         // Calcular tasa de cambio para ARS equivalent
         let exchangeRate: number | null = null
         if (finalCurrency === "USD") {
-          const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
-          exchangeRate = await getExchangeRate(supabase, rateDate)
-          if (!exchangeRate) {
-            exchangeRate = await getLatestExchangeRate(supabase)
+          if (requiresCustomerIncomeManualExchangeRate) {
+            exchangeRate = finalExchangeRate
+          } else {
+            const rateDate = finalDatePaid ? new Date(finalDatePaid) : new Date()
+            const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "payments-create-CpC")
+            exchangeRate = rateResult.rate
           }
-          if (!exchangeRate) exchangeRate = 1450
         } else if (finalCurrency === "ARS" && finalExchangeRate) {
           exchangeRate = finalExchangeRate
         }
@@ -807,16 +1775,7 @@ export async function PATCH(request: Request) {
           .single()
 
         // Mapear método
-        const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
-          "Transferencia": "BANK",
-          "Efectivo": "CASH",
-          "Tarjeta Crédito": "OTHER",
-          "Tarjeta Débito": "OTHER",
-          "MercadoPago": "MP",
-          "PayPal": "OTHER",
-          "Otro": "OTHER",
-        }
-        const ledgerMethod = methodMap[finalMethod || "Otro"] || "OTHER"
+        const ledgerMethod = mapPaymentMethodToLedgerMethod(finalMethod)
 
         const ledgerType = existingPayment.direction === "INCOME"
           ? "INCOME"
@@ -861,44 +1820,85 @@ export async function PATCH(request: Request) {
           .eq("id", paymentId)
 
         // Marcar operator_payment como PAID si aplica
-        if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
-          const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-            .select("id, paid_amount, amount")
-            .eq("operation_id", existingPayment.operation_id)
-            .in("status", ["PENDING", "OVERDUE"])
-            .limit(1)
-            .maybeSingle()
+        if (existingPayment.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
+          await applyOperatorPaymentSettlement(
+            supabase,
+            linkedOperatorPaymentId,
+            finalAmount,
+            newLedgerMovementId
+          )
+        } else if (existingPayment.payer_type === "OPERATOR" && existingPayment.operation_id) {
+          const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+            operationId: existingPayment.operation_id,
+            operatorId: linkedOperatorId,
+          })
 
-          if (operatorPayment) {
-            if (markAsPaid) {
-              // Incrementar paid_amount con el monto del pago
-              const currentPaid = parseFloat(operatorPayment.paid_amount || "0")
-              const newPaid = currentPaid + finalAmount
-              const totalAmount = parseFloat(operatorPayment.amount)
-              const isFullyPaid = newPaid >= totalAmount
+          if (matchedOperatorPayment) {
+            linkedOperatorPaymentId = matchedOperatorPayment.id
+            linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
 
-              await (supabase.from("operator_payments") as any)
-                .update({
-                  paid_amount: newPaid,
-                  status: isFullyPaid ? "PAID" : "PENDING",
-                  ledger_movement_id: isFullyPaid ? newLedgerMovementId : null,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", operatorPayment.id)
-            } else {
-              // Caso existente: re-marcar como PAID (edición de pago ya pagado)
-              await (supabase.from("operator_payments") as any)
-                .update({
-                  status: "PAID",
-                  ledger_movement_id: newLedgerMovementId,
-                  updated_at: new Date().toISOString()
-                })
-                .eq("id", operatorPayment.id)
-            }
+            await (supabase.from("payments") as any)
+              .update({
+                operator_id: linkedOperatorId,
+                operator_payment_id: linkedOperatorPaymentId,
+              })
+              .eq("id", paymentId)
+
+            await applyOperatorPaymentSettlement(
+              supabase,
+              linkedOperatorPaymentId,
+              finalAmount,
+              newLedgerMovementId
+            )
           }
         }
 
-        console.log(`✅ Pago ${paymentId} editado. Nuevo ledger_movement: ${newLedgerMovementId}`)
+        // Crear nuevo cash_movement (el PATCH borraba el viejo pero no recreaba el nuevo)
+        const { data: defaultCashBox } = await (supabase.from("cash_boxes") as any)
+          .select("id")
+          .eq("currency", finalCurrency)
+          .eq("is_default", true)
+          .eq("is_active", true)
+          .eq("agency_id", agencyId || "")
+          .maybeSingle()
+
+        const { error: cashInsertError } = await (supabase.from("cash_movements") as any)
+          .insert({
+            operation_id: existingPayment.operation_id,
+            payment_id: paymentId,
+            cash_box_id: (defaultCashBox as any)?.id || null,
+            financial_account_id: finalAccountId,
+            user_id: user.id,
+            type: existingPayment.direction === "INCOME" ? "INCOME" : "EXPENSE",
+            category: existingPayment.direction === "INCOME" ? "SALE" : "OPERATOR_PAYMENT",
+            amount: finalAmount,
+            currency: finalCurrency,
+            movement_date: finalDatePaid,
+            notes: finalNotes || null,
+            is_touristic: true,
+          })
+
+        if (cashInsertError) {
+          console.warn(`⚠️ Error recreando cash_movement para pago ${paymentId}:`, cashInsertError)
+        }
+
+        await createPaymentCounterpartMovement({
+          supabase,
+          paymentId,
+          operationId: existingPayment.operation_id,
+          direction: existingPayment.direction,
+          payerType: existingPayment.payer_type,
+          currency: finalCurrency,
+          amount: finalAmount,
+          method: finalMethod,
+          reference: finalNotes || null,
+          datePaid: finalDatePaid,
+          exchangeRate,
+          selectedFinancialAccountId: finalAccountId,
+          sellerId,
+          operatorId: existingPayment.payer_type === "OPERATOR" ? operatorId : null,
+          userId: user.id,
+        })
 
       } catch (accountingError) {
         console.error("Error recreating accounting movements:", accountingError)
@@ -911,6 +1911,14 @@ export async function PATCH(request: Request) {
 
     // Invalidar caché
     revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    if ((wasPaid || markAsPaid) && existingPayment.direction === "INCOME" && existingPayment.payer_type === "CUSTOMER") {
+      try {
+        await upsertSellerReceiptMessage(supabase, paymentId)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
+      }
+    }
 
     return NextResponse.json({ success: true, message: "Pago editado correctamente" })
   } catch (error) {

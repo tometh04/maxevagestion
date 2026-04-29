@@ -4,7 +4,17 @@ import { useCallback, useEffect, useState } from "react"
 import { CashFilters, CashFiltersState } from "./cash-filters"
 import { PaymentsTable, Payment } from "./payments-table"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Search } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
+import { useDebounce } from "@/hooks/use-debounce"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const expensesDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+  { value: "PAGO", label: "Pago", shortLabel: "Pago" },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface CashExpensesClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -13,6 +23,8 @@ interface CashExpensesClientProps {
 
 export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesClientProps) {
   const [filters, setFilters] = useState(defaultFilters)
+  const [contactNameInput, setContactNameInput] = useState("")
+  const contactName = useDebounce(contactNameInput, 400)
   const [totalExpenses, setTotalExpenses] = useState({ ars: 0, usd: 0 })
 
   const fetchTotalExpenses = useCallback(async () => {
@@ -20,6 +32,7 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
+      if (filters.dateType) params.set("dateType", filters.dateType)
       params.set("direction", "EXPENSE")
       params.set("limit", "1000")
       if (filters.agencyId !== "ALL") {
@@ -56,38 +69,43 @@ export function CashExpensesClient({ agencies, defaultFilters }: CashExpensesCli
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Egresos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Egresos</h1>
         <p className="text-muted-foreground">Todas las salidas del negocio (pagos a operadores, sueldos, etc.)</p>
       </div>
 
-      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
+      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} dateTypes={expensesDateTypes} />
+
+      {/* Búsqueda por nombre de cliente/operador */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+        <Input
+          placeholder="Buscar por cliente u operador..."
+          value={contactNameInput}
+          onChange={(e) => setContactNameInput(e.target.value)}
+          className="pl-9"
+        />
+      </div>
 
       {/* KPIs de totales */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Egresos ARS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalExpenses.ars, "ARS")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Egresos USD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalExpenses.usd, "USD")}</div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Egresos ARS</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalExpenses.ars, "ARS")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Egresos USD</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalExpenses.usd, "USD")}</p>
+        </div>
       </div>
 
       <PaymentsTable
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         direction="EXPENSE"
+        contactName={contactName}
         emptyMessage="No hay egresos en el rango seleccionado"
       />
     </div>

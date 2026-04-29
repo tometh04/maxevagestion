@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
-import { buildExchangeRateMap, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 // Forzar ruta dinámica
 export const dynamic = 'force-dynamic'
@@ -21,8 +21,6 @@ export async function GET(request: Request) {
     const dateFrom = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateTo = searchParams.get("dateTo") // YYYY-MM-DD
 
-    console.log("[PendingBalances] Iniciando cálculo de balances...", { agencyId, dateFrom, dateTo })
-
     // Obtener agencias del usuario
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
@@ -33,7 +31,12 @@ export async function GET(request: Request) {
     let accountsReceivableTotal = 0
 
     try {
-      // Obtener todas las operaciones con clientes
+      // Obtener todas las operaciones con clientes.
+      // Multi-tenant scope (2026-04-20): filtrar por org_id del user (defense-in-depth
+      // encima de RLS) y solo acotar por agencyIds si el role no es admin/owner —
+      // alineado con /api/analytics/sales. Sin este match, un SUPER_ADMIN/ORG_OWNER
+      // con `agencyIds = []` (por cualquier motivo) obtenía 0 rows y el KPI mostraba $0.
+      const userOrgId = (user as any).org_id as string | null
       let operationsQuery = supabase
         .from("operations")
         .select(`
@@ -45,7 +48,11 @@ export async function GET(request: Request) {
           created_at,
           agency_id
         `)
-        .in("agency_id", agencyIds)
+      if (userOrgId) operationsQuery = operationsQuery.eq("org_id", userOrgId)
+      const isAdminRole = user.role === "SUPER_ADMIN" || (user.role as string) === "ORG_OWNER"
+      if (agencyIds.length > 0 && !isAdminRole) {
+        operationsQuery = operationsQuery.in("agency_id", agencyIds)
+      }
 
       // Filtrar por rango de fechas usando created_at (fecha de venta/carga, consistente con KPIs de ventas)
       if (dateFrom) {
@@ -66,21 +73,27 @@ export async function GET(request: Request) {
           filteredOperations = filteredOperations.filter((op: any) => op.agency_id === agencyId)
         }
 
-        // Obtener todos los pagos de clientes para estas operaciones
+        // Obtener todos los pagos de clientes para estas operaciones (chunked: .in() revienta URL con >300 UUIDs)
         const operationIds = filteredOperations.map((op: any) => op.id)
+        const paymentsByOperation: Record<string, number> = {}
         if (operationIds.length > 0) {
-          const { data: payments } = await supabase
-            .from("payments")
-            .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
-            .in("operation_id", operationIds)
-            .eq("direction", "INCOME")
-            .eq("payer_type", "CUSTOMER")
-            .eq("status", "PAID")
+          const chunkSize = 200
+          const allPayments: any[] = []
+          for (let i = 0; i < operationIds.length; i += chunkSize) {
+            const chunk = operationIds.slice(i, i + chunkSize)
+            const { data: payments } = await supabase
+              .from("payments")
+              .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+              .in("operation_id", chunk)
+              .eq("direction", "INCOME")
+              .eq("payer_type", "CUSTOMER")
+              .eq("status", "PAID")
+            if (payments) allPayments.push(...payments)
+          }
 
           // Agrupar pagos por operación
-          const paymentsByOperation: Record<string, number> = {}
-          if (payments) {
-            payments.forEach((payment: any) => {
+          if (allPayments.length > 0) {
+            allPayments.forEach((payment: any) => {
               const opId = payment.operation_id
               if (!paymentsByOperation[opId]) {
                 paymentsByOperation[opId] = 0
@@ -103,7 +116,7 @@ export async function GET(request: Request) {
             .filter((op: any) => (op.sale_currency || op.currency || "USD") === "ARS")
             .map((op: any) => op.departure_date || op.created_at)
           const getRate = await buildExchangeRateMap(supabase, arsDates)
-          const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+          const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
           // Calcular deuda para cada operación
           for (const operation of filteredOperations) {
@@ -173,7 +186,7 @@ export async function GET(request: Request) {
         }
 
         // Obtener tasa de cambio más reciente como fallback
-        const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+        const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
         // Calcular deuda pendiente en USD
         for (const payment of filteredPayments) {
@@ -201,11 +214,11 @@ export async function GET(request: Request) {
       console.error("[PendingBalances] Error calculando deuda a operadores:", error)
     }
 
-    console.log(`[PendingBalances] Balance final - Deudores por Ventas: ${accountsReceivableTotal} USD, Deuda a Operadores: ${accountsPayableTotal} USD`)
-
     return NextResponse.json({
       accountsReceivable: Math.max(0, accountsReceivableTotal), // Solo valores positivos
       accountsPayable: Math.max(0, accountsPayableTotal), // Solo valores positivos
+    }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
     })
   } catch (error: any) {
     console.error("[PendingBalances] Error in GET /api/analytics/pending-balances:", error)

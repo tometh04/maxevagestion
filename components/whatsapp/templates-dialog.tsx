@@ -8,7 +8,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -28,7 +27,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { Edit, Save, X, Plus, Info, Code, Download, Loader2 } from "lucide-react"
+import { Edit, Save, X, Plus, Info, Code, Download, Loader2, Zap, FileText, LayoutList } from "lucide-react"
 import { toast } from "sonner"
 
 interface Template {
@@ -84,7 +83,7 @@ const availableVariables = [
   { name: "{monto}", description: "Monto del pago/cotización" },
   { name: "{moneda}", description: "Moneda (ARS, USD)" },
   { name: "{fecha_vencimiento}", description: "Fecha de vencimiento del pago" },
-  { name: "{fecha_validez}", description: "Fecha de validez de cotización" },
+  { name: "{nota_disponibilidad}", description: "Leyenda fija de disponibilidad de cotización" },
   { name: "{fecha_salida}", description: "Fecha de salida del viaje" },
   { name: "{mensaje_cuotas}", description: "Info de cuotas pendientes" },
 ]
@@ -222,7 +221,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Code className="h-5 w-5" />
@@ -233,29 +232,28 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
           </DialogDescription>
         </DialogHeader>
 
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
         {/* Variables disponibles */}
-        <Card className="bg-muted/50">
-          <CardHeader className="py-3">
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Info className="h-4 w-4" />
-              Variables disponibles
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="py-2">
-            <div className="flex flex-wrap gap-2">
-              {availableVariables.map((v) => (
-                <Badge
-                  key={v.name}
-                  variant="outline"
-                  className="cursor-help"
-                  title={v.description}
-                >
-                  {v.name}
-                </Badge>
-              ))}
+        <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+              <Info className="h-3.5 w-3.5 text-blue-500" />
             </div>
-          </CardContent>
-        </Card>
+            <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Variables disponibles</h4>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {availableVariables.map((v) => (
+              <Badge
+                key={v.name}
+                variant="outline"
+                className="cursor-help"
+                title={v.description}
+              >
+                {v.name}
+              </Badge>
+            ))}
+          </div>
+        </div>
 
         {/* Acciones */}
         <div className="flex gap-2">
@@ -277,11 +275,13 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
 
         {/* Formulario nuevo template */}
         {showNewForm && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Crear nuevo template</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                <FileText className="h-3.5 w-3.5 text-emerald-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Crear nuevo template</h4>
+            </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre</Label>
@@ -351,12 +351,18 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                 {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 Crear Template
               </Button>
-            </CardContent>
-          </Card>
+          </div>
         )}
 
         {/* Templates por categoría */}
         {hasTemplates ? (
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                <LayoutList className="h-3.5 w-3.5 text-violet-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Templates por categoria</h4>
+            </div>
           <Accordion type="multiple" defaultValue={["PAYMENT", "TRIP", "BIRTHDAY"]}>
             {groupedTemplates
               .filter((group) => group.templates.length > 0)
@@ -372,8 +378,7 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                   </AccordionTrigger>
                   <AccordionContent className="space-y-3">
                     {group.templates.map((template) => (
-                      <Card key={template.id} className={!template.is_active ? "opacity-50" : ""}>
-                        <CardContent className="p-4">
+                      <div key={template.id} className={`rounded-xl border border-border/40 bg-background p-4 ${!template.is_active ? "opacity-50" : ""}`}>
                           {editingId === template.id ? (
                             // Edit Mode
                             <div className="space-y-4">
@@ -476,15 +481,15 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                               </div>
                             </div>
                           )}
-                        </CardContent>
-                      </Card>
+                      </div>
                     ))}
                   </AccordionContent>
                 </AccordionItem>
               ))}
           </Accordion>
+          </div>
         ) : (
-          <Card className="p-8 text-center">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-8 text-center">
             <div className="text-muted-foreground">
               <p className="text-lg font-medium mb-2">No hay templates configurados</p>
               <p className="text-sm mb-4">
@@ -492,8 +497,9 @@ export function TemplatesDialog({ open, onOpenChange, templates, onRefresh }: Te
                 o creá uno nuevo manualmente.
               </p>
             </div>
-          </Card>
+          </div>
         )}
+        </div>
       </DialogContent>
     </Dialog>
   )

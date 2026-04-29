@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Loader2, Database } from "lucide-react"
 
@@ -54,65 +53,63 @@ export function MigrateHistoricalAccounting() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Database className="h-5 w-5" />
-          Migración de Datos Históricos Contables
-        </CardTitle>
-        <CardDescription>
-          Genera registros de IVA y operator_payments para operaciones existentes que no los tienen.
-          Esta acción es segura y solo crea registros faltantes.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-lg bg-muted p-4">
-          <p className="text-sm text-muted-foreground">
-            <strong>¿Qué hace esta migración?</strong>
-          </p>
-          <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
-            <li>Genera registros de IVA de venta para operaciones sin IVA</li>
-            <li>Genera registros de IVA de compra para operaciones sin IVA</li>
-            <li>Genera operator_payments para operaciones sin pagos a operadores</li>
-            <li>No modifica ni elimina datos existentes</li>
-          </ul>
+    <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+          <Database className="h-3.5 w-3.5 text-primary" />
         </div>
+        <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Migración de Datos Históricos Contables</h4>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        Genera registros de IVA y operator_payments para operaciones existentes que no los tienen.
+        Esta acción es segura y solo crea registros faltantes.
+      </p>
 
-        <Button onClick={handleMigrate} disabled={loading} className="w-full">
-          {loading ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Ejecutando migración...
-            </>
-          ) : (
-            <>
-              <Database className="mr-2 h-4 w-4" />
-              Ejecutar Migración
-            </>
-          )}
-        </Button>
+      <div className="rounded-xl border border-border/40 p-4">
+        <p className="text-sm text-muted-foreground">
+          <strong>¿Qué hace esta migración?</strong>
+        </p>
+        <ul className="mt-2 list-disc list-inside space-y-1 text-sm text-muted-foreground">
+          <li>Genera registros de IVA de venta para operaciones sin IVA</li>
+          <li>Genera registros de IVA de compra para operaciones sin IVA</li>
+          <li>Genera operator_payments para operaciones sin pagos a operadores</li>
+          <li>No modifica ni elimina datos existentes</li>
+        </ul>
+      </div>
 
-        {result && (
-          <Alert variant={result.success ? "default" : "destructive"}>
-            <AlertDescription>
-              <div className="space-y-2">
-                <p>{result.message}</p>
-                {result.summary && (
-                  <div className="mt-2 text-sm">
-                    <p>
-                      <strong>IVA:</strong> {result.summary.ivaCreated} creados, {result.summary.ivaErrors} errores
-                    </p>
-                    <p>
-                      <strong>Operator Payments:</strong> {result.summary.paymentsCreated} creados, {result.summary.paymentsErrors} errores
-                    </p>
-                  </div>
-                )}
-              </div>
-            </AlertDescription>
-          </Alert>
+      <Button size="sm" onClick={handleMigrate} disabled={loading} className="w-full">
+        {loading ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Ejecutando migración...
+          </>
+        ) : (
+          <>
+            <Database className="mr-2 h-3.5 w-3.5" />
+            Ejecutar Migración
+          </>
         )}
-      </CardContent>
-    </Card>
+      </Button>
+
+      {result && (
+        <Alert variant={result.success ? "default" : "destructive"}>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p>{result.message}</p>
+              {result.summary && (
+                <div className="mt-2 text-sm">
+                  <p>
+                    <strong>IVA:</strong> {result.summary.ivaCreated} creados, {result.summary.ivaErrors} errores
+                  </p>
+                  <p>
+                    <strong>Operator Payments:</strong> {result.summary.paymentsCreated} creados, {result.summary.paymentsErrors} errores
+                  </p>
+                </div>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+    </div>
   )
 }
-

@@ -51,7 +51,8 @@ export async function GET(request: Request) {
 
     // Get detailed IVA sales
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`
-    const endDate = `${year}-${String(month).padStart(2, "0")}-31`
+    const lastDay = new Date(year, month, 0).getDate()
+    const endDate = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
     let salesQuery = (supabase.from("iva_sales") as any)
       .select(
@@ -105,10 +106,33 @@ export async function GET(request: Request) {
       })
     }
 
+    // Get percepciones IVA suffered in this period (credit fiscal adicional)
+    const taxPeriod = `${year}-${String(month).padStart(2, "0")}`
+    const { data: percepciones } = await (supabase.from("tax_withholdings") as any)
+      .select("id, type, amount, currency")
+      .eq("type", "PERCEPCION_IVA")
+      .eq("direction", "SUFFERED")
+      .eq("tax_period", taxPeriod)
+
+    // Separate percepciones by currency
+    const percepcionesARS = (percepciones || []).filter((p: any) => p.currency !== "USD").reduce((s: number, p: any) => s + Number(p.amount), 0)
+    const percepcionesUSD = (percepciones || []).filter((p: any) => p.currency === "USD").reduce((s: number, p: any) => s + Number(p.amount), 0)
+
+    // Adjust IVA position with percepciones per currency
+    const adjustedSummary = {
+      ...ivaSummary,
+      percepciones_iva: { ars: percepcionesARS, usd: percepcionesUSD },
+      iva_to_pay_adjusted: {
+        ars: ivaSummary.ars.iva_to_pay - percepcionesARS,
+        usd: ivaSummary.usd.iva_to_pay - percepcionesUSD,
+      },
+    }
+
     return NextResponse.json({
-      summary: ivaSummary,
+      summary: adjustedSummary,
       sales: filteredSalesIVA,
       purchases: filteredPurchasesIVA,
+      percepciones: percepciones || [],
       period: { year, month },
     })
   } catch (error) {

@@ -180,9 +180,13 @@ export async function autoCalculateFXForPayment(
     .reduce((sum: number, p: any) => sum + parseFloat(p.amount || "0"), 0)
 
   // Calcular ARS equivalentes
+  if (operation.sale_currency !== "ARS" && !saleExchangeRate) {
+    console.warn(`No se encontró tipo de cambio para la operación ${operationId}. Configure un TC antes de calcular diferencias de cambio.`)
+    return { fxType: null, fxAmount: 0 }
+  }
   const saleArsEquivalent = operation.sale_currency === "ARS"
     ? operation.sale_amount_total
-    : operation.sale_amount_total * (saleExchangeRate || 1450) // Fallback TC aproximado si no hay rate
+    : operation.sale_amount_total * saleExchangeRate!
 
   // Para el pago, usar el exchange rate proporcionado o buscar uno
   let effectivePaymentRate = paymentExchangeRate
@@ -192,13 +196,17 @@ export async function autoCalculateFXForPayment(
       effectivePaymentRate = await getExchangeRate(supabase, latestPayment.date_paid)
     }
     if (!effectivePaymentRate) {
-      effectivePaymentRate = await getLatestExchangeRate(supabase) || 1450
+      effectivePaymentRate = await getLatestExchangeRate(supabase)
     }
   }
 
+  if (paymentCurrency !== "ARS" && !effectivePaymentRate) {
+    console.warn(`No se encontró tipo de cambio para el pago de la operación ${operationId}. Configure un TC antes de calcular diferencias de cambio.`)
+    return { fxType: null, fxAmount: 0 }
+  }
   const totalPaidArsEquivalent = paymentCurrency === "ARS"
     ? totalPaidInPaymentCurrency
-    : totalPaidInPaymentCurrency * (effectivePaymentRate || 1450)
+    : totalPaidInPaymentCurrency * effectivePaymentRate!
 
   // Calcular diferencia
   const difference = saleArsEquivalent - totalPaidArsEquivalent

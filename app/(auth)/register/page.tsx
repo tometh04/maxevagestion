@@ -1,0 +1,67 @@
+import { Suspense } from "react"
+import { Globe, MapPin, GalleryVerticalEnd } from "lucide-react"
+import Image from "next/image"
+import Link from "next/link"
+
+import { RegisterForm } from "@/components/register-form"
+
+export default function RegisterPage() {
+  return (
+    <div className="grid min-h-svh lg:grid-cols-2">
+      <div className="bg-gradient-to-br from-blue-900 via-blue-800 to-indigo-900 relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center p-12">
+        <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmZmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNCI+PHBhdGggZD0iTTM2IDM0djItSDI0di0yaDEyek0zNiAyNHYySDI0di0yaDEyeiIvPjwvZz48L2c+PC9zdmc+')] opacity-30" />
+        <div className="relative z-10 text-center text-white space-y-8">
+          <div className="flex justify-center">
+            <Image
+              src="/vibook-logo-white.png"
+              alt="Vibook"
+              width={240}
+              height={72}
+              priority
+              className="h-auto w-auto max-h-20 object-contain"
+            />
+          </div>
+          <div>
+            <p className="text-lg text-blue-200">
+              Tu ERP de agencia de viajes, listo en 1 minuto
+            </p>
+          </div>
+          <div className="flex justify-center gap-8 text-blue-300">
+            <div className="flex flex-col items-center gap-2">
+              <Globe className="size-8" />
+              <span className="text-sm">Operaciones</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <MapPin className="size-8" />
+              <span className="text-sm">Destinos</span>
+            </div>
+            <div className="flex flex-col items-center gap-2">
+              <GalleryVerticalEnd className="size-8" />
+              <span className="text-sm">Reportes</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-1 items-center justify-center p-6 md:p-10">
+        <div className="w-full max-w-md">
+          <div className="flex justify-center mb-8">
+            <Link href="/" className="inline-flex items-center">
+              <Image
+                src="/vibook-logo.jpeg"
+                alt="Vibook"
+                width={180}
+                height={54}
+                priority
+                className="h-auto w-auto max-h-12 object-contain"
+              />
+            </Link>
+          </div>
+          {/* Suspense requerido por useSearchParams en el form (Next 15+). */}
+          <Suspense fallback={null}>
+            <RegisterForm />
+          </Suspense>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -149,7 +149,7 @@ async function setupMadero() {
   
   const webhookUrl = process.env.NEXT_PUBLIC_APP_URL
     ? `${process.env.NEXT_PUBLIC_APP_URL}/api/trello/webhook`
-    : "https://www.maxevagestion.com/api/trello/webhook"
+    : "https://app.vibook.ai/api/trello/webhook"
 
   // Obtener webhooks existentes
   const webhooksResponse = await fetch(

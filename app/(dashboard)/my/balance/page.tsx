@@ -24,7 +24,7 @@ export default async function MyBalancePage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Balance</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Balance</h1>
           <p className="text-muted-foreground">Solo disponible para vendedores, administradores y super administradores</p>
         </div>
       </div>
@@ -124,7 +124,7 @@ export default async function MyBalancePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Mi Balance</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Mi Balance</h1>
         <p className="text-muted-foreground">Resumen de comisiones y operaciones</p>
       </div>
 

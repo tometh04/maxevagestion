@@ -47,10 +47,10 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
-  RESERVED: "bg-blue-500",
-  CONFIRMED: "bg-green-500",
-  CANCELLED: "bg-red-500",
-  TRAVELLING: "bg-orange-500",
+  RESERVED: "bg-info",
+  CONFIRMED: "bg-success",
+  CANCELLED: "bg-destructive",
+  TRAVELLING: "bg-warning",
   TRAVELLED: "bg-purple-500",
 }
 
@@ -159,7 +159,7 @@ export function OperationHoverCard({ operationId, children }: OperationHoverCard
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Margen:</span>
-                <span className={`font-medium ${operation.margin_amount >= 0 ? "text-green-600" : "text-red-600"}`}>
+                <span className={`font-medium ${operation.margin_amount >= 0 ? "text-success" : "text-destructive"}`}>
                   {formatCurrency(operation.margin_amount, operation.currency)} ({operation.margin_percentage.toFixed(1)}%)
                 </span>
               </div>

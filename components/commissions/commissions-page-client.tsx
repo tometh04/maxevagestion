@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { CommissionsTable, Commission } from "./commissions-table"
+import { SellerObjectivesCards } from "./seller-objectives-cards"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -58,17 +59,33 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
     fetchCommissions()
   }, [fetchCommissions])
 
-  const totalCommissions = useMemo(() => {
-    return commissions.reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  // Agrupar por moneda (no mezclar ARS+USD en un solo numero)
+  const sumByCurrency = (items: Commission[]): Record<string, number> => {
+    const by: Record<string, number> = {}
+    for (const c of items) {
+      const cur = c.operations?.currency || "ARS"
+      by[cur] = (by[cur] || 0) + (Number(c.amount) || 0)
+    }
+    return by
+  }
 
-  const pendingCommissions = useMemo(() => {
-    return commissions.filter((comm) => comm.status === "PENDING").reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  const totalByCurrency = useMemo(() => sumByCurrency(commissions), [commissions])
+  const pendingByCurrency = useMemo(() => sumByCurrency(commissions.filter(c => c.status === "PENDING")), [commissions])
+  const paidByCurrency = useMemo(() => sumByCurrency(commissions.filter(c => c.status === "PAID")), [commissions])
 
-  const paidCommissions = useMemo(() => {
-    return commissions.filter((comm) => comm.status === "PAID").reduce((sum, comm) => sum + comm.amount, 0)
-  }, [commissions])
+  const renderMoney = (by: Record<string, number>) => {
+    const entries = Object.entries(by).filter(([, v]) => Math.abs(v) > 0.005)
+    if (entries.length === 0) return <span>-</span>
+    return (
+      <>
+        {entries.map(([cur, amt], i) => (
+          <span key={cur} className={i > 0 ? "block text-base" : "block"}>
+            {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+          </span>
+        ))}
+      </>
+    )
+  }
 
   // Generate month options (last 12 months)
   const monthOptions = useMemo(() => {
@@ -86,51 +103,41 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Mis Comisiones</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Mis Comisiones</h1>
         <p className="text-muted-foreground">Revisa tus comisiones ganadas</p>
       </div>
 
+      {/* Objetivos del vendedor (si hay alguno activo) */}
+      <SellerObjectivesCards sellerId={sellerId} />
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Comisiones</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${totalCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Comisiones</p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(totalByCurrency)}
             </div>
-          </CardContent>
-        </Card>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${pendingCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(pendingByCurrency)}
             </div>
-          </CardContent>
-        </Card>
+        </div>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Pagadas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${paidCommissions.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Pagadas</p>
+            <div className="text-2xl font-semibold tabular-nums tracking-tight">
+              {renderMoney(paidByCurrency)}
             </div>
-          </CardContent>
-        </Card>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-2">
+      <div className="flex items-center gap-2 flex-wrap">
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
@@ -141,7 +148,7 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
           </Select>
 
           <Select value={monthFilter} onValueChange={setMonthFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
               <SelectValue placeholder="Mes" />
             </SelectTrigger>
             <SelectContent>
@@ -153,25 +160,21 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
               ))}
             </SelectContent>
           </Select>
-        </div>
 
-        <div className="mt-4 flex justify-end">
-          <Button onClick={fetchCommissions} disabled={loading}>
+
+          <Button size="sm" onClick={fetchCommissions} disabled={loading} className="rounded-full">
             Actualizar
           </Button>
-        </div>
       </div>
 
       {/* Monthly Summary */}
       {monthlySummary.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Resumen Mensual</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <div className="rounded-xl border border-border/40 overflow-hidden">
+          <div className="p-5">
+            <p className="text-xs font-medium text-muted-foreground mb-3">Resumen Mensual</p>
             <div className="space-y-2">
               {monthlySummary.map((summary) => (
-                <div key={summary.month} className="flex items-center justify-between p-2 border rounded">
+                <div key={summary.month} className="flex items-center justify-between p-2 border border-border/40 rounded-xl">
                   <div>
                     <p className="font-medium">
                       {new Date(summary.month + "-01").toLocaleDateString("es-AR", {
@@ -192,8 +195,8 @@ export function CommissionsPageClient({ sellerId }: CommissionsPageClientProps) 
                 </div>
               ))}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
       {/* Commissions Table */}

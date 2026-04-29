@@ -188,15 +188,15 @@ export function VoiceTaskRecorder({
             <div
               className={cn(
                 "h-24 w-24 rounded-full flex items-center justify-center transition-colors",
-                state === "listening" && "bg-red-100 dark:bg-red-900/30",
-                state === "processing" && "bg-blue-100 dark:bg-blue-900/30",
+                state === "listening" && "bg-destructive/10",
+                state === "processing" && "bg-info/10",
                 state === "idle" && "bg-muted"
               )}
             >
               {state === "processing" ? (
-                <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+                <Loader2 className="h-10 w-10 text-info animate-spin" />
               ) : state === "listening" ? (
-                <Mic className="h-10 w-10 text-red-600" />
+                <Mic className="h-10 w-10 text-destructive" />
               ) : (
                 <MicOff className="h-10 w-10 text-muted-foreground" />
               )}
@@ -205,9 +205,9 @@ export function VoiceTaskRecorder({
             {/* Pulse rings when listening */}
             {state === "listening" && (
               <>
-                <div className="absolute inset-0 rounded-full bg-red-400/20 animate-ping" />
+                <div className="absolute inset-0 rounded-full bg-destructive/20 animate-ping" />
                 <div
-                  className="absolute -inset-3 rounded-full bg-red-400/10 animate-pulse"
+                  className="absolute -inset-3 rounded-full bg-destructive/10 animate-pulse"
                   style={{ animationDelay: "0.5s" }}
                 />
               </>

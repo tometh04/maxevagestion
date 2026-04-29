@@ -21,44 +21,56 @@ export async function GET(request: Request) {
     // Get user agencies (ya tiene caché interno)
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build base query
-    let query = supabase.from("customers")
-
-    // Apply role-based filters FIRST (before select)
+    // Build base query — .select() FIRST so applyCustomersFilters can chain .eq() etc.
     const context = searchParams.get("context") || undefined
-    try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase, context)
-      console.log(`[Customers API] User ${user.id} (${user.role}) - Applied filters (context: ${context || 'default'})`)
-    } catch (error: any) {
-      console.error("Error applying customers filters:", error)
-      return NextResponse.json({ error: error.message }, { status: 403 })
-    }
-
-    // Add pagination with reasonable limits
-    const requestedLimit = parseInt(searchParams.get("limit") || "100")
-    const limit = Math.min(requestedLimit, 200) // Máximo 200 para mejor rendimiento
-    const offset = parseInt(searchParams.get("offset") || "0")
-    
-    // Apply search filter and select with relations
-    const search = searchParams.get("search")
-    let selectQuery = query.select(`
+    let selectQuery = supabase.from("customers").select(`
         *,
         operation_customers(
           operation_id,
           operations:operation_id(
             id,
             sale_amount_total,
+            sale_currency,
             currency,
             status
           )
         )
       `)
 
+    try {
+      const applied = await applyCustomersFilters(selectQuery, user, agencyIds, supabase, context)
+      selectQuery = applied.query
+    } catch (error: any) {
+      console.error("Error applying customers filters:", error)
+      return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+
+    // Add pagination with reasonable limits.
+    // Default alto para que la DataTable client-side pagine sobre la lista completa
+    // (tabla de clientes se usa principalmente para buscar/ordenar, no scroll infinito).
+    const requestedLimit = parseInt(searchParams.get("limit") || "2000")
+    const limit = Math.min(requestedLimit, 2000)
+    const offset = parseInt(searchParams.get("offset") || "0")
+
+    // Apply search filter after select + filters
+    const search = searchParams.get("search")
+
     // Apply search filter AFTER select (or() is only available after select)
+    // Split search into words so "Emiliano Mossotti" matches first_name + last_name
     if (search) {
-      selectQuery = selectQuery.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
+      const words = search.trim().split(/\s+/)
+      if (words.length > 1) {
+        // Multi-word: each word must match at least one field (AND logic between words)
+        for (const word of words) {
+          selectQuery = selectQuery.or(
+            `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+          )
+        }
+      } else {
+        selectQuery = selectQuery.or(
+          `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+        )
+      }
     }
 
     // Now add order and range
@@ -71,46 +83,58 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Error al obtener clientes" }, { status: 500 })
     }
 
-    console.log(`[Customers API] Found ${customers?.length || 0} customers`)
-
-    // Calculate trips and total spent for each customer
+    // Calculate trips and total spent for each customer.
+    // Regla: NO mezclar monedas. totalSpentByCurrency = { USD: X, ARS: Y }.
     const customersWithStats = (customers || []).map((customer: any) => {
       const operations = customer.operation_customers || []
       const trips = operations.length
-      
-      // Calculate total spent (only from CONFIRMED, TRAVELLED, or CLOSED operations)
-      const totalSpent = operations
+
+      const totalSpentByCurrency: Record<string, number> = {}
+      operations
         .filter((oc: any) => {
           const status = oc.operations?.status
           return status === "CONFIRMED" || status === "TRAVELLED" || status === "CLOSED"
         })
-        .reduce((sum: number, oc: any) => {
-          return sum + (parseFloat(oc.operations?.sale_amount_total || 0))
-        }, 0)
+        .forEach((oc: any) => {
+          const op = oc.operations
+          if (!op) return
+          const cur = op.sale_currency || op.currency || "USD"
+          const amt = parseFloat(op.sale_amount_total || 0) || 0
+          totalSpentByCurrency[cur] = (totalSpentByCurrency[cur] || 0) + amt
+        })
 
       return {
         ...customer,
         trips,
-        totalSpent,
+        totalSpentByCurrency,
       }
     })
 
-    // Get total count for pagination
-    let countQuery = supabase.from("customers")
-    
+    // Get total count for pagination — .select() FIRST for chaining
+    let countSelectQuery = supabase
+      .from("customers")
+      .select("*", { count: "exact", head: true })
+
     try {
-      countQuery = await applyCustomersFilters(countQuery, user, agencyIds, supabase)
+      const appliedCount = await applyCustomersFilters(countSelectQuery, user, agencyIds, supabase)
+      countSelectQuery = appliedCount.query
     } catch {
       // Ignore if filtering fails
     }
     
-    // Apply select first, then search filter (or() is only available after select)
-    let countSelectQuery = countQuery.select("*", { count: "exact", head: true })
-    
     if (search) {
-      countSelectQuery = countSelectQuery.or(
-        `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
-      )
+      const words = search.trim().split(/\s+/)
+      if (words.length > 1) {
+        for (const word of words) {
+          countSelectQuery = countSelectQuery.or(
+            `first_name.ilike.%${word}%,last_name.ilike.%${word}%,email.ilike.%${word}%,phone.ilike.%${word}%`
+          )
+        }
+      } else {
+        countSelectQuery = countSelectQuery.or(
+          `first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%`
+        )
+      }
     }
     
     const { count } = await countSelectQuery
@@ -217,9 +241,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // Create customer
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
+    // Create customer (org-scoped)
     const { data: customer, error: createError } = await (supabase.from("customers") as any)
       .insert({
+        org_id: user.org_id,
         first_name,
         last_name,
         phone,

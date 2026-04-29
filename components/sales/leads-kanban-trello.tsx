@@ -20,13 +20,13 @@ import { LeadDetailDialog } from "@/components/sales/lead-detail-dialog"
 import { toast } from "sonner"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-blue-500",
+  ARGENTINA: "bg-info",
   CARIBE: "bg-cyan-500",
-  BRASIL: "bg-green-500",
+  BRASIL: "bg-success",
   EUROPA: "bg-purple-500",
-  EEUU: "bg-red-500",
+  EEUU: "bg-destructive",
   OTROS: "bg-gray-500",
-  CRUCEROS: "bg-orange-500",
+  CRUCEROS: "bg-primary",
 }
 
 interface Lead {
@@ -218,11 +218,11 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
         }
       } else {
         console.error("Error moviendo lead:", data.error)
-        alert("Error al mover la tarjeta: " + (data.error || "Error desconocido"))
+        toast.error("Error al mover la tarjeta: " + (data.error || "Error desconocido"))
       }
     } catch (error) {
       console.error("Error updating lead list:", error)
-      alert("Error al mover la tarjeta")
+      toast.error("Error al mover la tarjeta")
     } finally {
       setDraggedLead(null)
     }
@@ -348,7 +348,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                               {lead.region}
                             </Badge>
                             {lead.has_deposit && lead.deposit_amount && (
-                              <Badge variant="outline" className="bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/50">
+                              <Badge variant="outline" className="bg-warning/20 text-warning border-warning/50">
                                 <DollarSign className="h-3 w-3 mr-1" />
                                 {lead.deposit_amount} {lead.deposit_currency || "ARS"}
                               </Badge>
@@ -373,7 +373,7 @@ export function LeadsKanbanTrello({ leads, agencyId, agencies = [], sellers = []
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-7 px-2 text-xs text-orange-600 hover:bg-orange-100 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-orange-950"
+                              className="h-7 px-2 text-xs text-primary hover:bg-primary/10 hover:text-primary"
                               onClick={(e) => handleClaimLead(lead.id, e)}
                               disabled={claimingLeadId === lead.id}
                             >

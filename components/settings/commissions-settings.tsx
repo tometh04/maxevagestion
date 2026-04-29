@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -47,6 +46,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { Percent, Plus, Info, Settings2, Calendar } from "lucide-react"
+import { toast } from "sonner"
 
 const commissionRuleSchema = z.object({
   type: z.enum(["SELLER", "AGENCY"]),
@@ -76,6 +77,7 @@ interface CommissionRule {
 export function CommissionsSettings() {
   const [rules, setRules] = useState<CommissionRule[]>([])
   const [loading, setLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingRule, setEditingRule] = useState<CommissionRule | null>(null)
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
@@ -151,6 +153,7 @@ export function CommissionsSettings() {
   }
 
   const handleSubmit = async (values: CommissionRuleFormValues) => {
+    setIsSaving(true)
     try {
       if (editingRule) {
         // Update
@@ -180,7 +183,9 @@ export function CommissionsSettings() {
       fetchRules()
     } catch (error) {
       console.error("Error saving rule:", error)
-      alert("Error al guardar la regla")
+      toast.error("Error al guardar la regla")
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -206,7 +211,7 @@ export function CommissionsSettings() {
       setRuleToDelete(null)
     } catch (error) {
       console.error("Error deleting rule:", error)
-      alert("Error al eliminar la regla")
+      toast.error("Error al eliminar la regla")
       setDeleteDialogOpen(false)
       setRuleToDelete(null)
     }
@@ -224,81 +229,98 @@ export function CommissionsSettings() {
 
   return (
     <>
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-semibold">Reglas de Comisiones</h2>
-        <Button onClick={() => handleOpenDialog()}>Nueva Regla</Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+            <Percent className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">Reglas de Comisiones</h2>
+            <p className="text-sm text-muted-foreground">Gestiona las reglas de comisión para vendedores y agencias</p>
+          </div>
+        </div>
+        <Button size="sm" onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-3.5 w-3.5" />
+          Nueva Regla
+        </Button>
       </div>
 
-      <Alert>
-        <AlertDescription>
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+            <Info className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Información</h4>
+        </div>
+        <p className="text-sm text-muted-foreground">
           Las reglas de comisión se aplican automáticamente cuando una operación está CONFIRMED y todos los pagos de
           cliente están PAID. Las reglas se evalúan por fecha de validez y región de destino.
-        </AlertDescription>
-      </Alert>
+        </p>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Reglas Activas</CardTitle>
-          <CardDescription>Gestiona las reglas de comisión para vendedores y agencias</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8 text-muted-foreground">Cargando...</div>
-          ) : rules.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">No hay reglas configuradas</div>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Base</TableHead>
-                    <TableHead>Valor</TableHead>
-                    <TableHead>Región</TableHead>
-                    <TableHead>Válido Desde</TableHead>
-                    <TableHead>Válido Hasta</TableHead>
-                    <TableHead>Acciones</TableHead>
+      <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+            <Percent className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Reglas Activas</h4>
+        </div>
+        {loading ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">Cargando...</div>
+        ) : rules.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground text-sm">No hay reglas configuradas</div>
+        ) : (
+          <div className="rounded-xl border border-border/40 overflow-hidden">
+            <Table>
+              <TableHeader className="sticky top-0 bg-muted/50">
+                <TableRow>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead>Base</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Región</TableHead>
+                  <TableHead>Válido Desde</TableHead>
+                  <TableHead>Válido Hasta</TableHead>
+                  <TableHead>Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rules.map((rule) => (
+                  <TableRow key={rule.id}>
+                    <TableCell>
+                      <Badge variant="outline">{rule.type === "SELLER" ? "Vendedor" : "Agencia"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {rule.basis === "FIXED_PERCENTAGE" ? "Porcentaje Fijo" : "Monto Fijo"}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      {rule.basis === "FIXED_PERCENTAGE" ? `${rule.value}%` : `$${rule.value.toLocaleString("es-AR")}`}
+                    </TableCell>
+                    <TableCell className="text-sm">{rule.destination_region || "Todas"}</TableCell>
+                    <TableCell className="text-sm">{format(new Date(rule.valid_from), "dd/MM/yyyy", { locale: es })}</TableCell>
+                    <TableCell className="text-sm">
+                      {rule.valid_to ? format(new Date(rule.valid_to), "dd/MM/yyyy", { locale: es }) : "Sin límite"}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(rule)}>
+                          Editar
+                        </Button>
+                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteClick(rule.id)}>
+                          Eliminar
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell>
-                        <Badge variant="outline">{rule.type === "SELLER" ? "Vendedor" : "Agencia"}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        {rule.basis === "FIXED_PERCENTAGE" ? "Porcentaje Fijo" : "Monto Fijo"}
-                      </TableCell>
-                      <TableCell>
-                        {rule.basis === "FIXED_PERCENTAGE" ? `${rule.value}%` : `$${rule.value.toLocaleString("es-AR")}`}
-                      </TableCell>
-                      <TableCell>{rule.destination_region || "Todas"}</TableCell>
-                      <TableCell>{format(new Date(rule.valid_from), "dd/MM/yyyy", { locale: es })}</TableCell>
-                      <TableCell>
-                        {rule.valid_to ? format(new Date(rule.valid_to), "dd/MM/yyyy", { locale: es }) : "Sin límite"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(rule)}>
-                            Editar
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(rule.id)}>
-                            Eliminar
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingRule ? "Editar Regla" : "Nueva Regla de Comisión"}</DialogTitle>
             <DialogDescription>
@@ -307,25 +329,77 @@ export function CommissionsSettings() {
           </DialogHeader>
 
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+              {/* Configuración */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                    <Settings2 className="h-3.5 w-3.5 text-primary" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Configuración</h4>
+                </div>
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="type"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tipo</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="SELLER">Vendedor</SelectItem>
+                            <SelectItem value="AGENCY">Agencia</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="basis"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Base de Cálculo</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="FIXED_PERCENTAGE">Porcentaje Fijo</SelectItem>
+                            <SelectItem value="FIXED_AMOUNT">Monto Fijo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
                 <FormField
                   control={form.control}
-                  name="type"
+                  name="value"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Tipo</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="SELLER">Vendedor</SelectItem>
-                          <SelectItem value="AGENCY">Agencia</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      <FormLabel>
+                        Valor {form.watch("basis") === "FIXED_PERCENTAGE" ? "(%)" : "(Monto)"}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step={form.watch("basis") === "FIXED_PERCENTAGE" ? "0.01" : "1"}
+                          {...field}
+                          onChange={(e) => field.onChange(Number(e.target.value))}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -333,19 +407,26 @@ export function CommissionsSettings() {
 
                 <FormField
                   control={form.control}
-                  name="basis"
+                  name="destination_region"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Base de Cálculo</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <FormLabel>Región de Destino (opcional)</FormLabel>
+                      <Select
+                        onValueChange={(value) => field.onChange(value === "ALL" ? null : value)}
+                        value={field.value || "ALL"}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="FIXED_PERCENTAGE">Porcentaje Fijo</SelectItem>
-                          <SelectItem value="FIXED_AMOUNT">Monto Fijo</SelectItem>
+                          <SelectItem value="ALL">Todas las regiones</SelectItem>
+                          {regionOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -354,99 +435,60 @@ export function CommissionsSettings() {
                 />
               </div>
 
-              <FormField
-                control={form.control}
-                name="value"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      Valor {form.watch("basis") === "FIXED_PERCENTAGE" ? "(%)" : "(Monto)"}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        step={form.watch("basis") === "FIXED_PERCENTAGE" ? "0.01" : "1"}
-                        {...field}
-                        onChange={(e) => field.onChange(Number(e.target.value))}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {/* Vigencia */}
+              <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                    <Calendar className="h-3.5 w-3.5 text-blue-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Vigencia</h4>
+                </div>
+                <div className="grid gap-x-5 gap-y-4 md:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="valid_from"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Válido Desde</FormLabel>
+                        <FormControl>
+                          <DatePicker
+                            value={field.value || ""}
+                            onChange={(value) => field.onChange(value)}
+                            placeholder="Seleccionar fecha"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="destination_region"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Región de Destino (opcional)</FormLabel>
-                    <Select
-                      onValueChange={(value) => field.onChange(value === "ALL" ? null : value)}
-                      value={field.value || "ALL"}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="ALL">Todas las regiones</SelectItem>
-                        {regionOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <FormField
-                  control={form.control}
-                  name="valid_from"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Válido Desde</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={field.value || ""}
-                          onChange={(value) => field.onChange(value)}
-                          placeholder="Seleccionar fecha"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="valid_to"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Válido Hasta (opcional)</FormLabel>
-                      <FormControl>
-                        <DatePicker
-                          value={field.value || ""}
-                          onChange={(value) => field.onChange(value || null)}
-                          placeholder="Seleccionar fecha"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="valid_to"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Válido Hasta (opcional)</FormLabel>
+                        <FormControl>
+                          <DatePicker
+                            value={field.value || ""}
+                            onChange={(value) => field.onChange(value || null)}
+                            placeholder="Seleccionar fecha"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => setDialogOpen(false)} disabled={isSaving}>
                   Cancelar
                 </Button>
-                <Button type="submit">Guardar</Button>
+                <Button type="submit" size="sm" disabled={isSaving}>
+                  {isSaving ? "Guardando..." : "Guardar"}
+                </Button>
               </DialogFooter>
             </form>
           </Form>

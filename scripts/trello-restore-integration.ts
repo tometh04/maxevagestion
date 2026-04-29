@@ -23,7 +23,7 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 const WEBHOOK_URL = process.env.NEXT_PUBLIC_APP_URL 
   ? `${process.env.NEXT_PUBLIC_APP_URL}/api/trello/webhook`
-  : "https://www.maxevagestion.com/api/trello/webhook"
+  : "https://app.vibook.ai/api/trello/webhook"
 
 // Las credenciales se obtienen de la base de datos o variables de entorno
 // NO hardcodear tokens aquí por seguridad

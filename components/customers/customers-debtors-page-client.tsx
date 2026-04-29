@@ -28,6 +28,14 @@ import {
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { extractCustomerName } from "@/lib/customers/utils"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { Input } from "@/components/ui/input"
+
+const debtorsDateTypes: DateTypeOption[] = [
+  { value: "SALIDA", label: "Salida", shortLabel: "Salida" },
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+]
 
 interface DebtorOperation {
   id: string
@@ -60,12 +68,27 @@ export function DebtsSalesPageClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedCustomerId, setExpandedCustomerId] = useState<string | null>(null)
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("SALIDA")
+  const [searchText, setSearchText] = useState("")
 
   const fetchDebtors = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch("/api/accounting/debts-sales")
+      const params = new URLSearchParams()
+      if (dateFrom) {
+        params.append("dateFrom", format(dateFrom, "yyyy-MM-dd"))
+      }
+      if (dateTo) {
+        params.append("dateTo", format(dateTo, "yyyy-MM-dd"))
+      }
+      if (dateType) {
+        params.append("dateType", dateType)
+      }
+      const queryString = params.toString()
+      const response = await fetch(`/api/accounting/debts-sales${queryString ? `?${queryString}` : ""}`)
       if (response.ok) {
         const data = await response.json()
         setDebtors(data.debtors || [])
@@ -79,7 +102,7 @@ export function DebtsSalesPageClient() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [dateFrom, dateTo, dateType])
 
   useEffect(() => {
     fetchDebtors()
@@ -88,6 +111,21 @@ export function DebtsSalesPageClient() {
   const toggleExpand = (customerId: string) => {
     setExpandedCustomerId(expandedCustomerId === customerId ? null : customerId)
   }
+
+  const filteredDebtors = useMemo(() => {
+    if (!searchText.trim()) return debtors
+    const term = searchText.toLowerCase()
+    return debtors.filter((d) => {
+      const name = `${d.customer.first_name || ""} ${d.customer.last_name || ""}`.toLowerCase()
+      const doc = d.customer.document_number?.toLowerCase() || ""
+      const ops = d.operationsWithDebt.some(
+        (op) => op.file_code?.toLowerCase().includes(term) || op.destination?.toLowerCase().includes(term)
+      )
+      return name.includes(term) || doc.includes(term) || ops
+    })
+  }, [debtors, searchText])
+
+  const { sortedData: sortedDebtors, sortConfig, requestSort } = useSortableData(filteredDebtors, { key: "totalDebt", direction: "desc" })
 
   const formatCurrency = (amount: number, currency: string) => {
     return `${currency} ${Math.round(amount).toLocaleString("es-AR")}`
@@ -144,7 +182,7 @@ export function DebtsSalesPageClient() {
 
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center gap-2 text-red-600">
+            <div className="flex items-center gap-2 text-destructive">
               <AlertCircle className="h-5 w-5" />
               <p>{error}</p>
             </div>
@@ -154,8 +192,8 @@ export function DebtsSalesPageClient() {
     )
   }
 
-  const totalDebt = debtors.reduce((sum, d) => sum + d.totalDebt, 0)
-  const totalDebtors = debtors.length
+  const totalDebt = filteredDebtors.reduce((sum, d) => sum + d.totalDebt, 0)
+  const totalDebtors = filteredDebtors.length
 
   return (
     <div className="space-y-6">
@@ -169,7 +207,7 @@ export function DebtsSalesPageClient() {
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/customers">Base de Datos Clientes</Link>
+              <Link href="/customers">Clientes</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -179,7 +217,7 @@ export function DebtsSalesPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Deudores por Ventas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Deudores por Ventas</h1>
           <p className="text-muted-foreground">
             Clientes con pagos pendientes de operaciones
           </p>
@@ -192,6 +230,42 @@ export function DebtsSalesPageClient() {
         </Button>
       </div>
 
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          placeholder="Buscar cliente, destino o código..."
+          className="h-8 text-xs rounded-full w-[240px]"
+        />
+
+        <DateTypeFilter
+          types={debtorsDateTypes}
+          includeNone={false}
+          value={{ type: dateType, from: dateFrom, to: dateTo }}
+          onChange={(v) => {
+            setDateType(v.type)
+            setDateFrom(v.from)
+            setDateTo(v.to)
+          }}
+        />
+
+        {(dateFrom || dateTo || searchText) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 text-xs rounded-full"
+            onClick={() => {
+              setDateFrom(undefined)
+              setDateTo(undefined)
+              setSearchText("")
+            }}
+          >
+            Limpiar filtros
+          </Button>
+        )}
+      </div>
+
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -202,7 +276,9 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{totalDebtors}</div>
-            <p className="text-xs text-muted-foreground">Clientes con deuda</p>
+            <p className="text-xs text-muted-foreground">
+              {(dateFrom || dateTo || searchText) ? "Clientes con deuda (filtrado)" : "Clientes con deuda"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -212,8 +288,8 @@ export function DebtsSalesPageClient() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
-              {debtors.length > 0 ? formatCurrency(totalDebt, debtors[0]?.currency || "ARS") : "$ 0"}
+            <div className="text-2xl font-bold text-destructive">
+              {filteredDebtors.length > 0 ? formatCurrency(totalDebt, filteredDebtors[0]?.currency || "ARS") : "$ 0"}
             </div>
             <p className="text-xs text-muted-foreground">Monto total pendiente</p>
           </CardContent>
@@ -226,7 +302,7 @@ export function DebtsSalesPageClient() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {debtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
+              {filteredDebtors.reduce((sum, d) => sum + d.operationsWithDebt.length, 0)}
             </div>
             <p className="text-xs text-muted-foreground">Total de operaciones</p>
           </CardContent>
@@ -248,7 +324,7 @@ export function DebtsSalesPageClient() {
             </div>
           ) : (
             <div className="space-y-4">
-              {debtors.map((debtor) => {
+              {sortedDebtors.map((debtor) => {
                 const customerName = extractCustomerName(
                   `${debtor.customer.first_name || ""} ${debtor.customer.last_name || ""}`.trim() ||
                     debtor.customer.first_name ||
@@ -278,7 +354,7 @@ export function DebtsSalesPageClient() {
                         </div>
                         <div className="flex items-center gap-4">
                           <div className="text-right">
-                            <div className="text-2xl font-bold text-red-600">
+                            <div className="text-2xl font-bold text-destructive">
                               {formatCurrency(debtor.totalDebt, debtor.currency)}
                             </div>
                             <p className="text-xs text-muted-foreground">
@@ -337,10 +413,10 @@ export function DebtsSalesPageClient() {
                                 <TableCell className="text-right">
                                   {formatCurrency(op.sale_amount_total, op.currency)}
                                 </TableCell>
-                                <TableCell className="text-right text-green-600">
+                                <TableCell className="text-right text-success">
                                   {formatCurrency(op.paid, op.currency)}
                                 </TableCell>
-                                <TableCell className="text-right font-semibold text-red-600">
+                                <TableCell className="text-right font-semibold text-destructive">
                                   {formatCurrency(op.debt, op.currency)}
                                 </TableCell>
                                 <TableCell>

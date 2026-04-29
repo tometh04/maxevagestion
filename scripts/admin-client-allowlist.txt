@@ -1,0 +1,68 @@
+# SaaS Pilar 2 — Allowlist de archivos con `createAdminClient`.
+#
+# Cada línea es un path relativo al repo que puede importar/llamar
+# `createAdminClient` legítimamente. Cualquier archivo FUERA de esta lista
+# que use `createAdminClient` hace fallar `scripts/check-admin-client.sh`.
+#
+# Formato: `path  # categoría — justificación breve`
+# Líneas vacías y comentarios se ignoran.
+#
+# Categorías:
+#   AUTH              — pre-sesión (no hay JWT todavía).
+#   LIB               — libs internas que reciben un client scoped por parámetro;
+#                       el admin interno debe migrarse en Pilar 3.
+#   RPC_BLOCKED       — routes que llaman `execute_readonly_query` (SECURITY
+#                       DEFINER); bloqueadas hasta Pilar 2c.
+#   STORAGE           — uploads a Supabase Storage; bucket policies son scope
+#                       separado de DB RLS.
+#   WRITE_VALIDATED   — writes que validan ownership vía parent RLS antes del
+#                       admin mutation (Pass 2 pattern); migrar a scoped-client
+#                       en Pilar 3.
+#   WHA_CONTROL       — tablas wha_control no existen en prod; cuando se
+#                       materialicen, agregar org_id + RLS desde cero.
+#   LEGACY_PAGE       — server component legacy; migrar en Pilar 3.
+#   DEFINITION        — archivo que define/exporta `createAdminClient`.
+
+lib/supabase/server.ts                                                   # DEFINITION — export de la función.
+
+lib/accounting/audit.ts                                                  # LIB — audit log fire-and-forget sin caller context. Legítimo.
+lib/security/audit.ts                                                    # LIB — security_audit_log fire-and-forget (Pilar 8). Legítimo.
+
+app/api/auth/register/route.ts                                           # AUTH — crea user antes de tener session.
+app/api/onboarding/route.ts                                              # AUTH — crea org/tenant antes de que el user tenga org_id (Pilar 7).
+app/api/billing/checkout/route.ts                                        # BILLING — crea preapproval MP + loguea billing_events (Pilar 9).
+app/api/billing/mp-webhook/route.ts                                      # BILLING — webhook público de MP, no hay session (Pilar 9).
+
+app/api/accounting/ledger/stats/route.ts                                 # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+app/api/cash/daily-balance/route.ts                                      # RPC_BLOCKED — Pilar 2c fix junto con mig 141.
+
+app/api/operations/[id]/itinerary/upload-image/route.ts                  # STORAGE — solo sube archivos al bucket.
+app/api/quotations/upload-flight-screenshot/route.ts                     # STORAGE — solo sube archivos al bucket.
+
+app/api/operations/[id]/itinerary/route.ts                               # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/operations/[id]/itinerary/[itemId]/route.ts                      # WRITE_VALIDATED — validación parent-op via RLS.
+app/api/expenses/variable/route.ts                                       # WRITE_VALIDATED — inyecta org_id al insert.
+app/api/expenses/variable/[id]/route.ts                                  # WRITE_VALIDATED — acotado por existing.org_id.
+app/api/expenses/cc-payment/route.ts                                     # WRITE_VALIDATED — inyecta org_id en group + items.
+app/api/expenses/cc-payment/[id]/route.ts                                # WRITE_VALIDATED — acotado por group.org_id.
+app/api/leads/[id]/route.ts                                              # WRITE_VALIDATED — acotado por lead.org_id.
+
+app/api/wha-control/chats/route.ts                                       # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/chats/[chatId]/messages/route.ts                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/route.ts                                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/route.ts                                # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/qr/route.ts                             # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/disconnect/route.ts                     # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/devices/[id]/reconnect/route.ts                      # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/metrics/summary/route.ts                             # WHA_CONTROL — tablas no existen en prod.
+app/api/wha-control/metrics/timeseries/route.ts                          # WHA_CONTROL — tablas no existen en prod.
+
+app/(dashboard)/operations/[id]/page.tsx                                 # LEGACY_PAGE — server component, migrar en Pilar 3.
+
+# PLATFORM_ADMIN — pages/routes bajo /admin/* son consola de plataforma.
+# Acceso cross-org por diseño; protegido por isPlatformAdmin() guard.
+app/admin/orgs/page.tsx                                                  # PLATFORM_ADMIN — listar todas las orgs.
+app/admin/orgs/[id]/page.tsx                                             # PLATFORM_ADMIN — detalle de org cualquiera.
+app/admin/metrics/page.tsx                                               # PLATFORM_ADMIN — métricas globales.
+app/admin/audit/page.tsx                                                 # PLATFORM_ADMIN — security_audit_log reader.
+app/api/admin/orgs/[id]/route.ts                                         # PLATFORM_ADMIN — plan/status update cross-org.

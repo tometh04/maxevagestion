@@ -15,7 +15,6 @@ export async function POST(request: Request) {
     const supabase = await createServerClient()
     const deletedCounts: Record<string, number> = {}
 
-    console.log("🗑️ Iniciando limpieza de seed data...")
 
     // 1. Eliminar alertas (excepto las de leads de Trello)
     const { data: alertsDeleted, error: alertsError } = await (supabase
@@ -32,7 +31,6 @@ export async function POST(request: Request) {
       .select("id")
     
     deletedCounts.alerts = (alertsDeleted?.length || 0) + (alertsDeleted2?.length || 0)
-    console.log(`✓ Alertas eliminadas: ${deletedCounts.alerts}`)
 
     // 2. Eliminar commission_records
     const { data: commissionsDeleted } = await (supabase
@@ -41,7 +39,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000") // Truco para eliminar todo
       .select("id")
     deletedCounts.commission_records = commissionsDeleted?.length || 0
-    console.log(`✓ Comisiones eliminadas: ${deletedCounts.commission_records}`)
 
     // 3. Eliminar pagos
     const { data: paymentsDeleted } = await (supabase
@@ -50,7 +47,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.payments = paymentsDeleted?.length || 0
-    console.log(`✓ Pagos eliminados: ${deletedCounts.payments}`)
 
     // 4. Eliminar operation_customers (relación)
     const { data: opCustomersDeleted } = await (supabase
@@ -59,7 +55,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.operation_customers = opCustomersDeleted?.length || 0
-    console.log(`✓ Relaciones op-customer eliminadas: ${deletedCounts.operation_customers}`)
 
     // 5. Eliminar documentos de operaciones (NO de leads)
     const { data: docsDeleted } = await (supabase
@@ -69,7 +64,6 @@ export async function POST(request: Request) {
       .is("lead_id", null)
       .select("id")
     deletedCounts.documents = docsDeleted?.length || 0
-    console.log(`✓ Documentos de operaciones eliminados: ${deletedCounts.documents}`)
 
     // 6. Eliminar operaciones
     const { data: opsDeleted } = await (supabase
@@ -78,7 +72,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.operations = opsDeleted?.length || 0
-    console.log(`✓ Operaciones eliminadas: ${deletedCounts.operations}`)
 
     // 7. Eliminar clientes
     const { data: customersDeleted } = await (supabase
@@ -87,7 +80,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.customers = customersDeleted?.length || 0
-    console.log(`✓ Clientes eliminados: ${deletedCounts.customers}`)
 
     // 8. Eliminar operadores
     const { data: operatorsDeleted } = await (supabase
@@ -96,7 +88,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.operators = operatorsDeleted?.length || 0
-    console.log(`✓ Operadores eliminados: ${deletedCounts.operators}`)
 
     // 9. Eliminar movimientos de caja
     const { data: cashDeleted } = await (supabase
@@ -105,7 +96,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.cash_movements = cashDeleted?.length || 0
-    console.log(`✓ Movimientos de caja eliminados: ${deletedCounts.cash_movements}`)
 
     // 10. Eliminar ledger_movements
     const { data: ledgerDeleted } = await (supabase
@@ -114,7 +104,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.ledger_movements = ledgerDeleted?.length || 0
-    console.log(`✓ Movimientos contables eliminados: ${deletedCounts.ledger_movements}`)
 
     // 11. Eliminar partner_withdrawals
     const { data: withdrawalsDeleted } = await (supabase
@@ -123,7 +112,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.partner_withdrawals = withdrawalsDeleted?.length || 0
-    console.log(`✓ Retiros de socios eliminados: ${deletedCounts.partner_withdrawals}`)
 
     // 12. Eliminar partner_accounts
     const { data: partnersDeleted } = await (supabase
@@ -132,7 +120,6 @@ export async function POST(request: Request) {
       .neq("id", "00000000-0000-0000-0000-000000000000")
       .select("id")
     deletedCounts.partner_accounts = partnersDeleted?.length || 0
-    console.log(`✓ Cuentas de socios eliminadas: ${deletedCounts.partner_accounts}`)
 
     // NO ELIMINAR:
     // - leads (vienen de Trello)
@@ -144,7 +131,6 @@ export async function POST(request: Request) {
     // - whatsapp_templates (configuración)
     // - documents de leads (datos de Trello)
 
-    console.log("✅ Limpieza completada!")
 
     return NextResponse.json({
       success: true,

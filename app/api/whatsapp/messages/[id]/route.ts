@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canUserAccessMessage } from "@/lib/whatsapp/message-access"
 
 export async function PATCH(
   request: Request,
@@ -11,6 +12,19 @@ export async function PATCH(
     const supabase = await createServerClient()
     const { id } = await params
     const body = await request.json()
+    const { data: existingMessage, error: fetchError } = await (supabase.from("whatsapp_messages") as any)
+      .select("id, agency_id, operation_id, recipient_user_id")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (fetchError || !existingMessage) {
+      return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 })
+    }
+
+    const canAccess = await canUserAccessMessage(supabase, user, existingMessage)
+    if (!canAccess) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
 
     const updateData: any = {}
 
@@ -60,6 +74,19 @@ export async function DELETE(
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { id } = await params
+    const { data: existingMessage, error: fetchError } = await (supabase.from("whatsapp_messages") as any)
+      .select("id, agency_id, operation_id, recipient_user_id")
+      .eq("id", id)
+      .maybeSingle()
+
+    if (fetchError || !existingMessage) {
+      return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 })
+    }
+
+    const canAccess = await canUserAccessMessage(supabase, user, existingMessage)
+    if (!canAccess) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 })
+    }
 
     const { error } = await (supabase.from("whatsapp_messages") as any)
       .delete()

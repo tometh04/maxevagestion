@@ -1,7 +1,10 @@
 import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
+import { getScopedAgenciesForUser } from "@/lib/permissions-api"
 import { CRMManychatPageClient } from "@/components/sales/crm-manychat-page-client"
 import { canAccessModule } from "@/lib/permissions"
+
+export const dynamic = "force-dynamic"
 
 export default async function CRMManychatPage() {
   const { user } = await getCurrentUser()
@@ -12,7 +15,7 @@ export default async function CRMManychatPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">CRM Manychat</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">CRM Manychat</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a leads</p>
         </div>
       </div>
@@ -21,30 +24,8 @@ export default async function CRMManychatPage() {
 
   const supabase = await createServerClient()
 
-  // Get user agencies
-  const { data: userAgencies } = await supabase
-    .from("user_agencies")
-    .select("agency_id, agencies(id, name)")
-    .eq("user_id", user.id)
-
-  const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
-
-  // Get agencies for filters - SUPER_ADMIN ve todas, otros solo sus agencias
-  let agencies: Array<{ id: string; name: string }> = []
-  if (user.role === "SUPER_ADMIN") {
-    const { data } = await supabase
-      .from("agencies")
-      .select("id, name")
-      .order("name")
-    agencies = (data || []) as Array<{ id: string; name: string }>
-  } else {
-    const { data } = await supabase
-      .from("agencies")
-      .select("id, name")
-      .in("id", agencyIds.length > 0 ? agencyIds : [])
-      .order("name")
-    agencies = (data || []) as Array<{ id: string; name: string }>
-  }
+  const agencies = await getScopedAgenciesForUser(supabase, user)
+  const agencyIds = agencies.map((a) => a.id)
 
   // Get sellers for filters
   let sellersQuery = supabase
@@ -61,7 +42,7 @@ export default async function CRMManychatPage() {
   // Get operators for conversion dialog
   const { data: operators } = await supabase
     .from("operators")
-    .select("id, name")
+    .select("id, name, admin_fee_percentage")
     .order("name")
 
   // IMPORTANTE: Cargar leads de Manychat (nuevos) + Trello con list_name (migración visual)

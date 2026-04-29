@@ -10,6 +10,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
 
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
     const supabase = await createServerClient()
     const body = await request.json()
     const { name, email, role, agencies, default_commission_percentage } = body
@@ -19,10 +23,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Faltan campos requeridos: nombre, email y rol son obligatorios" }, { status: 400 })
     }
 
-    // Validar rol
-    const validRoles = ["SUPER_ADMIN", "ADMIN", "CONTABLE", "SELLER", "VIEWER"]
+    // Validar rol (SUPER_ADMIN solo por registro, no por invitación — el owner de la org es SUPER_ADMIN)
+    const validRoles = ["ADMIN", "CONTABLE", "SELLER", "VIEWER"]
     if (!validRoles.includes(role)) {
       return NextResponse.json({ error: "Rol inválido" }, { status: 400 })
+    }
+
+    // Verificar límite de usuarios del plan
+    const { data: orgData } = await (supabase.from("organizations") as any)
+      .select("max_users")
+      .eq("id", user.org_id)
+      .maybeSingle()
+
+    if (orgData) {
+      const { count: currentMembers } = await (supabase.from("organization_members") as any)
+        .select("*", { count: "exact", head: true })
+        .eq("organization_id", user.org_id)
+        .eq("status", "ACTIVE")
+
+      if ((currentMembers ?? 0) >= orgData.max_users) {
+        return NextResponse.json({
+          error: `Alcanzaste el límite de usuarios de tu plan (${orgData.max_users}). Actualizá tu plan para invitar más miembros.`,
+        }, { status: 400 })
+      }
     }
 
     // Verificar si el email ya existe
@@ -80,10 +103,11 @@ export async function POST(request: Request) {
       }, { status: 400 })
     }
 
-    // Crear registro en nuestra tabla de usuarios
+    // Crear registro en nuestra tabla de usuarios (scoped to inviter's org)
     const usersTable = supabase.from("users") as any
     const userInsertData: any = {
       auth_id: authData.user.id,
+      org_id: user.org_id,
       name,
       email,
       role,
@@ -105,6 +129,23 @@ export async function POST(request: Request) {
       // Si falla crear el registro, eliminar el usuario de auth
       await adminClient.auth.admin.deleteUser(authData.user.id)
       return NextResponse.json({ error: "Error al crear registro de usuario" }, { status: 400 })
+    }
+
+    // Crear organization_member
+    const { error: memberError } = await (supabase.from("organization_members") as any).insert({
+      organization_id: user.org_id,
+      user_id: authData.user.id,
+      role,
+      invited_by: user.auth_id,
+      status: "ACTIVE",
+    })
+
+    if (memberError) {
+      console.error("❌ Error creating organization_members:", memberError)
+      // Rollback: borrar public.users y auth.users
+      await usersTable.delete().eq("id", (userData as any).id)
+      await adminClient.auth.admin.deleteUser(authData.user.id)
+      return NextResponse.json({ error: "Error al asociar el usuario a la organización" }, { status: 400 })
     }
 
     // Vincular agencias

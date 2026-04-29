@@ -9,6 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
@@ -52,6 +53,11 @@ interface CommissionsTableProps {
 }
 
 export function CommissionsTable({ commissions, isLoading = false, emptyMessage }: CommissionsTableProps) {
+  const { sortedData, sortConfig, requestSort } = useSortableData(commissions, {
+    key: "date_calculated",
+    direction: "desc",
+  })
+
   const rowsToRender = useMemo(() => {
     if (isLoading) {
       return Array.from({ length: 5 }).map((_, index) => (
@@ -73,7 +79,7 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
       )
     }
 
-    return commissions.map((comm) => (
+    return sortedData.map((comm) => (
       <TableRow key={comm.id}>
         <TableCell>
           {comm.operations?.destination || "Sin destino"}
@@ -114,20 +120,20 @@ export function CommissionsTable({ commissions, isLoading = false, emptyMessage 
         </TableCell>
       </TableRow>
     ))
-  }, [commissions, isLoading, emptyMessage])
+  }, [sortedData, isLoading, emptyMessage])
 
   return (
     <div className="rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Destino</TableHead>
-            <TableHead>Fecha Salida</TableHead>
-            <TableHead>Comisión</TableHead>
-            <TableHead>% Comisión</TableHead>
-            <TableHead>Margen</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Fecha</TableHead>
+            <SortableTableHead sortKey="operations.destination" sortConfig={sortConfig} onSort={requestSort}>Destino</SortableTableHead>
+            <SortableTableHead sortKey="operations.departure_date" sortConfig={sortConfig} onSort={requestSort}>Fecha Salida</SortableTableHead>
+            <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort}>Comisión</SortableTableHead>
+            <SortableTableHead sortKey="percentage" sortConfig={sortConfig} onSort={requestSort}>% Comisión</SortableTableHead>
+            <SortableTableHead sortKey="operations.margin_amount" sortConfig={sortConfig} onSort={requestSort}>Margen</SortableTableHead>
+            <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
+            <SortableTableHead sortKey="date_calculated" sortConfig={sortConfig} onSort={requestSort}>Fecha</SortableTableHead>
             <TableHead>Acciones</TableHead>
           </TableRow>
         </TableHeader>

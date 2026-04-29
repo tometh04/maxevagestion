@@ -128,7 +128,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
             <CardTitle className="text-sm font-medium">Total Ingresos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-amber-600">
+            <div className="text-2xl font-bold text-warning">
               {formatCurrency(data.totalIncome, "ARS")}
             </div>
           </CardContent>
@@ -139,7 +139,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
             <CardTitle className="text-sm font-medium">Total Egresos</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">
+            <div className="text-2xl font-bold text-destructive">
               {formatCurrency(data.totalExpenses, "ARS")}
             </div>
           </CardContent>
@@ -152,7 +152,7 @@ export function FinancialReport({ filters }: FinancialReportProps) {
           <CardContent>
             <div
               className={`text-2xl font-bold ${
-                data.netCashflow >= 0 ? "text-amber-600" : "text-red-600"
+                data.netCashflow >= 0 ? "text-warning" : "text-destructive"
               }`}
             >
               {formatCurrency(data.netCashflow, "ARS")}
@@ -194,15 +194,15 @@ export function FinancialReport({ filters }: FinancialReportProps) {
                       <TableCell className="font-medium">
                         {new Date(item.date).toLocaleDateString("es-AR")}
                       </TableCell>
-                      <TableCell className="text-right text-amber-600">
+                      <TableCell className="text-right text-warning">
                         {formatCurrency(item.income, "ARS")}
                       </TableCell>
-                      <TableCell className="text-right text-red-600">
+                      <TableCell className="text-right text-destructive">
                         {formatCurrency(item.expense, "ARS")}
                       </TableCell>
                       <TableCell
                         className={`text-right font-medium ${
-                          item.net >= 0 ? "text-amber-600" : "text-red-600"
+                          item.net >= 0 ? "text-warning" : "text-destructive"
                         }`}
                       >
                         {formatCurrency(item.net, "ARS")}

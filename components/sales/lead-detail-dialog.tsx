@@ -1,16 +1,25 @@
 "use client"
 
 import React, { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
-import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore } from "lucide-react"
+import { ExternalLink, MapPin, Users, Phone, Mail, Instagram, Calendar, FileText, Edit, Trash2, ArrowRight, AlertTriangle, UserPlus, Loader2, CheckCircle2, User, Briefcase, Save, X, MessageSquare, Send, Archive, ArchiveRestore, ClipboardList, Clock, DollarSign, Eye, Download } from "lucide-react"
 import Link from "next/link"
 import { format } from "date-fns"
+import dynamic from "next/dynamic"
 import { ConvertLeadDialog } from "@/components/sales/convert-lead-dialog"
+// Lazy load: quotation-builder-dialog pesa ~1900 líneas y solo se abre al
+// generar cotización (fracción de las veces que se abre un lead).
+const QuotationBuilderDialog = dynamic(
+  () =>
+    import("@/components/sales/quotation-builder-dialog").then((m) => ({
+      default: m.QuotationBuilderDialog,
+    })),
+  { ssr: false }
+)
 import { EditLeadDialog } from "@/components/sales/edit-lead-dialog"
 import { LeadDocumentsSection } from "@/components/sales/lead-documents-section"
 import {
@@ -24,15 +33,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "sonner"
+import { getQuotationOptionPricing } from "@/lib/quotations/presentation"
 
 const regionColors: Record<string, string> = {
-  ARGENTINA: "bg-amber-400 dark:bg-amber-600",
-  CARIBE: "bg-amber-500 dark:bg-amber-500",
-  BRASIL: "bg-amber-600 dark:bg-amber-400",
-  EUROPA: "bg-amber-700 dark:bg-amber-300",
-  EEUU: "bg-amber-800 dark:bg-amber-200",
-  OTROS: "bg-amber-300 dark:bg-amber-700",
-  CRUCEROS: "bg-amber-900 dark:bg-amber-100",
+  ARGENTINA: "bg-warning/80",
+  CARIBE: "bg-warning/70",
+  BRASIL: "bg-warning/60",
+  EUROPA: "bg-warning/50",
+  EEUU: "bg-warning/40",
+  OTROS: "bg-warning/90",
+  CRUCEROS: "bg-warning/30",
 }
 
 const statusLabels: Record<string, string> = {
@@ -177,7 +187,7 @@ interface LeadDetailDialogProps {
   onOpenChange: (open: boolean) => void
   agencies?: Array<{ id: string; name: string }>
   sellers?: Array<{ id: string; name: string }>
-  operators?: Array<{ id: string; name: string }>
+  operators?: Array<{ id: string; name: string; admin_fee_percentage?: number | null }>
   onEdit?: (lead: Lead) => void
   onDelete?: () => void
   onArchive?: () => void
@@ -201,6 +211,8 @@ export function LeadDetailDialog({
   onClaim,
 }: LeadDetailDialogProps) {
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
+  const [quotationDialogOpen, setQuotationDialogOpen] = useState(false)
+  const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null)
   const [editDialogOpen, setEditDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -220,6 +232,63 @@ export function LeadDetailDialog({
   const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [savingComment, setSavingComment] = useState(false)
+  const [quotations, setQuotations] = useState<Array<{
+    id: string
+    quotation_number: string
+    status: string
+    total_amount: number
+    currency: string
+    pricing_mode?: "PER_PERSON" | "GROUP_TOTAL" | null
+    adults?: number
+    children?: number
+    infants?: number
+    destination: string
+    created_at: string
+    valid_until: string | null
+    public_token: string | null
+    quotation_options?: Array<{ id: string; title: string; total_amount: number }>
+  }>>([])
+  const [loadingQuotations, setLoadingQuotations] = useState(false)
+
+  const getQuotationDisplayAmount = (quotation: {
+    total_amount: number
+    currency: string
+    pricing_mode?: "PER_PERSON" | "GROUP_TOTAL" | null
+    adults?: number
+    children?: number
+    infants?: number
+  }) => {
+    const pricing = getQuotationOptionPricing(
+      { total_amount: quotation.total_amount || 0 },
+      {
+        adults: Number(quotation.adults || 0),
+        children: Number(quotation.children || 0),
+        infants: Number(quotation.infants || 0),
+        pricing_mode: quotation.pricing_mode,
+      }
+    )
+    const prefix = quotation.currency === "USD" ? "US$" : "$"
+
+    return `${prefix} ${pricing.primaryAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+  }
+
+  // Cargar cotizaciones del lead
+  const loadQuotations = async () => {
+    if (!lead) return
+    setLoadingQuotations(true)
+    try {
+      const response = await fetch(`/api/quotations?lead_id=${lead.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setQuotations(data.data || [])
+      }
+    } catch (error) {
+      console.error("Error loading quotations:", error)
+      toast.error("Error al cargar cotizaciones")
+    } finally {
+      setLoadingQuotations(false)
+    }
+  }
 
   // Cargar comentarios cuando se abre el dialog
   const loadComments = async () => {
@@ -233,6 +302,7 @@ export function LeadDetailDialog({
       }
     } catch (error) {
       console.error("Error loading comments:", error)
+      toast.error("Error al cargar comentarios")
     } finally {
       setLoadingComments(false)
     }
@@ -246,10 +316,11 @@ export function LeadDetailDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lead?.notes])
 
-  // Cargar comentarios cuando se abre el dialog
+  // Cargar comentarios y cotizaciones cuando se abre el dialog
   useEffect(() => {
     if (open && lead) {
       loadComments()
+      loadQuotations()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, lead?.id])
@@ -405,10 +476,23 @@ export function LeadDetailDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl font-bold flex items-center gap-2">
-            {formatLeadDisplayName(lead)}
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden p-0">
+        {/* Header con nombre y badges */}
+        <div className="px-6 pt-6 pb-4 border-b">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-semibold">
+              {lead.contact_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <Badge
+              variant="outline"
+              className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
+            >
+              {lead.region}
+            </Badge>
+            <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
+            <Badge variant="secondary">{lead.source}</Badge>
             {lead.trello_url && (
               <a
                 href={lead.trello_url}
@@ -417,169 +501,278 @@ export function LeadDetailDialog({
                 className="text-muted-foreground hover:text-foreground transition-colors inline-flex items-center"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ExternalLink className="h-5 w-5" />
+                <ExternalLink className="h-4 w-4" />
               </a>
             )}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-6 mt-4">
-          {/* Información de contacto */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información de Contacto</h3>
-            <div className="space-y-2">
-              {lead.contact_phone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline">
-                    {lead.contact_phone}
-                  </a>
-                </div>
-              )}
-              {lead.contact_email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <a href={`mailto:${lead.contact_email}`} className="text-sm hover:underline">
-                    {lead.contact_email}
-                  </a>
-                </div>
-              )}
-              {lead.contact_instagram && (
-                <div className="flex items-center gap-3">
-                  <Instagram className="h-4 w-4 text-muted-foreground" />
-                  <a
-                    href={`https://instagram.com/${lead.contact_instagram}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm hover:underline"
-                  >
-                    @{lead.contact_instagram}
-                  </a>
-                </div>
-              )}
-            </div>
           </div>
+        </div>
 
-          <Separator />
-
-          {/* Información del viaje */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información del Viaje</h3>
-            <div className="space-y-2">
-              {lead.destination && lead.destination !== "Sin destino" && (
-                <div className="flex items-center gap-3">
-                  <MapPin className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm">{lead.destination}</span>
+        <div className="px-6 py-5 space-y-5 flex-1 min-h-0 overflow-y-auto">
+          {/* Contacto + Viaje en grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Información de contacto */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <Users className="h-3.5 w-3.5 text-primary" />
                 </div>
-              )}
-              <div className="flex items-center gap-3 flex-wrap">
-                <Badge
-                  variant="outline"
-                  className={regionColors[lead.region] ? `${regionColors[lead.region]} text-white border-0` : ""}
-                >
-                  {lead.region}
-                </Badge>
-                <Badge variant="outline">{statusLabels[lead.status] || lead.status}</Badge>
-                <Badge variant="secondary">{lead.source}</Badge>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Contacto</h4>
+              </div>
+              <div className="space-y-2">
+                {lead.contact_phone && (
+                  <div className="flex items-center gap-2.5">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a href={`tel:${lead.contact_phone}`} className="text-sm hover:underline truncate">
+                      {lead.contact_phone}
+                    </a>
+                  </div>
+                )}
+                {lead.contact_email && (
+                  <div className="flex items-center gap-2.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a href={`mailto:${lead.contact_email}`} className="text-sm hover:underline truncate">
+                      {lead.contact_email}
+                    </a>
+                  </div>
+                )}
+                {lead.contact_instagram && (
+                  <div className="flex items-center gap-2.5">
+                    <Instagram className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <a
+                      href={`https://instagram.com/${lead.contact_instagram}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm hover:underline truncate"
+                    >
+                      @{lead.contact_instagram}
+                    </a>
+                  </div>
+                )}
+                {!lead.contact_phone && !lead.contact_email && !lead.contact_instagram && (
+                  <p className="text-xs text-muted-foreground">Sin datos de contacto</p>
+                )}
+              </div>
+            </div>
+
+            {/* Información del viaje */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Viaje</h4>
+              </div>
+              <div className="space-y-2">
+                {lead.destination && lead.destination !== "Sin destino" && (
+                  <div className="flex items-center gap-2.5">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm font-medium">{lead.destination}</span>
+                  </div>
+                )}
+                {lead.agencies?.name && (
+                  <div className="flex items-center gap-2.5">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm">Agencia: {lead.agencies.name}</span>
+                  </div>
+                )}
+                {lead.created_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Creado: {format(new Date(lead.created_at), "dd/MM/yyyy HH:mm")}
+                  </p>
+                )}
               </div>
             </div>
           </div>
-
-          <Separator />
 
           {/* Responsable */}
           {lead.users && (
-            <>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Responsable</h3>
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
-                      {(lead.users.name || "")
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .toUpperCase()
-                        .slice(0, 2) || "?"}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="text-sm font-medium">{lead.users.name || "Sin nombre"}</p>
-                    {lead.users.email && <p className="text-xs text-muted-foreground">{lead.users.email}</p>}
-                  </div>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-violet-500/10">
+                  <User className="h-3.5 w-3.5 text-violet-500" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Responsable</h4>
+              </div>
+              <div className="flex items-center gap-3">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                    {(lead.users.name || "")
+                      .split(" ")
+                      .map((n) => n[0])
+                      .join("")
+                      .toUpperCase()
+                      .slice(0, 2) || "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-medium">{lead.users.name || "Sin nombre"}</p>
+                  {lead.users.email && <p className="text-xs text-muted-foreground">{lead.users.email}</p>}
                 </div>
               </div>
-              <Separator />
-            </>
+            </div>
           )}
 
           {/* Entidades Relacionadas (cuando el lead está convertido) */}
           {lead.status === "WON" && (lead.operations?.length || lead.customers?.length) ? (
-            <>
-              <div className="space-y-3">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600" />
-                  Lead Convertido
-                </h3>
-                <div className="space-y-2">
-                  {/* Link a Operación */}
-                  {lead.operations && lead.operations.length > 0 && (
-                    <Link href={`/operations/${lead.operations[0].id}`}>
-                      <div className="flex flex-col gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-950/30 transition-colors cursor-pointer">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Briefcase className="h-4 w-4 text-green-600" />
-                            <span className="text-sm font-semibold text-green-900 dark:text-green-100">
-                              Operación Creada
-                            </span>
-                          </div>
-                          <ExternalLink className="h-4 w-4 text-green-600" />
-                        </div>
-                        <div className="text-sm space-y-1 ml-6">
-                          {lead.operations[0].file_code && (
-                            <p className="font-medium">{lead.operations[0].file_code}</p>
-                          )}
-                          <p className="text-muted-foreground">{lead.operations[0].destination}</p>
-                          {lead.operations[0].created_at && (
-                            <p className="text-xs text-muted-foreground">
-                              Creada: {format(new Date(lead.operations[0].created_at), "dd/MM/yyyy")}
-                            </p>
-                          )}
-                          {lead.operations[0].departure_date && (
-                            <p className="text-xs text-muted-foreground">
-                              Salida: {format(new Date(lead.operations[0].departure_date), "dd/MM/yyyy")}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </Link>
-                  )}
-                  
-                  {/* Link a Cliente */}
-                  {lead.customers && lead.customers.length > 0 && (
-                    <Link href={`/customers/${lead.customers[0].id}`}>
-                      <div className="flex items-center gap-3 p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
-                        <User className="h-4 w-4 text-primary" />
-                        <span className="text-sm flex-1">
-                          Cliente: {lead.customers[0].first_name} {lead.customers[0].last_name}
-                        </span>
-                        <ExternalLink className="h-3 w-3" />
-                      </div>
-                    </Link>
-                  )}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                 </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Lead Convertido</h4>
               </div>
-              <Separator />
-            </>
+              <div className="space-y-2">
+                {lead.operations && lead.operations.length > 0 && (
+                  <Link href={`/operations/${lead.operations[0].id}`}>
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                      <div className="flex items-center gap-2">
+                        <Briefcase className="h-4 w-4 text-success" />
+                        <div>
+                          <p className="text-sm font-medium">
+                            {lead.operations[0].file_code || "Operacion"}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{lead.operations[0].destination}</p>
+                        </div>
+                      </div>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                  </Link>
+                )}
+                {lead.customers && lead.customers.length > 0 && (
+                  <Link href={`/customers/${lead.customers[0].id}`}>
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white transition-colors cursor-pointer">
+                      <User className="h-4 w-4 text-primary" />
+                      <span className="text-sm flex-1">
+                        {lead.customers[0].first_name} {lead.customers[0].last_name}
+                      </span>
+                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </Link>
+                )}
+              </div>
+            </div>
           ) : null}
 
+          {/* Cotizaciones del Lead */}
+          {(quotations.length > 0 || loadingQuotations) && (
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-center h-6 w-6 rounded-md bg-orange-500/10">
+                    <ClipboardList className="h-3.5 w-3.5 text-orange-500" />
+                  </div>
+                  <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Cotizaciones ({quotations.length})</h4>
+                </div>
+                {lead.status !== "WON" && lead.status !== "LOST" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingQuotationId(null)
+                      setQuotationDialogOpen(true)
+                    }}
+                    className="h-7 text-xs"
+                  >
+                    <FileText className="h-3 w-3 mr-1" />
+                    Nueva
+                  </Button>
+                )}
+              </div>
+              {loadingQuotations ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Cargando cotizaciones...
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {quotations.map((q) => {
+                    const statusConfig: Record<string, { label: string; color: string }> = {
+                      DRAFT: { label: "Borrador", color: "bg-muted text-muted-foreground" },
+                      SENT: { label: "Enviada", color: "bg-info/10 text-info" },
+                      APPROVED: { label: "Aprobada", color: "bg-success/10 text-success" },
+                      REJECTED: { label: "Rechazada", color: "bg-destructive/10 text-destructive" },
+                      EXPIRED: { label: "Vencida", color: "bg-warning/10 text-warning" },
+                      CONVERTED: { label: "Convertida", color: "bg-primary/10 text-primary" },
+                    }
+                    const sc = statusConfig[q.status] || statusConfig.DRAFT
+                    const isExpired = q.valid_until && new Date(q.valid_until) < new Date() && q.status === "SENT"
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="flex items-center justify-between p-3 rounded-lg bg-white/80 dark:bg-gray-900/80 hover:bg-white dark:hover:bg-gray-900 transition-colors"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium truncate">{q.quotation_number}</p>
+                            <Badge variant="secondary" className={`text-[10px] px-1.5 py-0 ${sc.color}`}>
+                              {isExpired ? "Vencida" : sc.label}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <DollarSign className="h-3 w-3" />
+                              {getQuotationDisplayAmount(q)}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="h-3 w-3" />
+                              {format(new Date(q.created_at), "dd/MM/yyyy")}
+                            </span>
+                            {q.quotation_options && q.quotation_options.length > 1 && (
+                              <span className="text-muted-foreground/70">
+                                {q.quotation_options.length} opciones
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 ml-2">
+                          {q.status === "DRAFT" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingQuotationId(q.id)
+                                setQuotationDialogOpen(true)
+                              }}
+                              title="Editar borrador"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                          {q.public_token && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(`/cotizacion/${q.public_token}`, "_blank")
+                              }}
+                              title="Ver cotización pública"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Descripción/Notas */}
-          <div className="space-y-3">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Descripción
-              </h3>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <FileText className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Descripcion</h4>
+              </div>
               {!editingNotes ? (
                 <Button
                   variant="ghost"
@@ -622,28 +815,31 @@ export function LeadDetailDialog({
                 </div>
               )}
             </div>
-            <div className="bg-muted/50 rounded-lg p-4">
+            <div className="rounded-lg bg-muted/40 p-3">
               {editingNotes ? (
                 <Textarea
                   value={notesValue}
                   onChange={(e) => setNotesValue(e.target.value)}
-                  placeholder="Escribe la descripción del lead..."
-                  className="min-h-[120px] bg-background"
+                  placeholder="Escribe la descripcion del lead..."
+                  className="min-h-[100px] bg-background"
                   disabled={savingNotes}
                 />
               ) : (
-                <DescriptionWithLinks text={lead.notes || "Sin descripción"} />
+                <div className="text-sm">
+                  <DescriptionWithLinks text={lead.notes || "Sin descripcion"} />
+                </div>
               )}
             </div>
           </div>
-          <Separator />
 
           {/* Comentarios */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-2">
-              <MessageSquare className="h-4 w-4" />
-              Comentarios
-            </h3>
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-blue-500/10">
+                <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Comentarios</h4>
+            </div>
             
             {/* Formulario para agregar comentario */}
             <div className="flex gap-2">
@@ -708,127 +904,130 @@ export function LeadDetailDialog({
               </div>
             )}
           </div>
-          <Separator />
 
           {/* Documentos Escaneados */}
-          <LeadDocumentsSection leadId={lead.id} />
-          <Separator />
-
-
-          {/* Información adicional */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Información Adicional</h3>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-muted-foreground">Agencia</p>
-                <p className="font-medium">{lead.agencies?.name || "N/A"}</p>
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-emerald-500/10">
+                <Download className="h-3.5 w-3.5 text-emerald-500" />
               </div>
-              <div>
-                <p className="text-muted-foreground">Creado</p>
-                <p className="font-medium">
-                  {format(new Date(lead.created_at), "PPp")}
-                </p>
-              </div>
-              {lead.updated_at && (
-                <div>
-                  <p className="text-muted-foreground">Actualizado</p>
-                  <p className="font-medium">
-                    {format(new Date(lead.updated_at), "PPp")}
-                  </p>
-                </div>
-              )}
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Documentos</h4>
             </div>
+            <LeadDocumentsSection leadId={lead.id} />
           </div>
         </div>
 
-        {/* Acciones */}
-        <Separator />
-        <DialogFooter className="flex-col sm:flex-row gap-2">
-          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+        {/* Acciones - Footer fijo */}
+        <div className="flex-shrink-0 border-t bg-muted/30 px-6 py-3">
+          <div className="flex items-center gap-1.5 overflow-x-auto">
             {/* Botón Agarrar Lead - solo si no tiene vendedor asignado Y no es WON */}
             {!lead.assigned_seller_id && canClaimLeads && lead.status !== "WON" && (
               <Button
-                variant="default"
+                size="sm"
                 onClick={handleClaimLead}
                 disabled={claiming}
-                className="flex-1 sm:flex-initial bg-orange-500 hover:bg-orange-600 text-white"
+                className="shrink-0"
               >
                 {claiming ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
-                  <UserPlus className="mr-2 h-4 w-4" />
+                  <UserPlus className="h-3.5 w-3.5" />
                 )}
-                {claiming ? "Asignando..." : "Agarrar Lead"}
+                <span className="ml-1.5">{claiming ? "Asignando..." : "Agarrar"}</span>
               </Button>
             )}
             <Button
               variant="outline"
+              size="sm"
               onClick={handleEdit}
-              className="flex-1 sm:flex-initial"
+              className="shrink-0"
             >
-              <Edit className="mr-2 h-4 w-4" />
-              Editar
+              <Edit className="h-3.5 w-3.5" />
+              <span className="ml-1.5">Editar</span>
             </Button>
             {/* Ver Operación - si ya tiene operación creada */}
             {lead.operations && lead.operations.length > 0 ? (
               <Button
-                variant="default"
+                size="sm"
                 asChild
-                className="flex-1 sm:flex-initial bg-green-600 hover:bg-green-700"
+                className="shrink-0 bg-success hover:bg-success/90"
               >
                 <Link href={`/operations/${lead.operations[0].id}`}>
-                  <Briefcase className="mr-2 h-4 w-4" />
-                  Ver Operación
+                  <Briefcase className="h-3.5 w-3.5" />
+                  <span className="ml-1.5">Ver Operación</span>
                 </Link>
               </Button>
             ) : (
-              /* Convertir a Operación - solo si NO tiene operación y no está LOST */
-              onConvert && lead.status !== "LOST" && agencies.length > 0 && sellers.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={() => setConvertDialogOpen(true)}
-                  className="flex-1 sm:flex-initial"
-                >
-                  <ArrowRight className="mr-2 h-4 w-4" />
-                  Convertir a Operación
-                </Button>
+              /* Cotizar o Convertir a Operación - solo si NO tiene operación y no está LOST */
+              lead.status !== "LOST" && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setEditingQuotationId(null)
+                      setQuotationDialogOpen(true)
+                    }}
+                    className="shrink-0"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    <span className="ml-1.5">Cotizar</span>
+                  </Button>
+                  {onConvert && agencies.length > 0 && sellers.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConvertDialogOpen(true)}
+                      className="shrink-0"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                      <span className="ml-1.5">Convertir</span>
+                    </Button>
+                  )}
+                </>
               )
             )}
+
+            {/* Separador visual */}
+            <div className="flex-1" />
+
             {onArchive && (
               <Button
                 variant="ghost"
-                className="text-amber-600 flex-1 sm:flex-initial hover:text-amber-700 hover:bg-amber-50"
+                size="sm"
+                className="shrink-0 text-warning hover:text-warning hover:bg-warning/10"
                 onClick={handleArchive}
                 disabled={archiving}
               >
                 {archiving ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : lead?.archived_at ? (
-                  <ArchiveRestore className="mr-2 h-4 w-4" />
+                  <ArchiveRestore className="h-3.5 w-3.5" />
                 ) : (
-                  <Archive className="mr-2 h-4 w-4" />
+                  <Archive className="h-3.5 w-3.5" />
                 )}
-                {archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}
+                <span className="ml-1.5">{archiving ? "..." : lead?.archived_at ? "Restaurar" : "Archivar"}</span>
               </Button>
             )}
             {onDelete && !isFromTrello && (
               <Button
                 variant="ghost"
-                className="text-red-600 flex-1 sm:flex-initial hover:text-red-700 hover:bg-red-50"
+                size="sm"
+                className="shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                 onClick={() => setDeleteDialogOpen(true)}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
-                Eliminar
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="ml-1.5">Eliminar</span>
               </Button>
             )}
-            {isFromTrello && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground w-full sm:w-auto">
-                <AlertTriangle className="h-4 w-4" />
-                <span>Este lead está sincronizado con Trello. Para eliminarlo, elimínalo desde Trello.</span>
-              </div>
-            )}
           </div>
-        </DialogFooter>
+          {isFromTrello && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+              <span>Sincronizado con Trello — elimínalo desde allí.</span>
+            </div>
+          )}
+        </div>
       </DialogContent>
 
       {/* Dialog de editar */}
@@ -866,6 +1065,32 @@ export function LeadDetailDialog({
           onSuccess={() => {
             onConvert?.()
             onOpenChange(false)
+          }}
+        />
+      )}
+
+      {/* Dialog de cotización */}
+      {lead && (
+        <QuotationBuilderDialog
+          key={`${lead.id}:${editingQuotationId || "new"}`}
+          open={quotationDialogOpen}
+          onOpenChange={(isOpen) => {
+            setQuotationDialogOpen(isOpen)
+            if (!isOpen) setEditingQuotationId(null)
+          }}
+          lead={{
+            id: lead.id,
+            contact_name: lead.contact_name,
+            contact_phone: lead.contact_phone,
+            contact_email: lead.contact_email,
+            destination: lead.destination,
+            region: lead.region,
+            agency_id: lead.agency_id,
+          }}
+          operators={operators}
+          existingQuotationId={editingQuotationId}
+          onSuccess={() => {
+            loadQuotations()
           }}
         />
       )}

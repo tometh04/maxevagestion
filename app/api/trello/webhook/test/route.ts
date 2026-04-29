@@ -18,8 +18,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "cardId is required" }, { status: 400 })
     }
 
-    console.log("🧪 Testing Trello sync for card:", cardId)
-
     const supabase = await createServerClient()
 
     // Get Trello settings
@@ -42,8 +40,6 @@ export async function POST(request: Request) {
     // Try with each agency's settings
     for (const setting of allSettings as any[]) {
       try {
-        console.log(`🔄 Testing with agency: ${setting.agency_id}, board: ${setting.board_id}`)
-        
         // Fetch card
         const card = await fetchTrelloCard(
           cardId,
@@ -60,8 +56,6 @@ export async function POST(request: Request) {
           })
           continue
         }
-
-        console.log("✅ Card fetched:", card.name)
 
         // Sync card
         const trelloSettings = {

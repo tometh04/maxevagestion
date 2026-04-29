@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -10,9 +9,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { format, parseISO } from "date-fns"
+import { X } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { format, parseISO, isValid } from "date-fns"
+
+const dashboardDateTypes: DateTypeOption[] = [
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 export interface DashboardFiltersState {
   dateFrom: string
@@ -21,22 +25,24 @@ export interface DashboardFiltersState {
   sellerId: string
 }
 
-// Helper para convertir string a Date
-const parseDate = (dateString: string): Date | undefined => {
-  if (!dateString) return undefined
-  try {
-    return parseISO(dateString)
-  } catch {
-    return undefined
-  }
-}
-
 interface DashboardFiltersProps {
   agencies: Array<{ id: string; name: string }>
   sellers: Array<{ id: string; name: string }>
   value: DashboardFiltersState
   defaultValue: DashboardFiltersState
   onChange: (filters: DashboardFiltersState) => void
+}
+
+function toDate(s: string): Date | undefined {
+  if (!s) return undefined
+  try {
+    const d = parseISO(s)
+    return isValid(d) ? d : undefined
+  } catch { return undefined }
+}
+
+function toStr(d: Date | undefined): string {
+  return d ? format(d, "yyyy-MM-dd") : ""
 }
 
 export function DashboardFilters({
@@ -52,7 +58,6 @@ export function DashboardFilters({
     setFilters(value)
   }, [value])
 
-  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
   const debouncedFilters = useDebounce(filters, 500)
 
   useEffect(() => {
@@ -68,69 +73,48 @@ export function DashboardFilters({
   }
 
   return (
-    <div className="rounded-lg border bg-card p-3 shadow-sm sm:p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4 items-end">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Desde</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateFrom)}
-            onChange={(date) => {
-              setFilters((prev) => ({ ...prev, dateFrom: date ? format(date, "yyyy-MM-dd") : "" }))
-            }}
-            placeholder="dd/MM/yyyy"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Hasta</Label>
-          <DateInputWithCalendar
-            value={parseDate(filters.dateTo)}
-            onChange={(date) => {
-              setFilters((prev) => ({ ...prev, dateTo: date ? format(date, "yyyy-MM-dd") : "" }))
-            }}
-            placeholder="dd/MM/yyyy"
-            minDate={parseDate(filters.dateFrom)}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Agencia</Label>
-          <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todas" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              {agencies.map((agency) => (
-                <SelectItem key={agency.id} value={agency.id}>
-                  {agency.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Vendedor</Label>
-          <Select value={filters.sellerId} onValueChange={(newValue) => handleChange("sellerId", newValue)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Todos" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos</SelectItem>
-              {sellers.map((seller) => (
-                <SelectItem key={seller.id} value={seller.id}>
-                  {seller.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      <div className="mt-4 flex justify-end">
-        <Button variant="outline" onClick={handleReset}>
-          Reiniciar filtros
-        </Button>
-      </div>
+    <div className="flex items-center gap-2 flex-wrap">
+      <DateTypeFilter
+        types={dashboardDateTypes}
+        includeNone={false}
+        value={{ type: "OPERACION", from: toDate(filters.dateFrom), to: toDate(filters.dateTo) }}
+        onChange={(v) => {
+          setFilters((prev) => ({
+            ...prev,
+            dateFrom: toStr(v.from),
+            dateTo: toStr(v.to),
+          }))
+        }}
+      />
+      <Select value={filters.agencyId} onValueChange={(newValue) => handleChange("agencyId", newValue)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Agencia" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas</SelectItem>
+          {agencies.map((agency) => (
+            <SelectItem key={agency.id} value={agency.id}>
+              {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={filters.sellerId} onValueChange={(newValue) => handleChange("sellerId", newValue)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Vendedor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos</SelectItem>
+          {sellers.map((seller) => (
+            <SelectItem key={seller.id} value={seller.id}>
+              {seller.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
+        <X className="mr-1 h-3.5 w-3.5" /> Limpiar
+      </Button>
     </div>
   )
 }
-

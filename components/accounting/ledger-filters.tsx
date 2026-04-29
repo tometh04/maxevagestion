@@ -2,7 +2,6 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -10,14 +9,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { format, parseISO } from "date-fns"
+import { X } from "lucide-react"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { format } from "date-fns"
+
+const ledgerDateTypes: DateTypeOption[] = [
+  { value: "MOVIMIENTO", label: "Movimiento", shortLabel: "Mov." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface LedgerFiltersProps {
   agencies: Array<{ id: string; name: string }>
   onFiltersChange: (filters: {
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     type?: string
     currency?: string
     agencyId?: string
@@ -27,14 +33,20 @@ interface LedgerFiltersProps {
 export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps) {
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined)
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("MOVIMIENTO")
   const [type, setType] = useState("ALL")
   const [currency, setCurrency] = useState("ALL")
   const [agencyId, setAgencyId] = useState("ALL")
 
+  const formatDateString = (date: Date | undefined): string | undefined => {
+    return date ? format(date, "yyyy-MM-dd") : undefined
+  }
+
   const handleApply = () => {
     onFiltersChange({
-      dateFrom: dateFrom ? format(dateFrom, "yyyy-MM-dd") : undefined,
-      dateTo: dateTo ? format(dateTo, "yyyy-MM-dd") : undefined,
+      dateFrom: formatDateString(dateFrom),
+      dateTo: formatDateString(dateTo),
+      dateType: dateType || undefined,
       type: type !== "ALL" ? type : undefined,
       currency: currency !== "ALL" ? currency : undefined,
       agencyId: agencyId !== "ALL" ? agencyId : undefined,
@@ -44,6 +56,7 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   const handleReset = () => {
     setDateFrom(undefined)
     setDateTo(undefined)
+    setDateType("MOVIMIENTO")
     setType("ALL")
     setCurrency("ALL")
     setAgencyId("ALL")
@@ -51,89 +64,62 @@ export function LedgerFilters({ agencies, onFiltersChange }: LedgerFiltersProps)
   }
 
   return (
-    <div className="space-y-4 rounded-lg border p-4">
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-6 items-end">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Desde</Label>
-          <DateInputWithCalendar
-            value={dateFrom}
-            onChange={(date) => {
-              setDateFrom(date)
-              if (date && dateTo && dateTo < date) {
-                setDateTo(undefined)
-              }
-            }}
-            placeholder="dd/MM/yyyy"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Hasta</Label>
-          <DateInputWithCalendar
-            value={dateTo}
-            onChange={(date) => {
-              if (date && dateFrom && date < dateFrom) {
-                return
-              }
-              setDateTo(date)
-            }}
-            placeholder="dd/MM/yyyy"
-            minDate={dateFrom}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Agencia</Label>
-          <Select value={agencyId} onValueChange={setAgencyId}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              {agencies.map((agency) => (
-                <SelectItem key={agency.id} value={agency.id}>
-                  {agency.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Tipo</Label>
-          <Select value={type} onValueChange={setType}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todos</SelectItem>
-              <SelectItem value="INCOME">Ingreso</SelectItem>
-              <SelectItem value="EXPENSE">Gasto</SelectItem>
-              <SelectItem value="FX_GAIN">Ganancia FX</SelectItem>
-              <SelectItem value="FX_LOSS">Pérdida FX</SelectItem>
-              <SelectItem value="COMMISSION">Comisión</SelectItem>
-              <SelectItem value="OPERATOR_PAYMENT">Pago Operador</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">Moneda</Label>
-          <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Todas</SelectItem>
-              <SelectItem value="ARS">ARS</SelectItem>
-              <SelectItem value="USD">USD</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button onClick={handleApply} className="w-full sm:w-auto">Aplicar Filtros</Button>
-        <Button variant="outline" onClick={handleReset} className="w-full sm:w-auto">
-          Reiniciar
-        </Button>
-      </div>
+    <div className="flex items-center gap-2 flex-wrap">
+      <DateTypeFilter
+        types={ledgerDateTypes}
+        includeNone={false}
+        value={{ type: dateType, from: dateFrom, to: dateTo }}
+        onChange={(v) => {
+          setDateType(v.type)
+          setDateFrom(v.from)
+          setDateTo(v.to)
+        }}
+      />
+
+      <Select value={agencyId} onValueChange={setAgencyId}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Agencia" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas</SelectItem>
+          {agencies.map((agency) => (
+            <SelectItem key={agency.id} value={agency.id}>
+              {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      <Select value={type} onValueChange={setType}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Tipo" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos</SelectItem>
+          <SelectItem value="INCOME">Ingreso</SelectItem>
+          <SelectItem value="EXPENSE">Gasto</SelectItem>
+          <SelectItem value="FX_GAIN">Ganancia FX</SelectItem>
+          <SelectItem value="FX_LOSS">Pérdida FX</SelectItem>
+          <SelectItem value="COMMISSION">Comisión</SelectItem>
+          <SelectItem value="OPERATOR_PAYMENT">Pago Operador</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select value={currency} onValueChange={setCurrency}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+          <SelectValue placeholder="Moneda" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas</SelectItem>
+          <SelectItem value="ARS">ARS</SelectItem>
+          <SelectItem value="USD">USD</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Button size="sm" className="h-8 rounded-full text-xs" onClick={handleApply}>Aplicar</Button>
+      <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
+        <X className="mr-1 h-3.5 w-3.5" /> Limpiar
+      </Button>
     </div>
   )
 }
-

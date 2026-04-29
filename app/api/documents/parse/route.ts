@@ -42,8 +42,6 @@ export async function POST(request: Request) {
     const fileUrl = doc.file_url
     const documentType = doc.type
 
-    console.log(`📄 Iniciando OCR para documento ${documentId}, tipo: ${documentType}`)
-    console.log(`📄 URL: ${fileUrl}`)
 
     // Get file from URL
     const imageResponse = await fetch(fileUrl)
@@ -54,7 +52,6 @@ export async function POST(request: Request) {
 
     const imageBuffer = await imageResponse.arrayBuffer()
     const imageSizeKB = Math.round(imageBuffer.byteLength / 1024)
-    console.log(`📄 Imagen descargada: ${imageSizeKB} KB`)
     
     const base64Image = Buffer.from(imageBuffer).toString("base64")
 
@@ -130,7 +127,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
     }
 
     // Call OpenAI Vision con configuración optimizada
-    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -155,10 +151,8 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
       temperature: 0.1, // Más determinístico para OCR
     })
 
-    console.log("📄 OpenAI respondió, finish_reason:", completion.choices[0]?.finish_reason)
 
     const responseText = completion.choices[0]?.message?.content || ""
-    console.log("📄 OpenAI response raw:", responseText.substring(0, 500))
 
     if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
       console.error("❌ OpenAI devolvió respuesta vacía")
@@ -169,7 +163,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
     try {
       // Intentar parsear directamente
       parsedData = JSON.parse(responseText)
-      console.log("📄 Parsed JSON directly:", Object.keys(parsedData))
     } catch {
       // Intentar extraer JSON de markdown code blocks
       const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || 
@@ -180,7 +173,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
         try {
           const jsonStr = jsonMatch[1] || jsonMatch[0]
           parsedData = JSON.parse(jsonStr)
-          console.log("📄 Extracted JSON from markdown:", Object.keys(parsedData))
         } catch (innerError) {
           console.error("❌ Error parsing extracted JSON:", innerError)
           return NextResponse.json({ error: "Error al procesar respuesta del OCR" }, { status: 500 })
@@ -203,7 +195,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
       return NextResponse.json({ error: "No se pudieron extraer datos útiles del documento" }, { status: 400 })
     }
 
-    console.log(`📄 Campos extraídos exitosamente: ${usefulKeys.join(", ")}`)
 
     // Agregar metadata
     parsedData.scanned_at = new Date().toISOString()
@@ -217,7 +208,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
     if (updateError) {
       console.error("❌ Error actualizando scanned_data:", updateError)
     } else {
-      console.log("✅ scanned_data guardado en el documento")
     }
 
     // También actualizar/crear cliente si hay datos suficientes
@@ -253,7 +243,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
 
           if (newCustomer) {
             customerId = (newCustomer as any).id
-            console.log(`✅ Cliente creado: ${customerId}`)
           }
         }
       }
@@ -274,7 +263,6 @@ Si algún campo no está disponible, usa null. Devuelve SOLO el JSON.`
             .eq("id", customerId)
           
           if (!custUpdateError) {
-            console.log(`✅ Cliente actualizado: ${customerId}`)
           }
         }
       }

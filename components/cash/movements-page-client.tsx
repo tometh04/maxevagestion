@@ -13,14 +13,22 @@ import {
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Plus } from "lucide-react"
+import { toast } from "sonner"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const movementsDateTypes: DateTypeOption[] = [
+  { value: "MOVIMIENTO", label: "Movimiento", shortLabel: "Mov." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface MovementsPageClientProps {
   agencies: Array<{ id: string; name: string }>
   defaultFilters: CashFiltersState
   operations?: Array<{ id: string; destination: string }>
+  userRole?: string
 }
 
-export function MovementsPageClient({ agencies, defaultFilters, operations = [] }: MovementsPageClientProps) {
+export function MovementsPageClient({ agencies, defaultFilters, operations = [], userRole }: MovementsPageClientProps) {
   const [baseFilters, setBaseFilters] = useState(defaultFilters)
   const [type, setType] = useState("ALL")
   const [newMovementDialogOpen, setNewMovementDialogOpen] = useState(false)
@@ -43,6 +51,9 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
     params.set("dateFrom", filters.dateFrom)
     params.set("dateTo", filters.dateTo)
     params.set("currency", filters.currency)
+    if (filters.dateType) {
+      params.set("dateType", filters.dateType)
+    }
 
     if (filters.agencyId !== "ALL") {
       params.set("agencyId", filters.agencyId)
@@ -70,29 +81,17 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error("Error al exportar movimientos:", error)
-      alert("No se pudo exportar el CSV. Intenta nuevamente.")
+      toast.error("No se pudo exportar el CSV. Intenta nuevamente.")
     }
   }, [filters])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Movimientos de Caja</h1>
-          <p className="text-muted-foreground">Revisa todos los movimientos registrados en la caja</p>
-        </div>
-        <Button onClick={() => setNewMovementDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nuevo Movimiento
-        </Button>
-      </div>
+      <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} dateTypes={movementsDateTypes} />
 
-      <CashFilters agencies={agencies} value={baseFilters} defaultValue={defaultFilters} onChange={setBaseFilters} />
-
-      <div className="rounded-lg border bg-card p-4 shadow-sm">
-        <div className="grid gap-4 md:grid-cols-3">
+      <div className="flex items-center gap-3 flex-wrap">
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[160px]">
               <SelectValue placeholder="Tipo de movimiento" />
             </SelectTrigger>
             <SelectContent>
@@ -101,27 +100,30 @@ export function MovementsPageClient({ agencies, defaultFilters, operations = [] 
               <SelectItem value="EXPENSE">Egresos</SelectItem>
             </SelectContent>
           </Select>
-        </div>
-
-        <div className="mt-4 flex justify-end space-x-2">
-          <Button variant="outline" onClick={() => {
+          <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => {
             setBaseFilters(defaultFilters)
             setType("ALL")
           }}>
             Limpiar filtros
           </Button>
-          <Button onClick={handleExport}>Exportar CSV</Button>
-        </div>
+          <Button size="sm" className="h-8 rounded-full" onClick={handleExport}>Exportar CSV</Button>
+          <Button size="sm" className="h-8 rounded-full" onClick={() => setNewMovementDialogOpen(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" />
+            Nuevo
+          </Button>
       </div>
 
       <MovementsTable
         key={refreshKey} // Forzar re-render cuando cambian los filtros
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         type={filters.type}
+        customerQuery={filters.customerQuery}
         emptyMessage="No encontramos movimientos con los filtros actuales"
+        userRole={userRole}
       />
 
       <NewCashMovementDialog

@@ -14,6 +14,16 @@ export async function GET(request: Request) {
     const dateTo = searchParams.get("dateTo")
     const agencyId = searchParams.get("agencyId")
 
+    // Validate date format ANTES del fast-path RPC
+    if (dateFrom && !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) {
+      console.error("Invalid dateFrom format:", dateFrom)
+      return NextResponse.json({ error: "Formato de fecha inválido (dateFrom)" }, { status: 400 })
+    }
+    if (dateTo && !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
+      console.error("Invalid dateTo format:", dateTo)
+      return NextResponse.json({ error: "Formato de fecha inválido (dateTo)" }, { status: 400 })
+    }
+
       const supabase = await createServerClient()
 
       // Get user agencies
@@ -24,6 +34,47 @@ export async function GET(request: Request) {
 
       const agencyIds = (userAgencies || []).map((ua: any) => ua.agency_id)
 
+      // ============================================
+      // FAST PATH: RPC analytics_cashflow_summary
+      // ============================================
+      // GROUP BY date con SUM income/expense en SQL.
+      // Validación: 30 filas razonables, picos coherentes con uso real.
+      try {
+        const t0 = Date.now()
+        const { data: rpcData, error: rpcError } = await (supabase.rpc as any)(
+          "analytics_cashflow_summary",
+          {
+            p_user_id: user.id,
+            p_org_id: (user as any).org_id || null,
+            p_role: user.role,
+            p_agency_ids: agencyIds,
+            p_date_from: dateFrom || null,
+            p_date_to: dateTo || null,
+            p_agency_id: agencyId && agencyId !== "ALL" ? agencyId : null,
+          }
+        )
+        if (!rpcError && Array.isArray(rpcData)) {
+          const cashflow = rpcData.map((row: any) => ({
+            date: row.date,
+            income: Number(row.income) || 0,
+            expense: Number(row.expense) || 0,
+            net: Number(row.net) || 0,
+          }))
+          console.log(`[analytics/cashflow] RPC fast-path ok in ${Date.now() - t0}ms → ${cashflow.length} days`)
+          return NextResponse.json({ cashflow }, {
+            headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+          })
+        }
+        if (rpcError) {
+          console.warn("[analytics/cashflow] RPC failed, falling back to JS:", rpcError.message)
+        }
+      } catch (rpcEx: any) {
+        console.warn("[analytics/cashflow] RPC threw, falling back to JS:", rpcEx?.message || rpcEx)
+      }
+
+      // ============================================
+      // FALLBACK: lógica vieja (intacta)
+      // ============================================
       let query = supabase
         .from("cash_movements")
         .select(
@@ -39,6 +90,9 @@ export async function GET(request: Request) {
         `,
         )
         .order("movement_date", { ascending: true })
+
+      // Multi-tenant: scope por org del usuario (ledger_movements.org_id post-mig 134)
+      if (user.org_id) query = query.eq("org_id", user.org_id)
 
       // Apply role-based filtering
       if (user.role === "SELLER") {
@@ -109,7 +163,6 @@ export async function GET(request: Request) {
 
       // If no movements found, return empty array
       if (!movements || movements.length === 0) {
-        console.log("No cash movements found for filters:", { dateFrom, dateTo, agencyId, userRole: user.role })
       return NextResponse.json({ cashflow: [] })
       }
 
@@ -152,7 +205,9 @@ export async function GET(request: Request) {
         a.date.localeCompare(b.date),
       )
 
-    return NextResponse.json({ cashflow })
+    return NextResponse.json({ cashflow }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error: any) {
     console.error("Error in GET /api/analytics/cashflow:", error)
     return NextResponse.json({ error: error.message || "Error al obtener datos de flujo de caja" }, { status: 500 })

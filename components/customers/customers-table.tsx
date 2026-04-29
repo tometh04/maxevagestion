@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { QuickWhatsAppButton } from "@/components/whatsapp/quick-whatsapp-button"
 import { extractCustomerName, normalizePhone } from "@/lib/customers/utils"
+import { toast } from "sonner"
 
 interface Customer {
   id: string
@@ -25,8 +26,9 @@ interface Customer {
   email: string
   document_type: string | null
   document_number: string | null
+  date_of_birth: string | null
   trips: number
-  totalSpent: number
+  totalSpentByCurrency: Record<string, number>
   agency_id?: string
 }
 
@@ -63,10 +65,12 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error("[CustomersTable] Error:", response.status, errorData)
+        toast.error("Error al cargar clientes")
         setCustomers([])
       }
     } catch (error) {
       console.error("[CustomersTable] Exception:", error)
+      toast.error("Error al cargar clientes")
       setCustomers([])
     } finally {
       setLoading(false)
@@ -143,6 +147,22 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         ),
       },
       {
+        accessorKey: "date_of_birth",
+        header: ({ column }) => (
+          <DataTableColumnHeader column={column} title="Fecha Nac." />
+        ),
+        cell: ({ row }) => {
+          const dob = row.original.date_of_birth
+          if (!dob) return <div className="text-muted-foreground">-</div>
+          try {
+            const d = new Date(dob)
+            return <div>{`${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`}</div>
+          } catch {
+            return <div className="text-muted-foreground">-</div>
+          }
+        },
+      },
+      {
         accessorKey: "trips",
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Viajes" />
@@ -150,19 +170,23 @@ export function CustomersTable({ initialFilters }: CustomersTableProps) {
         cell: ({ row }) => <div>{row.original.trips || 0}</div>,
       },
       {
-        accessorKey: "totalSpent",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Total Gastado" />
-        ),
-        cell: ({ row }) => (
-          <div>
-            {row.original.totalSpent > 0
-              ? `ARS ${row.original.totalSpent.toLocaleString("es-AR", {
-                  minimumFractionDigits: 2,
-                })}`
-              : "-"}
-          </div>
-        ),
+        id: "totalSpent",
+        enableSorting: false,
+        header: "Total Gastado",
+        cell: ({ row }) => {
+          const entries = Object.entries(row.original.totalSpentByCurrency || {})
+            .filter(([, v]) => v > 0)
+          if (entries.length === 0) return <div>-</div>
+          return (
+            <div className="space-y-0.5">
+              {entries.map(([cur, amt]) => (
+                <div key={cur}>
+                  {cur} {amt.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </div>
+              ))}
+            </div>
+          )
+        },
       },
       {
         id: "actions",

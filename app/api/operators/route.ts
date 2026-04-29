@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
+import { getUserAgencyIds, canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import type { UserRole } from "@/lib/permissions"
 
 // Forzar ruta dinámica (usa cookies para autenticación)
 export const dynamic = 'force-dynamic'
@@ -11,8 +14,13 @@ export async function GET(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
+    // Permission check: verify the user can access the operators module
+    if (!canAccessModule(user.role as UserRole, "operators")) {
+      return NextResponse.json({ error: "No tiene permisos para acceder a operadores" }, { status: 403 })
+    }
+
     // Get all operators with their operations and payments
-    const { data, error } = await supabase
+    let query = supabase
       .from("operators")
       .select(
         `
@@ -35,32 +43,66 @@ export async function GET(request: Request) {
         )
       `,
       )
-      .order("name")
+
+    // Multi-tenant: filtrar por org del usuario (operators.org_id es NOT NULL)
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+
+    // SELLERs adicionalmente ven solo operators vinculados a operaciones de sus agencias
+    if (user.role === "SELLER") {
+      const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as UserRole)
+      if (agencyIds.length === 0) {
+        return NextResponse.json({ operators: [] })
+      }
+      const { data: agencyOperations } = await supabase
+        .from("operations")
+        .select("operator_id")
+        .in("agency_id", agencyIds)
+        .not("operator_id", "is", null)
+
+      const agencyOperatorIds = Array.from(
+        new Set((agencyOperations || []).map((op: any) => op.operator_id).filter(Boolean))
+      )
+      if (agencyOperatorIds.length === 0) {
+        return NextResponse.json({ operators: [] })
+      }
+      query = query.in("id", agencyOperatorIds)
+    }
+
+    const { data, error } = await query.order("name")
 
     if (error) {
       console.error("Error fetching operators:", error)
       throw new Error("Error al obtener operadores")
     }
 
-    // Calculate metrics for each operator
+    // Calculate metrics for each operator. Regla: separar por moneda.
     const operatorsWithStats = (data || []).map((op: any) => {
       const operations = (op.operations || []) as any[]
       const operationsCount = operations.length
 
-      // Calculate total operator_cost
-      const totalCost = operations.reduce((sum: number, o: any) => sum + (o.operator_cost || 0), 0)
+      const totalCostByCurrency: Record<string, number> = {}
+      const paidAmountByCurrency: Record<string, number> = {}
 
-      // Calculate total paid (only EXPENSE payments that are PAID)
-      const paidAmount = operations.reduce((sum: number, o: any) => {
+      for (const o of operations) {
+        const opCur = o.currency || "ARS"
+        totalCostByCurrency[opCur] = (totalCostByCurrency[opCur] || 0) + (Number(o.operator_cost) || 0)
+
         const payments = (o.payments || []) as any[]
-        const paidPayments = payments.filter(
-          (p: any) => p.direction === "EXPENSE" && p.status === "PAID",
-        )
-        return sum + paidPayments.reduce((s: number, p: any) => s + (p.amount || 0), 0)
-      }, 0)
+        for (const p of payments) {
+          if (p.direction === "EXPENSE" && p.status === "PAID") {
+            const payCur = p.currency || opCur
+            paidAmountByCurrency[payCur] = (paidAmountByCurrency[payCur] || 0) + (Number(p.amount) || 0)
+          }
+        }
+      }
 
-      // Calculate balance (total cost - paid)
-      const balance = totalCost - paidAmount
+      const balanceByCurrency: Record<string, number> = {}
+      const allCurrencies = Array.from(new Set([...Object.keys(totalCostByCurrency), ...Object.keys(paidAmountByCurrency)]))
+      for (const cur of allCurrencies) {
+        balanceByCurrency[cur] = (totalCostByCurrency[cur] || 0) - (paidAmountByCurrency[cur] || 0)
+      }
 
       // Find next payment due date (PENDING EXPENSE payments)
       const nextPayment = operations
@@ -75,10 +117,12 @@ export async function GET(request: Request) {
         contact_email: op.contact_email,
         contact_phone: op.contact_phone,
         credit_limit: op.credit_limit,
+        admin_fee_percentage: op.admin_fee_percentage ?? 0,
+        cuit: op.cuit ?? null,
         operationsCount,
-        totalCost,
-        paidAmount,
-        balance,
+        totalCostByCurrency,
+        paidAmountByCurrency,
+        balanceByCurrency,
         nextPaymentDate: nextPayment?.date_due || null,
       }
     })
@@ -94,24 +138,36 @@ export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
+
+    // Permission check: verify the user can write to the operators module
+    if (!canPerformAction(user, "operators", "write")) {
+      return NextResponse.json({ error: "No tiene permisos para crear operadores" }, { status: 403 })
+    }
+
     const body = await request.json()
 
-    const { name, contact_name, contact_email, contact_phone, credit_limit } = body
+    const { name, contact_name, contact_email, contact_phone, credit_limit, admin_fee_percentage } = body
 
     // Validations
     if (!name) {
       return NextResponse.json({ error: "El nombre es requerido" }, { status: 400 })
     }
 
-    // Create operator
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
+    // Create operator (org-scoped)
     const { data: operator, error: createError } = await (supabase
       .from("operators") as any)
       .insert({
+        org_id: user.org_id,
         name,
         contact_name: contact_name || null,
         contact_email: contact_email || null,
         contact_phone: contact_phone || null,
         credit_limit: credit_limit || null,
+        admin_fee_percentage: typeof admin_fee_percentage === "number" ? admin_fee_percentage : 0,
       })
       .select()
       .single()

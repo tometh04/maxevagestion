@@ -11,7 +11,7 @@ export default async function TasksPage() {
       currentUserId={user.id}
       agencyId={agencyId}
       userRole={user.role}
-      showAssignedFilter={user.role === "SUPER_ADMIN" || user.role === "ADMIN"}
+      showAssignedFilter={true}
     />
   )
 }

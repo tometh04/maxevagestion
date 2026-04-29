@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import {
   Table,
   TableBody,
@@ -13,6 +14,9 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { Undo2 } from "lucide-react"
 
 function formatCurrency(amount: number, currency: string): string {
   return new Intl.NumberFormat("es-AR", {
@@ -34,10 +38,14 @@ interface LedgerMovement {
   receipt_number: string | null
   notes: string | null
   created_at: string
+  reversed_at?: string | null
+  reverses_movement_id?: string | null
+  reversed_by_movement_id?: string | null
   financial_accounts?: { name: string; type: string } | null
   sellers?: { name: string } | null
   operators?: { name: string } | null
-  operations?: { destination: string; file_code: string | null } | null
+  operation_id?: string | null
+  operations?: { id: string; destination: string; file_code: string | null } | null
   leads?: { contact_name: string } | null
 }
 
@@ -45,9 +53,11 @@ interface LedgerTableProps {
   filters?: {
     dateFrom?: string
     dateTo?: string
+    dateType?: string
     type?: string
     currency?: string
   }
+  userRole?: string
 }
 
 const typeLabels: Record<string, string> = {
@@ -60,17 +70,23 @@ const typeLabels: Record<string, string> = {
 }
 
 const typeColors: Record<string, string> = {
-  INCOME: "bg-amber-500",
-  EXPENSE: "bg-red-500",
-  FX_GAIN: "bg-amber-500",
-  FX_LOSS: "bg-orange-500",
-  COMMISSION: "bg-blue-500",
+  INCOME: "bg-warning",
+  EXPENSE: "bg-destructive",
+  FX_GAIN: "bg-warning",
+  FX_LOSS: "bg-primary",
+  COMMISSION: "bg-info",
   OPERATOR_PAYMENT: "bg-purple-500",
 }
 
-export function LedgerTable({ filters }: LedgerTableProps) {
+export function LedgerTable({ filters, userRole }: LedgerTableProps) {
   const [movements, setMovements] = useState<LedgerMovement[]>([])
   const [loading, setLoading] = useState(true)
+  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
+
+  const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
+    key: "created_at",
+    direction: "desc",
+  })
 
   useEffect(() => {
     async function fetchMovements() {
@@ -79,6 +95,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
         const params = new URLSearchParams()
         if (filters?.dateFrom) params.append("dateFrom", filters.dateFrom)
         if (filters?.dateTo) params.append("dateTo", filters.dateTo)
+        if (filters?.dateType) params.append("dateType", filters.dateType)
         if (filters?.type && filters.type !== "ALL") params.append("type", filters.type)
         if (filters?.currency && filters.currency !== "ALL") params.append("currency", filters.currency)
 
@@ -116,22 +133,39 @@ export function LedgerTable({ filters }: LedgerTableProps) {
   }
 
   return (
-    <div className="rounded-md border">
+    <div className="max-h-[60vh] overflow-y-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Concepto</TableHead>
-            <TableHead className="text-right">Monto Original</TableHead>
-            <TableHead className="text-right">ARS Equivalente</TableHead>
-            <TableHead>Cuenta</TableHead>
-            <TableHead>Operación</TableHead>
-            <TableHead>Vendedor</TableHead>
+            <SortableTableHead sortKey="created_at" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Fecha
+            </SortableTableHead>
+            <SortableTableHead sortKey="type" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Tipo
+            </SortableTableHead>
+            <SortableTableHead sortKey="concept" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Concepto
+            </SortableTableHead>
+            <SortableTableHead sortKey="amount_original" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">
+              Monto Original
+            </SortableTableHead>
+            <SortableTableHead sortKey="amount_ars_equivalent" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">
+              ARS Equivalente
+            </SortableTableHead>
+            <SortableTableHead sortKey="financial_accounts.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Cuenta
+            </SortableTableHead>
+            <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Operación
+            </SortableTableHead>
+            <SortableTableHead sortKey="sellers.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">
+              Vendedor
+            </SortableTableHead>
+            <TableHead className="sticky top-0 bg-background z-10 text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {movements.map((movement) => (
+          {sortedData.map((movement) => (
             <TableRow key={movement.id}>
               <TableCell>
                 {format(new Date(movement.created_at), "dd/MM/yyyy", { locale: es })}
@@ -142,7 +176,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                 </Badge>
               </TableCell>
               <TableCell className="max-w-xs truncate">{movement.concept}</TableCell>
-              <TableCell className="text-right">
+              <TableCell className={`text-right ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
                 {formatCurrency(movement.amount_original, movement.currency)}
                 {movement.exchange_rate && movement.currency === "USD" && (
                   <span className="text-xs text-muted-foreground ml-1">
@@ -150,7 +184,7 @@ export function LedgerTable({ filters }: LedgerTableProps) {
                   </span>
                 )}
               </TableCell>
-              <TableCell className="font-medium text-right">
+              <TableCell className={`font-medium text-right ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
                 {formatCurrency(movement.amount_ars_equivalent, "ARS")}
               </TableCell>
               <TableCell>
@@ -158,9 +192,13 @@ export function LedgerTable({ filters }: LedgerTableProps) {
               </TableCell>
               <TableCell>
                 {movement.operations?.file_code ? (
-                  <span className="text-xs font-mono">
+                  <Link
+                    href={`/operations/${movement.operation_id || movement.operations?.id}`}
+                    className="text-xs font-mono text-primary hover:underline"
+                    prefetch={false}
+                  >
                     {movement.operations.file_code}
-                  </span>
+                  </Link>
                 ) : movement.leads?.contact_name ? (
                   <span className="text-xs">Lead: {movement.leads.contact_name}</span>
                 ) : (
@@ -170,6 +208,22 @@ export function LedgerTable({ filters }: LedgerTableProps) {
               <TableCell>
                 {movement.sellers?.name || "-"}
               </TableCell>
+              <TableCell className="text-right">
+                {movement.reversed_at ? (
+                  <Badge variant="secondary">REVERSADO</Badge>
+                ) : movement.reverses_movement_id ? (
+                  <Badge variant="outline" className="border-blue-300 text-blue-700">
+                    <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
+                  </Badge>
+                ) : (
+                  <CashMovementReverseButton
+                    movementId={movement.id}
+                    endpoint="ledger-movements"
+                    movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                    disabled={!canReverse}
+                  />
+                )}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -177,4 +231,3 @@ export function LedgerTable({ filters }: LedgerTableProps) {
     </div>
   )
 }
-

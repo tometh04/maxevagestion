@@ -167,10 +167,26 @@ export function SearchableCombobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="min-w-[var(--radix-popover-trigger-width)] w-[380px] max-w-[90vw] p-0"
+        className="min-w-[var(--radix-popover-trigger-width)] w-[380px] max-w-[90vw] p-0 z-[9999]"
         align="start"
         side="bottom"
         sideOffset={4}
+        avoidCollisions={false}
+        onOpenAutoFocus={(e) => {
+          // Scroll the trigger into view at the top when popover opens
+          const trigger = document.querySelector('[aria-expanded="true"][role="combobox"]')
+          if (trigger) {
+            const scrollParent = trigger.closest('[data-scroll-container]') || trigger.closest('.overflow-y-auto')
+            if (scrollParent) {
+              const triggerRect = trigger.getBoundingClientRect()
+              const parentRect = scrollParent.getBoundingClientRect()
+              const offset = triggerRect.top - parentRect.top - 10
+              if (offset > 0) {
+                scrollParent.scrollBy({ top: offset, behavior: 'smooth' })
+              }
+            }
+          }
+        }}
       >
         <Command shouldFilter={false}>
           <CommandInput

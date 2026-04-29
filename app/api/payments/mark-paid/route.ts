@@ -1,27 +1,56 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule } from "@/lib/permissions"
 import {
   createLedgerMovement,
   calculateARSEquivalent,
-  getOrCreateDefaultAccount,
   validateSufficientBalance,
   getMainPassengerName,
 } from "@/lib/accounting/ledger"
 import { autoCalculateFXForPayment } from "@/lib/accounting/fx"
-import { markOperatorPaymentAsPaid } from "@/lib/accounting/operator-payments"
-import { getExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
+import {
+  applyOperatorPaymentSettlement,
+  findMatchingOperatorPayment,
+} from "@/lib/accounting/operator-payment-settlement"
+import {
+  createPaymentCounterpartMovement,
+  mapPaymentMethodToLedgerMethod,
+} from "@/lib/accounting/payment-counterparts"
 import { createPaymentReceivedMessage } from "@/lib/whatsapp/whatsapp-service"
+import { upsertSellerReceiptMessage } from "@/lib/whatsapp/seller-receipt-message"
+import { autoCreateWithholdings, type WithholdingType } from "@/lib/accounting/withholding-rules"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
+
+    // Solo ADMIN, SUPER_ADMIN y CONTABLE pueden marcar pagos como cobrados
+    if (!canAccessModule(user.role, "cash")) {
+      return NextResponse.json({ error: "No tiene permisos para marcar pagos como cobrados" }, { status: 403 })
+    }
+
+    // Rate limit: marcar como pagado es destructivo y ejecuta side effects
+    // contables (FX, percepciones, counterparts). Evita doble-submit/bot.
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/payments/mark-paid:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
+
     const supabase = await createServerClient()
     const body = await request.json()
-    const { paymentId, datePaid, reference, financial_account_id, exchange_rate } = body
+    const { paymentId, datePaid, reference, financial_account_id, exchange_rate, apply_rg5617, apply_rg3819 } = body
 
     if (!paymentId || !datePaid || !financial_account_id) {
       return NextResponse.json({ error: "Faltan parámetros (paymentId, datePaid, financial_account_id son requeridos)" }, { status: 400 })
+    }
+
+    // Validar que datePaid no sea una fecha futura
+    const paidDate = new Date(datePaid)
+    const today = new Date()
+    today.setHours(23, 59, 59, 999)
+    if (paidDate > today) {
+      return NextResponse.json({ error: "La fecha de pago no puede ser futura" }, { status: 400 })
     }
 
     // Validar que la cuenta financiera existe
@@ -39,13 +68,16 @@ export async function POST(request: Request) {
     const paymentsSelect = supabase.from("payments") as any
     const { data: payment } = await paymentsSelect
       .select(`
-        operation_id, 
-        amount, 
-        currency, 
-        direction, 
-        payer_type, 
+        operation_id,
+        operator_id,
+        operator_payment_id,
+        amount,
+        currency,
+        direction,
+        payer_type,
         method,
         status,
+        approval_status,
         ledger_movement_id,
         operations:operation_id(
           id,
@@ -66,11 +98,68 @@ export async function POST(request: Request) {
 
     const paymentData = payment as any
     const operation = paymentData.operations || null
+    const paymentsTable = supabase.from("payments") as any
+    let linkedOperatorId: string | null = paymentData.operator_id || null
+    let linkedOperatorPaymentId: string | null = paymentData.operator_payment_id || null
 
-    // Verificar si el pago ya está marcado como PAID y tiene ledger_movement_id
-    // Si ya tiene ledger_movement_id, significa que los movimientos contables ya fueron creados
-    // Solo actualizamos la fecha y referencia, pero no creamos movimientos duplicados
-    const alreadyHasLedgerMovement = paymentData.status === "PAID" && paymentData.ledger_movement_id
+    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id && !linkedOperatorPaymentId) {
+      const matchedOperatorPayment = await findMatchingOperatorPayment(supabase, {
+        operationId: paymentData.operation_id,
+        operatorId: linkedOperatorId,
+      })
+
+      if (matchedOperatorPayment) {
+        linkedOperatorId = linkedOperatorId || matchedOperatorPayment.operator_id
+        linkedOperatorPaymentId = matchedOperatorPayment.id
+      }
+    }
+
+    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id && !linkedOperatorPaymentId) {
+      return NextResponse.json({
+        error: "No se pudo identificar la deuda del operador para este pago. Volvé a crearlo seleccionando el operador correcto.",
+      }, { status: 400 })
+    }
+
+    // ============================================
+    // GUARD DE APROBACIÓN: bloquear mark-paid si el pago requiere aprobación
+    // y no fue aprobado todavía. Antes de este guard, cualquier rol con acceso
+    // a Caja podía bypassear las reglas de payment_approval_rules llamando
+    // mark-paid directo desde el dialog "crear y marcar pagado".
+    // ============================================
+    if (paymentData.approval_status === "PENDING_APPROVAL") {
+      return NextResponse.json({
+        error: "Este pago requiere aprobación previa. Pedí a un administrador que lo apruebe en /payments/pending-approvals antes de marcarlo como cobrado.",
+        requires_approval: true,
+      }, { status: 403 })
+    }
+
+    // ============================================
+    // GUARD DE IDEMPOTENCIA: Verificar ANTES de cualquier modificación
+    // ============================================
+    // Si el pago ya está PAID, rechazar la operación completamente
+    if (paymentData.status === "PAID") {
+      return NextResponse.json({
+        error: "Este pago ya fue marcado como pagado anteriormente",
+        already_paid: true
+      }, { status: 409 }) // 409 Conflict
+    }
+
+    // Guard adicional: usar update atómico con condición de estado
+    // Esto previene race conditions entre requests simultáneos
+    const { data: atomicUpdate, error: atomicError } = await paymentsTable
+      .update({ status: "PROCESSING" }) // Estado transitorio para bloquear otros requests
+      .eq("id", paymentId)
+      .eq("status", "PENDING") // Solo actualizar si sigue PENDING (Compare-And-Set)
+      .select("id")
+      .maybeSingle()
+
+    if (!atomicUpdate) {
+      // Otro request ya tomó este pago, o cambió de estado
+      return NextResponse.json({
+        error: "Este pago ya está siendo procesado por otra operación",
+        already_paid: true
+      }, { status: 409 })
+    }
 
     // Calcular amount_usd si hay exchange_rate proporcionado
     let amountUsd: number | null = null
@@ -80,13 +169,16 @@ export async function POST(request: Request) {
       amountUsd = parseFloat(paymentData.amount)
     }
 
-    // Update payment
-    const paymentsTable = supabase.from("payments") as any
+    // Update payment — ya pasó el guard atómico (status = PROCESSING)
     const updateData: any = {
       date_paid: datePaid,
       status: "PAID",
       reference: reference || null,
       updated_at: new Date().toISOString(),
+    }
+    if (paymentData.payer_type === "OPERATOR") {
+      updateData.operator_id = linkedOperatorId
+      updateData.operator_payment_id = linkedOperatorPaymentId
     }
     
     // Si se proporcionó exchange_rate, guardarlo y calcular amount_usd
@@ -100,16 +192,6 @@ export async function POST(request: Request) {
     await paymentsTable
       .update(updateData)
       .eq("id", paymentId)
-
-    // Si el pago ya tiene ledger_movement_id, no crear movimientos duplicados
-    if (alreadyHasLedgerMovement) {
-      console.log(`⚠️ Pago ${paymentId} ya tiene ledger_movement_id ${paymentData.ledger_movement_id}, omitiendo creación de movimientos contables`)
-      return NextResponse.json({ 
-        success: true, 
-        payment: { ...paymentData, date_paid: datePaid, status: "PAID", reference },
-        message: "Pago actualizado (movimientos contables ya existían)"
-      })
-    }
 
     // Get agency_id from operation or user agencies
     let agencyId = operation?.agency_id
@@ -163,169 +245,8 @@ export async function POST(request: Request) {
         // No fallar, continuar con el flujo
       }
     } else {
-      console.log(`⚠️ Pago ${paymentId} ya tiene cash_movement ${(existingCashMovement as any).id}, omitiendo creación`)
     }
 
-    // ============================================
-    // FASE 1: REDUCIR ACTIVO/PASIVO Y CREAR MOVIMIENTO EN RESULTADO
-    // ============================================
-    
-    // 1. Reducir "Cuentas por Cobrar" (ACTIVO) si es INCOME
-    //    o "Cuentas por Pagar" (PASIVO) si es EXPENSE
-    if (paymentData.direction === "INCOME") {
-      // Reducir "Cuentas por Cobrar" (ACTIVO) - el cliente pagó
-      const { data: accountsReceivableChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "1.1.03")
-        .eq("is_active", true)
-        .maybeSingle()
-      
-      if (accountsReceivableChart) {
-        const { data: accountsReceivableAccount } = await (supabase.from("financial_accounts") as any)
-          .select("id")
-          .eq("chart_account_id", accountsReceivableChart.id)
-          .eq("currency", paymentData.currency)
-          .eq("is_active", true)
-          .maybeSingle()
-        
-        if (accountsReceivableAccount) {
-          // IMPORTANTE: Verificar que "Cuentas por Cobrar" NO sea la misma cuenta que la seleccionada
-          // Si es la misma, NO crear este movimiento para evitar duplicación
-          if (accountsReceivableAccount.id === financial_account_id) {
-            console.log(`⚠️ "Cuentas por Cobrar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
-          } else {
-            // Calcular exchange rate si es USD
-            let exchangeRate: number | null = null
-            if (paymentData.currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-              if (!exchangeRate) {
-                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1450 // Fallback temporal
-              }
-            }
-
-            const amountARS = calculateARSEquivalent(
-              parseFloat(paymentData.amount),
-              paymentData.currency as "ARS" | "USD",
-              exchangeRate
-            )
-
-            // Obtener nombre del pasajero para el concepto
-            const passengerNameForCpC = paymentData.operation_id
-              ? await getMainPassengerName(paymentData.operation_id, supabase)
-              : null
-            const operationCodeForCpC = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : ""
-
-            // Crear movimiento INCOME en "Cuentas por Cobrar" para REDUCIR el activo
-            // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
-            await createLedgerMovement(
-              {
-                operation_id: paymentData.operation_id || null,
-                lead_id: null,
-                type: "INCOME", // INCOME reduce el activo "Cuentas por Cobrar"
-                concept: passengerNameForCpC
-                  ? `${passengerNameForCpC} (${operationCodeForCpC})`
-                  : `Cobro de cliente - Op. ${operationCodeForCpC}`,
-                currency: paymentData.currency as "ARS" | "USD",
-                amount_original: parseFloat(paymentData.amount),
-                exchange_rate: exchangeRate,
-                amount_ars_equivalent: amountARS,
-                method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
-                account_id: accountsReceivableAccount.id, // Cuenta "Cuentas por Cobrar" (diferente a la seleccionada)
-                seller_id: operation?.seller_id || null,
-                operator_id: null,
-                receipt_number: reference || null,
-                notes: `Pago recibido: ${reference || ""}`,
-                created_by: user.id,
-              },
-              supabase
-            )
-            console.log(`✅ Reducido "Cuentas por Cobrar" (${accountsReceivableAccount.id}) por pago de cliente ${paymentId}`)
-          }
-        }
-      }
-    } else if (paymentData.payer_type === "OPERATOR") {
-      // Reducir "Cuentas por Pagar" (PASIVO) - pagaste al operador
-      const { data: accountsPayableChart } = await (supabase.from("chart_of_accounts") as any)
-        .select("id")
-        .eq("account_code", "2.1.01")
-        .eq("is_active", true)
-        .maybeSingle()
-      
-      if (accountsPayableChart) {
-        const { data: accountsPayableAccount } = await (supabase.from("financial_accounts") as any)
-          .select("id")
-          .eq("chart_account_id", accountsPayableChart.id)
-          .eq("currency", paymentData.currency)
-          .eq("is_active", true)
-          .maybeSingle()
-        
-        if (accountsPayableAccount) {
-          // IMPORTANTE: Verificar que "Cuentas por Pagar" NO sea la misma cuenta que la seleccionada
-          // Si es la misma, NO crear este movimiento para evitar duplicación
-          if (accountsPayableAccount.id === financial_account_id) {
-            console.log(`⚠️ "Cuentas por Pagar" es la misma cuenta seleccionada (${financial_account_id}). Omitiendo movimiento duplicado.`)
-          } else {
-            // Calcular exchange rate si es USD
-            let exchangeRate: number | null = null
-            if (paymentData.currency === "USD") {
-              exchangeRate = await getExchangeRate(supabase, new Date(datePaid))
-              if (!exchangeRate) {
-                const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-                exchangeRate = await getLatestExchangeRate(supabase)
-              }
-              if (!exchangeRate) {
-                console.warn(`No exchange rate found for USD payment ${paymentId}`)
-                exchangeRate = 1450 // Fallback temporal
-              }
-            }
-
-            const amountARS = calculateARSEquivalent(
-              parseFloat(paymentData.amount),
-              paymentData.currency as "ARS" | "USD",
-              exchangeRate
-            )
-            
-            // Obtener nombre del pasajero para el concepto
-            const passengerNameForCpP = paymentData.operation_id 
-              ? await getMainPassengerName(paymentData.operation_id, supabase) 
-              : null
-            const operationCodeForCpP = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : ""
-
-            // Crear movimiento INCOME en "Cuentas por Pagar" para REDUCIR el pasivo
-            // NOTA: Este movimiento NO afecta el balance de la cuenta financiera seleccionada
-            await createLedgerMovement(
-              {
-                operation_id: paymentData.operation_id || null,
-                lead_id: null,
-                type: "INCOME", // INCOME reduce el pasivo "Cuentas por Pagar"
-                concept: passengerNameForCpP
-                  ? `Pago a operador - ${passengerNameForCpP} (${operationCodeForCpP})`
-                  : `Pago a operador - Op. ${operationCodeForCpP}`,
-                currency: paymentData.currency as "ARS" | "USD",
-                amount_original: parseFloat(paymentData.amount),
-                exchange_rate: exchangeRate,
-                amount_ars_equivalent: amountARS,
-                method: paymentData.method === "Efectivo" ? "CASH" : paymentData.method === "Transferencia" ? "BANK" : "OTHER",
-                account_id: accountsPayableAccount.id, // Cuenta "Cuentas por Pagar" (diferente a la seleccionada)
-                seller_id: operation?.seller_id || null,
-                operator_id: operation?.operator_id || null,
-                receipt_number: reference || null,
-                notes: `Pago realizado: ${reference || ""}`,
-                created_by: user.id,
-              },
-              supabase
-            )
-            console.log(`✅ Reducido "Cuentas por Pagar" (${accountsPayableAccount.id}) por pago a operador ${paymentId}`)
-          }
-        }
-      }
-    }
-    
     // 2. Crear movimiento en la cuenta financiera seleccionada
     // IMPORTANTE: Este es el movimiento principal que afecta el balance de la cuenta seleccionada
     // Usar la cuenta financiera proporcionada por el frontend
@@ -381,41 +302,18 @@ export async function POST(request: Request) {
       console.warn(`⚠️ La cuenta seleccionada es la misma que "Cuentas por Cobrar/Pagar". Esto puede causar duplicación de movimientos.`)
     }
 
-    console.log(`💰 Creando movimiento contable PRINCIPAL en cuenta seleccionada:`, {
-      accountId: accountId,
-      accountCurrency: financialAccount.currency,
-      direction: paymentData.direction,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      paymentId: paymentId,
-      accountsReceivableAccountId: accountsReceivableAccountId,
-      accountsPayableAccountId: accountsPayableAccountId,
-      isSameAccount: accountId === accountsReceivableAccountId || accountId === accountsPayableAccountId
-    })
-
     // Calcular ARS equivalent
     // Priorizar exchange_rate proporcionado por el frontend
     // Si currency = ARS y se proporcionó exchange_rate, usarlo para convertir a USD
     // Si currency = USD y no se proporcionó exchange_rate, obtenerlo de la tabla
     let exchangeRate: number | null = exchange_rate || null
-    
+
     if (!exchangeRate) {
       // Solo calcular automáticamente si no se proporcionó desde el frontend
       if (paymentData.currency === "USD") {
         const rateDate = datePaid ? new Date(datePaid) : new Date()
-        exchangeRate = await getExchangeRate(supabase, rateDate)
-        
-        // Si no hay tasa para esa fecha, usar la más reciente disponible
-        if (!exchangeRate) {
-          const { getLatestExchangeRate } = await import("@/lib/accounting/exchange-rates")
-          exchangeRate = await getLatestExchangeRate(supabase)
-        }
-        
-        // Fallback: si aún no hay tasa, usar 1450 como último recurso
-        if (!exchangeRate) {
-          console.warn(`No exchange rate found for ${rateDate.toISOString()}, using fallback 1450`)
-          exchangeRate = 1450
-        }
+        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, `mark-paid-main-${paymentId}`)
+        exchangeRate = rateResult.rate
       } else if (paymentData.currency === "ARS" && exchange_rate) {
         // Si el pago es en ARS y se proporcionó TC, usarlo
         exchangeRate = exchange_rate
@@ -430,20 +328,10 @@ export async function POST(request: Request) {
     
     // Obtener seller_id y operator_id de la operación si existe
     const sellerId = operation?.seller_id || null
-    const operatorId = operation?.operator_id || null
+    const operatorId = linkedOperatorId || operation?.operator_id || null
     
     // Mapear method del payment a ledger method
-    const methodMap: Record<string, "CASH" | "BANK" | "MP" | "USD" | "OTHER"> = {
-      "Efectivo": "CASH",
-      "Transferencia": "BANK",
-      "Mercado Pago": "MP",
-      "MercadoPago": "MP",
-      "MP": "MP",
-      "USD": "USD",
-    }
-    const ledgerMethod = paymentData.method 
-      ? (methodMap[paymentData.method] || "OTHER")
-      : "CASH"
+    const ledgerMethod = mapPaymentMethodToLedgerMethod(paymentData.method)
 
     // Validar saldo suficiente para egresos (NUNCA permitir saldo negativo)
     if (paymentData.direction === "EXPENSE" || paymentData.payer_type === "OPERATOR") {
@@ -503,50 +391,76 @@ export async function POST(request: Request) {
         receipt_number: reference || null,
         notes: `Cuenta: ${financialAccount.name || accountId} - ${reference || ""}`,
         created_by: user.id,
+        movement_date: datePaid, // Usar fecha del pago (puede ser retroactiva)
       },
       supabase
     )
     
-    console.log(`✅ Movimiento contable PRINCIPAL creado:`, {
-      ledgerMovementId: ledgerMovementId,
-      accountId: accountId,
-      accountName: financialAccount.name || "N/A",
-      accountCurrency: financialAccount.currency,
-      type: ledgerType,
-      direction: paymentData.direction,
-      amount: paymentData.amount,
-      currency: paymentData.currency,
-      effect: paymentData.direction === "INCOME" ? "AUMENTA balance" : "DISMINUYE balance"
-    })
-
-    // NOTA: Solo creamos movimientos contables necesarios:
-    // 1. Movimiento para reducir Cuentas por Cobrar/Pagar (líneas 172-294) - parte de la contabilidad de doble entrada
-    // 2. Movimiento en la cuenta financiera seleccionada (líneas 365-388) - este es el que afecta el balance de la cuenta
-    // NO creamos un tercer movimiento duplicado
-    console.log(`✅ Movimiento contable creado en cuenta ${accountId} por pago ${paymentId}`)
-
     // Si es un pago a operador, marcar operator_payment como PAID
-    if (paymentData.payer_type === "OPERATOR" && paymentData.operation_id) {
+    if (paymentData.payer_type === "OPERATOR" && linkedOperatorPaymentId) {
       try {
-        // Buscar el operator_payment correspondiente
-        const { data: operatorPayment } = await (supabase.from("operator_payments") as any)
-          .select("id")
-          .eq("operation_id", paymentData.operation_id)
-          .eq("status", "PENDING")
-          .limit(1)
-          .maybeSingle()
-
-        if (operatorPayment) {
-          await markOperatorPaymentAsPaid(supabase, operatorPayment.id, ledgerMovementId)
-          console.log(`✅ Marcado operator_payment ${operatorPayment.id} como PAID`)
-        }
+        await applyOperatorPaymentSettlement(
+          supabase,
+          linkedOperatorPaymentId,
+          parseFloat(paymentData.amount),
+          ledgerMovementId
+        )
       } catch (error) {
         console.error("Error marcando operator_payment como PAID:", error)
         // No lanzamos error para no romper el flujo
       }
     }
 
+    const counterpartResult = await createPaymentCounterpartMovement({
+      supabase,
+      paymentId,
+      operationId: paymentData.operation_id || null,
+      direction: paymentData.direction,
+      payerType: paymentData.payer_type,
+      currency: paymentData.currency,
+      amount: parseFloat(paymentData.amount),
+      method: paymentData.method,
+      reference: reference || null,
+      datePaid,
+      exchangeRate,
+      selectedFinancialAccountId: financial_account_id,
+      sellerId,
+      operatorId: paymentData.payer_type === "OPERATOR" ? linkedOperatorId : null,
+      userId: user.id,
+    })
+
+    // ============================================
+    // ASIENTO 3 — Cobranza (Caja / Ds x Ventas)
+    // Anotar los movimientos de pago como asiento contable con Debe/Haber
+    // ============================================
+    try {
+      const { annotatePaymentAsJournalEntry } = await import("@/lib/accounting/journal-entries")
+      const operationCode = paymentData.operation_id ? paymentData.operation_id.slice(0, 8) : "N/A"
+
+      await annotatePaymentAsJournalEntry({
+        mainMovementId: ledgerMovementId,
+        counterpartMovementId: counterpartResult?.id || null,
+        description: paymentData.direction === "INCOME"
+          ? `Cobro — ${passengerName || `Op. ${operationCode}`}`
+          : `Pago a operador — ${passengerName || `Op. ${operationCode}`}`,
+        date: datePaid,
+        amount: parseFloat(paymentData.amount),
+        currency: paymentData.currency as "ARS" | "USD",
+        operation_id: paymentData.operation_id || null,
+        direction: paymentData.direction === "INCOME" ? "INCOME" : "EXPENSE",
+        financialAccountId: financial_account_id,
+        created_by: user.id,
+      }, supabase)
+    } catch (error) {
+      console.error("Error creating payment journal entry:", error)
+      // No romper el flujo principal
+    }
+
     // Calcular FX automáticamente si hay diferencia de moneda
+    // NOTA: autoCalculateFXForPayment no es transaccional — si falla, el pago
+    // queda registrado pero sin su movimiento FX correlativo. Generamos alerta
+    // visible para revisión manual.
+    // TODO: migrar a RPC atómico (payment + ledger + FX en una sola transacción).
     if (paymentData.operation_id) {
       try {
         await autoCalculateFXForPayment(
@@ -557,12 +471,174 @@ export async function POST(request: Request) {
           paymentData.currency === "USD" ? exchangeRate : null,
           user.id
         )
-        
+
         // Si se generó un FX_LOSS, verificar si debemos generar alerta
         // (la alerta se generará automáticamente en generateAllAlerts)
       } catch (error) {
-        console.error("Error calculando FX:", error)
+        console.error(
+          `⚠️ CRITICAL: Error calculando FX para payment ${paymentId} (op ${paymentData.operation_id}). Pago quedó sin FX correlativo. Revisar manualmente.`,
+          error
+        )
+        // Crear alerta de sistema para revisión manual
+        try {
+          await (supabase.from("alerts") as any).insert({
+            agency_id: agencyId || null,
+            user_id: user.id,
+            operation_id: paymentData.operation_id,
+            type: "SYSTEM",
+            description: `FX no calculado para pago ${paymentId}. Revisar manualmente diferencia de cambio.`,
+            date_due: new Date().toISOString(),
+            status: "PENDING",
+          })
+        } catch (alertError) {
+          console.error("Error generando alerta de FX fallido:", alertError)
+        }
         // No lanzamos error para no romper el flujo
+      }
+    }
+
+    // ============================================
+    // CALCULAR PERCEPCIONES AUTOMÁTICAS (RG 5617 / RG 3819)
+    // ============================================
+    if (paymentData.direction === "INCOME" && paymentData.operation_id) {
+      try {
+        // Get operation destination for international check
+        const { data: opForPerc } = await (supabase.from("operations") as any)
+          .select("destination, agency_id")
+          .eq("id", paymentData.operation_id)
+          .single()
+
+        // Get customer CUIT from billing_info
+        const { data: billingInfo } = await (supabase.from("billing_info") as any)
+          .select("cuit")
+          .eq("operation_id", paymentData.operation_id)
+          .maybeSingle()
+
+        // Build excluded types based on user selection
+        const excludedTypes: WithholdingType[] = []
+        if (!apply_rg5617) excludedTypes.push("PERCEPCION_RG5617_30")
+        if (!apply_rg3819) excludedTypes.push("PERCEPCION_RG3819_5")
+
+        const createdWithholdings = await autoCreateWithholdings(supabase, {
+          amount: parseFloat(paymentData.amount),
+          currency: paymentData.currency,
+          type: "CUSTOMER_PAYMENT",
+          counterpart_cuit: billingInfo?.cuit || undefined,
+          counterpart_name: await getMainPassengerName(paymentData.operation_id, supabase) || undefined,
+          tax_period: datePaid.substring(0, 7),
+          withholding_date: datePaid,
+          operation_id: paymentData.operation_id,
+          source_type: "PAYMENT",
+          source_id: paymentId,
+          direction: "PRACTICED",
+          created_by: user.id,
+          agency_id: opForPerc?.agency_id || undefined,
+          payment_method: paymentData.method || undefined,
+          destination: opForPerc?.destination || undefined,
+          excluded_types: excludedTypes.length > 0 ? excludedTypes : undefined,
+        })
+
+        // ============================================
+        // ASIENTOS CONTABLES para percepciones (doble entrada)
+        // Débito: cuenta financiera del cobro (entra dinero del cliente)
+        // Crédito: "Percepciones a depositar AFIP" (pasivo - deuda con AFIP)
+        // ============================================
+        const perceptionRecords = createdWithholdings.filter((w: any) =>
+          w.type === "PERCEPCION_RG5617_30" || w.type === "PERCEPCION_RG3819_5"
+        )
+
+        if (perceptionRecords.length > 0) {
+          // IDEMPOTENCY GUARD: si ya existen ledger_movements de percepcion
+          // para esta operación (mismo concepto), no crear duplicados.
+          const { data: existingPercMovements } = await (supabase.from("ledger_movements") as any)
+            .select("id, notes")
+            .eq("operation_id", paymentData.operation_id)
+            .ilike("notes", "%Percepción RG%")
+            .limit(1)
+
+          if (existingPercMovements && existingPercMovements.length > 0) {
+            console.log(
+              `[mark-paid] Ledger movements de percepción ya existen para op ${paymentData.operation_id}. Skipping duplicate creation.`
+            )
+          } else {
+          // Find the "Percepciones a depositar AFIP" liability account (2.1.04)
+          const { data: percChartAccount } = await (supabase.from("chart_of_accounts") as any)
+            .select("id")
+            .eq("account_code", "2.1.04")
+            .eq("is_active", true)
+            .maybeSingle()
+
+          let percAfipAccountId: string | null = null
+          if (percChartAccount) {
+            const { data: percFinAccount } = await (supabase.from("financial_accounts") as any)
+              .select("id")
+              .eq("chart_account_id", percChartAccount.id)
+              .eq("currency", "ARS")
+              .eq("is_active", true)
+              .maybeSingle()
+            percAfipAccountId = percFinAccount?.id || null
+          }
+
+          if (percAfipAccountId) {
+            const percPassengerName = passengerName || "Cliente"
+            const percOpCode = paymentData.operation_id.slice(0, 8)
+
+            for (const perc of perceptionRecords) {
+              const percAmount = parseFloat(perc.amount)
+              const percLabel = perc.type === "PERCEPCION_RG5617_30" ? "RG 5617 (30%)" : "RG 3819 (5%)"
+
+              try {
+                // 1. INCOME on financial account (money received from customer)
+                await createLedgerMovement(
+                  {
+                    operation_id: paymentData.operation_id,
+                    type: "INCOME",
+                    concept: `Percepción ${percLabel} - ${percPassengerName} (${percOpCode})`,
+                    currency: "ARS",
+                    amount_original: percAmount,
+                    exchange_rate: null,
+                    amount_ars_equivalent: percAmount,
+                    method: ledgerMethod,
+                    account_id: financial_account_id,
+                    seller_id: sellerId,
+                    notes: `Percepción ${percLabel} cobrada al cliente`,
+                    created_by: user.id,
+                    movement_date: datePaid,
+                  },
+                  supabase
+                )
+
+                // 2. EXPENSE on AFIP liability account (increases the liability)
+                await createLedgerMovement(
+                  {
+                    operation_id: paymentData.operation_id,
+                    type: "EXPENSE",
+                    concept: `Percepción ${percLabel} - ${percPassengerName} (${percOpCode})`,
+                    currency: "ARS",
+                    amount_original: percAmount,
+                    exchange_rate: null,
+                    amount_ars_equivalent: percAmount,
+                    method: ledgerMethod,
+                    account_id: percAfipAccountId,
+                    seller_id: sellerId,
+                    notes: `Percepción ${percLabel} a depositar AFIP`,
+                    created_by: user.id,
+                    movement_date: datePaid,
+                  },
+                  supabase
+                )
+              } catch (ledgerError) {
+                console.error(`Error creando asiento contable para percepción ${perc.type}:`, ledgerError)
+              }
+            }
+          } else {
+            console.warn("⚠️ Cuenta 'Percepciones a depositar AFIP' (2.1.04) no encontrada. Ejecutar migración 145.")
+          }
+          } // end else (no existing percepciones) - idempotency guard
+        }
+      } catch (error: unknown) {
+        console.error("Error calculando percepciones:", error)
+        // No lanzamos error para no romper el flujo principal
       }
     }
 
@@ -618,11 +694,52 @@ export async function POST(request: Request) {
         console.error("Error creando mensaje WhatsApp:", error)
         // No lanzamos error para no romper el flujo principal
       }
+
+      try {
+        await upsertSellerReceiptMessage(supabase, paymentId)
+      } catch (error) {
+        console.error("Error creando mensaje interno de recibo para vendedor:", error)
+      }
+    }
+
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'PAYMENT_MARKED_PAID',
+        p_entity_type: 'payment',
+        p_entity_id: paymentId,
+        p_details: {
+          amount: paymentData.amount,
+          currency: paymentData.currency,
+          financial_account_id: financial_account_id,
+          ledger_movement_id: ledgerMovementId,
+          direction: paymentData.direction,
+          operation_id: paymentData.operation_id
+        }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
     }
 
     return NextResponse.json({ success: true, ledger_movement_id: ledgerMovementId })
   } catch (error: any) {
     console.error("Error en mark-paid:", error)
+
+    // Si el pago quedó en PROCESSING por un error, revertirlo a PENDING
+    try {
+      const body = await request.clone().json().catch(() => null)
+      if (body?.paymentId) {
+        const supabase = await createServerClient()
+        await (supabase.from("payments") as any)
+          .update({ status: "PENDING", updated_at: new Date().toISOString() })
+          .eq("id", body.paymentId)
+          .eq("status", "PROCESSING") // Solo revertir si sigue en PROCESSING
+      }
+    } catch (revertError) {
+      console.error("Error revirtiendo estado PROCESSING:", revertError)
+    }
+
     return NextResponse.json(
       { error: error.message || "Error al actualizar" },
       { status: 500 }

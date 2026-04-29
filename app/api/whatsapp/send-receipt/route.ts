@@ -124,6 +124,8 @@ export async function POST(request: Request) {
         agency_id: operation.agency_id,
         scheduled_for: new Date().toISOString(),
         status: "PENDING",
+        channel: "WHATSAPP",
+        message_kind: "STANDARD",
       })
 
       if (insertError) {
@@ -138,6 +140,7 @@ export async function POST(request: Request) {
     const { data: createdMessage } = await (supabase.from("whatsapp_messages") as any)
       .select("whatsapp_link")
       .eq("payment_id", paymentId)
+      .eq("channel", "WHATSAPP")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle()

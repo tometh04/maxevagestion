@@ -3,6 +3,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { createServerClient } from "@/lib/supabase/server"
 import { canAccessModule } from "@/lib/permissions"
 import { Skeleton } from "@/components/ui/skeleton"
+import { CashSummaryTabs } from "@/components/cash/cash-summary-tabs"
+import { CashFiltersState } from "@/components/cash/cash-filters"
 
 const CashSummaryClient = dynamic(
   () =>
@@ -12,24 +14,44 @@ const CashSummaryClient = dynamic(
   {
     loading: () => (
       <div className="space-y-6">
-        <div className="flex gap-4 flex-wrap">
-          <Skeleton className="h-10 w-32" />
-          <Skeleton className="h-10 w-32" />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="h-[200px] w-full" />
-          <Skeleton className="h-[200px] w-full" />
-        </div>
         <Skeleton className="h-[300px] w-full" />
       </div>
     ),
   }
 )
 
+const FinancialAccountsPageClient = dynamic(
+  () =>
+    import("@/components/accounting/financial-accounts-page-client").then((m) => ({
+      default: m.FinancialAccountsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
+const PaymentsPageClient = dynamic(
+  () =>
+    import("@/components/cash/payments-page-client").then((m) => ({
+      default: m.PaymentsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
+const MovementsPageClient = dynamic(
+  () =>
+    import("@/components/cash/movements-page-client").then((m) => ({
+      default: m.MovementsPageClient,
+    })),
+  {
+    loading: () => <Skeleton className="h-[300px] w-full" />,
+  }
+)
+
 function getDefaultDateRange() {
   const today = new Date()
-  // Rango por defecto: inicio del mes actual (ej. 01/03/2026 → hoy)
-  // Así Santi ve toda la actividad del mes en curso, no solo los últimos 7 días.
   const from = new Date(today.getFullYear(), today.getMonth(), 1)
 
   return {
@@ -40,12 +62,12 @@ function getDefaultDateRange() {
 
 export default async function CashSummaryPage() {
   const { user } = await getCurrentUser()
-  
+
   if (!canAccessModule(user.role as any, "cash")) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Resumen de Caja</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Caja y Bancos</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a caja</p>
         </div>
       </div>
@@ -72,6 +94,41 @@ export default async function CashSummaryPage() {
 
   const dates = getDefaultDateRange()
 
-  return <CashSummaryClient agencies={agencies} defaultDateFrom={dates.dateFrom} defaultDateTo={dates.dateTo} />
-}
+  const defaultFilters: CashFiltersState = {
+    dateFrom: dates.dateFrom,
+    dateTo: dates.dateTo,
+    agencyId: "ALL",
+    currency: "ALL",
+  }
 
+  // Pagos necesita un rango mucho más amplio para mostrar todos los pagos históricos
+  const today = new Date()
+  const paymentDefaultFilters: CashFiltersState = {
+    dateFrom: new Date(today.getFullYear() - 1, 0, 1).toISOString().split("T")[0], // 1 año atrás, 1 de enero
+    dateTo: dates.dateTo,
+    agencyId: "ALL",
+    currency: "ALL",
+  }
+
+  return (
+    <CashSummaryTabs
+      summaryContent={
+        <CashSummaryClient
+          agencies={agencies}
+          defaultDateFrom={dates.dateFrom}
+          defaultDateTo={dates.dateTo}
+          currentUserRole={user.role as any}
+        />
+      }
+      accountsContent={
+        <FinancialAccountsPageClient agencies={agencies} />
+      }
+      paymentsContent={
+        <PaymentsPageClient agencies={agencies} defaultFilters={paymentDefaultFilters} />
+      }
+      movementsContent={
+        <MovementsPageClient agencies={agencies} defaultFilters={defaultFilters} userRole={user.role} />
+      }
+    />
+  )
+}

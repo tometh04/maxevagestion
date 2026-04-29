@@ -112,7 +112,6 @@ export async function POST(request: Request) {
 
     if (configError || !trelloConfig) {
       // Si no hay config de Trello, solo asignar en la DB sin mover en Trello
-      console.log("⚠️ No Trello config, assigning only in DB")
       
       const { error: updateError } = await (supabase
         .from("leads") as any)
@@ -168,7 +167,6 @@ export async function POST(request: Request) {
 
     if (!sellerList) {
       // No hay lista para este vendedor, solo asignar en DB
-      console.log(`⚠️ No Trello list found for seller: ${sellerName}`)
       
       const { error: updateError } = await (supabase
         .from("leads") as any)
@@ -205,7 +203,6 @@ export async function POST(request: Request) {
         console.error("❌ Error moving card in Trello:", await moveResponse.text())
         // Continuar de todas formas, asignar en DB
       } else {
-        console.log(`✅ Card moved to list "${sellerList.name}" in Trello`)
       }
     }
 

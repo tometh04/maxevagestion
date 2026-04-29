@@ -475,6 +475,37 @@ function formatResult(dest: Destination): DestinationSearchResult {
   }
 }
 
+/**
+ * Mapeo de región geográfica del destino a región de lead del CRM.
+ */
+const DESTINATION_REGION_TO_LEAD_REGION: Record<string, string> = {
+  "Argentina": "ARGENTINA",
+  "Caribe": "CARIBE",
+  "Brasil": "BRASIL",
+  "Europa": "EUROPA",
+  "Norteamérica": "EEUU",
+  "Pacífico": "OTROS",
+  "Centro América": "OTROS",
+  "Sudamérica": "OTROS",
+  "Asia": "OTROS",
+  "Medio Oriente": "OTROS",
+  "Oceanía": "OTROS",
+  "África": "OTROS",
+}
+
+/**
+ * Dado un nombre de ciudad/destino, devuelve la región del lead correspondiente.
+ * Útil para auto-completar la región al seleccionar un destino.
+ * Retorna null si no se encuentra el destino.
+ */
+export function getLeadRegionForDestination(cityName: string): string | null {
+  if (!cityName) return null
+  const normalized = normalizeText(cityName)
+  const dest = DESTINATIONS.find(d => normalizeText(d.city) === normalized)
+  if (!dest) return null
+  return DESTINATION_REGION_TO_LEAD_REGION[dest.region] || "OTROS"
+}
+
 function getPopularDestinations(): DestinationSearchResult[] {
   const popularCities = [
     "Punta Cana", "Cancún", "Miami", "Orlando", "Río de Janeiro",

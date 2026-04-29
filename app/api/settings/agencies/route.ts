@@ -10,7 +10,11 @@ export async function GET() {
     }
 
     const supabase = await createServerClient()
-    const { data: agencies } = await supabase.from("agencies").select("*").order("name")
+    let query = supabase.from("agencies").select("*").order("name")
+    // Multi-tenant: solo agencias de la org del user
+    if (user.org_id) query = query.eq("org_id", user.org_id)
+
+    const { data: agencies } = await query
 
     return NextResponse.json({ agencies: agencies || [] })
   } catch (error) {
@@ -24,6 +28,9 @@ export async function POST(request: Request) {
     if (user.role !== "SUPER_ADMIN") {
       return NextResponse.json({ error: "No autorizado" }, { status: 403 })
     }
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
 
     const supabase = await createServerClient()
     const body = await request.json()
@@ -34,11 +41,21 @@ export async function POST(request: Request) {
     }
 
     if (id) {
-      // Update existing agency
+      // Verificar que la agencia pertenece a la org del user antes de actualizar
+      const { data: existing } = await supabase
+        .from("agencies")
+        .select("id, org_id")
+        .eq("id", id)
+        .maybeSingle()
+      if (!existing || (existing as any).org_id !== user.org_id) {
+        return NextResponse.json({ error: "Agencia no encontrada" }, { status: 404 })
+      }
+
       const agenciesTable = supabase.from("agencies") as any
       const { data, error } = await agenciesTable
         .update({ name, city, timezone })
         .eq("id", id)
+        .eq("org_id", user.org_id)
         .select()
         .single()
 
@@ -48,10 +65,10 @@ export async function POST(request: Request) {
 
       return NextResponse.json({ success: true, agency: data })
     } else {
-      // Create new agency
+      // Crear agencia NUEVA en la org del user
       const agenciesTable = supabase.from("agencies") as any
       const { data, error } = await agenciesTable
-        .insert({ name, city, timezone })
+        .insert({ name, city, timezone, org_id: user.org_id })
         .select()
         .single()
 

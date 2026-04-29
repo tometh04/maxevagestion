@@ -1,0 +1,3 @@
+operation_file_code,direction,amount,currency,date_due,date_paid,status,method,reference
+OP-20260101-001,INCOME,250000,ARS,2026-02-01,2026-01-28,PAID,TRANSFER,REF-001
+OP-20260101-001,INCOME,250000,ARS,2026-03-01,,PENDING,,

@@ -1,7 +1,14 @@
 /**
- * Audit Log Service
- * 
- * Sistema básico de logs de auditoría para rastrear acciones importantes
+ * @deprecated Use `logAudit` from `@/lib/audit` instead.
+ *
+ * Este módulo quedó como duplicado histórico: apunta a una tabla
+ * `audit_logs` (plural) distinta de la que usa el resto del código
+ * (`audit_log` singular). La función `createAuditLog` aquí abajo sólo
+ * hace console.log (TODO sin completar desde la migración inicial).
+ *
+ * El servicio real, en uso y persistido en BD, está en `lib/audit.ts`.
+ * Migrar cualquier consumer de este archivo a `lib/audit.ts` — después
+ * este archivo puede eliminarse cuando no queden imports.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js"

@@ -1,20 +1,31 @@
+import { cache } from 'react'
 import { createServerClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { Database } from '@/lib/supabase/types'
 
 type User = Database['public']['Tables']['users']['Row']
 
-export async function getCurrentUser(): Promise<{ user: User; session: { user: any } }> {
+// React.cache deduplica DENTRO del mismo request. Multi-tenant safe:
+// per-request scope, no global; distintos users = distintas cookies =
+// distintos requests = distinto cache.
+export const getCurrentUser = cache(async (): Promise<{ user: User; session: { user: any } }> => {
   // BYPASS LOGIN EN DESARROLLO - TODO: Remover antes de producción
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  // Seguridad: si DISABLE_AUTH=true pero NODE_ENV=production, ignoramos la flag.
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV === 'production') {
+    console.warn('⚠️ DISABLE_AUTH ignorada en producción — usando auth real')
+  }
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     // Retornar usuario mock para desarrollo (usar IDs reales para evitar errores de UUID)
     const mockUser: User = {
       id: '9ec9dbcf-5cdd-428f-a303-c3f79b06d0be',
       auth_id: '21b65d51-dedd-4566-bd85-515b6e1fb8fe',
+      org_id: null,
       name: 'Usuario Desarrollo',
       email: 'tomas.sanchez04@gmail.com',
       role: 'SUPER_ADMIN',
       is_active: true,
+      can_view_agency_operations_support: false,
+      can_add_services_on_agency_operations: false,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }
@@ -47,11 +58,11 @@ export async function getCurrentUser(): Promise<{ user: User; session: { user: a
   }
 
   return { user: userData, session: { user: authUser } }
-}
+})
 
-export async function getUserAgencies(userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> {
+export const getUserAgencies = cache(async (userId: string): Promise<Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>> => {
   // BYPASS EN DESARROLLO - Retornar array vacío si falla
-  if (process.env.NODE_ENV === 'development' && process.env.DISABLE_AUTH === 'true') {
+  if (process.env.DISABLE_AUTH === 'true' && process.env.NODE_ENV !== 'production') {
     try {
       const supabase = await createServerClient()
       const { data: agencies } = await supabase
@@ -89,7 +100,7 @@ export async function getUserAgencies(userId: string): Promise<Array<{ agency_id
   }
 
   return (data || []) as Array<{ agency_id: string; agencies: { name: string; city: string; timezone: string } | null }>
-}
+})
 
 // Helper functions para verificación de roles
 export function hasRole(userRole: string, requiredRole: string): boolean {
@@ -98,6 +109,7 @@ export function hasRole(userRole: string, requiredRole: string): boolean {
     SELLER: 2,
     ADMIN: 3,
     SUPER_ADMIN: 4,
+    ORG_OWNER: 4, // SaaS Pilar 4 — alias de SUPER_ADMIN a nivel de jerarquía.
   }
 
   return (roleHierarchy[userRole] || 0) >= (roleHierarchy[requiredRole] || 0)

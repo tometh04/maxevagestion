@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server"
 import { generateAllRecurringPayments } from "@/lib/accounting/recurring-payments"
 
 /**
@@ -9,21 +9,15 @@ import { generateAllRecurringPayments } from "@/lib/accounting/recurring-payment
  */
 export async function POST(request: Request) {
   try {
-    // Verificar autorización: Vercel Cron envía un header especial o usar CRON_SECRET
     const authHeader = request.headers.get("authorization")
     const cronSecret = process.env.CRON_SECRET
-    const vercelCronSecret = request.headers.get("x-vercel-cron-secret")
-    
-    // Permitir si viene de Vercel Cron o si tiene el token correcto
-    const isVercelCron = vercelCronSecret === process.env.CRON_SECRET
-    const hasValidToken = authHeader === `Bearer ${cronSecret}`
-    
-    if (!isVercelCron && !hasValidToken && cronSecret) {
+    if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const supabase = await createServerClient()
-    
+    // SaaS multi-tenant: cron sin user logueado → RLS bloquea. Bypass con admin.
+    const supabase = createAdminClient()
+
     // Usar un usuario del sistema o el primer SUPER_ADMIN
     const { data: adminUser } = await supabase
       .from("users")

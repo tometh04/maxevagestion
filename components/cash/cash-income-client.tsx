@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Search } from "lucide-react"
 import { formatCurrency } from "@/lib/currency"
 import { useDebounce } from "@/hooks/use-debounce"
+import type { DateTypeOption } from "@/components/ui/date-type-filter"
+
+const incomeDateTypes: DateTypeOption[] = [
+  { value: "CREACION", label: "Creación", shortLabel: "Creac." },
+  { value: "PAGO", label: "Cobro", shortLabel: "Cobro" },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 interface CashIncomeClientProps {
   agencies: Array<{ id: string; name: string }>
@@ -25,6 +32,7 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
       params.set("dateTo", filters.dateTo)
+      if (filters.dateType) params.set("dateType", filters.dateType)
       params.set("direction", "INCOME")
       params.set("limit", "1000")
       if (filters.agencyId !== "ALL") {
@@ -61,11 +69,11 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Ingresos</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Ingresos</h1>
         <p className="text-muted-foreground">Todos los ingresos de las operaciones</p>
       </div>
 
-      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} />
+      <CashFilters agencies={agencies} value={filters} defaultValue={defaultFilters} onChange={setFilters} dateTypes={incomeDateTypes} />
 
       {/* Búsqueda por nombre de cliente */}
       <div className="relative max-w-sm">
@@ -80,27 +88,20 @@ export function CashIncomeClient({ agencies, defaultFilters }: CashIncomeClientP
 
       {/* KPIs de totales */}
       <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ingresos ARS</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalIncome.ars, "ARS")}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Ingresos USD</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(totalIncome.usd, "USD")}</div>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Ingresos ARS</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalIncome.ars, "ARS")}</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+            <p className="text-xs font-medium text-muted-foreground">Total Ingresos USD</p>
+            <p className="text-2xl font-semibold tabular-nums tracking-tight">{formatCurrency(totalIncome.usd, "USD")}</p>
+        </div>
       </div>
 
       <PaymentsTable
         dateFrom={filters.dateFrom}
         dateTo={filters.dateTo}
+        dateType={filters.dateType}
         currency={filters.currency}
         agencyId={filters.agencyId}
         direction="INCOME"

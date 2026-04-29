@@ -1,20 +1,34 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { canAccessModule, hasPermission } from "@/lib/permissions"
+import { getUserAgencyIds } from "@/lib/permissions-api"
 import { getAccountBalance, getAccountBalancesBatch, isAccountingOnlyAccount } from "@/lib/accounting/ledger"
 import { canPerformAction } from "@/lib/permissions-api"
+import type { UserRole } from "@/lib/permissions"
 
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
     const { searchParams } = new URL(request.url)
-    
+
+    // Verificar permisos de acceso al módulo cash (financial accounts son parte de cash)
+    if (!canAccessModule(user.role as UserRole, "cash")) {
+      return NextResponse.json({ error: "No tiene permiso para acceder a cuentas financieras" }, { status: 403 })
+    }
+
     // Parámetro opcional: excludeAccountingOnly (excluir cuentas contables CpC/CpP)
     const excludeAccountingOnly = searchParams.get("excludeAccountingOnly") === "true"
 
-    // Get all active financial accounts with agency info
-    const { data: accounts, error: accountsError } = await (supabase.from("financial_accounts") as any)
+    // Obtener agencyIds del usuario para filtrar
+    const userRole = user.role as UserRole
+    const agencyIds = userRole !== "SUPER_ADMIN"
+      ? await getUserAgencyIds(supabase, user.id, userRole)
+      : []
+
+    // Get active financial accounts with agency info
+    let query = (supabase.from("financial_accounts") as any)
       .select(`
         *,
         agencies:agency_id(id, name),
@@ -23,6 +37,21 @@ export async function GET(request: Request) {
         )
       `)
       .eq("is_active", true)
+
+    // Multi-tenant: scope por org del user (financial_accounts.org_id es NOT NULL post-migration 133)
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
+
+    // Para non-SUPER_ADMIN, filtrar por agencias del usuario (incluir cuentas con agency_id null - son compartidas/generales de la org)
+    if (userRole !== "SUPER_ADMIN" && agencyIds.length > 0) {
+      query = query.or(`agency_id.in.(${agencyIds.join(",")}),agency_id.is.null`)
+    } else if (userRole !== "SUPER_ADMIN" && agencyIds.length === 0) {
+      // Si no tiene agencias asignadas, solo ver cuentas compartidas (agency_id null)
+      query = query.is("agency_id", null)
+    }
+
+    const { data: accounts, error: accountsError } = await query
       .order("agency_id", { ascending: true })
       .order("type", { ascending: true })
       .order("currency", { ascending: true })
@@ -83,8 +112,8 @@ export async function POST(request: Request) {
     const { user } = await getCurrentUser()
     const supabase = await createServerClient()
 
-    // Verificar permisos
-    if (!canPerformAction(user, "accounting", "write")) {
+    // Verificar permisos de escritura en módulo cash
+    if (!canPerformAction(user, "cash", "write")) {
       return NextResponse.json({ error: "No tiene permiso para crear cuentas" }, { status: 403 })
     }
 
@@ -158,12 +187,18 @@ export async function POST(request: Request) {
       }
     }
 
+    // Multi-tenant: org_id requerido (NOT NULL post-migration 133).
+    if (!user.org_id) {
+      return NextResponse.json({ error: "Tu usuario no tiene organización asociada" }, { status: 400 })
+    }
+
     // Preparar datos para inserción
     const accountData: any = {
       name,
       type,
       currency,
       agency_id,
+      org_id: user.org_id,
       initial_balance: Number(initial_balance) || 0,
       notes: notes || null,
       is_active: is_active !== undefined ? is_active : true,

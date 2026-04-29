@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { createClient } from "@supabase/supabase-js"
+import { canAccessDocumentResource } from "@/lib/permissions-api"
 import OpenAI from "openai"
 
 export async function POST(request: Request) {
@@ -37,6 +37,17 @@ export async function POST(request: Request) {
 
     if (!documentType) {
       return NextResponse.json({ error: "No se especificó el tipo de documento" }, { status: 400 })
+    }
+
+    const canWriteDocuments = await canAccessDocumentResource(
+      supabase as any,
+      user,
+      { operationId, customerId },
+      { write: true }
+    )
+
+    if (!canWriteDocuments) {
+      return NextResponse.json({ error: "No tiene permiso para subir documentos en este recurso" }, { status: 403 })
     }
 
     // Validar tipo de archivo
@@ -131,7 +142,6 @@ export async function POST(request: Request) {
         
         if (operationCustomer) {
           finalCustomerId = (operationCustomer as any).customer_id
-          console.log(`✅ Documento asociado automáticamente al cliente ${finalCustomerId} de la operación ${operationId}`)
         }
       }
     }
@@ -141,19 +151,19 @@ export async function POST(request: Request) {
       finalCustomerId = customerId
       documentData.customer_id = customerId
       
-      // Buscar todas las operaciones del cliente
+      // Buscar todas las operaciones del cliente. Incluir role en el select
+      // para poder priorizar la operación donde el cliente es MAIN.
       const { data: operationCustomers } = await supabase
         .from("operation_customers")
-        .select("operation_id")
+        .select("operation_id, role")
         .eq("customer_id", customerId)
-      
+
       if (operationCustomers && operationCustomers.length > 0) {
-        // Si el cliente tiene solo una operación, asociar el documento a esa operación
-        // Si tiene múltiples, asociar a todas (o solo a la principal)
+        // Preferir la operación donde el cliente es MAIN (titular). Si no es MAIN
+        // en ninguna, fallback a la primera (acompañante).
         const mainOperation = operationCustomers.find((oc: any) => oc.role === "MAIN") || operationCustomers[0]
         if (mainOperation) {
           documentData.operation_id = mainOperation.operation_id
-          console.log(`✅ Documento asociado automáticamente a la operación ${mainOperation.operation_id} del cliente ${customerId}`)
           
           // También vincular al lead si la operación tiene uno
           const { data: op } = await supabase
@@ -187,12 +197,10 @@ export async function POST(request: Request) {
     // Si es una imagen y es documento de identidad, procesar con IA automáticamente
     let scannedData = null
     if (file.type.startsWith("image/") && ["PASSPORT", "DNI", "LICENSE"].includes(documentType)) {
-      console.log(`📄 Iniciando escaneo OCR para documento tipo: ${documentType}`)
       
       try {
         scannedData = await scanDocumentWithAI(fileUrl, documentType)
         
-        console.log(`📄 Resultado del OCR:`, JSON.stringify(scannedData, null, 2))
         
         // Actualizar el documento con los datos escaneados
         if (scannedData) {
@@ -203,7 +211,6 @@ export async function POST(request: Request) {
           if (updateError) {
             console.error("❌ Error actualizando scanned_data:", updateError)
           } else {
-            console.log("✅ scanned_data actualizado correctamente")
           }
         }
       } catch (error) {
@@ -243,7 +250,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
 
   try {
     // Obtener la imagen
-    console.log("📄 Descargando imagen desde:", fileUrl)
     const imageResponse = await fetch(fileUrl)
     if (!imageResponse.ok) {
       console.error("❌ Error descargando imagen:", imageResponse.status, imageResponse.statusText)
@@ -252,7 +258,6 @@ async function scanDocumentWithAI(fileUrl: string, documentType: string): Promis
 
     const imageBuffer = await imageResponse.arrayBuffer()
     const imageSizeKB = Math.round(imageBuffer.byteLength / 1024)
-    console.log(`📄 Imagen descargada: ${imageSizeKB} KB`)
     
     const base64Image = Buffer.from(imageBuffer).toString("base64")
 
@@ -334,7 +339,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
     }
 
     // Llamar a OpenAI Vision
-    console.log("📄 Llamando a OpenAI Vision...")
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -359,10 +363,8 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
       temperature: 0.1,
     })
     
-    console.log("📄 OpenAI respondió, finish_reason:", completion.choices[0]?.finish_reason)
 
     const responseText = completion.choices[0]?.message?.content || ""
-    console.log("📄 OpenAI response raw:", responseText.substring(0, 500))
     
     if (!responseText || responseText.trim() === "" || responseText.trim() === "{}") {
       console.error("❌ OpenAI devolvió respuesta vacía")
@@ -373,7 +375,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
 
     try {
       parsedData = JSON.parse(responseText)
-      console.log("📄 Parsed JSON successfully:", Object.keys(parsedData))
     } catch (parseError) {
       console.warn("⚠️ No es JSON directo, intentando extraer...")
       
@@ -385,7 +386,6 @@ Si algún campo no está disponible o no es legible, usa null. Devuelve SOLO el 
         try {
           const jsonStr = jsonMatch[1] || jsonMatch[0]
           parsedData = JSON.parse(jsonStr)
-          console.log("📄 Extracted JSON:", Object.keys(parsedData))
         } catch (innerError) {
           console.error("❌ Error parsing extracted JSON:", innerError)
           return null

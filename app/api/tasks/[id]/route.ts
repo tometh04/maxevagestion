@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { dueDateSupportsReminder, normalizeReminderMinutes } from "@/lib/tasks/due-date"
 
 export async function GET(
   request: Request,
@@ -81,6 +82,10 @@ export async function PATCH(
 
     // Build update object (only allowed fields)
     const updates: Record<string, any> = { updated_at: new Date().toISOString() }
+    const normalizedReminderMinutes =
+      body.reminder_minutes !== undefined
+        ? normalizeReminderMinutes(body.reminder_minutes)
+        : undefined
 
     if (body.title !== undefined) updates.title = body.title.trim()
     if (body.description !== undefined) updates.description = body.description?.trim() || null
@@ -94,13 +99,33 @@ export async function PATCH(
     }
     if (body.priority !== undefined) updates.priority = body.priority
     if (body.assigned_to !== undefined) updates.assigned_to = body.assigned_to
-    if (body.due_date !== undefined) updates.due_date = body.due_date || null
+    if (body.due_date !== undefined) {
+      updates.due_date = body.due_date || null
+      updates.reminder_sent = false
+
+      if (!dueDateSupportsReminder(body.due_date) && body.reminder_minutes === undefined) {
+        updates.reminder_minutes = null
+      }
+    }
     if (body.reminder_minutes !== undefined) {
-      updates.reminder_minutes = body.reminder_minutes || null
-      updates.reminder_sent = false // Reset reminder when changed
+      updates.reminder_minutes = normalizedReminderMinutes
+      updates.reminder_sent = false
     }
     if (body.operation_id !== undefined) updates.operation_id = body.operation_id || null
     if (body.customer_id !== undefined) updates.customer_id = body.customer_id || null
+
+    const nextDueDate = updates.due_date !== undefined ? updates.due_date : existing.due_date
+    const nextReminderMinutes =
+      updates.reminder_minutes !== undefined
+        ? updates.reminder_minutes
+        : normalizeReminderMinutes(existing.reminder_minutes)
+
+    if (nextReminderMinutes !== null && !dueDateSupportsReminder(nextDueDate)) {
+      return NextResponse.json(
+        { error: "La alerta requiere una fecha límite con hora" },
+        { status: 400 }
+      )
+    }
 
     const { data: task, error } = await (supabase
       .from("tasks" as any) as any)

@@ -81,7 +81,7 @@ export function CustomerMessagesSection({
 
   const fetchMessages = useCallback(async () => {
     try {
-      const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}`)
+      const response = await fetch(`/api/whatsapp/messages?customerId=${customerId}&channel=WHATSAPP`)
       if (!response.ok) {
         setMessages([])
         return
@@ -193,7 +193,7 @@ export function CustomerMessagesSection({
   }
 
   return (
-    <Card>
+    <Card className="rounded-xl border-border/40">
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle className="flex items-center gap-2">
           <MessageSquare className="h-5 w-5" />
@@ -206,11 +206,11 @@ export function CustomerMessagesSection({
               Nuevo Mensaje
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="px-6 py-5">
             <DialogHeader>
               <DialogTitle>Enviar Mensaje a {customerName}</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 pt-4">
+            <div className="space-y-5">
               <div className="space-y-2">
                 <Label>Template (opcional)</Label>
                 <Select value={selectedTemplate} onValueChange={handleTemplateSelect}>
@@ -260,7 +260,7 @@ export function CustomerMessagesSection({
             {messages.slice(0, 5).map((msg) => (
               <div
                 key={msg.id}
-                className="flex items-start gap-3 p-3 rounded-lg bg-muted/50"
+                className="flex items-start gap-3 p-3 rounded-xl border border-border/40 bg-muted/20"
               >
                 <span className="text-xl">
                   {msg.message_templates?.emoji_prefix || "📱"}

@@ -4,7 +4,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { subMonths, startOfMonth, endOfMonth, format, parseISO, differenceInDays, eachDayOfInterval, startOfDay, endOfDay } from "date-fns"
 import { es } from "date-fns/locale"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
 
 export const dynamic = 'force-dynamic'
 
@@ -87,16 +87,17 @@ export async function GET(request: Request) {
       const hasOperationsInRange = customer.operation_customers?.some((oc: any) => {
         const op = oc.operations
         if (!op) return false
-        const opDate = op.departure_date || op.created_at
-        if (!opDate) return false
-        return opDate >= format(filterFrom, "yyyy-MM-dd") && opDate <= format(filterTo, "yyyy-MM-dd")
+        const rawDate = op.departure_date || op.created_at
+        if (!rawDate) return false
+        const opDateStr = String(rawDate).split("T")[0]
+        return opDateStr >= format(filterFrom, "yyyy-MM-dd") && opDateStr <= format(filterTo, "yyyy-MM-dd")
       })
 
       return isNewInRange || hasOperationsInRange
     })
 
     // Obtener tasa de cambio más reciente como fallback
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
     // Estadísticas generales
     const totalCustomers = filteredCustomers.length
@@ -184,12 +185,13 @@ export async function GET(request: Request) {
         .filter((op: any) => {
           if (!op || !["CONFIRMED", "TRAVELLED", "RESERVED"].includes(op.status)) return false
           // Filtrar por rango de fechas
-          const opDate = op.departure_date || op.created_at
-          if (!opDate) return true // Si no tiene fecha, incluir por defecto
-          return opDate >= filterFromStr && opDate <= filterToStr
+          const rawDate = op.departure_date || op.created_at
+          if (!rawDate) return true // Si no tiene fecha, incluir por defecto
+          const opDateStr = String(rawDate).split("T")[0]
+          return opDateStr >= filterFromStr && opDateStr <= filterToStr
         })
 
-      let totalSpentUsd = 0
+      let totalSpent = 0
       for (const op of operations) {
         const saleCurrency = op.sale_currency || op.currency || "USD"
         const saleAmount = parseFloat(op.sale_amount_total) || 0
@@ -200,14 +202,14 @@ export async function GET(request: Request) {
           if (!exchangeRate) {
             exchangeRate = latestExchangeRate
           }
-          totalSpentUsd += saleAmount / exchangeRate
+          totalSpent += saleAmount / exchangeRate
         } else {
-          totalSpentUsd += saleAmount
+          totalSpent += saleAmount
         }
       }
 
       const totalOperations = operations.length
-      const avgTicketUsd = totalOperations > 0 ? totalSpentUsd / totalOperations : 0
+      const avgTicketUsd = totalOperations > 0 ? totalSpent / totalOperations : 0
 
       const lastOperationDate = operations.length > 0
         ? operations
@@ -225,7 +227,7 @@ export async function GET(request: Request) {
         email: customer.email,
         phone: customer.phone,
         totalOperations,
-        totalSpentUsd,
+        totalSpent,
         avgTicketUsd,
         lastOperationDate: lastOperationDate?.toISOString() || null,
         isActive,
@@ -234,8 +236,8 @@ export async function GET(request: Request) {
 
     // Top 10 clientes por gasto
     const topBySpending = [...customerStats]
-      .filter(c => c.totalSpentUsd > 0)
-      .sort((a, b) => b.totalSpentUsd - a.totalSpentUsd)
+      .filter(c => c.totalSpent > 0)
+      .sort((a, b) => b.totalSpent - a.totalSpent)
       .slice(0, 10)
 
     // Top 10 clientes por frecuencia
@@ -254,12 +256,12 @@ export async function GET(request: Request) {
     ]
 
     customerStats.forEach(c => {
-      const range = spendingRanges.find(r => c.totalSpentUsd >= r.min && c.totalSpentUsd < r.max)
+      const range = spendingRanges.find(r => c.totalSpent >= r.min && c.totalSpent < r.max)
       if (range) range.count++
     })
 
     // Calcular totales
-    const totalSpentAllUsd = customerStats.reduce((sum, c) => sum + c.totalSpentUsd, 0)
+    const totalSpentAllUsd = customerStats.reduce((sum, c) => sum + c.totalSpent, 0)
     const totalOperationsAll = customerStats.reduce((sum, c) => sum + c.totalOperations, 0)
     const avgSpentPerCustomer = totalCustomers > 0 ? totalSpentAllUsd / totalCustomers : 0
     const avgOperationsPerCustomer = totalCustomers > 0 ? totalOperationsAll / totalCustomers : 0

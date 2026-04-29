@@ -14,14 +14,18 @@ import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ServerPagination } from "@/components/ui/server-pagination"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
+import Link from "next/link"
+import { CashMovementReverseButton } from "@/components/cash/cash-movement-reverse-button"
+import { Undo2 } from "lucide-react"
 
 interface MovementOperation {
   id: string
   destination: string
   agency_id?: string | null
-  agencies?: { 
+  agencies?: {
     id: string
-    name: string | null 
+    name: string | null
   } | null
 }
 
@@ -37,6 +41,10 @@ export interface CashMovement {
   currency: string
   movement_date: string
   notes: string | null
+  affects_balance?: boolean
+  reversed_at?: string | null
+  reverses_movement_id?: string | null
+  reversed_by_movement_id?: string | null
   operations?: MovementOperation | null
   users?: MovementUser | null
 }
@@ -45,49 +53,61 @@ interface MovementsTableProps {
   movements?: CashMovement[] // Opcional: si no se pasa, carga sus propios datos con paginación
   isLoading?: boolean
   emptyMessage?: string
+  userRole?: string
   // Filtros para paginación server-side
   dateFrom?: string
   dateTo?: string
+  dateType?: string
   currency?: string
   agencyId?: string
   type?: string
+  customerQuery?: string
 }
 
-export function MovementsTable({ 
-  movements: initialMovements, 
-  isLoading: externalLoading = false, 
+export function MovementsTable({
+  movements: initialMovements,
+  isLoading: externalLoading = false,
   emptyMessage,
+  userRole,
   dateFrom,
   dateTo,
+  dateType,
   currency,
   agencyId,
   type,
+  customerQuery,
 }: MovementsTableProps) {
+  const canReverse = ["ADMIN", "SUPER_ADMIN", "CONTABLE"].includes(userRole || "")
   const [movements, setMovements] = useState<CashMovement[]>(initialMovements || [])
   const [loading, setLoading] = useState(!initialMovements)
-  
+
   // Estado de paginación server-side
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(50)
+  const [limit, setLimit] = useState(20)
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
   const [hasMore, setHasMore] = useState(false)
-  
-  // Si se pasan movements como prop, usarlos (modo legacy)
-  // Si no, cargar con paginación server-side
+
   const useServerPagination = !initialMovements
-  
+
+  const { sortedData, sortConfig, requestSort } = useSortableData(movements, {
+    key: "movement_date",
+    direction: "desc",
+  })
+
   const fetchMovements = useCallback(async () => {
-    if (!useServerPagination) return // Si se pasan movements como prop, no cargar
-    
+    if (!useServerPagination) return
+
     setLoading(true)
     try {
       const params = new URLSearchParams()
       if (dateFrom) params.append("dateFrom", dateFrom)
       if (dateTo) params.append("dateTo", dateTo)
+      if (dateType) params.append("dateType", dateType)
       if (currency) params.append("currency", currency)
       if (agencyId && agencyId !== "ALL") params.append("agencyId", agencyId)
       if (type && type !== "ALL") params.append("type", type)
+      if (customerQuery && customerQuery.trim()) params.append("customerQuery", customerQuery.trim())
       params.append("page", page.toString())
       params.append("limit", limit.toString())
 
@@ -95,7 +115,6 @@ export function MovementsTable({
       if (response.ok) {
         const data = await response.json()
         setMovements(data.movements || [])
-        // El API retorna paginación dentro de un objeto 'pagination'
         const pagination = data.pagination || {}
         setTotal(pagination.total || 0)
         setTotalPages(pagination.totalPages || 0)
@@ -106,94 +125,132 @@ export function MovementsTable({
     } finally {
       setLoading(false)
     }
-  }, [useServerPagination, dateFrom, dateTo, currency, agencyId, type, page, limit])
-  
+  }, [useServerPagination, dateFrom, dateTo, dateType, currency, agencyId, type, customerQuery, page, limit])
+
   useEffect(() => {
     fetchMovements()
   }, [fetchMovements])
-  
-  // Si se pasan movements como prop, actualizar cuando cambien
+
   useEffect(() => {
     if (initialMovements) {
       setMovements(initialMovements)
     }
   }, [initialMovements])
-  
+
   const isLoading = externalLoading || (loading && useServerPagination)
-  const rowsToRender = useMemo(() => {
-    if (isLoading) {
-      return Array.from({ length: 5 }).map((_, index) => (
-        <TableRow key={`skeleton-${index}`}>
-          <TableCell colSpan={7}>
-            <Skeleton className="h-6 w-full" />
-          </TableCell>
-        </TableRow>
-      ))
-    }
-
-    if (movements.length === 0) {
-      return (
-        <TableRow>
-          <TableCell colSpan={7} className="text-center text-muted-foreground">
-            {emptyMessage || "No hay movimientos"}
-          </TableCell>
-        </TableRow>
-      )
-    }
-
-    return movements.map((movement) => (
-      <TableRow key={movement.id}>
-        <TableCell className="whitespace-nowrap">
-          {format(new Date(movement.movement_date), "dd/MM/yyyy HH:mm", { locale: es })}
-        </TableCell>
-        <TableCell>
-          <Badge variant={movement.type === "INCOME" ? "default" : "destructive"}>
-            {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
-          </Badge>
-        </TableCell>
-        <TableCell>
-          <div className="space-y-1">
-            <p className="font-medium">{movement.category}</p>
-            <p className="text-xs text-muted-foreground">
-              {movement.operations?.agencies?.name || "Sin agencia"}
-            </p>
-          </div>
-        </TableCell>
-        <TableCell>
-          <div className="space-y-1">
-            <p className="font-medium">{movement.operations?.destination || "Manual"}</p>
-            <p className="text-xs text-muted-foreground">{movement.operations?.id || "-"}</p>
-          </div>
-        </TableCell>
-        <TableCell className="text-right">
-          {movement.currency} {movement.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
-        </TableCell>
-        <TableCell>{movement.users?.name || "-"}</TableCell>
-        <TableCell>{movement.notes || "-"}</TableCell>
-      </TableRow>
-    ))
-  }, [movements, isLoading, emptyMessage])
 
   return (
     <div className="space-y-4">
-      <div className="rounded-md border">
+      <div className="rounded-xl border border-border/40 max-h-[60vh] overflow-y-auto">
         <Table>
-        <TableHeader>
+        <TableHeader className="sticky top-0 bg-background z-10">
           <TableRow>
-            <TableHead>Fecha</TableHead>
-            <TableHead>Tipo</TableHead>
-            <TableHead>Categoría / Agencia</TableHead>
-            <TableHead>Operación</TableHead>
-            <TableHead className="text-right">Monto</TableHead>
-            <TableHead>Usuario</TableHead>
+            <SortableTableHead sortKey="movement_date" sortConfig={sortConfig} onSort={requestSort}>
+              Fecha
+            </SortableTableHead>
+            <SortableTableHead sortKey="type" sortConfig={sortConfig} onSort={requestSort}>
+              Tipo
+            </SortableTableHead>
+            <SortableTableHead sortKey="category" sortConfig={sortConfig} onSort={requestSort}>
+              Categoría / Agencia
+            </SortableTableHead>
+            <SortableTableHead sortKey="operations.destination" sortConfig={sortConfig} onSort={requestSort}>
+              Operación
+            </SortableTableHead>
+            <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="text-right">
+              Monto
+            </SortableTableHead>
+            <SortableTableHead sortKey="users.name" sortConfig={sortConfig} onSort={requestSort}>
+              Usuario
+            </SortableTableHead>
             <TableHead>Notas</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>{rowsToRender}        </TableBody>
+        <TableBody>
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, index) => (
+              <TableRow key={`skeleton-${index}`}>
+                <TableCell colSpan={8}>
+                  <Skeleton className="h-6 w-full" />
+                </TableCell>
+              </TableRow>
+            ))
+          ) : sortedData.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={8} className="text-center text-muted-foreground">
+                {emptyMessage || "No hay movimientos"}
+              </TableCell>
+            </TableRow>
+          ) : (
+            sortedData.map((movement) => (
+              <TableRow key={movement.id}>
+                <TableCell className="whitespace-nowrap">
+                  {format(new Date(movement.movement_date), "dd/MM/yyyy HH:mm", { locale: es })}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="secondary" className={movement.type === "INCOME" ? "bg-success/10 text-success border-success/20" : "bg-destructive/10 text-destructive border-destructive/20"}>
+                    {movement.type === "INCOME" ? "Ingreso" : "Egreso"}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    <p className="font-medium">{movement.category}</p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-muted-foreground">
+                        {movement.operations?.agencies?.name || "Sin agencia"}
+                      </p>
+                      {movement.affects_balance === false && (
+                        <Badge variant="outline" className="text-[10px]">
+                          No afecta saldo
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="space-y-1">
+                    {movement.operations?.id ? (
+                      <Link
+                        href={`/operations/${movement.operations.id}`}
+                        className="font-medium text-primary hover:underline"
+                        prefetch={false}
+                      >
+                        {movement.operations?.destination || "Manual"}
+                      </Link>
+                    ) : (
+                      <p className="font-medium">{movement.operations?.destination || "Manual"}</p>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className={`text-right ${movement.type === "INCOME" ? "text-success" : "text-destructive"} ${movement.reversed_at ? "line-through text-muted-foreground" : ""}`}>
+                  {movement.currency} {movement.amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                </TableCell>
+                <TableCell>{movement.users?.name || "-"}</TableCell>
+                <TableCell>{movement.notes || "-"}</TableCell>
+                <TableCell className="text-right">
+                  {movement.reversed_at ? (
+                    <Badge variant="secondary">REVERSADO</Badge>
+                  ) : movement.reverses_movement_id ? (
+                    <Badge variant="outline" className="border-blue-300 text-blue-700">
+                      <Undo2 className="h-2.5 w-2.5 mr-1" /> Reverso
+                    </Badge>
+                  ) : (
+                    <CashMovementReverseButton
+                      movementId={movement.id}
+                      endpoint="cash-movements"
+                      movementLabel={movement.type === "INCOME" ? "ingreso" : "egreso"}
+                      disabled={!canReverse}
+                    />
+                  )}
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
       </Table>
       </div>
-      
-      {/* Paginación server-side (solo si no se pasan movements como prop) */}
+
       {useServerPagination && total > 0 && (
         <ServerPagination
           page={page}
@@ -204,9 +261,9 @@ export function MovementsTable({
           onPageChange={setPage}
           onLimitChange={(newLimit) => {
             setLimit(newLimit)
-            setPage(1) // Resetear a página 1
+            setPage(1)
           }}
-          limitOptions={[25, 50, 100, 200]}
+          limitOptions={[20, 50, 100]}
         />
       )}
     </div>

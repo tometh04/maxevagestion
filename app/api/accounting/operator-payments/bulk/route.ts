@@ -7,7 +7,7 @@ import {
   validateSufficientBalance,
   isAccountingOnlyAccount,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { roundMoney } from "@/lib/currency"
 
 interface ToProcessItem {
@@ -35,9 +35,31 @@ export async function POST(request: Request) {
       payment_date,
       notes,
       deposit_bonus,
+      apply_retention_ganancias,
+      apply_retention_iva,
+      retention_ganancias_override,
+      retention_iva_override,
     } = body
 
     const hasDepositBonus = deposit_bonus?.enabled && deposit_bonus?.percentage > 0 && deposit_bonus?.bonus_account_id
+
+    // Load tax settings for automatic retentions
+    let retentionGananciasRate = 0
+    let retentionIvaRate = 0
+    if (apply_retention_ganancias || apply_retention_iva) {
+      const { data: taxSettings } = await (supabase.from("financial_settings") as any)
+        .select("retention_ganancias_rate, retention_iva_rate")
+        .limit(1)
+        .maybeSingle()
+      if (taxSettings) {
+        retentionGananciasRate = apply_retention_ganancias
+          ? (retention_ganancias_override ?? (Number(taxSettings.retention_ganancias_rate) || 0))
+          : 0
+        retentionIvaRate = apply_retention_iva
+          ? (retention_iva_override ?? (Number(taxSettings.retention_iva_rate) || 0))
+          : 0
+      }
+    }
 
     if (!payments || !Array.isArray(payments) || payments.length === 0) {
       return NextResponse.json({ error: "Debe especificar al menos un pago" }, { status: 400 })
@@ -60,7 +82,6 @@ export async function POST(request: Request) {
     }
 
     const accountCurrency = paymentAccount.currency as "ARS" | "USD"
-    console.log("[BulkPayment API] Cuenta:", paymentAccount.name, "currency:", accountCurrency, "payment_currency:", payment_currency)
     if (accountCurrency !== payment_currency) {
       console.error("[BulkPayment API] ❌ Moneda mismatch:", accountCurrency, "vs", payment_currency)
       return NextResponse.json(
@@ -78,13 +99,15 @@ export async function POST(request: Request) {
     }
 
     let exchangeRateValue: number | null = null
+    const rateDate = payment_date ? new Date(payment_date) : new Date()
     if (payment_currency === "USD") {
-      const rateDate = payment_date ? new Date(payment_date) : new Date()
-      exchangeRateValue = await getExchangeRate(supabase, rateDate)
-      if (!exchangeRateValue) exchangeRateValue = await getLatestExchangeRate(supabase)
-      if (!exchangeRateValue) exchangeRateValue = 1450
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "bulk-operator-payments")
+      exchangeRateValue = rateResult.rate
     } else if (exchange_rate != null) {
       exchangeRateValue = parseFloat(String(exchange_rate))
+    } else {
+      const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "bulk-operator-payments-ars")
+      exchangeRateValue = rateResult.rate
     }
 
     const errors: string[] = []
@@ -129,7 +152,7 @@ export async function POST(request: Request) {
 
       amountInPaymentCurrency = roundMoney(amountInPaymentCurrency)
       if (payment_currency === "USD") {
-        amountARS = roundMoney(amountInPaymentCurrency * (exchangeRateValue ?? 1450))
+        amountARS = roundMoney(amountInPaymentCurrency * exchangeRateValue!)
       } else {
         amountARS = amountInPaymentCurrency
       }
@@ -173,14 +196,12 @@ export async function POST(request: Request) {
     }
     const actualDebitFromAccount = roundMoney(totalDebit - bonusTotal)
 
-    console.log("[BulkPayment API] totalDebit:", totalDebit, "bonusTotal:", bonusTotal, "actualDebitFromAccount:", actualDebitFromAccount)
     const balanceCheck = await validateSufficientBalance(
       payment_account_id,
       actualDebitFromAccount,
       payment_currency as "ARS" | "USD",
       supabase
     )
-    console.log("[BulkPayment API] Balance check:", balanceCheck)
     if (!balanceCheck.valid) {
       console.error("[BulkPayment API] ❌ Saldo insuficiente:", balanceCheck.error)
       return NextResponse.json(
@@ -203,14 +224,26 @@ export async function POST(request: Request) {
 
     let costAccountId: string
     if (costosChart) {
-      const { data: costosFA } = await (supabase.from("financial_accounts") as any)
+      // Buscar la FA canónica (la más antigua) asociada a "Costos de Operadores" (4.2.01).
+      // IMPORTANTE: .order("created_at").limit(1) es crítico para NO generar duplicados.
+      // Bug previo (pre-Abr/2026): filtrábamos por paymentAccount.currency en el lookup pero
+      // el INSERT clavaba currency='ARS', así que pagos USD nunca encontraban FA y creaban
+      // duplicados ARS sin parar. Adicionalmente, .maybeSingle() con 2+ filas erra silencioso
+      // y caía al INSERT otra vez → crecimiento exponencial (llegamos a 42 duplicados en prod).
+      // Mismo patrón que getOrCreateDefaultAccount en lib/accounting/ledger.ts.
+      const { data: costosFAList } = await (supabase.from("financial_accounts") as any)
         .select("id")
         .eq("chart_account_id", costosChart.id)
         .eq("is_active", true)
-        .maybeSingle()
-      if (costosFA?.id) {
-        costAccountId = costosFA.id
+        .order("created_at", { ascending: true })
+        .limit(1)
+
+      const existingFA = (costosFAList as Array<{ id: string }> | null)?.[0]
+
+      if (existingFA?.id) {
+        costAccountId = existingFA.id
       } else {
+        // No existe ninguna: crear la canónica (una sola vez).
         const { data: newFA, error: insErr } = await (supabase.from("financial_accounts") as any)
           .insert({
             name: "Costo de Operadores",
@@ -238,9 +271,16 @@ export async function POST(request: Request) {
     for (const item of toProcess) {
       try {
         const { operator_payment_id, operation_id, amount_to_pay } = item.paymentItem
-        const paymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
+        const operatorPaymentCurrency = item.operatorPayment.currency as "ARS" | "USD"
         const sellerId = item.operation?.seller_id ?? null
-        const operatorId = item.operation?.operator_id ?? null
+        const operatorId = item.operatorPayment?.operator_id ?? item.operation?.operator_id ?? null
+        const paymentEquivalentAmount = roundMoney(item.amountInPaymentCurrency)
+        const paymentEquivalentUsd =
+          payment_currency === "USD"
+            ? paymentEquivalentAmount
+            : (exchangeRateValue && exchangeRateValue > 0
+              ? roundMoney(paymentEquivalentAmount / exchangeRateValue)
+              : null)
 
         // Calcular el monto real que sale de caja (descontando bonificación proporcional)
         let expenseAmount = item.amountInPaymentCurrency
@@ -249,10 +289,23 @@ export async function POST(request: Request) {
           const pct = deposit_bonus.percentage
           expenseAmount = roundMoney(item.amountInPaymentCurrency / (1 + pct / 100))
           if (payment_currency === "USD") {
-            expenseARS = roundMoney(expenseAmount * (exchangeRateValue ?? 1450))
+            expenseARS = roundMoney(expenseAmount * exchangeRateValue!)
           } else {
             expenseARS = expenseAmount
           }
+        }
+
+        // Verificar duplicados antes de crear el movimiento
+        const { data: existingBulk } = await (supabase.from("ledger_movements") as any)
+          .select("id")
+          .eq("operation_id", operation_id)
+          .eq("type", "EXPENSE")
+          .eq("amount_original", expenseAmount)
+          .eq("account_id", payment_account_id)
+          .limit(1)
+        if (existingBulk && existingBulk.length > 0) {
+          errors.push(`Movimiento duplicado detectado para operación ${operation_id}, se omitió`)
+          continue
         }
 
         const ledgerMovementResult = await createLedgerMovement(
@@ -279,8 +332,8 @@ export async function POST(request: Request) {
         )
 
         const costAmount = parseFloat(String(amount_to_pay))
-        const costARS = paymentCurrency === "USD"
-          ? roundMoney(costAmount * (exchangeRateValue ?? 1450))
+        const costARS = operatorPaymentCurrency === "USD"
+          ? roundMoney(costAmount * exchangeRateValue!)
           : costAmount
 
         await createLedgerMovement(
@@ -289,9 +342,9 @@ export async function POST(request: Request) {
             lead_id: null,
             type: "OPERATOR_PAYMENT",
             concept: `Costo operador - Operación ${operation_id.slice(0, 8)}`,
-            currency: paymentCurrency,
+            currency: operatorPaymentCurrency,
             amount_original: roundMoney(costAmount),
-            exchange_rate: paymentCurrency === "USD" ? (exchangeRateValue ?? 1450) : null,
+            exchange_rate: operatorPaymentCurrency === "USD" ? exchangeRateValue! : null,
             amount_ars_equivalent: roundMoney(costARS),
             method: ledgerMethod,
             account_id: costAccountId,
@@ -322,11 +375,125 @@ export async function POST(request: Request) {
           continue
         }
 
+        const paymentReference = [receipt_number, notes].filter(Boolean).join(" - ") || receipt_number
+        const paymentData = {
+          operation_id,
+          operator_id: operatorId,
+          operator_payment_id,
+          source: "OPERATOR_BULK",
+          payer_type: "OPERATOR" as const,
+          direction: "EXPENSE" as const,
+          method: "Pago Masivo",
+          amount: paymentEquivalentAmount,
+          currency: payment_currency,
+          exchange_rate: exchangeRateValue,
+          amount_usd: paymentEquivalentUsd,
+          date_paid: payment_date,
+          date_due: payment_date,
+          status: "PAID" as const,
+          reference: paymentReference || null,
+          ledger_movement_id: ledgerMovementResult.id,
+        }
+
+        const { data: paymentRecord, error: paymentInsertError } = await (supabase.from("payments") as any)
+          .insert(paymentData)
+          .select("id")
+          .single()
+
+        if (paymentInsertError || !paymentRecord?.id) {
+          errors.push(`Pago aplicado sin reflejo en operación ${operation_id.slice(0, 8)}: ${paymentInsertError?.message || "No se pudo registrar el payment"}`)
+        }
+
+        // Si se pagó más que el monto original (hasta 10% extra), actualizar operator_cost y monto de la deuda
+        const originalAmount = parseFloat(item.operatorPayment.amount)
+        if (item.newPaidAmount > originalAmount) {
+          const extraAmount = roundMoney(item.newPaidAmount - originalAmount)
+          // Actualizar el monto de la deuda del operador para reflejar el pago extra
+          await (supabase.from("operator_payments") as any)
+            .update({ amount: item.newPaidAmount, updated_at: new Date().toISOString() })
+            .eq("id", operator_payment_id)
+
+          // Actualizar el operator_cost de la operación en tiempo real
+          if (item.paymentItem.operation_id) {
+            const { data: currentOp } = await (supabase.from("operations") as any)
+              .select("operator_cost, sale_amount_total")
+              .eq("id", item.paymentItem.operation_id)
+              .single()
+
+            if (currentOp) {
+              const newCost = roundMoney(parseFloat(currentOp.operator_cost) + extraAmount)
+              const newMargin = roundMoney(parseFloat(currentOp.sale_amount_total) - newCost)
+              const newMarginPct = parseFloat(currentOp.sale_amount_total) > 0
+                ? roundMoney((newMargin / parseFloat(currentOp.sale_amount_total)) * 100)
+                : 0
+
+              await (supabase.from("operations") as any)
+                .update({
+                  operator_cost: newCost,
+                  margin_amount: newMargin,
+                  margin_percentage: newMarginPct,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", item.paymentItem.operation_id)
+            }
+          }
+        }
+
         processedPayments.push({
           operator_payment_id,
           amount_paid: amount_to_pay,
           new_status: item.isFullyPaid ? "PAID" : "PENDING",
         })
+
+        // Auto-create retenciones if configured
+        const paymentAmount = Number(amount_to_pay)
+        const taxPeriod = (payment_date || new Date().toISOString()).substring(0, 7)
+
+        // Get operator info for counterpart data
+        const operatorName = item.operatorPayment?.operators?.name || item.operation?.operators?.name || null
+        const operatorCuit = null // TODO: add cuit to operators table
+
+        if (retentionGananciasRate > 0 && paymentAmount > 0) {
+          const retAmount = roundMoney(paymentAmount * retentionGananciasRate / 100)
+          await (supabase.from("tax_withholdings") as any).insert({
+            type: "RETENCION_GANANCIAS",
+            direction: "PRACTICED",
+            source_type: "OPERATOR_PAYMENT",
+            source_id: operator_payment_id,
+            operation_id: item.paymentItem.operation_id,
+            operator_id: item.operatorPayment?.operator_id || null,
+            counterpart_name: operatorName,
+            counterpart_cuit: operatorCuit,
+            currency: payment_currency,
+            amount: retAmount,
+            tax_period: taxPeriod,
+            withholding_date: payment_date || new Date().toISOString().split("T")[0],
+            status: "PENDING",
+            notes: `Retención auto - ${retentionGananciasRate}% sobre ${payment_currency} ${paymentAmount}`,
+            created_by: user.id,
+          })
+        }
+
+        if (retentionIvaRate > 0 && paymentAmount > 0) {
+          const retAmount = roundMoney(paymentAmount * retentionIvaRate / 100)
+          await (supabase.from("tax_withholdings") as any).insert({
+            type: "RETENCION_IVA",
+            direction: "PRACTICED",
+            source_type: "OPERATOR_PAYMENT",
+            source_id: operator_payment_id,
+            operation_id: item.paymentItem.operation_id,
+            operator_id: item.operatorPayment?.operator_id || null,
+            counterpart_name: operatorName,
+            counterpart_cuit: operatorCuit,
+            currency: payment_currency,
+            amount: retAmount,
+            tax_period: taxPeriod,
+            withholding_date: payment_date || new Date().toISOString().split("T")[0],
+            status: "PENDING",
+            notes: `Retención auto - ${retentionIvaRate}% sobre ${payment_currency} ${paymentAmount}`,
+            created_by: user.id,
+          })
+        }
       } catch (e: any) {
         errors.push(`Error procesando ${item.paymentItem.operator_payment_id}: ${e?.message ?? String(e)}`)
       }
@@ -343,7 +510,7 @@ export async function POST(request: Request) {
     if (hasDepositBonus && bonusTotal > 0 && processedPayments.length > 0) {
       try {
         const bonusARS = payment_currency === "USD"
-          ? roundMoney(bonusTotal * (exchangeRateValue ?? 1450))
+          ? roundMoney(bonusTotal * exchangeRateValue!)
           : bonusTotal
 
         await createLedgerMovement(

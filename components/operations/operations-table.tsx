@@ -21,7 +21,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { EditOperationDialog } from "./edit-operation-dialog"
+import dynamic from "next/dynamic"
+
+// Lazy load: edit-operation-dialog pesa ~1200 líneas y sólo se abre al
+// editar una operación desde el listado.
+const EditOperationDialog = dynamic(
+  () => import("./edit-operation-dialog").then((m) => ({ default: m.EditOperationDialog })),
+  { ssr: false }
+)
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,11 +51,14 @@ const statusLabels: Record<string, string> = {
 
 interface Operation {
   id: string
+  seller_id: string
   destination: string
   operation_date: string | null
   departure_date: string
   return_date: string | null
   sellers: { name: string } | null
+  sellers_secondary?: { name: string } | null
+  commission_split?: number | null
   operators: { name: string } | null
   operation_operators?: Array<{
     id: string
@@ -88,6 +98,7 @@ interface OperationsTableProps {
   }
   userRole: string
   userId: string
+  canViewAgencyOperationsSupport: boolean
   userAgencyIds: string[]
 }
 
@@ -95,6 +106,7 @@ export function OperationsTable({
   initialFilters,
   userRole,
   userId,
+  canViewAgencyOperationsSupport,
   userAgencyIds,
 }: OperationsTableProps) {
   const [operations, setOperations] = useState<Operation[]>([])
@@ -122,6 +134,7 @@ export function OperationsTable({
   const [agencies, setAgencies] = useState<Array<{ id: string; name: string }>>([])
   const [sellers, setSellers] = useState<Array<{ id: string; name: string }>>([])
   const [allOperators, setAllOperators] = useState<Array<{ id: string; name: string }>>([])
+  const hideFinancialColumns = userRole === "SELLER" && canViewAgencyOperationsSupport
   
   // Cargar datos auxiliares para el diálogo
   const loadDialogData = useCallback(async () => {
@@ -143,8 +156,13 @@ export function OperationsTable({
       setAllOperators((operatorsData.operators || []).map((o: any) => ({ id: o.id, name: o.name })))
     } catch (error) {
       console.error("Error loading dialog data:", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar datos del formulario",
+        variant: "destructive",
+      })
     }
-  }, [])
+  }, [toast])
   
   const handleEditClick = useCallback(async (operation: Operation) => {
     if (agencies.length === 0) {
@@ -187,10 +205,15 @@ export function OperationsTable({
       }
     } catch (error) {
       console.error("Error fetching operations:", error)
+      toast({
+        title: "Error",
+        description: "Error al cargar las operaciones",
+        variant: "destructive",
+      })
     } finally {
       setLoading(false)
     }
-  }, [filters, page, limit, debouncedSearch])
+  }, [filters, page, limit, debouncedSearch, toast])
 
   const handleDeleteClick = useCallback((operation: Operation) => {
     setDeletingOperation(operation)
@@ -264,14 +287,18 @@ export function OperationsTable({
     }
   }, [fetchOperations])
 
-  const columns: ColumnDef<Operation>[] = useMemo(
-    () => [
+  const columns: ColumnDef<Operation>[] = useMemo(() => {
+    const cols: ColumnDef<Operation>[] = [
       {
         id: "actions",
         header: "Acciones",
         enableHiding: false,
         cell: ({ row }) => {
           const operation = row.original
+          const canEditOperation =
+            userRole === "SELLER"
+              ? operation.seller_id === userId
+              : !["VIEWER", "CONTABLE"].includes(userRole)
 
           return (
             <DropdownMenu>
@@ -289,17 +316,21 @@ export function OperationsTable({
                     Ver detalles
                   </Link>
                 </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleEditClick(operation)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Editar
-                </DropdownMenuItem>
+                {canEditOperation && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => handleEditClick(operation)}>
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Editar
+                    </DropdownMenuItem>
+                  </>
+                )}
                 {["ADMIN", "SUPER_ADMIN"].includes(userRole) && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem 
+                    <DropdownMenuItem
                       onClick={() => handleDeleteClick(operation)}
-                      className="text-red-600 focus:text-red-600"
+                      className="text-destructive focus:text-destructive"
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Eliminar
@@ -320,7 +351,7 @@ export function OperationsTable({
           const opDate = row.original.operation_date || row.original.created_at
           if (!opDate) return <div className="text-xs">-</div>
           try {
-            const dateStr = typeof opDate === 'string' && opDate.includes('T') ? opDate : `${opDate}T12:00:00`
+            const dateStr = typeof opDate === "string" && opDate.includes("T") ? opDate : `${opDate}T12:00:00`
             return (
               <div className="text-xs font-medium">
                 {format(new Date(dateStr), "dd/MM/yy", { locale: es })}
@@ -348,11 +379,7 @@ export function OperationsTable({
           }
           const type = row.original.type
           if (!type) return <div className="text-xs">-</div>
-          return (
-            <div className="text-xs font-medium">
-              {typeLabels[type] || type}
-            </div>
-          )
+          return <div className="text-xs font-medium">{typeLabels[type] || type}</div>
         },
       },
       {
@@ -374,14 +401,13 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Destino" />
         ),
-        enableHiding: false, // No permitir ocultar esta columna importante
+        enableHiding: false,
         cell: ({ row }) => {
-          // Priorizar destino de la operación, si no existe usar el destino del lead
           const destination = row.original.destination || row.original.leads?.destination || "-"
           return (
             <div className="max-w-[120px] truncate text-xs font-medium" title={destination}>
               {destination}
-          </div>
+            </div>
           )
         },
       },
@@ -415,11 +441,22 @@ export function OperationsTable({
         header: ({ column }) => (
           <DataTableColumnHeader column={column} title="Vend." />
         ),
-        cell: ({ row }) => (
-          <div className="text-xs max-w-[60px] truncate" title={row.original.sellers?.name || "-"}>
-            {row.original.sellers?.name || "-"}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const op = row.original as any
+          const primary = op.sellers?.name || "-"
+          const secondary = op.sellers_secondary?.name
+          const split = op.commission_split
+          return (
+            <div className="flex flex-col gap-0.5 max-w-[80px]">
+              <div className="text-xs truncate" title={primary}>{primary}</div>
+              {secondary && (
+                <div className="text-[10px] text-muted-foreground truncate" title={`${secondary}${split != null ? ` (${100 - split}%)` : ""}`}>
+                  + {secondary}{split != null ? ` (${100 - split}%)` : ""}
+                </div>
+              )}
+            </div>
+          )
+        },
       },
       {
         accessorKey: "operators",
@@ -428,7 +465,6 @@ export function OperationsTable({
         ),
         cell: ({ row }) => {
           const operation = row.original as any
-          // Si hay operation_operators, mostrar todos; si no, mostrar el operador principal
           if (operation.operation_operators && operation.operation_operators.length > 0) {
             const operatorsList = operation.operation_operators
               .map((oo: any) => oo.operators?.name || "Sin nombre")
@@ -438,13 +474,16 @@ export function OperationsTable({
                 {operatorsList}
               </div>
             )
-          } else if (operation.operators?.name) {
+          }
+
+          if (operation.operators?.name) {
             return (
               <div className="text-xs max-w-[80px] truncate" title={operation.operators.name}>
                 {operation.operators.name}
               </div>
             )
           }
+
           return <div className="text-xs">-</div>
         },
       },
@@ -478,107 +517,114 @@ export function OperationsTable({
           )
         },
       },
-      {
-        accessorKey: "sale_amount_total",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Venta" className="justify-end" />
-        ),
-        cell: ({ row }) => (
-          <div className="text-xs font-medium text-right">
-            {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
-          </div>
-        ),
-      },
-      {
-        accessorKey: "paid_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const paid = row.original.paid_amount || 0
-          return (
-            <div className="text-xs text-green-600 font-medium text-right">
-              {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+    ]
+
+    if (!hideFinancialColumns) {
+      cols.push(
+        {
+          accessorKey: "sale_amount_total",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Venta" className="justify-end" />
+          ),
+          cell: ({ row }) => (
+            <div className="text-xs font-medium text-right">
+              {row.original.currency} {Math.round(row.original.sale_amount_total).toLocaleString("es-AR")}
             </div>
-          )
+          ),
         },
-      },
-      {
-        accessorKey: "pending_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const pending = row.original.pending_amount || 0
-          const total = row.original.sale_amount_total || 0
-          const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
-          return (
-            <div className="text-xs text-orange-600 font-medium text-right">
-              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+        {
+          accessorKey: "paid_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Monto Cobrado" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const paid = row.original.paid_amount || 0
+            return (
+              <div className="text-xs text-success font-medium text-right">
+                {row.original.currency} {Math.round(paid).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "pending_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const pending = row.original.pending_amount || 0
+            const total = row.original.sale_amount_total || 0
+            const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
+            return (
+              <div className="text-xs text-warning font-medium text-right">
+                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "operator_paid_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const operatorPaid = row.original.operator_paid_amount || 0
+            return (
+              <div className="text-xs text-info font-medium text-right">
+                {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "operator_pending_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
+          ),
+          cell: ({ row }) => {
+            const operatorPending = row.original.operator_pending_amount || 0
+            const operatorCost = row.original.operator_cost || 0
+            const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
+            return (
+              <div className="text-xs text-destructive font-medium text-right">
+                {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
+              </div>
+            )
+          },
+        },
+        {
+          accessorKey: "margin_amount",
+          header: ({ column }) => (
+            <DataTableColumnHeader column={column} title="Margen" className="justify-end" />
+          ),
+          cell: ({ row }) => (
+            <div className="text-xs text-right">
+              <span className="font-medium">
+                {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
+              </span>
+              <span className="text-muted-foreground ml-1">
+                {Math.round(row.original.margin_percentage)}%
+              </span>
             </div>
-          )
-        },
-      },
-      {
-        accessorKey: "operator_paid_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Pagado" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const operatorPaid = row.original.operator_paid_amount || 0
-          return (
-            <div className="text-xs text-blue-600 font-medium text-right">
-              {row.original.currency} {Math.round(operatorPaid).toLocaleString("es-AR")}
-            </div>
-          )
-        },
-      },
-      {
-        accessorKey: "operator_pending_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
-        ),
-        cell: ({ row }) => {
-          const operatorPending = row.original.operator_pending_amount || 0
-          const operatorCost = row.original.operator_cost || 0
-          const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
-          return (
-            <div className="text-xs text-red-600 font-medium text-right">
-              {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
-            </div>
-          )
-        },
-      },
-      {
-        accessorKey: "margin_amount",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Margen" className="justify-end" />
-        ),
-        cell: ({ row }) => (
-          <div className="text-xs text-right">
-            <span className="font-medium">
-              {row.original.currency} {Math.round(row.original.margin_amount).toLocaleString("es-AR")}
-            </span>
-            <span className="text-muted-foreground ml-1">
-              {Math.round(row.original.margin_percentage)}%
-            </span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => (
-          <DataTableColumnHeader column={column} title="Estado" />
-        ),
-        cell: ({ row }) => (
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {statusLabels[row.original.status] || row.original.status}
-          </Badge>
-        ),
-      },
-    ],
-    [handleEditClick, handleDeleteClick, userRole]
-  )
+          ),
+        }
+      )
+    }
+
+    cols.push({
+      accessorKey: "status",
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="Estado" />
+      ),
+      cell: ({ row }) => (
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          {statusLabels[row.original.status] || row.original.status}
+        </Badge>
+      ),
+    })
+
+    return cols
+  }, [handleDeleteClick, handleEditClick, hideFinancialColumns, userId, userRole])
 
   if (loading) {
     return (
@@ -599,16 +645,16 @@ export function OperationsTable({
       <div className="space-y-4">
         {/* Búsqueda server-side */}
         <div className="relative max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
             placeholder="Buscar por destino, cliente, código..."
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="pl-9"
+            className="pl-9 h-8 text-xs rounded-full"
           />
         </div>
         {/* Totales de la página actual */}
-        {operations.length > 0 && (() => {
+        {!hideFinancialColumns && operations.length > 0 && (() => {
           const totals = operations.reduce((acc, op) => {
             const currency = op.currency || "USD"
             if (!acc[currency]) {
@@ -635,10 +681,10 @@ export function OperationsTable({
               <span className="font-semibold text-muted-foreground mr-1">Totales página:</span>
               {Object.entries(totals).map(([currency, t]) => (
                 <div key={currency} className="flex flex-wrap gap-x-3 gap-y-1">
-                  <span className="font-semibold text-orange-600">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
-                  <span className="text-green-600">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
-                  <span className="text-orange-600">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
-                  <span className="text-emerald-700 font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
+                  <span className="font-semibold text-warning">Venta: {currency} {Math.round(t.sale).toLocaleString("es-AR")}</span>
+                  <span className="text-success">Cobrado: {currency} {Math.round(t.paid).toLocaleString("es-AR")}</span>
+                  <span className="text-warning">A cobrar: {currency} {Math.round(t.pending).toLocaleString("es-AR")}</span>
+                  <span className="text-success font-medium">Margen: {currency} {Math.round(t.margin).toLocaleString("es-AR")}</span>
                   {Object.keys(totals).length > 1 && <span className="text-muted-foreground">|</span>}
                 </div>
               ))}
@@ -705,10 +751,10 @@ export function OperationsTable({
                 <li>Alertas y documentos</li>
                 <li>Comisiones calculadas</li>
               </ul>
-              <p className="text-sm font-medium text-amber-600 mt-2">
+              <p className="text-sm font-medium text-warning mt-2">
                 ⚠️ El cliente asociado NO se eliminará.
               </p>
-              <p className="text-sm font-medium text-red-600">
+              <p className="text-sm font-medium text-destructive">
                 Esta acción no se puede deshacer.
               </p>
             </AlertDialogDescription>
@@ -718,7 +764,7 @@ export function OperationsTable({
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               disabled={deleting}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive hover:bg-destructive/90"
             >
               {deleting ? "Eliminando..." : "Eliminar operación"}
             </AlertDialogAction>

@@ -230,7 +230,7 @@ export function ToolsSettingsPageClient() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Configuración de Herramientas</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Configuración de Herramientas</h1>
           <p className="text-muted-foreground">
             Personaliza Emilia, notificaciones, email, WhatsApp y más
           </p>
@@ -251,7 +251,7 @@ export function ToolsSettingsPageClient() {
       </div>
 
       <Tabs defaultValue="emilia" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-7 rounded-xl">
           <TabsTrigger value="emilia" className="flex items-center gap-2">
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">Emilia</span>
@@ -284,7 +284,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Emilia */}
         <TabsContent value="emilia" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-5 w-5" />
@@ -294,7 +294,7 @@ export function ToolsSettingsPageClient() {
                 Configura el asistente de inteligencia artificial
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Habilitar Emilia</Label>
@@ -325,7 +325,7 @@ export function ToolsSettingsPageClient() {
                     emilia_model: value,
                   })}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -415,7 +415,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Email */}
         <TabsContent value="email" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Mail className="h-5 w-5" />
@@ -425,7 +425,7 @@ export function ToolsSettingsPageClient() {
                 Configura el envío de correos electrónicos
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Habilitar Email</Label>
@@ -499,7 +499,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: WhatsApp */}
         <TabsContent value="whatsapp" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
@@ -509,7 +509,7 @@ export function ToolsSettingsPageClient() {
                 Configura la integración con WhatsApp
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Habilitar WhatsApp</Label>
@@ -540,7 +540,7 @@ export function ToolsSettingsPageClient() {
                     whatsapp_provider: value,
                   })}
                 >
-                  <SelectTrigger className="w-[200px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-[200px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -593,7 +593,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Notificaciones */}
         <TabsContent value="notifications" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="h-5 w-5" />
@@ -603,7 +603,7 @@ export function ToolsSettingsPageClient() {
                 Configura cómo recibir notificaciones
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Habilitar Notificaciones</Label>
@@ -683,7 +683,7 @@ export function ToolsSettingsPageClient() {
                       notifications_digest_frequency: value,
                     })}
                   >
-                    <SelectTrigger className="w-[150px]">
+                    <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -700,7 +700,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Exportaciones */}
         <TabsContent value="export" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileSpreadsheet className="h-5 w-5" />
@@ -710,7 +710,7 @@ export function ToolsSettingsPageClient() {
                 Configura el formato por defecto para exportar datos
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Formato por Defecto</Label>
@@ -725,7 +725,7 @@ export function ToolsSettingsPageClient() {
                     export_default_format: value,
                   })}
                 >
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -766,7 +766,7 @@ export function ToolsSettingsPageClient() {
                     export_date_format: value,
                   })}
                 >
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -791,7 +791,7 @@ export function ToolsSettingsPageClient() {
                     export_currency_format: value,
                   })}
                 >
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -807,7 +807,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Interfaz */}
         <TabsContent value="ui" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Palette className="h-5 w-5" />
@@ -817,7 +817,7 @@ export function ToolsSettingsPageClient() {
                 Personaliza la apariencia del sistema
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Tema</Label>
@@ -832,7 +832,7 @@ export function ToolsSettingsPageClient() {
                     ui_theme: value,
                   })}
                 >
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -889,7 +889,7 @@ export function ToolsSettingsPageClient() {
                     ui_time_format: value,
                   })}
                 >
-                  <SelectTrigger className="w-[150px]">
+                  <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -904,7 +904,7 @@ export function ToolsSettingsPageClient() {
 
         {/* Tab: Backups */}
         <TabsContent value="backups" className="space-y-4">
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Database className="h-5 w-5" />
@@ -914,7 +914,7 @@ export function ToolsSettingsPageClient() {
                 Configura las copias de seguridad automáticas
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="px-6 py-5 space-y-5">
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Habilitar Backups Automáticos</Label>
@@ -947,7 +947,7 @@ export function ToolsSettingsPageClient() {
                         backups_frequency: value,
                       })}
                     >
-                      <SelectTrigger className="w-[150px]">
+                      <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

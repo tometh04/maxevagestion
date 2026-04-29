@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 function escapeCsvValue(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
 
     const dateFrom = searchParams.get("dateFrom")
     const dateTo = searchParams.get("dateTo")
+    const dateType = (searchParams.get("dateType") ?? "MOVIMIENTO").toUpperCase()
     const type = searchParams.get("type")
     const currency = searchParams.get("currency")
     const agencyId = searchParams.get("agencyId")
@@ -82,12 +84,29 @@ export async function GET(request: Request) {
       }
     }
 
-    if (dateFrom) {
-      query = query.gte("movement_date", dateFrom)
-    }
-
-    if (dateTo) {
-      query = query.lte("movement_date", dateTo)
+    // Mapeo dateType (mismo comportamiento que /api/cash/movements):
+    // - MOVIMIENTO (default): cash_movements.movement_date con timezone AR
+    // - OPERACION: pre-resolver operation_ids cuya operations.operation_date cae
+    //   en [from,to] y restringir cash_movements.operation_id IN (...).
+    if (dateType === "OPERACION" && (dateFrom || dateTo)) {
+      let opQuery = supabase.from("operations").select("id")
+      if (dateFrom) opQuery = opQuery.gte("operation_date", dateFrom)
+      if (dateTo) opQuery = opQuery.lte("operation_date", dateTo)
+      const { data: matchingOps } = await opQuery.limit(5000)
+      const opIds = (matchingOps || []).map((o: any) => o.id)
+      if (opIds.length === 0) {
+        const csvContent = "Fecha,Tipo,Categoría,Monto,Moneda,Agencia,Operación,Usuario,Notas\n"
+        return new NextResponse(csvContent, {
+          headers: {
+            "Content-Type": "text/csv",
+            "Content-Disposition": `attachment; filename="cash-movements-${Date.now()}.csv"`,
+          },
+        })
+      }
+      query = query.in("operation_id", opIds)
+    } else {
+      if (dateFrom) query = query.gte("movement_date", startOfDayAR(dateFrom))
+      if (dateTo) query = query.lte("movement_date", endOfDayAR(dateTo))
     }
 
     const { data: movements, error } = await query

@@ -1,8 +1,6 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Label } from "@/components/ui/label"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -11,11 +9,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
-import { format, parseISO } from "date-fns"
-import { RotateCcw } from "lucide-react"
+import { X } from "lucide-react"
 import { useDebounce } from "@/hooks/use-debounce"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+import { format, parseISO, isValid } from "date-fns"
+
+const reportsDateTypes: DateTypeOption[] = [
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
 
 export interface ReportsFiltersState {
   dateFrom: string
@@ -33,6 +34,18 @@ interface ReportsFiltersProps {
   onReset: () => void
 }
 
+function toDate(s: string): Date | undefined {
+  if (!s) return undefined
+  try {
+    const d = parseISO(s)
+    return isValid(d) ? d : undefined
+  } catch { return undefined }
+}
+
+function toStr(d: Date | undefined): string {
+  return d ? format(d, "yyyy-MM-dd") : ""
+}
+
 export function ReportsFilters({
   agencies,
   sellers,
@@ -42,7 +55,6 @@ export function ReportsFilters({
 }: ReportsFiltersProps) {
   const [filters, setFilters] = useState<ReportsFiltersState>(defaultFilters)
 
-  // Debounce para todos los cambios de filtros (500ms - balance entre responsividad y estabilidad)
   const debouncedFilters = useDebounce(filters, 500)
 
   useEffect(() => {
@@ -53,122 +65,54 @@ export function ReportsFilters({
     setFilters((prev) => ({ ...prev, [key]: value }))
   }
 
-  // Helper para convertir string a Date
-  const parseDate = (dateString: string): Date | undefined => {
-    if (!dateString) return undefined
-    try {
-      return parseISO(dateString)
-    } catch {
-      return undefined
-    }
-  }
-  
-  // Helper para convertir Date a string
-  const formatDate = (date: Date | undefined): string => {
-    return date ? format(date, "yyyy-MM-dd") : ""
-  }
-
-  const handleDateFromChange = (date: Date | undefined) => {
-    const dateString = formatDate(date)
-    setFilters((prev) => ({ 
-      ...prev, 
-      dateFrom: dateString,
-      dateTo: date && parseDate(prev.dateTo) && parseDate(prev.dateTo)! < date ? "" : prev.dateTo
-    }))
-  }
-
-  const handleDateToChange = (date: Date | undefined) => {
-    if (date && parseDate(filters.dateFrom) && date < parseDate(filters.dateFrom)!) {
-      return
-    }
-    const dateString = formatDate(date)
-    setFilters((prev) => ({ ...prev, dateTo: dateString }))
-  }
-
   const handleReset = () => {
     setFilters(defaultFilters)
     onReset()
   }
 
   return (
-    <Card className="w-full">
-      <CardContent className="pt-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 items-end">
-          {/* Date From */}
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="dateFrom">
-              Desde
-            </Label>
-            <DateInputWithCalendar
-              value={parseDate(filters.dateFrom)}
-              onChange={handleDateFromChange}
-              placeholder="dd/MM/yyyy"
-            />
-          </div>
-
-          {/* Date To */}
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="dateTo">
-              Hasta
-            </Label>
-            <DateInputWithCalendar
-              value={parseDate(filters.dateTo)}
-              onChange={handleDateToChange}
-              placeholder="dd/MM/yyyy"
-              minDate={parseDate(filters.dateFrom)}
-            />
-          </div>
-
-          {/* Agency */}
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="agencyId">
-              Agencia
-            </Label>
-            <Select value={filters.agencyId} onValueChange={(value) => handleFilterChange("agencyId", value)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todas" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todas</SelectItem>
-                {agencies.map((agency) => (
-                  <SelectItem key={agency.id} value={agency.id}>
-                    {agency.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Seller */}
-          <div className="space-y-1.5">
-            <Label className="text-xs" htmlFor="sellerId">
-              Vendedor
-            </Label>
-            <Select value={filters.sellerId} onValueChange={(value) => handleFilterChange("sellerId", value)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Todos" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">Todos</SelectItem>
-                {sellers.map((seller) => (
-                  <SelectItem key={seller.id} value={seller.id}>
-                    {seller.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Reset Button */}
-          <div className="flex items-end">
-            <Button variant="outline" onClick={handleReset} className="w-full sm:w-auto">
-              <RotateCcw className="mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">Reiniciar</span>
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center gap-2 flex-wrap">
+      <DateTypeFilter
+        types={reportsDateTypes}
+        includeNone={false}
+        value={{ type: "OPERACION", from: toDate(filters.dateFrom), to: toDate(filters.dateTo) }}
+        onChange={(v) => {
+          setFilters((prev) => ({
+            ...prev,
+            dateFrom: toStr(v.from),
+            dateTo: toStr(v.to),
+          }))
+        }}
+      />
+      <Select value={filters.agencyId} onValueChange={(value) => handleFilterChange("agencyId", value)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Agencia" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todas</SelectItem>
+          {agencies.map((agency) => (
+            <SelectItem key={agency.id} value={agency.id}>
+              {agency.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={filters.sellerId} onValueChange={(value) => handleFilterChange("sellerId", value)}>
+        <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px] w-auto">
+          <SelectValue placeholder="Vendedor" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="ALL">Todos</SelectItem>
+          {sellers.map((seller) => (
+            <SelectItem key={seller.id} value={seller.id}>
+              {seller.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button variant="ghost" size="sm" className="h-8 rounded-full text-xs" onClick={handleReset}>
+        <X className="mr-1 h-3.5 w-3.5" /> Limpiar
+      </Button>
+    </div>
   )
 }
-

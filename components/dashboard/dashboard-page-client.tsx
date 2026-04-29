@@ -13,10 +13,12 @@ import { UpcomingTripsCard } from "./upcoming-trips-card"
 import { TopSellersCard } from "./top-sellers-card"
 import { PendingTasksCard } from "./pending-tasks-card"
 import { BirthdaysTodayCard } from "./birthdays-today-card"
+import { KpiCustomizer, type DashboardKpiId } from "./kpi-customizer"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Progress } from "@/components/ui/progress"
 import { ArrowUpIcon, ArrowDownIcon } from "@radix-ui/react-icons"
-import { DollarSign, TrendingUp, Package, Percent, Users, Building2, HelpCircle, RefreshCw } from "lucide-react"
+import { HelpCircle, RefreshCw } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -69,7 +71,7 @@ function ComparisonBadge({ current, previous, suffix = "%" }: { current: number;
   if (change === 0 || previous === 0) return null
   
   return (
-    <span className={`inline-flex items-center text-[10px] font-medium whitespace-nowrap ${isPositive ? "text-emerald-600" : "text-red-500"}`}>
+    <span className={`inline-flex items-center text-[10px] font-medium whitespace-nowrap ${isPositive ? "text-success" : "text-destructive"}`}>
       {isPositive ? (
         <ArrowUpIcon className="h-2.5 w-2.5" />
       ) : (
@@ -89,6 +91,9 @@ export function DashboardPageClient({
   const isSeller = userRole === "SELLER"
   const [filters, setFilters] = useState(defaultFilters)
   const [loading, setLoading] = useState(false)
+  // Progress 0-100 mientras se cargan las 8 fetches del dashboard.
+  // Pure UI feedback — no afecta los datos en absoluto.
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [kpis, setKpis] = useState<KPIs>({
     totalSales: 0,
     totalMargin: 0,
@@ -106,9 +111,46 @@ export function DashboardPageClient({
   const [destinationsData, setDestinationsData] = useState<any[]>([])
   const [destinationsAllData, setDestinationsAllData] = useState<any[]>([])
   const [cashflowData, setCashflowData] = useState<any[]>([])
+  const [hiddenKpis, setHiddenKpis] = useState<Set<DashboardKpiId>>(new Set())
+
+  // Carga de preferencias de KPIs ocultos (organization_settings.dashboard_hidden_kpis).
+  // Usa el mismo endpoint que el resto de settings. Silenciosamente cae en
+  // "mostrar todos" si la key no existe (tenants nuevos).
+  useEffect(() => {
+    async function loadHiddenKpis() {
+      try {
+        const res = await fetch("/api/settings/organization?key=dashboard_hidden_kpis")
+        if (!res.ok) return
+        const json = await res.json()
+        const setting = Array.isArray(json.data) ? json.data[0] : null
+        if (!setting?.value) return
+        const ids = JSON.parse(setting.value) as string[]
+        setHiddenKpis(new Set(ids.filter((id): id is DashboardKpiId =>
+          ["sales", "margin", "debtors", "debt"].includes(id)
+        )))
+      } catch {
+        // silent — default empty Set (all visible)
+      }
+    }
+    loadHiddenKpis()
+  }, [])
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true)
+    setLoadingProgress(0)
+    // Tracker de progreso: incrementa por cada fetch que termina (sea ok o error).
+    // Total = 8 fetches del Promise.all. UI feedback puro.
+    let completed = 0
+    const TOTAL_FETCHES = 8
+    const trackedFetch = async (url: string, opts?: RequestInit): Promise<Response> => {
+      try {
+        const res = await fetch(url, opts)
+        return res
+      } finally {
+        completed += 1
+        setLoadingProgress(Math.min(100, Math.round((completed / TOTAL_FETCHES) * 100)))
+      }
+    }
     try {
       const params = new URLSearchParams()
       params.set("dateFrom", filters.dateFrom)
@@ -140,27 +182,46 @@ export function DashboardPageClient({
         prevParams.set("sellerId", filters.sellerId)
       }
 
-      // Fetch all data in parallel (sin cache para evitar datos stale)
+      // Fetch en paralelo. Cache controlado por header Cache-Control de cada
+      // endpoint (private, max-age=30, stale-while-revalidate=60). El botón
+      // "Actualizar" del header re-monta el componente y fuerza re-fetch.
       const fetchOptions = {
-        cache: "no-store" as RequestCache
+        cache: "default" as RequestCache
       }
       
-      // Agregar agencyId y fechas al endpoint de pending-balances
-      const pendingBalancesSearchParams = new URLSearchParams()
-      pendingBalancesSearchParams.set("dateFrom", filters.dateFrom)
-      pendingBalancesSearchParams.set("dateTo", filters.dateTo)
+      // Deudores: llamamos directamente al endpoint /api/accounting/debts-sales
+      // (mismo que la página Contabilidad → Deudores) y sumamos totalDebt en
+      // cliente. Así garantizamos que el KPI coincida siempre con la tabla
+      // que el user ya usa. /api/analytics/pending-balances queda solo para
+      // accountsPayable (deuda a operadores).
+      const debtsSalesSearchParams = new URLSearchParams()
+      debtsSalesSearchParams.set("dateFrom", filters.dateFrom)
+      debtsSalesSearchParams.set("dateTo", filters.dateTo)
+      if (filters.sellerId && filters.sellerId !== "ALL") {
+        debtsSalesSearchParams.set("sellerId", filters.sellerId)
+      }
+
+      const operatorsDebtParams = new URLSearchParams()
+      operatorsDebtParams.set("dateFrom", filters.dateFrom)
+      operatorsDebtParams.set("dateTo", filters.dateTo)
       if (filters.agencyId && filters.agencyId !== "ALL") {
-        pendingBalancesSearchParams.set("agencyId", filters.agencyId)
+        operatorsDebtParams.set("agencyId", filters.agencyId)
       }
-      
-      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, pendingBalancesRes, prevSalesRes] = await Promise.all([
-        fetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
-        fetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
-        fetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
-        fetch(`/api/analytics/pending-balances?${pendingBalancesSearchParams.toString()}`, fetchOptions),
-        fetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
+
+      // PERF: usamos endpoints lightweight (RPC SUM SQL) para los 2 KPIs
+      // pesados:
+      //   - debts-sales-total   (~500ms vs ~9s del completo)
+      //   - operator-debts-total (~500ms vs ~5s del pending-balances completo)
+      // Si los nuevos fallaran, caemos automáticamente a los originales.
+      const [salesRes, sellersRes, destinationsRes, destinationsAllRes, cashflowRes, debtsTotalRes, operatorsDebtRes, prevSalesRes] = await Promise.all([
+        trackedFetch(`/api/analytics/sales?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sellers?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=5`, fetchOptions),
+        trackedFetch(`/api/analytics/destinations?${params.toString()}&limit=10`, fetchOptions),
+        trackedFetch(`/api/analytics/cashflow?${params.toString()}`, fetchOptions),
+        trackedFetch(`/api/accounting/debts-sales-total?${debtsSalesSearchParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/accounting/operator-debts-total?${operatorsDebtParams.toString()}`, fetchOptions),
+        trackedFetch(`/api/analytics/sales?${prevParams.toString()}`, fetchOptions),
       ])
 
       const salesData = salesRes.ok ? await salesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0, avgMarginPercent: 0 }
@@ -168,16 +229,78 @@ export function DashboardPageClient({
       const destinationsData = destinationsRes.ok ? await destinationsRes.json() : { destinations: [] }
       const destinationsAllData = destinationsAllRes.ok ? await destinationsAllRes.json() : { destinations: [] }
       const cashflowData = cashflowRes.ok ? await cashflowRes.json() : { cashflow: [] }
-      const pendingBalancesData = pendingBalancesRes.ok ? await pendingBalancesRes.json() : { accountsReceivable: 0, accountsPayable: 0 }
+      // accountsPayable: primero el endpoint lightweight, si falla → fallback al pending-balances original.
+      let operatorDebtUsd = 0
+      if (operatorsDebtRes.ok) {
+        try {
+          const operatorTotalData = await operatorsDebtRes.json()
+          if (typeof operatorTotalData?.totalUsd === "number") {
+            operatorDebtUsd = operatorTotalData.totalUsd
+          } else {
+            throw new Error("unexpected shape")
+          }
+        } catch {
+          operatorDebtUsd = NaN
+        }
+      } else {
+        operatorDebtUsd = NaN
+      }
+      if (!Number.isFinite(operatorDebtUsd)) {
+        try {
+          const fallbackOperatorRes = await fetch(
+            `/api/analytics/pending-balances?${operatorsDebtParams.toString()}`,
+            fetchOptions
+          )
+          if (fallbackOperatorRes.ok) {
+            const fallbackOperatorData = await fallbackOperatorRes.json()
+            operatorDebtUsd = Number(fallbackOperatorData?.accountsPayable) || 0
+          } else {
+            operatorDebtUsd = 0
+          }
+        } catch {
+          operatorDebtUsd = 0
+        }
+      }
+      const operatorsDebtData = { accountsPayable: operatorDebtUsd }
       const prevSalesData = prevSalesRes.ok ? await prevSalesRes.json() : { totalSales: 0, totalMargin: 0, operationsCount: 0 }
 
-      console.log("[Dashboard] salesRes.status:", salesRes.status, "ok:", salesRes.ok)
-      console.log("[Dashboard] salesData:", JSON.stringify(salesData))
-      console.log("[Dashboard] pendingBalancesRes.status:", pendingBalancesRes.status, "ok:", pendingBalancesRes.ok)
-      console.log("[Dashboard] pendingBalancesData:", JSON.stringify(pendingBalancesData))
-      console.log("[Dashboard] params:", params.toString())
+      // Total de deuda por ventas (USD): primero el endpoint lightweight,
+      // si falla → fallback al original con el .reduce viejo.
+      let customerDebtUsd = 0
+      if (debtsTotalRes.ok) {
+        try {
+          const debtsTotalData = await debtsTotalRes.json()
+          if (typeof debtsTotalData?.totalUsd === "number") {
+            customerDebtUsd = debtsTotalData.totalUsd
+          } else {
+            throw new Error("unexpected shape")
+          }
+        } catch {
+          // Cae al fallback abajo
+          customerDebtUsd = NaN
+        }
+      } else {
+        customerDebtUsd = NaN
+      }
+      if (!Number.isFinite(customerDebtUsd)) {
+        // Fallback automático al endpoint completo (lento pero funcional).
+        try {
+          const fallbackRes = await fetch(
+            `/api/accounting/debts-sales?${debtsSalesSearchParams.toString()}`,
+            fetchOptions
+          )
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json()
+            customerDebtUsd = ((fallbackData.debtors || []) as any[])
+              .reduce((sum: number, d: any) => sum + (Number(d.totalDebt) || 0), 0)
+          } else {
+            customerDebtUsd = 0
+          }
+        } catch {
+          customerDebtUsd = 0
+        }
+      }
 
-      // Guardar datos del período anterior para comparativa
       setPreviousKpis({
         totalSales: prevSalesData.totalSales || 0,
         totalMargin: prevSalesData.totalMargin || 0,
@@ -189,8 +312,8 @@ export function DashboardPageClient({
         totalMargin: salesData.totalMargin || 0,
         operationsCount: salesData.operationsCount || 0,
         avgMarginPercent: salesData.avgMarginPercent || 0,
-        pendingCustomerPayments: pendingBalancesData.accountsReceivable || 0,
-        pendingOperatorPayments: pendingBalancesData.accountsPayable || 0,
+        pendingCustomerPayments: customerDebtUsd,
+        pendingOperatorPayments: operatorsDebtData.accountsPayable || 0,
       })
 
       setSellersData(sellersData.sellers || [])
@@ -200,6 +323,9 @@ export function DashboardPageClient({
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
     } finally {
+      // Forzar 100% al cierre para que el bar no se quede estancado en
+      // un valor intermedio si alguna fetch hizo throw antes del finally.
+      setLoadingProgress(100)
       setLoading(false)
     }
   }, [filters])
@@ -219,11 +345,21 @@ export function DashboardPageClient({
             Vista general del negocio
           </p>
         </div>
-        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto border-orange-200 hover:bg-orange-50 dark:border-orange-800 dark:hover:bg-orange-950/30">
+        <Button onClick={fetchDashboardData} disabled={loading} variant="outline" size="sm" className="w-full sm:w-auto">
           <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? "animate-spin" : ""}`} />
           Actualizar
         </Button>
       </div>
+
+      {/* Progress bar de carga (paso C-1). UI-only, no afecta data. */}
+      {loading && (
+        <div className="space-y-1">
+          <Progress value={loadingProgress} className="h-1" />
+          <p className="text-[10px] text-muted-foreground tabular-nums">
+            Cargando datos del resumen… {loadingProgress}%
+          </p>
+        </div>
+      )}
 
       <DashboardFilters
         agencies={agencies}
@@ -233,123 +369,125 @@ export function DashboardPageClient({
         onChange={setFilters}
       />
 
-      {/* KPIs compactos - estilo estadísticas de clientes */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card className="p-3 border-l-4 border-l-orange-500">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-orange-100 dark:bg-orange-900/30">
-              <DollarSign className="h-3.5 w-3.5 text-orange-600" />
+      {/* KPIs - Stripe style */}
+      <div className="flex items-center justify-between -mb-1">
+        <div className="text-xs text-muted-foreground uppercase tracking-wide">Indicadores</div>
+        <KpiCustomizer hiddenKpis={hiddenKpis} onChange={setHiddenKpis} />
+      </div>
+      <div className={`grid gap-3 ${
+        4 - hiddenKpis.size <= 1
+          ? "grid-cols-1"
+          : 4 - hiddenKpis.size === 2
+            ? "grid-cols-1 md:grid-cols-2"
+            : 4 - hiddenKpis.size === 3
+              ? "grid-cols-2 md:grid-cols-3"
+              : "grid-cols-2 md:grid-cols-4"
+      }`}>
+        {!hiddenKpis.has("sales") && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-medium text-muted-foreground">Ventas</p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">Suma total de ventas de todas las operaciones confirmadas en el período seleccionado, convertidas a USD.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Ventas</p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Suma total de ventas de todas las operaciones confirmadas en el período seleccionado, convertidas a USD.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-base font-semibold">${formatNumber(kpis.totalSales)}</p>
-              {loading ? (
-                <Skeleton className="h-3 w-16 mt-0.5" />
-              ) : (
-                <p className="text-[10px] text-muted-foreground">{kpis.operationsCount} ops</p>
-              )}
-            </div>
+            <ComparisonBadge current={kpis.totalSales} previous={previousKpis.totalSales} />
           </div>
+          <p className="text-2xl font-semibold tabular-nums tracking-tight">${formatNumber(kpis.totalSales)}</p>
+          {loading ? (
+            <Skeleton className="h-3 w-16 mt-1" />
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">{kpis.operationsCount} operaciones</p>
+          )}
         </Card>
+        )}
 
-        <Card className="p-3 border-l-4 border-l-emerald-500">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-emerald-100 dark:bg-emerald-900/30">
-              <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
+        {!hiddenKpis.has("margin") && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-medium text-muted-foreground">Margen</p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">Ganancia bruta: diferencia entre ventas y costos de operadores. Margen % es el porcentaje promedio de ganancia sobre las ventas.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Margen</p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Ganancia bruta: diferencia entre ventas y costos de operadores. Margen % es el porcentaje promedio de ganancia sobre las ventas.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-base font-semibold text-emerald-600">${formatNumber(kpis.totalMargin)}</p>
-              {loading ? (
-                <Skeleton className="h-3 w-16 mt-0.5" />
-              ) : (
-                <p className="text-[10px] text-muted-foreground">{kpis.avgMarginPercent.toFixed(1)}% promedio</p>
-              )}
-            </div>
+            <ComparisonBadge current={kpis.totalMargin} previous={previousKpis.totalMargin} />
           </div>
+          <p className="text-2xl font-semibold tabular-nums tracking-tight">${formatNumber(kpis.totalMargin)}</p>
+          {loading ? (
+            <Skeleton className="h-3 w-16 mt-1" />
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">{kpis.avgMarginPercent.toFixed(1)}% promedio</p>
+          )}
         </Card>
+        )}
 
-        <Card className="p-3 border-l-4 border-l-amber-500">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-amber-100 dark:bg-amber-900/30">
-              <Users className="h-3.5 w-3.5 text-amber-600" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deudores</p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Total adeudado por clientes. Calculado como: monto de venta menos pagos recibidos, convertido a USD usando tipo de cambio histórico.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-base font-semibold text-amber-600">${formatNumber(kpis.pendingCustomerPayments)}</p>
-              {loading ? (
-                <Skeleton className="h-3 w-20 mt-0.5" />
-              ) : (
-                <p className="text-[10px] text-muted-foreground">Por ventas</p>
-              )}
+        {!hiddenKpis.has("debtors") && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-medium text-muted-foreground">Deudores</p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">Total adeudado por clientes. Calculado como: monto de venta menos pagos recibidos, convertido a USD usando tipo de cambio histórico.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
+          <p className="text-2xl font-semibold tabular-nums tracking-tight">${formatNumber(kpis.pendingCustomerPayments)}</p>
+          {loading ? (
+            <Skeleton className="h-3 w-20 mt-1" />
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">Por ventas</p>
+          )}
         </Card>
+        )}
 
-        <Card className="p-3 border-l-4 border-l-purple-500">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded bg-purple-100 dark:bg-purple-900/30">
-              <Building2 className="h-3.5 w-3.5 text-purple-600" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-1">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Deuda</p>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="text-xs">Total pendiente de pago a operadores. Incluye pagos parciales: monto total menos monto pagado, convertido a USD.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-base font-semibold text-purple-600">${formatNumber(kpis.pendingOperatorPayments)}</p>
-              {loading ? (
-                <Skeleton className="h-3 w-20 mt-0.5" />
-              ) : (
-                <p className="text-[10px] text-muted-foreground">A operadores</p>
-              )}
+        {!hiddenKpis.has("debt") && (
+        <Card className="p-5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-1">
+              <p className="text-sm font-medium text-muted-foreground">Deuda</p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-3 w-3 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="text-xs">Total pendiente de pago a operadores. Incluye pagos parciales: monto total menos monto pagado, convertido a USD.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
+          <p className="text-2xl font-semibold tabular-nums tracking-tight">${formatNumber(kpis.pendingOperatorPayments)}</p>
+          {loading ? (
+            <Skeleton className="h-3 w-20 mt-1" />
+          ) : (
+            <p className="text-xs text-muted-foreground mt-1">A operadores</p>
+          )}
         </Card>
+        )}
       </div>
 
       {/* Cumpleaños del día */}

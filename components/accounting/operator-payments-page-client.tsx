@@ -1,14 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { BulkPaymentDialog } from "./bulk-payment-dialog"
 import { ManualOperatorPaymentDialog } from "./manual-operator-payment-dialog"
-import { CreditCard, Download, Plus, HelpCircle } from "lucide-react"
+import { CreditCard, Download, Plus, HelpCircle, MoreHorizontal, Info } from "lucide-react"
 import {
   Tooltip,
   TooltipContent,
@@ -24,6 +24,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import {
   Select,
   SelectContent,
@@ -35,7 +36,20 @@ import { format, parseISO } from "date-fns"
 import { es } from "date-fns/locale"
 import { AlertTriangle, X } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { DateInputWithCalendar } from "@/components/ui/date-input-with-calendar"
+import { DateTypeFilter, type DateTypeOption } from "@/components/ui/date-type-filter"
+
+const operatorPaymentsDateTypes: DateTypeOption[] = [
+  { value: "VENCIMIENTO", label: "Vencimiento", shortLabel: "Venc." },
+  { value: "OPERACION", label: "Operación", shortLabel: "Op." },
+]
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { PaymentInfoDialog } from "@/components/payments/payment-info-dialog"
 
 function formatCurrency(amount: number, currency: string = "ARS"): string {
   return new Intl.NumberFormat("es-AR", {
@@ -53,8 +67,8 @@ const statusLabels: Record<string, string> = {
 
 const statusColors: Record<string, string> = {
   PENDING: "bg-yellow-500",
-  PAID: "bg-amber-500",
-  OVERDUE: "bg-red-500",
+  PAID: "bg-warning",
+  OVERDUE: "bg-destructive",
 }
 
 interface OperatorPaymentsPageClientProps {
@@ -70,6 +84,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   const [operatorFilter, setOperatorFilter] = useState<string>("ALL")
   const [dueDateFrom, setDueDateFrom] = useState<Date | undefined>(undefined)
   const [dueDateTo, setDueDateTo] = useState<Date | undefined>(undefined)
+  const [dateType, setDateType] = useState<string>("VENCIMIENTO")
   
   // Estados para inputs (valores que el usuario tipea)
   const [amountMinInput, setAmountMinInput] = useState<string>("")
@@ -83,6 +98,8 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
   
   const [bulkPaymentOpen, setBulkPaymentOpen] = useState(false)
   const [manualPaymentOpen, setManualPaymentOpen] = useState(false)
+  const [infoDialogOpen, setInfoDialogOpen] = useState(false)
+  const [selectedPayment, setSelectedPayment] = useState<any>(null)
   
   // Refs para los timeouts de debounce
   const amountMinTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -155,10 +172,13 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
         params.append("operatorId", operatorFilter)
       }
       if (dueDateFrom) {
-        params.append("dueDateFrom", format(dueDateFrom, "yyyy-MM-dd"))
+        params.append("dateFrom", format(dueDateFrom, "yyyy-MM-dd"))
       }
       if (dueDateTo) {
-        params.append("dueDateTo", format(dueDateTo, "yyyy-MM-dd"))
+        params.append("dateTo", format(dueDateTo, "yyyy-MM-dd"))
+      }
+      if (dateType) {
+        params.append("dateType", dateType)
       }
       if (amountMin) {
         params.append("amountMin", amountMin)
@@ -180,12 +200,18 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, amountMin, amountMax, operationSearch])
+  }, [statusFilter, agencyFilter, operatorFilter, dueDateFrom, dueDateTo, dateType, amountMin, amountMax, operationSearch])
 
   // Ejecutar fetch cuando cambian los filtros
   useEffect(() => {
     fetchPayments()
   }, [fetchPayments])
+
+  // Sorting
+  const { sortedData: sortedPayments, sortConfig, requestSort } = useSortableData(payments, {
+    key: "due_date",
+    direction: "asc",
+  })
 
   const overdueCount = payments.filter((p) => {
     const isOverdue = p.status === "OVERDUE" || (p.status === "PENDING" && new Date(p.due_date) < new Date())
@@ -317,154 +343,111 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
     <div className="space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Pendientes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{pendingCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">pagos pendientes</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Vencidos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{overdueCount}</div>
-            <p className="text-xs text-muted-foreground mt-1">pagos vencidos</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm font-medium">Deuda Total</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {totalDebtUSD > 0 && (
-              <div className="text-2xl font-bold">{formatCurrency(totalDebtUSD, "USD")}</div>
-            )}
-            {totalDebtARS > 0 && (
-              <div className={`${totalDebtUSD > 0 ? "text-lg" : "text-2xl"} font-bold ${totalDebtUSD > 0 ? "mt-1" : ""}`}>
-                {formatCurrency(totalDebtARS, "ARS")}
-              </div>
-            )}
-            {totalDebtUSD === 0 && totalDebtARS === 0 && (
-              <div className="text-2xl font-bold text-green-600">$0</div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1">deuda pendiente</p>
-          </CardContent>
-        </Card>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Pendientes</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{pendingCount}</div>
+          <p className="text-xs text-muted-foreground mt-1">pagos pendientes</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Vencidos</p>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight text-destructive mt-1">{overdueCount}</div>
+          <p className="text-xs text-muted-foreground mt-1">pagos vencidos</p>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <p className="text-xs font-medium text-muted-foreground">Deuda Total</p>
+          {totalDebtUSD > 0 && (
+            <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{formatCurrency(totalDebtUSD, "USD")}</div>
+          )}
+          {totalDebtARS > 0 && (
+            <div className={`${totalDebtUSD > 0 ? "text-lg" : "text-2xl"} font-semibold tabular-nums tracking-tight ${totalDebtUSD > 0 ? "mt-1" : "mt-1"}`}>
+              {formatCurrency(totalDebtARS, "ARS")}
+            </div>
+          )}
+          {totalDebtUSD === 0 && totalDebtARS === 0 && (
+            <div className="text-2xl font-semibold tabular-nums tracking-tight text-success mt-1">$0</div>
+          )}
+          <p className="text-xs text-muted-foreground mt-1">deuda pendiente</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 items-end">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Agencia</Label>
-              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Operador</Label>
-              <Select value={operatorFilter} onValueChange={setOperatorFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                  {operators.map((operator) => (
-                    <SelectItem key={operator.id} value={operator.id}>
-                      {operator.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Estado</Label>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="UNPAID">Pendientes y Vencidos</SelectItem>
-                  <SelectItem value="PENDING">Solo Pendientes</SelectItem>
-                  <SelectItem value="OVERDUE">Solo Vencidos</SelectItem>
-                  <SelectItem value="PAID">Pagados</SelectItem>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Venc. Desde</Label>
-              <DateInputWithCalendar
-                value={dueDateFrom}
-                onChange={(date) => {
-                  setDueDateFrom(date)
-                  if (date && dueDateTo && dueDateTo < date) {
-                    setDueDateTo(undefined)
-                  }
-                }}
-                placeholder="dd/MM/yyyy"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Venc. Hasta</Label>
-              <DateInputWithCalendar
-                value={dueDateTo}
-                onChange={(date) => {
-                  if (date && dueDateFrom && date < dueDateFrom) {
-                    return
-                  }
-                  setDueDateTo(date)
-                }}
-                placeholder="dd/MM/yyyy"
-                minDate={dueDateFrom}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Deuda mín.</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={amountMinInput}
-                onChange={(e) => setAmountMinInput(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Deuda máx.</Label>
-              <Input
-                type="number"
-                placeholder="0.00"
-                value={amountMaxInput}
-                onChange={(e) => setAmountMaxInput(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5 sm:col-span-2 md:col-span-1">
-              <Label className="text-xs">Buscar operación</Label>
-              <Input
-                type="text"
-                placeholder="Código o destino"
-                value={operationSearchInput}
-                onChange={(e) => setOperationSearchInput(e.target.value)}
-              />
-            </div>
-          </div>
+      <div className="flex items-center gap-2 flex-wrap">
+          <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Agencia" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todas</SelectItem>
+              {agencies.map((agency) => (
+                <SelectItem key={agency.id} value={agency.id}>
+                  {agency.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={operatorFilter} onValueChange={setOperatorFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Operador" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Todos</SelectItem>
+              {operators.map((operator) => (
+                <SelectItem key={operator.id} value={operator.id}>
+                  {operator.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[120px] w-auto">
+              <SelectValue placeholder="Estado" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="UNPAID">Pendientes y Vencidos</SelectItem>
+              <SelectItem value="PENDING">Solo Pendientes</SelectItem>
+              <SelectItem value="OVERDUE">Solo Vencidos</SelectItem>
+              <SelectItem value="PAID">Pagados</SelectItem>
+              <SelectItem value="ALL">Todos</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <DateTypeFilter
+            types={operatorPaymentsDateTypes}
+            includeNone={false}
+            value={{ type: dateType, from: dueDateFrom, to: dueDateTo }}
+            onChange={(v) => {
+              setDateType(v.type)
+              setDueDateFrom(v.from)
+              setDueDateTo(v.to)
+            }}
+          />
+
+          <Input
+            type="number"
+            placeholder="Deuda mín."
+            value={amountMinInput}
+            onChange={(e) => setAmountMinInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
+          />
+
+          <Input
+            type="number"
+            placeholder="Deuda máx."
+            value={amountMaxInput}
+            onChange={(e) => setAmountMaxInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background w-[120px]"
+          />
+
+          <Input
+            type="text"
+            placeholder="Código o destino"
+            value={operationSearchInput}
+            onChange={(e) => setOperationSearchInput(e.target.value)}
+            className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[150px]"
+          />
+
           {(agencyFilter !== "ALL" ||
             operatorFilter !== "ALL" ||
             statusFilter !== "UNPAID" ||
@@ -473,38 +456,38 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
             amountMin ||
             amountMax ||
             operationSearch) && (
-            <div className="mt-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setAgencyFilter("ALL")
-                  setOperatorFilter("ALL")
-                  setStatusFilter("UNPAID")
-                  setDueDateFrom(undefined)
-                  setDueDateTo(undefined)
-                  setAmountMinInput("")
-                  setAmountMaxInput("")
-                  setOperationSearchInput("")
-                  setAmountMin("")
-                  setAmountMax("")
-                  setOperationSearch("")
-                }}
-              >
-                <X className="mr-2 h-4 w-4" />
-                Limpiar filtros
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 rounded-full text-xs"
+              onClick={() => {
+                setAgencyFilter("ALL")
+                setOperatorFilter("ALL")
+                setStatusFilter("UNPAID")
+                setDueDateFrom(undefined)
+                setDueDateTo(undefined)
+                setDateType("VENCIMIENTO")
+                setAmountMinInput("")
+                setAmountMaxInput("")
+                setOperationSearchInput("")
+                setAmountMin("")
+                setAmountMax("")
+                setOperationSearch("")
+              }}
+            >
+              <X className="mr-1 h-3.5 w-3.5" />
+              Limpiar
+            </Button>
           )}
-        </CardContent>
-      </Card>
+      </div>
 
       {/* Payments Table */}
-      <Card>
-        <CardHeader>
+      <div className="rounded-xl border border-border/40">
+        <div className="p-5 pb-3">
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <CardTitle>Pagos a Operadores</CardTitle>
+                <h3 className="text-base font-semibold">Pagos a Operadores</h3>
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -519,45 +502,49 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   </Tooltip>
                 </TooltipProvider>
               </div>
-              <CardDescription>Cuentas a pagar a operadores</CardDescription>
+              <p className="text-xs text-muted-foreground mt-0.5">Cuentas a pagar a operadores</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={handleExportExcel} disabled={payments.length === 0}>
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={handleExportExcel} disabled={payments.length === 0}>
                 <Download className="h-4 w-4 mr-2" />
                 Exportar Excel
               </Button>
-              <Button variant="outline" onClick={() => setManualPaymentOpen(true)}>
+              <Button variant="outline" size="sm" className="h-8 rounded-full" onClick={() => setManualPaymentOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva Deuda Manual
               </Button>
-              <Button onClick={() => setBulkPaymentOpen(true)}>
+              <Button size="sm" className="h-8 rounded-full" onClick={() => setBulkPaymentOpen(true)}>
                 <CreditCard className="h-4 w-4 mr-2" />
                 Cargar Pago Masivo
               </Button>
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div className="px-5 pb-5">
           {payments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No se encontraron pagos
             </div>
           ) : (
+            <div className="max-h-[60vh] overflow-y-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Operación</TableHead>
-                  <TableHead>Operador</TableHead>
-                  <TableHead>Deuda</TableHead>
-                  <TableHead>Fecha Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <SortableTableHead sortKey="operations.file_code" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operación</SortableTableHead>
+                  <SortableTableHead sortKey="operators.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Operador</SortableTableHead>
+                  <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Monto Total</SortableTableHead>
+                  <SortableTableHead sortKey="paid_amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10 text-right">Pagado</SortableTableHead>
+                  <TableHead className="sticky top-0 bg-background z-10 text-right">Pendiente</TableHead>
+                  <SortableTableHead sortKey="due_date" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Vencimiento</SortableTableHead>
+                  <SortableTableHead sortKey="status" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Estado</SortableTableHead>
                   {(statusFilter === "PAID" || statusFilter === "ALL") && (
-                    <TableHead>Fecha Pago</TableHead>
+                    <TableHead className="sticky top-0 bg-background z-10">Fecha Pago</TableHead>
                   )}
+                  <TableHead className="sticky top-0 bg-background z-10 w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {payments.map((payment) => {
+                {sortedPayments.map((payment) => {
                   const isOverdue =
                     payment.status === "PENDING" &&
                     new Date(payment.due_date) < new Date()
@@ -577,9 +564,19 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                   return (
                     <TableRow key={payment.id}>
                       <TableCell>
-                        <div className="font-mono text-xs">
-                          {payment.operations?.file_code || "-"}
-                        </div>
+                        {payment.operation_id ? (
+                          <Link
+                            href={`/operations/${payment.operation_id}`}
+                            className="font-mono text-xs text-primary hover:underline"
+                            prefetch={false}
+                          >
+                            {payment.operations?.file_code || "-"}
+                          </Link>
+                        ) : (
+                          <div className="font-mono text-xs">
+                            {payment.operations?.file_code || "-"}
+                          </div>
+                        )}
                         <div className="text-xs text-muted-foreground">
                           {payment.operations?.destination || "-"}
                         </div>
@@ -590,12 +587,28 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         )}
                       </TableCell>
                       <TableCell>{payment.operators?.name || "-"}</TableCell>
-                      <TableCell className="font-medium">
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(parseFloat(payment.amount || "0"), payment.currency)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {paidAmount > 0 ? (
+                          <span className="text-green-600 dark:text-green-400 font-medium">
+                            {formatCurrency(paidAmount, payment.currency)}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
                         {(() => {
                           const totalAmount = parseFloat(payment.amount || "0") || 0
                           const debt = totalAmount - paidAmount
-                          return (
-                            <div>{formatCurrency(debt, payment.currency)}</div>
+                          return isPaid ? (
+                            <span className="text-muted-foreground">-</span>
+                          ) : (
+                            <span className={debt > 0 ? "text-red-600 dark:text-red-400" : ""}>
+                              {formatCurrency(debt, payment.currency)}
+                            </span>
                           )
                         })()}
                       </TableCell>
@@ -603,7 +616,7 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                         <div className="flex items-center gap-2">
                           {format(new Date(payment.due_date), "dd/MM/yyyy", { locale: es })}
                           {isOverdue && (
-                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                            <AlertTriangle className="h-4 w-4 text-destructive" />
                           )}
                         </div>
                       </TableCell>
@@ -624,14 +637,37 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
                           {paidAt || "-"}
                         </TableCell>
                       )}
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                              <span className="sr-only">Abrir menu</span>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Acciones</DropdownMenuLabel>
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedPayment(payment)
+                                setInfoDialogOpen(true)
+                              }}
+                            >
+                              <Info className="h-4 w-4 mr-2" />
+                              Ver info
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
                     </TableRow>
                   )
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Bulk Payment Dialog */}
       <BulkPaymentDialog
@@ -649,6 +685,14 @@ export function OperatorPaymentsPageClient({ agencies, operators }: OperatorPaym
           fetchPayments()
         }}
         operators={operators}
+      />
+
+      {/* Payment Info Dialog */}
+      <PaymentInfoDialog
+        open={infoDialogOpen}
+        onOpenChange={setInfoDialogOpen}
+        payment={selectedPayment}
+        type="operator"
       />
     </div>
   )

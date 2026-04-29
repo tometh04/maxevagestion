@@ -68,7 +68,6 @@ export async function POST(request: Request) {
               `https://api.trello.com/1/webhooks/${existingWebhook.id}?key=${settings.trello_api_key}&token=${settings.trello_token}`,
               { method: "DELETE" }
             )
-            console.log(`🗑️ Eliminado webhook existente: ${existingWebhook.id}`)
           } catch (deleteError) {
             console.error("Error eliminando webhook existente:", deleteError)
             // Continue anyway
@@ -90,7 +89,6 @@ export async function POST(request: Request) {
       if (boardResponse.ok) {
         const boardData = await boardResponse.json()
         boardIdModel = boardData.id // Use the full ID, not the short ID
-        console.log(`✅ Board ID obtenido: ${boardIdModel} (original: ${settings.board_id})`)
       }
     } catch (error) {
       console.error("Error fetching board:", error)

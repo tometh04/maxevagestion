@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Plus, Wallet, ArrowDownCircle, Trash2, Loader2, Calendar } from "lucide-react"
 import { toast } from "sonner"
@@ -294,6 +295,12 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
     setMovementType("WITHDRAWAL")
   }
 
+  // Sorting for withdrawals table
+  const { sortedData: sortedWithdrawals, sortConfig, requestSort } = useSortableData(withdrawals, {
+    key: "withdrawal_date",
+    direction: "desc",
+  })
+
   // Calcular totales
   const totalWithdrawnARS = partners.reduce((sum, p) => sum + p.total_withdrawn_ars, 0)
   const totalWithdrawnUSD = partners.reduce((sum, p) => sum + p.total_withdrawn_usd, 0)
@@ -311,14 +318,14 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Cuentas de Socios</h1>
+          <h2 className="text-lg font-semibold tracking-tight">Cuentas de Socios</h2>
           <p className="text-muted-foreground">Gestiona los retiros personales de los socios</p>
         </div>
         <div className="flex gap-2">
           {userRole === "SUPER_ADMIN" && (
             <Dialog open={newPartnerOpen} onOpenChange={setNewPartnerOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline">
+                <Button variant="outline" size="sm" className="h-8 rounded-full">
                   <Users className="h-4 w-4 mr-2" />
                   Nuevo Socio
                 </Button>
@@ -378,7 +385,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
           
           <Dialog open={newWithdrawalOpen} onOpenChange={setNewWithdrawalOpen}>
             <DialogTrigger asChild>
-              <Button disabled={partners.length === 0}>
+              <Button size="sm" className="h-8 rounded-full" disabled={partners.length === 0}>
                 <ArrowDownCircle className="h-4 w-4 mr-2" />
                 Registrar Movimiento
               </Button>
@@ -541,71 +548,50 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
 
       {/* Resumen */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Retirado (ARS)
-            </CardTitle>
+        <div className="rounded-xl border border-border/40 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">Total Retirado (ARS)</p>
             <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              $ {Math.round(totalWithdrawnARS).toLocaleString("es-AR")}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Retirado (USD)
-            </CardTitle>
+          </div>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">
+            $ {Math.round(totalWithdrawnARS).toLocaleString("es-AR")}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">Total Retirado (USD)</p>
             <Wallet className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              US$ {Math.round(totalWithdrawnUSD).toLocaleString("es-AR")}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Socios Activos
-            </CardTitle>
+          </div>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">
+            US$ {Math.round(totalWithdrawnUSD).toLocaleString("es-AR")}
+          </div>
+        </div>
+        <div className="rounded-xl border border-border/40 p-5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">Socios Activos</p>
             <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{partners.length}</div>
-          </CardContent>
-        </Card>
+          </div>
+          <div className="text-2xl font-semibold tabular-nums tracking-tight mt-1">{partners.length}</div>
+        </div>
       </div>
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Filtros</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4">
-            <div className="w-48">
-              <Label>Agencia</Label>
-              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-center gap-2 flex-wrap">
+        <Label className="text-xs">Agencia:</Label>
+        <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+          <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">Todas</SelectItem>
+            {agencies.map((agency) => (
+              <SelectItem key={agency.id} value={agency.id}>
+                {agency.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -616,29 +602,27 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
 
         <TabsContent value="partners" className="space-y-4">
           {partners.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground text-center">
-                  No hay socios registrados.
-                  {userRole === "SUPER_ADMIN" && " Crea el primer socio para comenzar."}
-                </p>
-              </CardContent>
-            </Card>
+            <div className="rounded-xl border border-border/40 flex flex-col items-center justify-center py-12">
+              <Users className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground text-center">
+                No hay socios registrados.
+                {userRole === "SUPER_ADMIN" && " Crea el primer socio para comenzar."}
+              </p>
+            </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {partners.map((partner) => (
-                <Card key={partner.id}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Users className="h-5 w-5" />
+                <div key={partner.id} className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+                  <div>
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <Users className="h-5 w-5 text-muted-foreground" />
                       {partner.partner_name}
-                    </CardTitle>
+                    </h4>
                     {partner.users && (
-                      <CardDescription>{partner.users.email}</CardDescription>
+                      <p className="text-xs text-muted-foreground mt-0.5">{partner.users.email}</p>
                     )}
-                  </CardHeader>
-                  <CardContent className="space-y-3">
+                  </div>
+                  <div className="space-y-3">
                     {partner.profit_percentage !== null && partner.profit_percentage > 0 && (
                       <div className="flex justify-between items-center">
                         <span className="text-sm text-muted-foreground">% Ganancias:</span>
@@ -668,41 +652,42 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                         {partner.notes}
                       </p>
                     )}
-                  </CardContent>
-                </Card>
+                  </div>
+                </div>
               ))}
             </div>
           )}
         </TabsContent>
 
         <TabsContent value="withdrawals">
-          <Card>
-            <CardHeader>
-              <CardTitle>Historial de Movimientos</CardTitle>
-              <CardDescription>
+          <div className="rounded-xl border border-border/40">
+            <div className="p-5 pb-3">
+              <h3 className="text-base font-semibold">Historial de Movimientos</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Todos los retiros y aportes registrados ordenados por fecha
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+              </p>
+            </div>
+            <div className="px-5 pb-5">
               {withdrawals.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
                   No hay movimientos registrados
                 </p>
               ) : (
+                <div className="max-h-[60vh] overflow-y-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Socio</TableHead>
-                      <TableHead>Monto</TableHead>
-                      <TableHead>Descripción</TableHead>
-                      <TableHead>Registrado por</TableHead>
-                      {userRole === "SUPER_ADMIN" && <TableHead></TableHead>}
+                      <SortableTableHead sortKey="withdrawal_date" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Fecha</SortableTableHead>
+                      <TableHead className="sticky top-0 bg-background z-10">Tipo</TableHead>
+                      <SortableTableHead sortKey="partner.partner_name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Socio</SortableTableHead>
+                      <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Monto</SortableTableHead>
+                      <TableHead className="sticky top-0 bg-background z-10">Descripción</TableHead>
+                      <SortableTableHead sortKey="created_by_user.name" sortConfig={sortConfig} onSort={requestSort} className="sticky top-0 bg-background z-10">Registrado por</SortableTableHead>
+                      {userRole === "SUPER_ADMIN" && <TableHead className="sticky top-0 bg-background z-10"></TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {withdrawals.map((w) => {
+                    {sortedWithdrawals.map((w) => {
                       const isDeposit = (w as any).movement_type === "DEPOSIT"
                       return (
                       <TableRow key={w.id}>
@@ -713,7 +698,7 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={isDeposit ? "default" : "destructive"} className={isDeposit ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : ""}>
+                          <Badge variant={isDeposit ? "default" : "destructive"} className={isDeposit ? "bg-success/10 text-success hover:bg-success/10" : ""}>
                             {isDeposit ? "Aporte" : "Retiro"}
                           </Badge>
                         </TableCell>
@@ -747,9 +732,10 @@ export function PartnerAccountsClient({ userRole, agencies }: PartnerAccountsCli
                     )})}
                   </TableBody>
                 </Table>
+                </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

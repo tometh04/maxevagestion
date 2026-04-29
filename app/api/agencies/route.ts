@@ -1,33 +1,30 @@
 import { NextResponse } from "next/server"
 import { createServerClient } from "@/lib/supabase/server"
-import { getCachedAgencies, revalidateTag, CACHE_TAGS } from "@/lib/cache"
+import { getCurrentUser } from "@/lib/auth"
 
 /**
  * GET /api/agencies
- * Lista todas las agencias (con caché de 1 hora)
+ * Lista las agencias de la org del usuario autenticado.
+ * Multi-tenant: filtra por user.org_id.
  */
 export async function GET() {
   try {
-    const agencies = await getCachedAgencies(async () => {
-      const supabase = await createServerClient()
+    const { user } = await getCurrentUser()
+    const supabase = await createServerClient()
 
-      // Obtener todas las agencias directamente
-      const { data, error } = await supabase
-        .from("agencies")
-        .select("id, name")
-        .order("name")
+    let query = supabase.from("agencies").select("id, name").order("name")
+    if (user.org_id) {
+      query = query.eq("org_id", user.org_id)
+    }
 
-      if (error) {
-        console.error("❌ Error fetching agencies:", error.message, error.details)
-        // Devolver array vacío en lugar de error para no bloquear el UI
-        return []
-      }
+    const { data, error } = await query
 
-      console.log("✅ Agencies loaded:", data?.length || 0)
-      return data || []
-    })
+    if (error) {
+      console.error("❌ Error fetching agencies:", error.message)
+      return NextResponse.json({ agencies: [] })
+    }
 
-    return NextResponse.json({ agencies })
+    return NextResponse.json({ agencies: data || [] })
   } catch (error: any) {
     console.error("❌ Exception in GET agencies:", error)
     return NextResponse.json({ agencies: [], error: error.message })

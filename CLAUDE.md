@@ -297,11 +297,23 @@ Required in `.env.local`:
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+NEXT_PUBLIC_APP_URL=https://app.vibook.ai    # Base URL — usada en MP checkout, WhatsApp receipts, invites
+CRON_SECRET=your_cron_secret                 # Shared con Railway Cron Services para llamar /api/cron/*
 OPENAI_API_KEY=your_openai_key  # Optional, for OCR and AI Copilot
 EMILIA_API_KEY=your_emilia_api_key           # Required for Emilia/Vibook travel search (wsk_xxx format)
 EMILIA_API_URL=https://api.vibook.ai/search  # Optional, defaults to vibook.ai
 DISABLE_AUTH=true                # DEVELOPMENT ONLY - Remove for production
 ```
+
+Ver `.env.example` y `docs/testing-railway-migration.md` para la matriz completa (Resend, MP, AFIP, Trello, VAPID, Manychat, Amadeus, Geoapify, etc.).
+
+## Hosting & Deployment
+
+**Producción**: Railway (antes Vercel). Dominio: `app.vibook.ai`. El dominio legacy `maxevagestion.com` hace redirect 301 al nuevo.
+
+**Cron jobs**: 7 Railway Cron Services independientes (uno por endpoint), cada uno corre un `curl -X POST` contra `/api/cron/<name>` con header `Authorization: Bearer $CRON_SECRET`. El archivo `vercel.json` fue removido — Railway no lo lee. Todos los endpoints `/api/cron/*` son **POST con Bearer auth** (no hay `x-vercel-cron-secret`).
+
+Endpoints cron existentes (ver `app/api/cron/`): `recurring-payments`, `alerts`, `payment-reminders`, `notifications`, `whatsapp`, `task-reminders`, `exchange-rates`.
 
 ## Database Schema Notes
 
@@ -381,5 +393,6 @@ See `ROADMAP.md` for complete list. Key items:
 - `README.md` - User-facing documentation
 - `CONFIGURACION_SUPABASE.md` - Supabase setup guide
 - `GUIA_TESTING.md` - End-to-end testing guide
+- `docs/testing-railway-migration.md` - QA checklist post-migración Vercel → Railway (20 flujos que dependen de env vars)
 - `ROADMAP.md` - Development roadmap and pending tasks
 - `.cursor/ESTADO-COMPLETO-PROYECTO.md` - Detailed project status analysis

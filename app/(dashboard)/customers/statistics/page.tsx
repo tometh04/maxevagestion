@@ -9,7 +9,7 @@ export default async function CustomersStatisticsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Estadísticas de Clientes</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Estadísticas de Clientes</h1>
           <p className="text-muted-foreground">No tiene permiso para acceder a esta sección</p>
         </div>
       </div>

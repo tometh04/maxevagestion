@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { format, isPast, isToday } from "date-fns"
+import { format } from "date-fns"
 import { es } from "date-fns/locale"
 import {
   CheckCircle2,
@@ -22,20 +22,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  getTaskDueDateMoment,
+  isTaskDueToday,
+  isTaskOverdue,
+  taskHasTimedAlert,
+} from "@/lib/tasks/due-date"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
-/** Parsea fecha ISO como local para evitar desfase UTC */
-function parseLocalDate(dateStr: string): Date {
-  const d = dateStr.split("T")[0]
-  const [year, month, day] = d.split("-").map(Number)
-  return new Date(year, month - 1, day)
-}
-
 const PRIORITY_CONFIG = {
-  URGENT: { label: "Urgente", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400", dot: "bg-red-500" },
-  HIGH: { label: "Alta", className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400", dot: "bg-orange-500" },
-  MEDIUM: { label: "Media", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400", dot: "bg-blue-500" },
+  URGENT: { label: "Urgente", className: "bg-destructive/10 text-destructive", dot: "bg-destructive" },
+  HIGH: { label: "Alta", className: "bg-warning/10 text-warning", dot: "bg-warning" },
+  MEDIUM: { label: "Media", className: "bg-info/10 text-info", dot: "bg-info" },
   LOW: { label: "Baja", className: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400", dot: "bg-gray-400" },
 } as const
 
@@ -67,9 +66,11 @@ export function TaskCard({
   const priority = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] || PRIORITY_CONFIG.MEDIUM
   const StatusIcon = STATUS_ICONS[task.status as keyof typeof STATUS_ICONS] || Circle
   const isDone = task.status === "DONE"
-  const parsedDueDate = task.due_date ? parseLocalDate(task.due_date) : null
-  const isOverdue = parsedDueDate && !isDone && isPast(parsedDueDate) && !isToday(parsedDueDate)
-  const isDueToday = parsedDueDate && !isDone && isToday(parsedDueDate)
+  const dueDate = getTaskDueDateMoment(task)
+  const showsDueTime = taskHasTimedAlert(task)
+  const dueTimeLabel = dueDate && showsDueTime ? format(dueDate, "HH:mm") : null
+  const isOverdue = Boolean(dueDate && !isDone && isTaskOverdue(task))
+  const isDueToday = Boolean(dueDate && !isDone && !isOverdue && isTaskDueToday(task))
 
   const canDelete =
     task.created_by === currentUserId ||
@@ -114,8 +115,8 @@ export function TaskCard({
         className={cn(
           "group flex items-start gap-1.5 p-2 rounded-md border text-sm cursor-pointer transition-colors",
           isDone && "opacity-50 bg-muted/30",
-          isOverdue && "border-red-300 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20",
-          isDueToday && "border-orange-300 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-950/20",
+          isOverdue && "border-destructive bg-destructive/10",
+          isDueToday && "border-warning bg-warning/10",
           !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
         )}
       >
@@ -143,9 +144,9 @@ export function TaskCard({
               {task.title}
             </span>
           </div>
-          {task.assignee && (
+          {(task.assignee || dueTimeLabel) && (
             <span className="text-[10px] text-muted-foreground truncate block mt-0.5">
-              {task.assignee.name}
+              {[dueTimeLabel, task.assignee?.name].filter(Boolean).join(" · ")}
             </span>
           )}
         </div>
@@ -159,8 +160,8 @@ export function TaskCard({
       className={cn(
         "flex items-start gap-3 p-4 rounded-lg border transition-colors",
         isDone && "opacity-60 bg-muted/30",
-        isOverdue && "border-red-300 dark:border-red-800",
-        isDueToday && "border-orange-300 dark:border-orange-800",
+        isOverdue && "border-destructive",
+        isDueToday && "border-warning",
         !isDone && !isOverdue && !isDueToday && "hover:bg-muted/50"
       )}
     >
@@ -207,18 +208,18 @@ export function TaskCard({
               {task.assignee.name}
             </span>
           )}
-          {task.due_date && (
+          {dueDate && (
             <span
               className={cn(
                 "flex items-center gap-1",
-                isOverdue && "text-red-600 font-medium",
-                isDueToday && "text-orange-600 font-medium"
+                isOverdue && "text-destructive font-medium",
+                isDueToday && "text-warning font-medium"
               )}
             >
               <Clock className="h-3 w-3" />
               {isOverdue && "Vencida · "}
               {isDueToday && "Hoy · "}
-              {format(parsedDueDate!, "dd MMM yyyy", { locale: es })}
+              {format(dueDate, showsDueTime ? "dd MMM yyyy HH:mm" : "dd MMM yyyy", { locale: es })}
             </span>
           )}
           {task.operations && (

@@ -1,108 +1,66 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { paymentsSchema } from "@/lib/import/schemas/payments"
+import { z } from "zod"
 
-interface PaymentRow {
-  operation_file_code: string
-  amount: string
-  currency: string
-  date_due: string
-  date_paid?: string
-  status?: string
-  direction: string
-  payer_type?: string
-  method?: string
-  reference?: string
-}
+const bodySchema = z.object({
+  rows: z.array(paymentsSchema).min(1),
+  chunk_index: z.number().int().min(0).optional(),
+  total_chunks: z.number().int().min(1).optional(),
+  session_id: z.string().uuid().optional(),
+})
 
 export async function POST(request: Request) {
-  try {
-    const { user } = await getCurrentUser()
-    
-    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
-      return NextResponse.json({ error: "No tienes permiso para importar datos" }, { status: 403 })
-    }
-
-    const { rows } = await request.json() as { rows: PaymentRow[] }
-
-    if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: "No hay datos para importar" }, { status: 400 })
-    }
-
-    const supabase = await createServerClient()
-    
-    // Cache de operaciones
-    const { data: operations } = await supabase.from("operations").select("id, file_code")
-    const operationMap = new Map((operations || []).map((o: any) => [o.file_code, o.id]))
-
-    let success = 0
-    let errors = 0
-    let warnings = 0
-    const details: string[] = []
-
-    for (const row of rows) {
-      try {
-        const operationId = operationMap.get(row.operation_file_code)
-        
-        if (!operationId) {
-          errors++
-          details.push(`Operación no encontrada: ${row.operation_file_code}`)
-          continue
-        }
-
-        const direction = row.direction?.toUpperCase()
-        if (!["INCOME", "EXPENSE"].includes(direction)) {
-          errors++
-          details.push(`Dirección inválida: ${row.direction}`)
-          continue
-        }
-
-        const payerType = row.payer_type?.toUpperCase() || (direction === "INCOME" ? "CUSTOMER" : "OPERATOR")
-        const status = validatePaymentStatus(row.status, row.date_paid)
-
-        const { error } = await (supabase.from("payments") as any)
-          .insert({
-            operation_id: operationId,
-            amount: parseFloat(row.amount),
-            currency: row.currency?.toUpperCase() || "ARS",
-            date_due: row.date_due,
-            date_paid: row.date_paid || null,
-            status: status,
-            direction: direction,
-            payer_type: payerType,
-            method: row.method || "TRANSFER",
-            reference: row.reference || null,
-          })
-
-        if (error) {
-          errors++
-          details.push(`Error creando pago para ${row.operation_file_code}: ${error.message}`)
-        } else {
-          success++
-        }
-      } catch (error: any) {
-        errors++
-        details.push(`Error procesando fila: ${error.message}`)
-      }
-    }
-
-    return NextResponse.json({
-      success,
-      errors,
-      warnings,
-      details: details.slice(0, 30),
-    })
-  } catch (error: any) {
-    console.error("Error in import payments:", error)
-    return NextResponse.json({ error: error.message || "Error al importar" }, { status: 500 })
+  const { user } = await getCurrentUser()
+  if (!["SUPER_ADMIN", "ADMIN", "ORG_OWNER"].includes(user.role)) {
+    return NextResponse.json({ error: "No tenés permiso" }, { status: 403 })
   }
-}
+  const orgId = user.org_id
+  if (!orgId) return NextResponse.json({ error: "Usuario sin tenant" }, { status: 403 })
 
-function validatePaymentStatus(status?: string, datePaid?: string): string {
-  if (datePaid) return "PAID"
-  if (!status) return "PENDING"
-  const upper = status.toUpperCase()
-  if (["PENDING", "PAID", "OVERDUE"].includes(upper)) return upper
-  return "PENDING"
-}
+  const parsed = bodySchema.safeParse(await request.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Body inválido", details: parsed.error.issues }, { status: 400 })
+  }
 
+  // FK: operation_file_code → operation_id (within org)
+  // Nota: payments no tiene FK a financial_accounts — la relación se establece
+  // post-facto via ledger_movements al marcar el pago como PAID.
+  const admin = createAdminClient() as any
+  const { data: ops } = await admin
+    .from("operations")
+    .select("id, file_code")
+    .eq("org_id", orgId)
+    .not("file_code", "is", null)
+  const opByCode = new Map<string, string>((ops ?? []).map((o: any) => [o.file_code, o.id]))
+
+  const errors: { row: number; error: string }[] = []
+  const rowsWithFk = parsed.data.rows.map((r, i) => {
+    const operation_id = opByCode.get(r.operation_file_code)
+    if (!operation_id) {
+      errors.push({ row: i + 1, error: `operation "${r.operation_file_code}" no encontrada` })
+    }
+    return { ...r, operation_id }
+  })
+
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "FK no resueltas", fk_errors: errors }, { status: 400 })
+  }
+
+  const supabase = await createServerClient()
+  const { data, error } = await (supabase.rpc as any)("bulk_import_payments", {
+    p_org_id: orgId,
+    p_rows: rowsWithFk,
+  })
+  if (error) {
+    console.error("import payments error", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({
+    inserted: data.inserted,
+    conflicts: data.conflicts,
+    chunk_index: parsed.data.chunk_index,
+    total_chunks: parsed.data.total_chunks,
+  })
+}

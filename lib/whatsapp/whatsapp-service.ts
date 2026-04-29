@@ -1,6 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js"
-import { format } from "date-fns"
-import { es } from "date-fns/locale"
+import { getQuotationOptionPricing, QUOTATION_AVAILABILITY_NOTE } from "@/lib/quotations/presentation"
 
 /**
  * Servicio para crear mensajes WhatsApp automáticos
@@ -163,6 +162,10 @@ export async function createQuotationSentMessage(
     destination: string
     total_amount: number
     currency: string
+    pricing_mode?: "PER_PERSON" | "GROUP_TOTAL" | null
+    adults?: number
+    children?: number
+    infants?: number
     valid_until: string
     agency_id: string
   },
@@ -173,6 +176,16 @@ export async function createQuotationSentMessage(
     phone: string
   }
 ): Promise<boolean> {
+  const pricing = getQuotationOptionPricing(
+    { total_amount: quotation.total_amount || 0 },
+    {
+      adults: Number(quotation.adults || 0),
+      children: Number(quotation.children || 0),
+      infants: Number(quotation.infants || 0),
+      pricing_mode: quotation.pricing_mode,
+    }
+  )
+
   return createWhatsAppMessage({
     supabase,
     triggerType: "QUOTATION_SENT",
@@ -182,9 +195,10 @@ export async function createQuotationSentMessage(
     agencyId: quotation.agency_id,
     variables: {
       destino: quotation.destination,
-      monto: quotation.total_amount.toLocaleString("es-AR"),
+      monto: pricing.primaryAmount.toLocaleString("es-AR"),
       moneda: quotation.currency,
-      fecha_validez: format(new Date(quotation.valid_until), "dd/MM/yyyy", { locale: es }),
+      fecha_validez: "",
+      nota_disponibilidad: QUOTATION_AVAILABILITY_NOTE,
     },
     quotationId: quotation.id,
   })

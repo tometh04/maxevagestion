@@ -65,17 +65,17 @@ interface CustomerInteractionsProps {
 }
 
 const interactionTypes = [
-  { value: 'call', label: 'Llamada', icon: Phone, color: 'bg-blue-500' },
-  { value: 'email', label: 'Email', icon: Mail, color: 'bg-amber-500' },
-  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-green-500' },
+  { value: 'call', label: 'Llamada', icon: Phone, color: 'bg-info' },
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-warning' },
+  { value: 'whatsapp', label: 'WhatsApp', icon: MessageSquare, color: 'bg-success' },
   { value: 'meeting', label: 'Reunión', icon: Users, color: 'bg-purple-500' },
   { value: 'video_call', label: 'Videollamada', icon: Video, color: 'bg-indigo-500' },
   { value: 'note', label: 'Nota', icon: FileText, color: 'bg-gray-500' },
   { value: 'task', label: 'Tarea', icon: CheckCircle2, color: 'bg-cyan-500' },
-  { value: 'quote_sent', label: 'Cotización enviada', icon: FileText, color: 'bg-orange-500' },
-  { value: 'quote_approved', label: 'Cotización aprobada', icon: CheckCircle2, color: 'bg-emerald-500' },
-  { value: 'payment', label: 'Pago', icon: FileText, color: 'bg-green-600' },
-  { value: 'complaint', label: 'Reclamo', icon: AlertCircle, color: 'bg-red-500' },
+  { value: 'quote_sent', label: 'Cotización enviada', icon: FileText, color: 'bg-primary' },
+  { value: 'quote_approved', label: 'Cotización aprobada', icon: CheckCircle2, color: 'bg-success' },
+  { value: 'payment', label: 'Pago', icon: FileText, color: 'bg-success' },
+  { value: 'complaint', label: 'Reclamo', icon: AlertCircle, color: 'bg-destructive' },
   { value: 'feedback', label: 'Feedback', icon: MessageSquare, color: 'bg-pink-500' },
   { value: 'other', label: 'Otro', icon: MoreHorizontal, color: 'bg-slate-500' },
 ]
@@ -321,8 +321,8 @@ export function CustomerInteractions({ customerId, customerName }: CustomerInter
                         </div>
 
                         {interaction.follow_up_date && !interaction.is_follow_up_completed && (
-                          <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded text-sm">
-                            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                          <div className="mt-2 p-2 bg-warning/10 rounded text-sm">
+                            <div className="flex items-center gap-2 text-warning">
                               <Calendar className="h-4 w-4" />
                               <span>Seguimiento: {format(new Date(interaction.follow_up_date), "dd/MM/yyyy HH:mm", { locale: es })}</span>
                             </div>

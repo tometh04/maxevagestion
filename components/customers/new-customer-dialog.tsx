@@ -30,7 +30,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { toast } from "sonner"
-import { Loader2, Upload, FileText, X, CheckCircle } from "lucide-react"
+import { Loader2, Upload, FileText, X, CheckCircle, User } from "lucide-react"
 import { useCustomerSettings } from "@/hooks/use-customer-settings"
 import { CustomFieldsForm } from "./custom-fields-form"
 import {
@@ -48,12 +48,32 @@ interface NewCustomerDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onSuccess: (customer?: any) => void
+  /**
+   * Si está set, todo documento OCR-eado en el dialog se vincula automáticamente
+   * a esta operación además del cliente. Sirve para que aparezca en la sección
+   * "Documentos" de la operación. (Item 11 backlog Santi)
+   */
+  operationId?: string
+  /**
+   * Pre-fill de campos del form al abrir. Usado p.ej. desde facturación cuando
+   * el user ya tipeó CUIT/DNI en el receptor: abrir el dialog con esos valores
+   * para no perder lo escrito. (Item 10b backlog Santi)
+   */
+  prefillData?: {
+    first_name?: string
+    last_name?: string
+    document_type?: string
+    document_number?: string
+    phone?: string
+    email?: string
+  }
 }
 
 const documentTypes = [
   { value: "DNI", label: "DNI" },
   { value: "PASSPORT", label: "Pasaporte" },
   { value: "CUIT", label: "CUIT" },
+  { value: "CUIL", label: "CUIL" },
   { value: "OTHER", label: "Otro" },
 ]
 
@@ -70,10 +90,57 @@ const nationalities = [
   { value: "Otro", label: "Otro" },
 ]
 
+// Generador de CUIL argentino
+function generateCUIL(dni: string, sex: "M" | "F"): string {
+  const dniClean = dni.replace(/\D/g, "").padStart(8, "0")
+  if (dniClean.length !== 7 && dniClean.length !== 8) return ""
+
+  const prefix = sex === "M" ? "20" : "27"
+  const base = prefix + dniClean
+
+  // Cálculo del dígito verificador
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  let sum = 0
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(base[i]) * weights[i]
+  }
+  const remainder = sum % 11
+  let checkDigit: number
+
+  if (remainder === 0) {
+    checkDigit = 0
+  } else if (remainder === 1) {
+    // Caso especial: si el dígito es 1, se cambia el prefijo
+    if (sex === "M") {
+      return generateCUILWithPrefix("23", dniClean)
+    } else {
+      return generateCUILWithPrefix("23", dniClean)
+    }
+  } else {
+    checkDigit = 11 - remainder
+  }
+
+  return `${prefix}-${dniClean}-${checkDigit}`
+}
+
+function generateCUILWithPrefix(prefix: string, dni: string): string {
+  const base = prefix + dni
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  let sum = 0
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(base[i]) * weights[i]
+  }
+  const remainder = sum % 11
+  const checkDigit = remainder === 0 ? 0 : 11 - remainder
+  return `${prefix}-${dni}-${checkDigit}`
+}
+
 export function NewCustomerDialog({
   open,
   onOpenChange,
   onSuccess,
+  operationId,
+  prefillData,
 }: NewCustomerDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isProcessingOCR, setIsProcessingOCR] = useState(false)
@@ -83,13 +150,20 @@ export function NewCustomerDialog({
   const { settings, loading: settingsLoading } = useCustomerSettings()
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
 
+  // Estado para generador de CUIL
+  const [cuilDni, setCuilDni] = useState("")
+  const [cuilSex, setCuilSex] = useState<"M" | "F">("M")
+  const [generatedCuil, setGeneratedCuil] = useState("")
+  const [isLookingUpCuil, setIsLookingUpCuil] = useState(false)
+
   // Generar schema dinámicamente según configuración
   const customerSchema = useMemo(() => {
-    // Schema base - sin email ni instagram
+    // Schema base — sin instagram. Email opcional (string vacío permitido).
     const baseFields: Record<string, z.ZodTypeAny> = {
       first_name: z.string().min(1, "Nombre es requerido"),
       last_name: z.string().min(1, "Apellido es requerido"),
       phone: z.string().min(1, "Teléfono es requerido"),
+      email: z.union([z.string().email("Email inválido"), z.literal("")]).optional(),
       document_type: z.string().optional(),
       document_number: z.string().optional(),
       procedure_number: z.string().optional(),
@@ -143,6 +217,7 @@ export function NewCustomerDialog({
         first_name: "",
         last_name: "",
         phone: "",
+        email: "",
         document_type: "",
         document_number: "",
         procedure_number: "",
@@ -171,6 +246,17 @@ export function NewCustomerDialog({
       form.reset(defaultValues)
     }
   }, [settings, settingsLoading, defaultValues, form])
+
+  // Aplicar prefillData cuando se abre el dialog (item 10b backlog Santi)
+  useEffect(() => {
+    if (!open || !prefillData) return
+    if (prefillData.first_name) form.setValue("first_name", prefillData.first_name)
+    if (prefillData.last_name) form.setValue("last_name", prefillData.last_name)
+    if (prefillData.document_type) form.setValue("document_type", prefillData.document_type)
+    if (prefillData.document_number) form.setValue("document_number", prefillData.document_number)
+    if (prefillData.phone) form.setValue("phone", prefillData.phone)
+    if (prefillData.email) form.setValue("email" as any, prefillData.email)
+  }, [open, prefillData, form])
 
   // Procesar documento con OCR
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -299,6 +385,54 @@ export function NewCustomerDialog({
     }
   }
 
+  // Buscar datos del cliente con DNI + Sexo y generar CUIL
+  const handleCuilLookup = async () => {
+    if (!cuilDni || cuilDni.replace(/\D/g, "").length < 7) {
+      toast.error("Ingresá un DNI válido (7-8 dígitos)")
+      return
+    }
+
+    setIsLookingUpCuil(true)
+    try {
+      const cuil = generateCUIL(cuilDni, cuilSex)
+      const cuilClean = cuil.replace(/\D/g, "")
+      setGeneratedCuil(cuil)
+
+      // Auto-completar campos básicos del formulario
+      const dniClean = cuilDni.replace(/\D/g, "")
+      form.setValue("document_type", "CUIL")
+      form.setValue("document_number", cuilClean)
+      form.setValue("nationality", "Argentina")
+
+      // Intentar buscar datos del contribuyente por CUIL en AFIP
+      try {
+        const response = await fetch(`/api/customers/cuil-lookup?cuil=${cuilClean}`)
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            if (result.data.firstName) {
+              form.setValue("first_name", result.data.firstName)
+            }
+            if (result.data.lastName) {
+              form.setValue("last_name", result.data.lastName)
+            }
+            toast.success(`CUIL generado: ${cuil} — Datos completados desde AFIP`)
+            return
+          }
+        }
+      } catch (afipError) {
+        console.error("Error looking up CUIL in AFIP:", afipError)
+      }
+
+      toast.success(`CUIL generado: ${cuil}`)
+    } catch (error) {
+      console.error("Error generating CUIL:", error)
+      toast.error("Error al generar el CUIL")
+    } finally {
+      setIsLookingUpCuil(false)
+    }
+  }
+
   const onSubmit = async (values: CustomerFormValues) => {
     setIsLoading(true)
     try {
@@ -307,7 +441,7 @@ export function NewCustomerDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...values,
-          email: null, // Email eliminado del formulario
+          email: (values as any).email?.trim() || null,
           instagram_handle: null, // Instagram eliminado del formulario
           document_type: values.document_type || null,
           document_number: values.document_number || null,
@@ -334,8 +468,13 @@ export function NewCustomerDialog({
         try {
           const docFormData = new FormData()
           docFormData.append("file", uploadedFile)
-          docFormData.append("type", values.document_type || "DNI")
+          docFormData.append("type", values.document_type === "CUIL" ? "DNI" : values.document_type || "DNI")
           docFormData.append("customerId", newCustomer.id)
+          // Item 11 backlog Santi: si el dialog se abrió desde una operación,
+          // vincular el doc también a la operación para que aparezca en su sección Documentos.
+          if (operationId) {
+            docFormData.append("operationId", operationId)
+          }
 
           const docResponse = await fetch("/api/documents/upload-with-ocr", {
             method: "POST",
@@ -391,7 +530,7 @@ export function NewCustomerDialog({
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent 
-          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          className="max-w-lg max-h-[90vh] overflow-y-auto"
           onEscapeKeyDown={(e) => e.preventDefault()}
           onPointerDownOutside={(e) => e.preventDefault()}
         >
@@ -403,150 +542,180 @@ export function NewCustomerDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="first_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Juan" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="last_name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Apellido *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Pérez" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="phone"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Teléfono *</FormLabel>
-                    <FormControl>
-                      <Input placeholder="+54 11 1234-5678" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="document_type"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tipo de Documento</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+            {/* Datos Personales */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-medium text-foreground/70">Datos Personales</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="first_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nombre *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar tipo" />
-                        </SelectTrigger>
+                        <Input placeholder="Juan" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {documentTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="document_number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Número de Documento</FormLabel>
-                    <FormControl>
-                      <Input placeholder="12345678" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="nationality"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nacionalidad</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                <FormField
+                  control={form.control}
+                  name="last_name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Apellido *</FormLabel>
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar nacionalidad" />
-                        </SelectTrigger>
+                        <Input placeholder="Pérez" {...field} />
                       </FormControl>
-                      <SelectContent>
-                        {nationalities.map((nat) => (
-                          <SelectItem key={nat.value} value={nat.value}>
-                            {nat.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="date_of_birth"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Fecha de Nacimiento</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="phone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Teléfono *</FormLabel>
+                      <FormControl>
+                        <Input placeholder="+54 11 1234-5678" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <FormField
-                control={form.control}
-                name="procedure_number"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Número de Trámite</FormLabel>
-                    <FormControl>
-                      <Input placeholder="12345678" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name={"email" as any}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input type="email" placeholder="cliente@email.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="date_of_birth"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Fecha de Nacimiento</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            {/* Documento */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-emerald-500" />
+                <span className="text-xs font-medium text-foreground/70">Documento</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <FormField
+                  control={form.control}
+                  name="document_type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de Documento</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {documentTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="document_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número de Documento</FormLabel>
+                      <FormControl>
+                        <Input placeholder="12345678" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="nationality"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nacionalidad</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Seleccionar nacionalidad" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {nationalities.map((nat) => (
+                            <SelectItem key={nat.value} value={nat.value}>
+                              {nat.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="procedure_number"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Número de Trámite</FormLabel>
+                      <FormControl>
+                        <Input placeholder="12345678" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             {/* Sección de carga de documento con OCR */}
-            <div className="border rounded-lg p-4 bg-muted/30">
-              <div className="flex items-center gap-2 mb-3">
-                <FileText className="h-5 w-5 text-primary" />
-                <span className="font-medium">Escanear Documento</span>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <Upload className="h-3.5 w-3.5 text-violet-500" />
+                <span className="text-xs font-medium text-foreground/70">Escanear Documento</span>
               </div>
-              <p className="text-sm text-muted-foreground mb-3">
+              <p className="text-sm text-muted-foreground">
                 Sube una foto o PDF del DNI o Pasaporte y los datos se completarán automáticamente
               </p>
               
@@ -588,7 +757,7 @@ export function NewCustomerDialog({
                 <div className="flex items-center justify-between p-3 bg-background rounded-md border">
                   <div className="flex items-center gap-3">
                     {ocrSuccess ? (
-                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      <CheckCircle className="h-5 w-5 text-success" />
                     ) : (
                       <FileText className="h-5 w-5 text-muted-foreground" />
                     )}
@@ -610,6 +779,63 @@ export function NewCustomerDialog({
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Sección: Crear desde CUIL */}
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 text-blue-500" />
+                <span className="text-xs font-medium text-foreground/70">Crear desde CUIL</span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Ingresá el DNI y sexo para generar el CUIL automáticamente
+              </p>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="md:col-span-1">
+                  <label className="text-sm font-medium mb-1.5 block">DNI</label>
+                  <Input
+                    placeholder="12345678"
+                    value={cuilDni}
+                    onChange={(e) => setCuilDni(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-1.5 block">Sexo</label>
+                  <Select value={cuilSex} onValueChange={(v) => setCuilSex(v as "M" | "F")}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="M">Masculino</SelectItem>
+                      <SelectItem value="F">Femenino</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handleCuilLookup}
+                    disabled={isLookingUpCuil || !cuilDni}
+                  >
+                    {isLookingUpCuil ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Buscando...
+                      </>
+                    ) : (
+                      "Generar CUIL"
+                    )}
+                  </Button>
+                </div>
+              </div>
+              {generatedCuil && (
+                <div className="flex items-center gap-2 p-3 bg-background rounded-md border border-emerald-200">
+                  <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0" />
+                  <span className="text-sm font-medium">CUIL: {generatedCuil}</span>
                 </div>
               )}
             </div>

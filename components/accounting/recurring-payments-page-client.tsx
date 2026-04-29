@@ -22,11 +22,22 @@ import {
 } from "@/components/ui/select"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
-import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info } from "lucide-react"
+import { Plus, RefreshCw, AlertCircle, Filter, HelpCircle, Info, Trash2 } from "lucide-react"
+import { useSortableData, SortableTableHead } from "@/components/ui/sortable-header"
 import { NewRecurringPaymentDialog } from "./new-recurring-payment-dialog"
 import { EditRecurringPaymentDialog } from "./edit-recurring-payment-dialog"
 import { PayRecurringExpenseDialog } from "./pay-recurring-expense-dialog"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Tooltip,
@@ -82,6 +93,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
   const [editingPayment, setEditingPayment] = useState<any | null>(null)
   const [payingExpense, setPayingExpense] = useState<any | null>(null)
   const [payDialogOpen, setPayDialogOpen] = useState(false)
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean; payment: any | null }>({ open: false, payment: null })
   const [tableError, setTableError] = useState<string | null>(null)
   const [categories, setCategories] = useState<Array<{ id: string; name: string; color: string }>>([])
 
@@ -168,6 +180,24 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     } catch (error: any) {
       console.error("Error generating payments:", error)
       toast.error(error.message || "Error al generar pagos recurrentes")
+    }
+  }
+
+  async function handleDeleteRecurring() {
+    if (!deleteDialog.payment) return
+    try {
+      const response = await fetch(`/api/recurring-payments/${deleteDialog.payment.id}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || "Error al eliminar")
+      }
+      toast.success("Gasto recurrente eliminado")
+      setDeleteDialog({ open: false, payment: null })
+      fetchData()
+    } catch (error: any) {
+      toast.error(error.message || "Error al eliminar gasto recurrente")
     }
   }
 
@@ -308,13 +338,10 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
     })
     }
 
-    // Filtro por mes/año (mejorado: calcula vencimientos futuros según frecuencia)
-    if (monthFilter && monthFilter !== "ALL" && yearFilter && yearFilter !== "ALL") {
-      filtered = filtered.filter((p) => hasVencimientoInMonth(p, yearFilter, monthFilter))
-    }
-
     return filtered
-  }, [payments, providerFilter, monthFilter, yearFilter])
+  }, [payments, providerFilter])
+
+  const { sortedData: sortedPayments, sortConfig, requestSort } = useSortableData(filteredPayments, { key: "next_due_date", direction: "desc" })
 
   const activeCount = payments.filter((p) => p.is_active).length
   const inactiveCount = payments.filter((p) => !p.is_active).length
@@ -432,11 +459,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
             <CardTitle className="text-sm font-medium">Pagos Activos</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 pt-2">
             <div className="text-2xl font-bold">{activeCount}</div>
             <p className="text-xs text-muted-foreground">
               {inactiveCount} inactivos
@@ -444,11 +471,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
             <CardTitle className="text-sm font-medium">Total Mensual ARS</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 pt-2">
             <div className="text-2xl font-bold">
               {formatCurrency(totalMonthly - (totalMonthlyUSD * 1), "ARS")}
             </div>
@@ -458,11 +485,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
             <CardTitle className="text-sm font-medium">Total Mensual USD</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 pt-2">
             <div className="text-2xl font-bold text-emerald-600">
               {formatCurrency(totalMonthlyUSD, "USD")}
             </div>
@@ -472,11 +499,11 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <Card className="rounded-xl border border-border/40 p-5">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-0">
             <CardTitle className="text-sm font-medium">Acciones</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0 pt-2">
             <Button onClick={handleGeneratePayments} size="sm" variant="outline" className="w-full">
               <RefreshCw className="mr-2 h-4 w-4" />
               Generar Pagos Hoy
@@ -486,79 +513,78 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
       </div>
 
       {/* Filters and Actions */}
-      <Card>
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <CardTitle>Gastos Recurrentes</CardTitle>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p className="font-medium mb-1">¿Cómo funciona?</p>
-                      <p className="text-xs mb-2">
-                        <strong>Crear Gasto:</strong> Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios).
-                      </p>
-                      <p className="text-xs">
-                        <strong>Pagar Gasto:</strong> Procesa el pago cuando el gasto está vencido, impactando en tu caja.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <CardDescription>
-                Define gastos recurrentes y procesa sus pagos cuando correspondan
-              </CardDescription>
+      <div>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-tight">Gastos Recurrentes</h2>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p className="font-medium mb-1">¿Cómo funciona?</p>
+                    <p className="text-xs mb-2">
+                      <strong>Crear Gasto:</strong> Define un gasto que se repetirá automáticamente (ej: alquiler mensual, servicios).
+                    </p>
+                    <p className="text-xs">
+                      <strong>Pagar Gasto:</strong> Procesa el pago cuando el gasto está vencido, impactando en tu caja.
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Filtro por Proveedor */}
-              <Select value={providerFilter} onValueChange={setProviderFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="Proveedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos los proveedores</SelectItem>
-                  {uniqueProviders.map((provider) => (
-                    <SelectItem key={provider} value={provider}>
-                      {provider}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <p className="text-sm text-muted-foreground">
+              Define gastos recurrentes y procesa sus pagos cuando correspondan
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Filtro por Proveedor */}
+            <Select value={providerFilter} onValueChange={setProviderFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <Filter className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="Proveedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos los proveedores</SelectItem>
+                {uniqueProviders.map((provider) => (
+                  <SelectItem key={provider} value={provider}>
+                    {provider}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Agencia */}
-              <Select value={agencyFilter} onValueChange={setAgencyFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Agencia" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todas</SelectItem>
-                  {agencies.map((agency) => (
-                    <SelectItem key={agency.id} value={agency.id}>
-                      {agency.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Filtro por Agencia */}
+            <Select value={agencyFilter} onValueChange={setAgencyFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue placeholder="Agencia" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todas</SelectItem>
+                {agencies.map((agency) => (
+                  <SelectItem key={agency.id} value={agency.id}>
+                    {agency.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Estado */}
-              <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
-                <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Estado" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos</SelectItem>
-                  <SelectItem value="ACTIVE">Activos</SelectItem>
-                  <SelectItem value="INACTIVE">Inactivos</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Filtro por Estado */}
+            <Select value={isActiveFilter} onValueChange={setIsActiveFilter}>
+              <SelectTrigger className="h-8 text-xs rounded-full border-border/60 bg-background min-w-[140px]">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="ACTIVE">Activos</SelectItem>
+                <SelectItem value="INACTIVE">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
 
-              {/* Filtro por Mes */}
-              <Select value={monthFilter} onValueChange={setMonthFilter}>
+            {/* Filtros de mes/año removidos - gastos recurrentes son definiciones fijas, no se filtran por fecha */}
+            {/* <Select value={monthFilter} onValueChange={setMonthFilter}>
                 <SelectTrigger className="w-[140px]">
                   <SelectValue placeholder="Mes" />
                 </SelectTrigger>
@@ -574,34 +600,15 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                     )
                   })}
                 </SelectContent>
-              </Select>
+              </Select> */}
 
-              {/* Filtro por Año */}
-              <Select value={yearFilter} onValueChange={setYearFilter}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Año" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ALL">Todos los años</SelectItem>
-                  {Array.from({ length: 5 }, (_, i) => {
-                    const year = new Date().getFullYear() - 2 + i
-                    return (
-                      <SelectItem key={year} value={String(year)}>
-                        {year}
-                      </SelectItem>
-                    )
-                  })}
-                </SelectContent>
-              </Select>
-
-              <Button onClick={() => setNewDialogOpen(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nuevo Gasto Recurrente
-              </Button>
-            </div>
+            <Button size="sm" onClick={() => setNewDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Nuevo Gasto Recurrente
+            </Button>
           </div>
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div className="rounded-xl border border-border/40">
           {filteredPayments.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               {providerFilter !== "ALL" 
@@ -613,17 +620,17 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Proveedor</TableHead>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Frecuencia</TableHead>
-                  <TableHead>Próximo Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
+                  <SortableTableHead sortKey="provider_name" sortConfig={sortConfig} onSort={requestSort}>Proveedor</SortableTableHead>
+                  <SortableTableHead sortKey="description" sortConfig={sortConfig} onSort={requestSort}>Descripción</SortableTableHead>
+                  <SortableTableHead sortKey="amount" sortConfig={sortConfig} onSort={requestSort}>Monto</SortableTableHead>
+                  <SortableTableHead sortKey="frequency" sortConfig={sortConfig} onSort={requestSort}>Frecuencia</SortableTableHead>
+                  <SortableTableHead sortKey="next_due_date" sortConfig={sortConfig} onSort={requestSort}>Próximo Vencimiento</SortableTableHead>
+                  <SortableTableHead sortKey="is_active" sortConfig={sortConfig} onSort={requestSort}>Estado</SortableTableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredPayments.map((payment) => {
+                {sortedPayments.map((payment) => {
                   const daysUntilDue = Math.ceil(
                     (new Date(payment.next_due_date).getTime() - new Date().getTime()) /
                       (1000 * 60 * 60 * 24)
@@ -691,6 +698,14 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
                           >
                             Editar
                           </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                            onClick={() => setDeleteDialog({ open: true, payment })}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -699,14 +714,14 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
               </TableBody>
             </Table>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Gráficos de Análisis */}
       {filteredPayments.length > 0 && (
         <div className="grid gap-3 md:grid-cols-3">
           {/* Gráfico de barras: Gastos por categoría */}
-          <Card className="md:col-span-2">
+          <Card className="md:col-span-2 rounded-xl border border-border/40">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium">Gastos por Categoría (Mensual)</CardTitle>
             </CardHeader>
@@ -739,7 +754,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </Card>
 
           {/* Gráfico de torta: Distribución porcentual */}
-          <Card>
+          <Card className="rounded-xl border border-border/40">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium">Distribución por Categoría</CardTitle>
             </CardHeader>
@@ -795,7 +810,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </Card>
 
           {/* Gráfico de líneas: Evolución mensual */}
-          <Card className="md:col-span-3">
+          <Card className="md:col-span-3 rounded-xl border border-border/40">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium">Evolución de Gastos por Categoría - Últimos 6 Meses</CardTitle>
             </CardHeader>
@@ -849,7 +864,7 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
           </Card>
 
           {/* Estadísticas adicionales */}
-          <Card className="md:col-span-3">
+          <Card className="md:col-span-3 rounded-xl border border-border/40">
             <CardHeader className="py-3 px-4">
               <CardTitle className="text-sm font-medium">Estadísticas Adicionales</CardTitle>
             </CardHeader>
@@ -920,6 +935,29 @@ export function RecurringPaymentsPageClient({ agencies }: RecurringPaymentsPageC
         }}
         onSuccess={fetchData}
       />
+
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ open, payment: open ? deleteDialog.payment : null })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar gasto recurrente</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteDialog.payment && (
+                <>
+                  Vas a eliminar el gasto recurrente <strong>{deleteDialog.payment.description}</strong> de{" "}
+                  <strong>{formatCurrency(deleteDialog.payment.amount, deleteDialog.payment.currency)}</strong>.
+                  Esta acción no se puede deshacer.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteRecurring} className="bg-red-600 hover:bg-red-700">
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

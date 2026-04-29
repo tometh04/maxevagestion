@@ -1,211 +1,71 @@
 import { NextResponse } from "next/server"
-import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
+import { createServerClient, createAdminClient } from "@/lib/supabase/server"
+import { operationsSchema } from "@/lib/import/schemas/operations"
+import { z } from "zod"
 
-interface OperationRow {
-  file_code?: string
-  customer_email?: string
-  destination: string
-  departure_date: string
-  return_date?: string
-  adults?: string
-  children?: string
-  sale_amount: string
-  operator_cost: string
-  currency?: string
-  status?: string
-  seller_email?: string
-  operator_name?: string
-}
+const bodySchema = z.object({
+  rows: z.array(operationsSchema).min(1),
+  chunk_index: z.number().int().min(0).optional(),
+  total_chunks: z.number().int().min(1).optional(),
+  session_id: z.string().uuid().optional(),
+})
 
 export async function POST(request: Request) {
-  try {
-    const { user } = await getCurrentUser()
-    
-    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
-      return NextResponse.json({ error: "No tienes permiso para importar datos" }, { status: 403 })
-    }
-
-    const { rows } = await request.json() as { rows: OperationRow[] }
-
-    if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      return NextResponse.json({ error: "No hay datos para importar" }, { status: 400 })
-    }
-
-    const supabase = await createServerClient()
-    
-    // Obtener agencia del usuario
-    const { data: userAgencies } = await supabase
-      .from("user_agencies")
-      .select("agency_id")
-      .eq("user_id", user.id)
-      .limit(1)
-    
-    const agencyId = (userAgencies as any)?.[0]?.agency_id
-    if (!agencyId) {
-      return NextResponse.json({ error: "Usuario sin agencia asignada" }, { status: 400 })
-    }
-
-    // Cache de vendedores y operadores
-    const { data: sellers } = await supabase.from("users").select("id, email")
-    const { data: operators } = await supabase.from("operators").select("id, name")
-    const { data: customers } = await supabase.from("customers").select("id, email")
-
-    const sellerMap = new Map((sellers || []).map((s: any) => [s.email?.toLowerCase(), s.id]))
-    const operatorMap = new Map((operators || []).map((o: any) => [o.name?.toLowerCase(), o.id]))
-    const customerMap = new Map((customers || []).map((c: any) => [c.email?.toLowerCase(), c.id]))
-
-    let success = 0
-    let errors = 0
-    let warnings = 0
-    const details: string[] = []
-
-    for (const row of rows) {
-      try {
-        // Buscar IDs relacionados
-        const sellerId = row.seller_email ? sellerMap.get(row.seller_email.toLowerCase()) : user.id
-        const operatorId = row.operator_name ? operatorMap.get(row.operator_name.toLowerCase()) : null
-        const customerId = row.customer_email ? customerMap.get(row.customer_email.toLowerCase()) : null
-
-        // Verificar si ya existe por file_code
-        let existingOperation = null
-        if (row.file_code) {
-          const { data } = await supabase
-            .from("operations")
-            .select("id")
-            .eq("file_code", row.file_code)
-            .maybeSingle()
-          existingOperation = data
-        }
-
-        const saleAmount = parseFloat(row.sale_amount)
-        const operatorCost = parseFloat(row.operator_cost)
-        const marginAmount = saleAmount - operatorCost
-        const marginPercentage = saleAmount > 0 ? (marginAmount / saleAmount) * 100 : 0
-
-        const operationData = {
-          agency_id: agencyId,
-          seller_id: sellerId || user.id,
-          operator_id: operatorId,
-          type: "PACKAGE" as const,
-          product_type: "PAQUETE",
-          destination: row.destination,
-          departure_date: row.departure_date,
-          return_date: row.return_date || null,
-          adults: row.adults ? parseInt(row.adults) : 2,
-          children: row.children ? parseInt(row.children) : 0,
-          infants: 0,
-          sale_amount_total: saleAmount,
-          sale_currency: (row.currency?.toUpperCase() as "ARS" | "USD") || "ARS",
-          operator_cost: operatorCost,
-          operator_cost_currency: (row.currency?.toUpperCase() as "ARS" | "USD") || "ARS",
-          currency: row.currency?.toUpperCase() || "ARS",
-          margin_amount: marginAmount,
-          margin_percentage: marginPercentage,
-          status: validateStatus(row.status) || "CONFIRMED",
-        }
-
-        if (existingOperation) {
-          // Actualizar operación existente
-          const { error } = await (supabase.from("operations") as any)
-            .update({
-              ...operationData,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", (existingOperation as any).id)
-
-          if (error) {
-            errors++
-            details.push(`Error actualizando ${row.file_code || row.destination}: ${error.message}`)
-          } else {
-            // Vincular cliente si existe y no está vinculado
-            if (customerId) {
-              const { data: existingLink } = await (supabase.from("operation_customers") as any)
-                .select("id")
-                .eq("operation_id", (existingOperation as any).id)
-                .eq("customer_id", customerId)
-                .maybeSingle()
-
-              if (!existingLink) {
-                await (supabase.from("operation_customers") as any)
-                  .insert({
-                    operation_id: (existingOperation as any).id,
-                    customer_id: customerId,
-                    role: "MAIN",
-                  })
-              }
-            }
-            warnings++
-            details.push(`Actualizado: ${row.file_code || row.destination}`)
-          }
-        } else {
-          // Crear nueva operación
-          const fileCode = row.file_code || generateFileCode()
-
-          const { data: newOperation, error } = await (supabase.from("operations") as any)
-            .insert({
-              ...operationData,
-              file_code: fileCode,
-            })
-            .select("id")
-            .single()
-
-          if (error) {
-            errors++
-            details.push(`Error creando ${row.destination}: ${error.message}`)
-          } else {
-            // Vincular cliente a la operación
-            if (customerId && newOperation?.id) {
-              await (supabase.from("operation_customers") as any)
-                .insert({
-                  operation_id: newOperation.id,
-                  customer_id: customerId,
-                  role: "MAIN",
-                })
-            }
-            success++
-          }
-        }
-
-        // Advertencias
-        if (!sellerId && row.seller_email) {
-          details.push(`⚠️ Vendedor no encontrado: ${row.seller_email}`)
-        }
-        if (!operatorId && row.operator_name) {
-          details.push(`⚠️ Operador no encontrado: ${row.operator_name}`)
-        }
-      } catch (error: any) {
-        errors++
-        details.push(`Error procesando fila: ${error.message}`)
-      }
-    }
-
-    return NextResponse.json({
-      success,
-      errors,
-      warnings,
-      details: details.slice(0, 30),
-    })
-  } catch (error: any) {
-    console.error("Error in import operations:", error)
-    return NextResponse.json({ error: error.message || "Error al importar" }, { status: 500 })
+  const { user } = await getCurrentUser()
+  if (!["SUPER_ADMIN", "ADMIN", "ORG_OWNER"].includes(user.role)) {
+    return NextResponse.json({ error: "No tenés permiso" }, { status: 403 })
   }
-}
+  const orgId = user.org_id
+  if (!orgId) return NextResponse.json({ error: "Usuario sin tenant" }, { status: 403 })
 
-function validateStatus(status?: string): string | null {
-  const validStatuses = ["RESERVED", "CONFIRMED", "CANCELLED", "TRAVELLING", "TRAVELLED"]
-  if (!status) return null
-  const upper = status.toUpperCase()
-  // Migrar estados antiguos
-  if (upper === "PRE_RESERVATION") return "RESERVED"
-  if (upper === "CLOSED") return "TRAVELLED"
-  return validStatuses.includes(upper) ? upper : null
-}
+  const parsed = bodySchema.safeParse(await request.json().catch(() => ({})))
+  if (!parsed.success) {
+    return NextResponse.json({ error: "Body inválido", details: parsed.error.issues }, { status: 400 })
+  }
 
-function generateFileCode(): string {
-  const date = new Date()
-  const dateStr = date.toISOString().slice(0, 10).replace(/-/g, "")
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase()
-  return `OP-${dateStr}-${random}`
-}
+  const admin = createAdminClient() as any
+  const [custsRes, opsRes, sellersRes, agenciesRes] = await Promise.all([
+    admin.from("customers").select("id, document_number").eq("org_id", orgId),
+    admin.from("operators").select("id, name").eq("org_id", orgId),
+    admin.from("users").select("id, email").eq("org_id", orgId),
+    admin.from("agencies").select("id, name").eq("org_id", orgId),
+  ])
+  const custByDoc = new Map<string, string>((custsRes.data ?? []).map((c: any) => [c.document_number, c.id]))
+  const opByName = new Map<string, string>((opsRes.data ?? []).map((o: any) => [o.name, o.id]))
+  const sellerByEmail = new Map<string, string>((sellersRes.data ?? []).map((s: any) => [s.email, s.id]))
+  const agencyByName = new Map<string, string>((agenciesRes.data ?? []).map((a: any) => [a.name, a.id]))
 
+  const errors: { row: number; error: string }[] = []
+  const rowsWithFk = parsed.data.rows.map((r, i) => {
+    const customer_id = custByDoc.get(r.customer_document)
+    const operator_id = opByName.get(r.operator_name)
+    const seller_id = sellerByEmail.get(r.seller_email)
+    const agency_id = agencyByName.get(r.agency_name)
+    if (!customer_id) errors.push({ row: i + 1, error: `customer document "${r.customer_document}" no encontrado` })
+    if (!operator_id) errors.push({ row: i + 1, error: `operator "${r.operator_name}" no encontrado` })
+    if (!seller_id) errors.push({ row: i + 1, error: `seller email "${r.seller_email}" no encontrado` })
+    if (!agency_id) errors.push({ row: i + 1, error: `agency "${r.agency_name}" no encontrada` })
+    return { ...r, customer_id, operator_id, seller_id, agency_id }
+  })
+
+  if (errors.length > 0) {
+    return NextResponse.json({ error: "FK no resueltas", fk_errors: errors }, { status: 400 })
+  }
+
+  const supabase = await createServerClient()
+  const { data, error } = await (supabase.rpc as any)("bulk_import_operations", {
+    p_org_id: orgId,
+    p_rows: rowsWithFk,
+  })
+  if (error) {
+    console.error("import operations error", error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+  return NextResponse.json({
+    inserted: data.inserted,
+    conflicts: data.conflicts,
+    chunk_index: parsed.data.chunk_index,
+    total_chunks: parsed.data.total_chunks,
+  })
+}

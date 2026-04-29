@@ -314,10 +314,10 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Margen Total
             </CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <TrendingUp className="h-4 w-4 text-success" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">
+            <div className="text-2xl font-bold text-success">
               {totals.currency === "USD" ? "US$" : "$"} {Math.round(totals.total_margin || 0).toLocaleString("es-AR")}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
@@ -399,7 +399,7 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                       <TableCell className="text-right text-muted-foreground">
                         {op.currency === "USD" ? "US$" : "$"} {Math.round(op.operator_cost || 0).toLocaleString("es-AR")}
                       </TableCell>
-                      <TableCell className={`text-right font-medium ${(op.margin_amount || 0) >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <TableCell className={`text-right font-medium ${(op.margin_amount || 0) >= 0 ? "text-success" : "text-destructive"}`}>
                         {op.currency === "USD" ? "US$" : "$"} {Math.round(op.margin_amount || 0).toLocaleString("es-AR")}
                       </TableCell>
                       <TableCell className="text-right">
@@ -460,7 +460,7 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                       <TableCell className="text-right text-muted-foreground">
                         {s.currency === "USD" ? "US$" : "$"} {Math.round(s.total_cost).toLocaleString("es-AR")}
                       </TableCell>
-                      <TableCell className={`text-right font-medium ${s.total_margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <TableCell className={`text-right font-medium ${s.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
                         {s.currency === "USD" ? "US$" : "$"} {Math.round(s.total_margin).toLocaleString("es-AR")}
                       </TableCell>
                       <TableCell className="text-right">
@@ -504,7 +504,7 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                       <TableCell className="text-right text-muted-foreground">
                         {o.currency === "USD" ? "US$" : "$"} {Math.round(o.total_cost).toLocaleString("es-AR")}
                       </TableCell>
-                      <TableCell className={`text-right font-medium ${o.total_margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <TableCell className={`text-right font-medium ${o.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
                         {o.currency === "USD" ? "US$" : "$"} {Math.round(o.total_margin).toLocaleString("es-AR")}
                       </TableCell>
                       <TableCell className="text-right">
@@ -549,7 +549,7 @@ export function MarginsReport({ userRole, userId, sellers, agencies }: MarginsRe
                         <TableCell className="text-right font-medium">
                           {p.currency === "USD" ? "US$" : "$"} {Math.round(p.total_sale).toLocaleString("es-AR")}
                         </TableCell>
-                        <TableCell className={`text-right font-medium ${p.total_margin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <TableCell className={`text-right font-medium ${p.total_margin >= 0 ? "text-success" : "text-destructive"}`}>
                           {p.currency === "USD" ? "US$" : "$"} {Math.round(p.total_margin).toLocaleString("es-AR")}
                         </TableCell>
                         <TableCell className="text-right">

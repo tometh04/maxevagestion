@@ -4,7 +4,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { canAccessModule } from "@/lib/permissions"
 import { getUserAgencyIds } from "@/lib/permissions-api"
 import { applyCustomersFilters } from "@/lib/permissions-api"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { buildExchangeRateMap, getLatestExchangeRate, DEFAULT_USD_ARS_FALLBACK_RATE } from "@/lib/accounting/exchange-rates"
+import { startOfDayAR, endOfDayAR } from "@/lib/utils/date-range"
 
 export const dynamic = 'force-dynamic'
 
@@ -20,6 +21,7 @@ export async function GET(request: Request) {
     const sellerIdFilter = searchParams.get("sellerId") // ID de vendedor
     const dateFromFilter = searchParams.get("dateFrom") // YYYY-MM-DD
     const dateToFilter = searchParams.get("dateTo") // YYYY-MM-DD
+    const dateType = (searchParams.get("dateType") || "SALIDA").toUpperCase() // SALIDA (departure_date) | CREACION (created_at)
 
     // Verificar permiso de acceso (accounting en vez de customers)
     if (!canAccessModule(user.role as any, "accounting")) {
@@ -29,20 +31,8 @@ export async function GET(request: Request) {
     // Get user agencies
     const agencyIds = await getUserAgencyIds(supabase, user.id, user.role as any)
 
-    // Build base query
-    let query = supabase.from("customers")
-
-    // Apply role-based filters
-    try {
-      query = await applyCustomersFilters(query, user, agencyIds, supabase)
-    } catch (error: any) {
-      console.error("Error applying customers filters:", error)
-      return NextResponse.json({ error: error.message }, { status: 403 })
-    }
-
-    // Get all customers with their operations
-    const { data: customers, error: customersError } = await query
-      .select(`
+    // Build base query — .select() FIRST so applyCustomersFilters can chain .eq()
+    let query = supabase.from("customers").select(`
         *,
         operation_customers(
           operation_id,
@@ -60,6 +50,16 @@ export async function GET(request: Request) {
           )
         )
       `)
+
+    try {
+      const applied = await applyCustomersFilters(query, user, agencyIds, supabase)
+      query = applied.query
+    } catch (error: any) {
+      console.error("Error applying customers filters:", error)
+      return NextResponse.json({ error: error.message }, { status: 403 })
+    }
+
+    const { data: customers, error: customersError } = await query
       .order("created_at", { ascending: false })
 
     if (customersError) {
@@ -77,37 +77,40 @@ export async function GET(request: Request) {
       })
     })
 
-    // Get all payments for these operations
-    // Usar amount_usd para calcular todo en USD
+    // Get all payments for these operations (chunked: .in() revienta URL con >300 UUIDs).
     let paymentsByOperation: Record<string, { paidUsd: number; currency: string }> = {}
     if (allOperationIds.length > 0) {
-      const { data: payments } = await supabase
-        .from("payments")
-        .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
-        .in("operation_id", allOperationIds)
-        .eq("direction", "INCOME")
-        .eq("payer_type", "CUSTOMER")
+      const chunkSize = 200
+      for (let i = 0; i < allOperationIds.length; i += chunkSize) {
+        const chunk = allOperationIds.slice(i, i + chunkSize)
+        const { data: payments } = await supabase
+          .from("payments")
+          .select("operation_id, amount, amount_usd, currency, exchange_rate, status, direction")
+          .in("operation_id", chunk)
+          .eq("direction", "INCOME")
+          .eq("payer_type", "CUSTOMER")
 
-      if (payments) {
-        payments.forEach((payment: any) => {
-          const opId = payment.operation_id
-          if (!paymentsByOperation[opId]) {
-            paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
-          }
-          if (payment.status === "PAID") {
-            // Usar amount_usd si está disponible (pagos nuevos)
-            // Si no, calcularlo usando exchange_rate
-            let paidUsd = 0
-            if (payment.amount_usd != null) {
-              paidUsd = Number(payment.amount_usd)
-            } else if (payment.currency === "USD") {
-              paidUsd = Number(payment.amount) || 0
-            } else if (payment.currency === "ARS" && payment.exchange_rate) {
-              paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+        if (payments) {
+          payments.forEach((payment: any) => {
+            const opId = payment.operation_id
+            if (!paymentsByOperation[opId]) {
+              paymentsByOperation[opId] = { paidUsd: 0, currency: payment.currency || "ARS" }
             }
-            paymentsByOperation[opId].paidUsd += paidUsd
-          }
-        })
+            if (payment.status === "PAID") {
+              // Usar amount_usd si está disponible (pagos nuevos)
+              // Si no, calcularlo usando exchange_rate
+              let paidUsd = 0
+              if (payment.amount_usd != null) {
+                paidUsd = Number(payment.amount_usd)
+              } else if (payment.currency === "USD") {
+                paidUsd = Number(payment.amount) || 0
+              } else if (payment.currency === "ARS" && payment.exchange_rate) {
+                paidUsd = (Number(payment.amount) || 0) / Number(payment.exchange_rate)
+              }
+              paymentsByOperation[opId].paidUsd += paidUsd
+            }
+          })
+        }
       }
     }
 
@@ -155,10 +158,27 @@ export async function GET(request: Request) {
     }> = []
 
     // Obtener tasa de cambio más reciente como fallback (una sola vez fuera del loop)
-    const latestExchangeRate = await getLatestExchangeRate(supabase) || 1000
+    const latestExchangeRate = await getLatestExchangeRate(supabase) || DEFAULT_USD_ARS_FALLBACK_RATE
 
-    // Cambiar forEach a for...of para permitir await dentro del loop
+    // Pre-build exchange rate map en 2 queries (en vez de N queries dentro del loop).
+    // Recopilamos todas las fechas de operations ARS de todos los customers.
+    // Multi-tenant safe: este map solo cubre fechas de operations que YA pasaron
+    // el filtro RLS de customers; no expone tasas a otros tenants (las tasas son
+    // globales por definición, no per-tenant).
     const customersList = (customers || []) as any[]
+    const allArsDates: (string | null | undefined)[] = []
+    for (const customer of customersList) {
+      const operations = (customer.operation_customers || []) as any[]
+      for (const oc of operations) {
+        const operation = oc.operations
+        if (!operation) continue
+        const saleCurrency = operation.sale_currency || operation.currency || "USD"
+        if (saleCurrency === "ARS") {
+          allArsDates.push(operation.departure_date || operation.created_at)
+        }
+      }
+    }
+    const getRate = await buildExchangeRateMap(supabase, allArsDates)
     for (const customer of customersList) {
       const operations = (customer.operation_customers || []) as any[]
       const operationsWithDebt: Array<{
@@ -186,13 +206,30 @@ export async function GET(request: Request) {
           continue
         }
 
-        // Aplicar filtro de fechas por departure_date de la operación
-        const opDate = operation.departure_date || operation.created_at
-        if (dateFromFilter && opDate && opDate < dateFromFilter) {
-          continue
-        }
-        if (dateToFilter && opDate && opDate > dateToFilter + "T23:59:59") {
-          continue
+        // Aplicar filtro de fechas según dateType:
+        // - SALIDA (default): operations.departure_date con fallback a created_at
+        //   si la operación no tiene fecha de salida (preserva comportamiento legacy).
+        // - CREACION: operations.created_at directo, sin fallback.
+        // Comparamos como timestamps reales (Date.getTime) con offset AR
+        // para evitar el bug de UTC/local que hacía que movimientos del
+        // final del día en AR quedaran fuera de rango.
+        const opDate = dateType === "CREACION"
+          ? operation.created_at
+          : (operation.departure_date || operation.created_at)
+        if (opDate) {
+          const opDateMs = new Date(opDate).getTime()
+          if (dateFromFilter) {
+            const fromMs = new Date(startOfDayAR(dateFromFilter)).getTime()
+            if (Number.isFinite(opDateMs) && Number.isFinite(fromMs) && opDateMs < fromMs) {
+              continue
+            }
+          }
+          if (dateToFilter) {
+            const toMs = new Date(endOfDayAR(dateToFilter)).getTime()
+            if (Number.isFinite(opDateMs) && Number.isFinite(toMs) && opDateMs > toMs) {
+              continue
+            }
+          }
         }
 
         const opId = operation.id
@@ -202,12 +239,9 @@ export async function GET(request: Request) {
         // Convertir sale_amount_total a USD
         let saleAmountUsd = saleAmount
         if (saleCurrency === "ARS") {
-          // Obtener tasa de cambio histórica para la fecha de la operación
+          // Lookup sincrónico en el map (sin queries a la BD).
           const operationDate = operation.departure_date || operation.created_at
-          let exchangeRate = await getExchangeRate(supabase, operationDate ? new Date(operationDate) : new Date())
-          if (!exchangeRate) {
-            exchangeRate = latestExchangeRate
-          }
+          const exchangeRate = getRate(operationDate) || latestExchangeRate
           // Convertir ARS a USD: dividir por el exchange_rate
           saleAmountUsd = saleAmount / exchangeRate
         }
@@ -257,7 +291,9 @@ export async function GET(request: Request) {
     // Sort by total debt (descending)
     debtors.sort((a, b) => b.totalDebt - a.totalDebt)
 
-    return NextResponse.json({ debtors })
+    return NextResponse.json({ debtors }, {
+      headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+    })
   } catch (error) {
     console.error("Error in GET /api/accounting/debts-sales:", error)
     return NextResponse.json({ error: "Error al obtener deudores" }, { status: 500 })

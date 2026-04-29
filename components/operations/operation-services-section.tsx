@@ -41,19 +41,26 @@ import { Textarea } from "@/components/ui/textarea"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
-import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon } from "lucide-react"
+import { Plus, Loader2, Trash2, AlertCircle, CalendarIcon, Pencil, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { cn } from "@/lib/utils"
+import { downloadReceiptPdf } from "@/lib/pdf/receipt-pdf"
 import { format } from "date-fns"
 import { es } from "date-fns/locale"
+import {
+  calculateAmountInSaleCurrency,
+  coercePositiveNumber,
+  getCustomerIncomeReferenceCurrency,
+  requiresCustomerIncomeExchangeRate,
+} from "@/lib/payments/customer-income-fx"
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE"
+type ServiceType = "SEAT" | "LUGGAGE" | "VISA" | "TRANSFER" | "ASSISTANCE" | "HOTEL" | "FLIGHT" | "EXCURSION"
 type Currency = "ARS" | "USD"
 
 interface Operator {
@@ -105,31 +112,53 @@ interface ServicePayment {
   reference: string | null
 }
 
+interface OperationData {
+  destination: string
+  departure_date: string
+  return_date: string
+  adults: number
+  children: number
+  infants: number
+  origin: string
+}
+
 interface OperationServicesSectionProps {
   operationId: string
   operationStatus: string
   operators: Operator[]
   userRole: string
+  canAddServices?: boolean
+  canEditServices?: boolean
+  canDeleteServices?: boolean
+  canManagePayments?: boolean
+  showFinancialColumns?: boolean
   servicePayments?: ServicePayment[]
   operationCurrency?: string
+  operationData?: OperationData
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 const SERVICE_TYPE_OPTIONS: { value: ServiceType; label: string; commissions: boolean }[] = [
+  { value: "HOTEL", label: "Hotel", commissions: true },
+  { value: "FLIGHT", label: "Vuelo / Aéreo", commissions: true },
+  { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
+  { value: "EXCURSION", label: "Excursión", commissions: true },
+  { value: "ASSISTANCE", label: "Asistencia", commissions: true },
   { value: "SEAT", label: "Asiento", commissions: false },
   { value: "LUGGAGE", label: "Equipaje", commissions: false },
   { value: "VISA", label: "Visa", commissions: false },
-  { value: "TRANSFER", label: "Traslado / Transfer", commissions: true },
-  { value: "ASSISTANCE", label: "Asistencia", commissions: true },
 ]
 
 const SERVICE_LABELS: Record<ServiceType, string> = {
+  HOTEL: "Hotel",
+  FLIGHT: "Vuelo / Aéreo",
+  TRANSFER: "Traslado / Transfer",
+  EXCURSION: "Excursión",
+  ASSISTANCE: "Asistencia",
   SEAT: "Asiento",
   LUGGAGE: "Equipaje",
   VISA: "Visa",
-  TRANSFER: "Traslado / Transfer",
-  ASSISTANCE: "Asistencia",
 }
 
 const paymentMethods = [
@@ -177,6 +206,24 @@ const emptyServiceForm = () => ({
   cost_amount: "",
   cost_currency: "ARS" as Currency,
   description: "",
+  // Hotel fields
+  hotel_name: "",
+  hotel_stars: "",
+  hotel_address: "",
+  hotel_phone: "",
+  room_type: "",
+  meal_plan: "",
+  checkin_date: "",
+  checkout_date: "",
+  nights: "",
+  rooms: "1",
+  // Flight fields
+  airline: "",
+  flight_route: "",
+  flight_date: "",
+  flight_return_date: "",
+  flight_stops: "0",
+  flight_class: "",
 })
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -186,11 +233,16 @@ export function OperationServicesSection({
   operationStatus,
   operators,
   userRole,
+  canAddServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canEditServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canDeleteServices = !["VIEWER", "CONTABLE"].includes(userRole),
+  canManagePayments = !["SELLER", "VIEWER"].includes(userRole),
+  showFinancialColumns = userRole !== "SELLER",
   servicePayments = [],
   operationCurrency = "USD",
+  operationData,
 }: OperationServicesSectionProps) {
   const router = useRouter()
-  const isSeller = userRole === "SELLER"
   const isCancelled = operationStatus === "CANCELLED"
 
   // ── Estado servicios ──────────────────────────────────────────────────────
@@ -201,11 +253,13 @@ export function OperationServicesSection({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyServiceForm())
   const [formError, setFormError] = useState<string | null>(null)
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null)
 
   // ── Estado pagos de servicios ─────────────────────────────────────────────
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const [isSubmittingPayment, setIsSubmittingPayment] = useState(false)
   const [deletingPaymentId, setDeletingPaymentId] = useState<string | null>(null)
+  const [downloadingReceiptId, setDownloadingReceiptId] = useState<string | null>(null)
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([])
 
   const paymentForm = useForm<ServicePaymentFormValues>({
@@ -224,6 +278,41 @@ export function OperationServicesSection({
     },
   })
 
+  const selectedServiceId = paymentForm.watch("operation_service_id")
+  const selectedPayerType = paymentForm.watch("payer_type")
+  const selectedDirection = paymentForm.watch("direction")
+  const selectedPaymentCurrency = paymentForm.watch("currency")
+  const selectedPaymentAmount = paymentForm.watch("amount")
+  const selectedExchangeRate = paymentForm.watch("exchange_rate")
+  const selectedService = services.find((service) => service.id === selectedServiceId)
+  const isOperatorServicePayment = selectedPayerType === "OPERATOR"
+  const selectedServiceHasProvider = !!selectedService?.operator_id
+  const selectedServiceProviderName = selectedService?.operators?.name || "Proveedor vinculado"
+  const customerIncomeReferenceCurrency = selectedService
+    ? getCustomerIncomeReferenceCurrency({ service: selectedService })
+    : null
+  const needsCustomerIncomeManualExchangeRate = selectedService
+    ? requiresCustomerIncomeExchangeRate({
+        payerType: selectedPayerType,
+        direction: selectedDirection,
+        paymentCurrency: selectedPaymentCurrency,
+        saleCurrency: customerIncomeReferenceCurrency,
+      })
+    : false
+  const showExchangeRateField = selectedPayerType === "CUSTOMER"
+    ? needsCustomerIncomeManualExchangeRate
+    : selectedPaymentCurrency === "ARS"
+  const paymentAmountValue = Number(selectedPaymentAmount) || 0
+  const selectedExchangeRateNumber = coercePositiveNumber(selectedExchangeRate)
+  const exchangeRatePreview = selectedService && selectedExchangeRateNumber && paymentAmountValue > 0
+    ? calculateAmountInSaleCurrency({
+        paymentCurrency: selectedPaymentCurrency,
+        saleCurrency: selectedService.sale_currency,
+        amount: paymentAmountValue,
+        exchangeRate: selectedExchangeRateNumber,
+      })
+    : null
+
   // ── Cargar cuentas financieras cuando se abre el dialog de pago ──────────
   useEffect(() => {
     if (paymentDialogOpen) {
@@ -241,6 +330,20 @@ export function OperationServicesSection({
       fetchAccounts()
     }
   }, [paymentDialogOpen])
+
+  useEffect(() => {
+    if (!paymentDialogOpen) return
+
+    paymentForm.setValue("financial_account_id", "")
+    paymentForm.clearErrors("financial_account_id")
+  }, [paymentDialogOpen, paymentForm, selectedPaymentCurrency])
+
+  useEffect(() => {
+    if (!paymentDialogOpen) return
+
+    paymentForm.setValue("exchange_rate", undefined)
+    paymentForm.clearErrors("exchange_rate")
+  }, [paymentDialogOpen, paymentForm, selectedPaymentCurrency, selectedPayerType, selectedServiceId])
 
   // ── Cargar servicios ──────────────────────────────────────────────────────
 
@@ -269,7 +372,7 @@ export function OperationServicesSection({
       if (!acc.sale[s.sale_currency]) acc.sale[s.sale_currency] = 0
       acc.sale[s.sale_currency] += s.sale_amount
 
-      if (!isSeller) {
+      if (showFinancialColumns) {
         if (!acc.cost[s.cost_currency]) acc.cost[s.cost_currency] = 0
         acc.cost[s.cost_currency] += s.cost_amount
 
@@ -305,12 +408,45 @@ export function OperationServicesSection({
 
   const openDialog = () => {
     setForm(emptyServiceForm())
+    setEditingServiceId(null)
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  const openEditDialog = (s: OperationService) => {
+    setForm({
+      service_type: s.service_type,
+      operator_id: s.operator_id || "",
+      sale_amount: String(s.sale_amount),
+      sale_currency: s.sale_currency,
+      cost_amount: String(s.cost_amount),
+      cost_currency: s.cost_currency,
+      description: s.description || "",
+      hotel_name: (s as any).hotel_name || "",
+      hotel_stars: (s as any).hotel_stars ? String((s as any).hotel_stars) : "",
+      hotel_address: (s as any).hotel_address || "",
+      hotel_phone: (s as any).hotel_phone || "",
+      room_type: (s as any).room_type || "",
+      meal_plan: (s as any).meal_plan || "",
+      checkin_date: (s as any).checkin_date || "",
+      checkout_date: (s as any).checkout_date || "",
+      nights: (s as any).nights ? String((s as any).nights) : "",
+      rooms: (s as any).rooms ? String((s as any).rooms) : "1",
+      airline: (s as any).airline || "",
+      flight_route: (s as any).flight_route || "",
+      flight_date: (s as any).flight_date || "",
+      flight_return_date: (s as any).flight_return_date || "",
+      flight_stops: (s as any).flight_stops != null ? String((s as any).flight_stops) : "0",
+      flight_class: (s as any).flight_class || "",
+    })
+    setEditingServiceId(s.id)
     setFormError(null)
     setDialogOpen(true)
   }
 
   const closeDialog = () => {
     setDialogOpen(false)
+    setEditingServiceId(null)
     setFormError(null)
   }
 
@@ -338,7 +474,7 @@ export function OperationServicesSection({
     setFormError(null)
 
     try {
-      const payload = {
+      const payload: any = {
         service_type: form.service_type,
         operator_id: form.operator_id || null,
         sale_amount: Number(form.sale_amount),
@@ -348,8 +484,38 @@ export function OperationServicesSection({
         description: form.description || null,
       }
 
-      const res = await fetch(`/api/operations/${operationId}/services`, {
-        method: "POST",
+      // Add hotel-specific fields
+      if (form.service_type === "HOTEL") {
+        payload.hotel_name = form.hotel_name || null
+        payload.hotel_stars = form.hotel_stars ? Number(form.hotel_stars) : null
+        payload.hotel_address = form.hotel_address || null
+        payload.hotel_phone = form.hotel_phone || null
+        payload.room_type = form.room_type || null
+        payload.meal_plan = form.meal_plan || null
+        payload.checkin_date = form.checkin_date || null
+        payload.checkout_date = form.checkout_date || null
+        payload.nights = form.nights ? Number(form.nights) : null
+        payload.rooms = form.rooms ? Number(form.rooms) : 1
+      }
+
+      // Add flight-specific fields
+      if (form.service_type === "FLIGHT") {
+        payload.airline = form.airline || null
+        payload.flight_route = form.flight_route || null
+        payload.flight_date = form.flight_date || null
+        payload.flight_return_date = form.flight_return_date || null
+        payload.flight_stops = form.flight_stops ? Number(form.flight_stops) : 0
+        payload.flight_class = form.flight_class || null
+      }
+
+      const isEditing = !!editingServiceId
+      const url = isEditing
+        ? `/api/operations/${operationId}/services/${editingServiceId}`
+        : `/api/operations/${operationId}/services`
+      const method = isEditing ? "PATCH" : "POST"
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
@@ -358,11 +524,15 @@ export function OperationServicesSection({
 
       if (!res.ok) {
         const msg = [data.error, data.details, data.hint].filter(Boolean).join(" — ")
-        setFormError(msg || "Error al agregar el servicio")
+        setFormError(msg || `Error al ${isEditing ? "editar" : "agregar"} el servicio`)
         return
       }
 
-      toast.success("Servicio agregado correctamente")
+      if (data.warnings?.length) {
+        data.warnings.forEach((w: string) => toast.warning(w))
+      }
+
+      toast.success(isEditing ? "Servicio actualizado correctamente" : "Servicio agregado correctamente")
       closeDialog()
       await loadServices()
       router.refresh()
@@ -424,8 +594,36 @@ export function OperationServicesSection({
   }
 
   const onSubmitServicePayment = async (values: ServicePaymentFormValues) => {
-    if (values.currency === "ARS" && !values.exchange_rate) {
-      paymentForm.setError("exchange_rate", { message: "Ingresá el tipo de cambio para ARS" })
+    const service = services.find((item) => item.id === values.operation_service_id)
+
+    if (!service) {
+      paymentForm.setError("operation_service_id", { message: "Seleccioná un servicio válido" })
+      return
+    }
+
+    if (values.payer_type === "OPERATOR" && !service?.operator_id) {
+      paymentForm.setError("operation_service_id", {
+        message: "El servicio seleccionado no tiene proveedor asociado",
+      })
+      toast.error("El servicio seleccionado no tiene proveedor asociado. Editalo y asignale un proveedor antes de registrar el pago.")
+      return
+    }
+
+    const requiresManualExchangeRate = values.payer_type === "CUSTOMER"
+      ? requiresCustomerIncomeExchangeRate({
+          payerType: values.payer_type,
+          direction: values.direction,
+          paymentCurrency: values.currency,
+          saleCurrency: getCustomerIncomeReferenceCurrency({ service }),
+        })
+      : values.currency === "ARS"
+
+    if (requiresManualExchangeRate && !values.exchange_rate) {
+      paymentForm.setError("exchange_rate", {
+        message: values.payer_type === "CUSTOMER"
+          ? "Ingresá el tipo de cambio para convertir el cobro a la moneda del servicio"
+          : "Ingresá el tipo de cambio para ARS",
+      })
       return
     }
 
@@ -443,7 +641,7 @@ export function OperationServicesSection({
           amount: values.amount,
           currency: values.currency,
           financial_account_id: values.financial_account_id,
-          exchange_rate: values.currency === "ARS" ? values.exchange_rate : null,
+          exchange_rate: requiresManualExchangeRate ? values.exchange_rate : null,
           date_paid: values.date_paid.toISOString().split("T")[0],
           date_due: values.date_paid.toISOString().split("T")[0],
           status: "PAID",
@@ -492,6 +690,17 @@ export function OperationServicesSection({
     }
   }
 
+  const handleDownloadReceipt = async (paymentId: string) => {
+    setDownloadingReceiptId(paymentId)
+    try {
+      await downloadReceiptPdf(paymentId)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Error al descargar el recibo")
+    } finally {
+      setDownloadingReceiptId(null)
+    }
+  }
+
   // ── Helper: obtener nombre del servicio por ID ────────────────────────────
 
   const getServiceLabel = (serviceId: string) => {
@@ -504,16 +713,16 @@ export function OperationServicesSection({
   return (
     <>
       {/* ────────────────────────── SECCIÓN 1: Lista de servicios ─────────── */}
-      <Card>
+      <Card className="rounded-xl border border-border/40">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Servicios adicionales</CardTitle>
+              <CardTitle className="text-2xl font-semibold tracking-tight">Servicios adicionales</CardTitle>
               <CardDescription className="mt-1">
                 Asiento, equipaje, visa, transfer, asistencia — cargados en esta operación
               </CardDescription>
             </div>
-            {!isCancelled && (
+            {!isCancelled && canAddServices && (
               <Button size="sm" onClick={openDialog}>
                 <Plus className="mr-2 h-4 w-4" />
                 Agregar servicio
@@ -530,7 +739,7 @@ export function OperationServicesSection({
           ) : services.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-10 text-center text-muted-foreground">
               <p className="text-sm">No hay servicios cargados todavía.</p>
-              {!isCancelled && (
+              {!isCancelled && canAddServices && (
                 <Button variant="outline" size="sm" className="mt-3" onClick={openDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Agregar primer servicio
@@ -539,20 +748,21 @@ export function OperationServicesSection({
             </div>
           ) : (
             <div className="space-y-4">
+              <div className="rounded-xl border border-border/40 overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Proveedor</TableHead>
                     <TableHead className="text-right">Precio cliente</TableHead>
-                    {!isSeller && (
+                    {showFinancialColumns && (
                       <>
                         <TableHead className="text-right">Costo</TableHead>
                         <TableHead className="text-right">Margen</TableHead>
                       </>
                     )}
                     <TableHead>Comisiona</TableHead>
-                    <TableHead className="w-10" />
+                    <TableHead className="w-20" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -572,7 +782,7 @@ export function OperationServicesSection({
                       <TableCell className="text-right font-medium">
                         {formatCurrency(s.sale_amount, s.sale_currency)}
                       </TableCell>
-                      {!isSeller && (
+                      {showFinancialColumns && (
                         <>
                           <TableCell className="text-right text-muted-foreground">
                             {formatCurrency(s.cost_amount, s.cost_currency)}
@@ -590,32 +800,48 @@ export function OperationServicesSection({
                       )}
                       <TableCell>
                         {s.generates_commission ? (
-                          <Badge variant="secondary" className="text-xs">Sí</Badge>
+                          <Badge variant="secondary" className="text-xs bg-green-500/10 text-green-600 border-0">Sí</Badge>
                         ) : (
                           <span className="text-xs text-muted-foreground">No</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        {!isCancelled && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteService(s.id)}
-                            disabled={deletingId === s.id}
-                          >
-                            {deletingId === s.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
+                        {!isCancelled && (canEditServices || canDeleteServices) && (
+                          <div className="flex gap-1">
+                            {canEditServices && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => openEditDialog(s)}
+                                title="Editar servicio"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
                             )}
-                          </Button>
+                            {canDeleteServices && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteService(s.id)}
+                                disabled={deletingId === s.id}
+                              >
+                                {deletingId === s.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              </div>
 
               {/* Totales servicios */}
               <Separator />
@@ -629,7 +855,7 @@ export function OperationServicesSection({
                   ))}
                 </div>
 
-                {!isSeller && Object.keys(serviceTotals.cost).length > 0 && (
+                {showFinancialColumns && Object.keys(serviceTotals.cost).length > 0 && (
                   <div className="text-right">
                     <p className="text-muted-foreground text-xs mb-1">Total costo (proveedores)</p>
                     {Object.entries(serviceTotals.cost).map(([currency, amount]) => (
@@ -640,7 +866,7 @@ export function OperationServicesSection({
                   </div>
                 )}
 
-                {!isSeller && Object.keys(serviceTotals.margin).length > 0 && (
+                {showFinancialColumns && Object.keys(serviceTotals.margin).length > 0 && (
                   <div className="text-right">
                     <p className="text-muted-foreground text-xs mb-1">Margen servicios</p>
                     {Object.entries(serviceTotals.margin).map(([currency, amount]) => (
@@ -660,12 +886,12 @@ export function OperationServicesSection({
       </Card>
 
       {/* ──────────────────── SECCIÓN 2: Pagos de servicios ──────────────── */}
-      {services.length > 0 && (
-        <Card>
+      {canManagePayments && services.length > 0 && (
+        <Card className="rounded-xl border border-border/40">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Pagos de Servicios</CardTitle>
+                <CardTitle className="text-2xl font-semibold tracking-tight">Pagos de Servicios</CardTitle>
                 <CardDescription className="mt-1">
                   Cobros del cliente y pagos a proveedores por los servicios adicionales
                 </CardDescription>
@@ -692,6 +918,7 @@ export function OperationServicesSection({
               </div>
             ) : (
               <div className="space-y-4">
+                <div className="rounded-xl border border-border/40 overflow-hidden">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -702,7 +929,7 @@ export function OperationServicesSection({
                       <TableHead className="text-right">Monto</TableHead>
                       <TableHead className="text-center">T/C</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead className="w-10" />
+                      <TableHead className="w-[84px] text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -721,7 +948,7 @@ export function OperationServicesSection({
                           {p.operation_service_id ? getServiceLabel(p.operation_service_id) : "—"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.direction === "INCOME" ? "default" : "destructive"}>
+                          <Badge variant={p.direction === "INCOME" ? "default" : "destructive"} className={p.direction === "INCOME" ? "bg-green-500/10 text-green-600 border-0" : "bg-red-500/10 text-red-600 border-0"}>
                             {p.direction === "INCOME" ? "Cobro" : "Pago"}
                           </Badge>
                         </TableCell>
@@ -735,30 +962,49 @@ export function OperationServicesSection({
                             : "-"}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.status === "PAID" ? "default" : "secondary"}>
+                          <Badge variant={p.status === "PAID" ? "default" : "secondary"} className={p.status === "PAID" ? "bg-green-500/10 text-green-600 border-0" : "bg-yellow-500/10 text-yellow-600 border-0"}>
                             {p.status === "PAID" ? "Pagado" : "Pendiente"}
                           </Badge>
                         </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-destructive hover:text-destructive"
-                            onClick={() => handleDeletePayment(p.id)}
-                            disabled={deletingPaymentId === p.id}
-                            title="Eliminar pago"
-                          >
-                            {deletingPaymentId === p.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {p.status === "PAID" && p.direction === "INCOME" && p.payer_type === "CUSTOMER" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-info hover:text-info/80 hover:bg-info/10"
+                                onClick={() => handleDownloadReceipt(p.id)}
+                                disabled={downloadingReceiptId === p.id}
+                                title="Descargar recibo PDF"
+                              >
+                                {downloadingReceiptId === p.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FileText className="h-4 w-4" />
+                                )}
+                              </Button>
                             )}
-                          </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-destructive hover:text-destructive"
+                              onClick={() => handleDeletePayment(p.id)}
+                              disabled={deletingPaymentId === p.id}
+                              title="Eliminar pago"
+                            >
+                              {deletingPaymentId === p.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+                </div>
 
                 {/* Total pagos de servicios */}
                 {Object.keys(servicePaymentTotals).length > 0 && (
@@ -784,21 +1030,47 @@ export function OperationServicesSection({
 
       {/* ─── Dialog: Agregar servicio ─────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="sm:max-w-[520px]">
+        <DialogContent className="sm:max-w-[560px] max-h-[85vh] flex flex-col overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Agregar servicio</DialogTitle>
+            <DialogTitle>{editingServiceId ? "Editar servicio" : "Agregar servicio"}</DialogTitle>
             <DialogDescription>
-              El servicio generará deuda al proveedor. El pago del cliente se registra desde &quot;Pagos de Servicios&quot;.
+              {editingServiceId
+                ? "Modificá los datos del servicio. Los montos contables se actualizarán automáticamente."
+                : "El servicio generará deuda al proveedor. El pago del cliente se registra desde \"Pagos de Servicios\"."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 py-2">
+          <div className="grid gap-4 px-6 py-4 flex-1 min-h-0 overflow-y-auto">
             {/* Tipo */}
             <div className="grid gap-1.5">
               <Label>Tipo de servicio *</Label>
               <Select
                 value={form.service_type}
-                onValueChange={(v) => setForm({ ...form, service_type: v as ServiceType })}
+                onValueChange={(v) => {
+                  const newForm = { ...form, service_type: v as ServiceType }
+                  // Auto-fill from operation data
+                  if (operationData) {
+                    if (v === "HOTEL") {
+                      newForm.checkin_date = newForm.checkin_date || operationData.departure_date?.split("T")[0] || ""
+                      newForm.checkout_date = newForm.checkout_date || operationData.return_date?.split("T")[0] || ""
+                      if (newForm.checkin_date && newForm.checkout_date) {
+                        const d1 = new Date(newForm.checkin_date)
+                        const d2 = new Date(newForm.checkout_date)
+                        const diffDays = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24))
+                        if (diffDays > 0) newForm.nights = diffDays.toString()
+                      }
+                      newForm.rooms = String(Math.max(1, Math.ceil((operationData.adults + operationData.children) / 2)))
+                    }
+                    if (v === "FLIGHT") {
+                      newForm.flight_route = newForm.flight_route || `${operationData.origin} → ${operationData.destination}`
+                      newForm.flight_date = newForm.flight_date || operationData.departure_date?.split("T")[0] || ""
+                      newForm.flight_return_date = newForm.flight_return_date || operationData.return_date?.split("T")[0] || ""
+                    }
+                  }
+                  newForm.sale_currency = (operationCurrency as Currency) || "USD"
+                  newForm.cost_currency = (operationCurrency as Currency) || "USD"
+                  setForm(newForm)
+                }}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccioná un tipo..." />
@@ -892,6 +1164,128 @@ export function OperationServicesSection({
               </div>
             </div>
 
+            {/* Hotel-specific fields */}
+            {form.service_type === "HOTEL" && (
+              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-blue-50/30">
+                <p className="text-xs font-semibold text-blue-700">Datos del Hotel</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Nombre del Hotel *</Label>
+                    <Input placeholder="Ej: Grand Palladium" value={form.hotel_name} onChange={(e) => setForm({ ...form, hotel_name: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Estrellas</Label>
+                    <Select value={form.hotel_stars} onValueChange={(v) => setForm({ ...form, hotel_stars: v })}>
+                      <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="3">★★★ 3</SelectItem>
+                        <SelectItem value="4">★★★★ 4</SelectItem>
+                        <SelectItem value="5">★★★★★ 5</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Dirección</Label>
+                    <Input placeholder="Dirección del hotel" value={form.hotel_address} onChange={(e) => setForm({ ...form, hotel_address: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Teléfono</Label>
+                    <Input placeholder="Teléfono" value={form.hotel_phone} onChange={(e) => setForm({ ...form, hotel_phone: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Tipo Habitación</Label>
+                    <Input placeholder="Ej: Doble, Suite" value={form.room_type} onChange={(e) => setForm({ ...form, room_type: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Régimen</Label>
+                    <Select value={form.meal_plan} onValueChange={(v) => setForm({ ...form, meal_plan: v })}>
+                      <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Solo Alojamiento">Solo Alojamiento</SelectItem>
+                        <SelectItem value="Con Desayuno">Con Desayuno</SelectItem>
+                        <SelectItem value="Media Pensión">Media Pensión</SelectItem>
+                        <SelectItem value="Pensión Completa">Pensión Completa</SelectItem>
+                        <SelectItem value="All Inclusive">All Inclusive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Habitaciones</Label>
+                    <Input type="number" min="1" value={form.rooms} onChange={(e) => setForm({ ...form, rooms: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Check-in</Label>
+                    <Input type="date" value={form.checkin_date} onChange={(e) => setForm({ ...form, checkin_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Check-out</Label>
+                    <Input type="date" value={form.checkout_date} onChange={(e) => setForm({ ...form, checkout_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Noches</Label>
+                    <Input type="number" min="1" value={form.nights} onChange={(e) => setForm({ ...form, nights: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Flight-specific fields */}
+            {form.service_type === "FLIGHT" && (
+              <div className="space-y-3 rounded-xl border border-border/40 p-3 bg-orange-50/30">
+                <p className="text-xs font-semibold text-orange-700">Datos del Vuelo</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs">Aerolínea *</Label>
+                    <Input placeholder="Ej: LATAM, Aerolíneas" value={form.airline} onChange={(e) => setForm({ ...form, airline: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Ruta *</Label>
+                    <Input placeholder="Ej: Buenos Aires → Roma" value={form.flight_route} onChange={(e) => setForm({ ...form, flight_route: e.target.value })} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs">Fecha Ida</Label>
+                    <Input type="date" value={form.flight_date} onChange={(e) => setForm({ ...form, flight_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Fecha Vuelta</Label>
+                    <Input type="date" value={form.flight_return_date} onChange={(e) => setForm({ ...form, flight_return_date: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Escalas</Label>
+                    <Select value={form.flight_stops} onValueChange={(v) => setForm({ ...form, flight_stops: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Directo</SelectItem>
+                        <SelectItem value="1">1 escala</SelectItem>
+                        <SelectItem value="2">2 escalas</SelectItem>
+                        <SelectItem value="3">3+ escalas</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs">Clase</Label>
+                  <Select value={form.flight_class} onValueChange={(v) => setForm({ ...form, flight_class: v })}>
+                    <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Economy">Economy</SelectItem>
+                      <SelectItem value="Premium Economy">Premium Economy</SelectItem>
+                      <SelectItem value="Business">Business</SelectItem>
+                      <SelectItem value="First">First</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
             {/* Descripción */}
             <div className="grid gap-1.5">
               <Label>Descripción / Notas</Label>
@@ -905,7 +1299,7 @@ export function OperationServicesSection({
 
             {/* Info comisión según tipo */}
             {form.service_type && (
-              <div className="flex items-start gap-2 rounded-md bg-muted/50 p-3 text-sm">
+              <div className="flex items-start gap-2 rounded-xl bg-muted/50 p-3 text-sm">
                 <AlertCircle className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                 <p className="text-muted-foreground">
                   {COMMISSION_INFO[form.service_type as ServiceType]}
@@ -920,17 +1314,17 @@ export function OperationServicesSection({
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog} disabled={saving}>
+            <Button variant="outline" size="sm" onClick={closeDialog} disabled={saving}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveService} disabled={saving}>
+            <Button size="sm" onClick={handleSaveService} disabled={saving}>
               {saving ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   Guardando...
                 </>
               ) : (
-                "Agregar servicio"
+                editingServiceId ? "Guardar cambios" : "Agregar servicio"
               )}
             </Button>
           </DialogFooter>
@@ -979,6 +1373,28 @@ export function OperationServicesSection({
                   </FormItem>
                 )}
               />
+
+              {isOperatorServicePayment && selectedService && (
+                <div
+                  className={cn(
+                    "flex gap-2 rounded-lg border p-3 text-sm",
+                    selectedServiceHasProvider
+                      ? "border-border/50 bg-muted/30 text-foreground"
+                      : "border-destructive/30 bg-destructive/5 text-destructive"
+                  )}
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    {selectedServiceHasProvider ? (
+                      <span>
+                        Proveedor vinculado: <strong>{selectedServiceProviderName}</strong>
+                      </span>
+                    ) : (
+                      <span>El servicio seleccionado no tiene proveedor asociado. Editá el servicio antes de registrar el pago.</span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Tipo de pago */}
               <div className="grid grid-cols-2 gap-4">
@@ -1073,8 +1489,8 @@ export function OperationServicesSection({
                 />
               </div>
 
-              {/* Tipo de cambio - solo cuando moneda es ARS */}
-              {paymentForm.watch("currency") === "ARS" && (
+              {/* Tipo de cambio */}
+              {showExchangeRateField && (
                 <FormField
                   control={paymentForm.control}
                   name="exchange_rate"
@@ -1091,9 +1507,13 @@ export function OperationServicesSection({
                         />
                       </FormControl>
                       <p className="text-xs text-muted-foreground">
-                        {field.value && paymentForm.watch("amount")
-                          ? `Equivale a USD ${(paymentForm.watch("amount") / Number(field.value)).toFixed(2)}`
-                          : "Ingresá el tipo de cambio para calcular el equivalente en USD"
+                        {selectedPayerType === "CUSTOMER" && selectedService
+                          ? exchangeRatePreview !== null
+                            ? `Equivale a ${formatCurrency(exchangeRatePreview, selectedService.sale_currency)} en la moneda del servicio`
+                            : `Ingresá el tipo de cambio para convertir el cobro a ${selectedService.sale_currency}`
+                          : field.value && paymentForm.watch("amount")
+                            ? `Equivale a USD ${(paymentForm.watch("amount") / Number(field.value)).toFixed(2)}`
+                            : "Ingresá el tipo de cambio para calcular el equivalente en USD"
                         }
                       </p>
                       <FormMessage />
@@ -1156,7 +1576,7 @@ export function OperationServicesSection({
                       </FormControl>
                       <SelectContent>
                         {financialAccounts
-                          .filter((acc) => acc.currency === paymentForm.watch("currency"))
+                          .filter((acc) => acc.currency === selectedPaymentCurrency)
                           .map((acc) => (
                             <SelectItem key={acc.id} value={acc.id}>
                               {acc.name} ({acc.currency})
@@ -1193,12 +1613,13 @@ export function OperationServicesSection({
                 <Button
                   type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => setPaymentDialogOpen(false)}
                   disabled={isSubmittingPayment}
                 >
                   Cancelar
                 </Button>
-                <Button type="submit" disabled={isSubmittingPayment}>
+                <Button type="submit" size="sm" disabled={isSubmittingPayment}>
                   {isSubmittingPayment ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1220,9 +1641,12 @@ export function OperationServicesSection({
 // ─── Info contextual por tipo de servicio ─────────────────────────────────────
 
 const COMMISSION_INFO: Record<ServiceType, string> = {
-  SEAT: "Asiento: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  LUGGAGE: "Equipaje: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  VISA: "Visa: no genera comisión al vendedor. Se generará deuda al proveedor seleccionado.",
-  TRANSFER: "Traslado / Transfer: sí genera comisión al vendedor sobre el margen (usando las reglas de comisión activas).",
-  ASSISTANCE: "Asistencia: sí genera comisión al vendedor sobre el margen (usando las reglas de comisión activas).",
+  HOTEL: "Hotel: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  FLIGHT: "Vuelo: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  TRANSFER: "Transfer: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  EXCURSION: "Excursión: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  ASSISTANCE: "Asistencia: genera comisión. Se carga automáticamente al Detalle de Compra.",
+  SEAT: "Asiento: no genera comisión. Se carga al Detalle de Compra.",
+  LUGGAGE: "Equipaje: no genera comisión. Se carga al Detalle de Compra.",
+  VISA: "Visa: no genera comisión. Se carga al Detalle de Compra.",
 }

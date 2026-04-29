@@ -1,10 +1,12 @@
 /**
- * Proxy rápido al AFIP SDK para automatizaciones.
+ * Proxy al AFIP SDK para automatizaciones (create-cert, auth-web-service,
+ * detección de puntos de venta, etc).
  * POST: inicia una automatización y devuelve el automation_id inmediatamente.
  * GET:  consulta el estado de una automatización (para polling desde el cliente).
  *
  * Sin polling server-side → nunca hace timeout en Vercel.
- * Usa AFIP_CUIT y AFIP_PASSWORD de env vars si están disponibles.
+ * Credenciales CUIT/clave fiscal vienen SIEMPRE del body (por tenant).
+ * Solo AFIP_SDK_API_KEY se toma de env — es la licencia global del SDK.
  */
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
@@ -17,7 +19,8 @@ export const dynamic = "force-dynamic"
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+    const role = user.role as string
+    if (role !== "SUPER_ADMIN" && role !== "ORG_OWNER" && role !== "ADMIN") {
       return NextResponse.json({ error: "No tiene permisos" }, { status: 403 })
     }
 
@@ -33,25 +36,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Falta el campo 'automation'" }, { status: 400 })
     }
 
-    // Usar env vars como fuente de verdad; el frontend puede enviar vacíos si están configurados
-    const systemCuit = process.env.AFIP_CUIT?.replace(/\D/g, "")
-    const systemPassword = process.env.AFIP_PASSWORD
-
+    // SaaS multi-tenant: CUIT y clave fiscal vienen EXCLUSIVAMENTE del body.
+    // Antes se sobrescribían con process.env.AFIP_CUIT / AFIP_PASSWORD, lo que
+    // hacía que cualquier tenant terminara corriendo la automation con las
+    // credenciales de Lozada. Cada agencia usa las suyas.
     const params = {
       ...bodyParams,
-      // Sobrescribir con env vars si están disponibles
-      ...(systemCuit && { cuit: systemCuit, username: systemCuit }),
-      ...(systemPassword && { password: systemPassword }),
+    }
+
+    if (params.cuit) {
+      params.cuit = String(params.cuit).replace(/\D/g, "")
+      if (!params.username) params.username = params.cuit
     }
 
     if (!params.cuit) {
-      return NextResponse.json({ error: "CUIT no configurado. Agregá AFIP_CUIT a las variables de entorno o ingresalo en el formulario." }, { status: 400 })
+      return NextResponse.json(
+        { error: "CUIT requerido. Ingresá el CUIT de tu agencia en el formulario." },
+        { status: 400 }
+      )
     }
     if (!params.password) {
-      return NextResponse.json({ error: "Clave Fiscal no configurada. Agregá AFIP_PASSWORD a las variables de entorno o ingresala en el formulario." }, { status: 400 })
+      return NextResponse.json(
+        { error: "Clave Fiscal requerida. Ingresá la clave fiscal de la agencia en el formulario." },
+        { status: 400 }
+      )
     }
-
-    console.log(`[AFIP Automation] Iniciando '${automation}' para CUIT ${params.cuit}`)
 
     const response = await fetch(`${AFIP_SDK_BASE_URL}/automations`, {
       method: "POST",
@@ -76,8 +85,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: errorMsg }, { status: response.status })
     }
 
-    console.log(`[AFIP Automation] Iniciada OK. ID: ${data.id || data.automation_id}, Status: ${data.status}`)
-
     return NextResponse.json({
       automation_id: data.id || data.automation_id,
       status: data.status || "pending",
@@ -93,7 +100,8 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    if (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN") {
+    const role = user.role as string
+    if (role !== "SUPER_ADMIN" && role !== "ORG_OWNER" && role !== "ADMIN") {
       return NextResponse.json({ error: "No tiene permisos" }, { status: 403 })
     }
 

@@ -8,7 +8,7 @@ import {
   validateSufficientBalance,
   getAccountBalance,
 } from "@/lib/accounting/ledger"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 /**
  * POST /api/accounting/financial-accounts/transfer
@@ -179,6 +179,19 @@ export async function POST(request: Request) {
       const fromSymbol = fromAccount.currency === "USD" ? "USD" : "$"
       const toSymbol = toAccount.currency === "USD" ? "USD" : "$"
 
+      // Registrar en audit trail
+      try {
+        await (supabase.rpc as any)('log_audit_action', {
+          p_user_id: user.id,
+          p_action: 'ACCOUNT_TRANSFER',
+          p_entity_type: 'financial_account',
+          p_entity_id: from_account_id,
+          p_details: { from_account: from_account_id, to_account: to_account_id, amount: expenseAmount, currency: fromAccount.currency }
+        })
+      } catch (auditError) {
+        console.warn('Error logging audit action:', auditError)
+      }
+
       return NextResponse.json({
         success: true,
         message: `${concept}: ${fromSymbol} ${expenseAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })} → ${toSymbol} ${incomeAmount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}`,
@@ -191,13 +204,8 @@ export async function POST(request: Request) {
       let exchangeRate: number | null = null
       if (currency === "USD") {
         const rateDate = transfer_date ? new Date(transfer_date) : new Date()
-        exchangeRate = await getExchangeRate(supabase, rateDate)
-        if (!exchangeRate) {
-          exchangeRate = await getLatestExchangeRate(supabase)
-        }
-        if (!exchangeRate) {
-          exchangeRate = 1450
-        }
+        const rateResult = await getExchangeRateWithFallback(supabase, rateDate, "financial-account-transfer")
+        exchangeRate = rateResult.rate
       }
 
       const amountARS = currency === "ARS"
@@ -244,6 +252,19 @@ export async function POST(request: Request) {
 
       const fromBalance = await getAccountBalance(from_account_id, supabase)
       const toBalance = await getAccountBalance(to_account_id, supabase)
+
+      // Registrar en audit trail
+      try {
+        await (supabase.rpc as any)('log_audit_action', {
+          p_user_id: user.id,
+          p_action: 'ACCOUNT_TRANSFER',
+          p_entity_type: 'financial_account',
+          p_entity_id: from_account_id,
+          p_details: { from_account: from_account_id, to_account: to_account_id, amount, currency }
+        })
+      } catch (auditError) {
+        console.warn('Error logging audit action:', auditError)
+      }
 
       return NextResponse.json({
         success: true,

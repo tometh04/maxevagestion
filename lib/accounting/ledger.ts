@@ -15,19 +15,18 @@ import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "@/lib/supabase/types"
 
 /**
- * Helper interno: devuelve el admin client (SERVICE_ROLE_KEY) para bypasear RLS.
- * Si no está disponible, cae al cliente anónimo recibido como parámetro.
- * Se usa para TODOS los SELECT/INSERT/UPDATE sobre ledger_movements.
+ * SaaS Pilar 2c (2026-04-20): este módulo YA NO obtiene un admin client
+ * internamente. Cada función recibe `supabase` y lo usa tal cual.
+ *
+ * - Si el caller pasa un server client (JWT del user), RLS tenant_isolation
+ *   aplica y la operación queda acotada a la org del user — correcto.
+ * - Si el caller pasa un admin client legítimo (cron, webhook, auth/register),
+ *   RLS no aplica y la operación es global — el caller es responsable de
+ *   inyectar `org_id` al insertar.
+ *
+ * Combinado con migration 141 (`execute_readonly_query` SECURITY INVOKER),
+ * la RPC también respeta RLS cuando el caller es authenticated.
  */
-async function getAdminClient(fallback: any): Promise<any> {
-  try {
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    return createAdminClient()
-  } catch {
-    console.warn("⚠️ ledger: SERVICE_ROLE_KEY no disponible, usando cliente anon (puede fallar por RLS)")
-    return fallback
-  }
-}
 
 /**
  * Obtener el nombre del pasajero principal de una operación
@@ -117,16 +116,70 @@ export interface CreateLedgerMovementParams {
   receipt_number?: string | null
   notes?: string | null
   created_by?: string | null
+  affects_balance?: boolean
   /** Fecha efectiva del movimiento (puede ser retroactiva). Si no se provee, usa NOW(). */
   movement_date?: string | Date | null
+  /**
+   * SaaS tenant id. Si no se provee, se deriva de (en orden):
+   *   1. operation_id → operations.org_id
+   *   2. lead_id → leads.org_id
+   *   3. created_by → users.org_id
+   * Sin poder resolver ninguno, el insert falla (la RLS policy
+   * `org_id IN user_org_ids()` rechaza NULL).
+   */
+  org_id?: string | null
 }
 
 /**
- * Crear un movimiento en el ledger
+ * Deriva el org_id del contexto del movimiento cuando el caller no lo pasa.
+ * Se usa dentro de createLedgerMovement y en variantes internas (operator
+ * payments, commissions, FX) que insertan directo en ledger_movements.
+ */
+async function resolveOrgIdForLedger(
+  params: CreateLedgerMovementParams,
+  supabase: SupabaseClient<Database>
+): Promise<string | null> {
+  if (params.org_id) return params.org_id
+
+  if (params.operation_id) {
+    const { data } = await (supabase.from("operations") as any)
+      .select("org_id")
+      .eq("id", params.operation_id)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  if (params.lead_id) {
+    const { data } = await (supabase.from("leads") as any)
+      .select("org_id")
+      .eq("id", params.lead_id)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  if (params.created_by) {
+    const { data } = await (supabase.from("users") as any)
+      .select("org_id")
+      .eq("id", params.created_by)
+      .maybeSingle()
+    const id = (data as any)?.org_id as string | null | undefined
+    if (id) return id
+  }
+
+  return null
+}
+
+/**
+ * Crear un movimiento en el ledger.
  *
- * IMPORTANTE: Para bypasear RLS se usa el admin client (service role) cuando está disponible.
- * Si `supabase` es el cliente anon, los inserts pueden fallar por políticas RLS en producción.
- * Usar siempre createAdminClient() desde los API routes al llamar a esta función.
+ * El caller debe pasar el cliente apropiado:
+ * - Server client (JWT user): RLS tenant_isolation aplica; el INSERT debe
+ *   incluir `org_id` si el caller lo conoce (por ejemplo `user.org_id`),
+ *   aunque RLS lo rechazará sin él.
+ * - Admin client (cron/webhook/auth): RLS no aplica. El caller es
+ *   responsable de que `org_id` vaya seteado en los params si corresponde.
  */
 export async function createLedgerMovement(
   params: CreateLedgerMovementParams,
@@ -142,17 +195,16 @@ export async function createLedgerMovement(
     throw new Error(`amount_ars_equivalent inválido: ${params.amount_ars_equivalent}`)
   }
 
-  // Intentar con admin client primero para bypasear RLS (si las env vars están disponibles)
-  let clientToUse = supabase
-  try {
-    const { createAdminClient } = await import("@/lib/supabase/server")
-    clientToUse = createAdminClient() as any
-  } catch {
-    // Si no hay service role key disponible, usar el cliente proporcionado
-    console.warn("⚠️ createLedgerMovement: usando cliente anon (puede fallar por RLS)")
+  // SaaS tenant: resolver org_id si el caller no lo pasó. Sin él, la RLS
+  // policy (`org_id IN user_org_ids()`) rechaza el INSERT con 42501.
+  const orgId = await resolveOrgIdForLedger(params, supabase)
+  if (!orgId) {
+    throw new Error(
+      "createLedgerMovement: no se pudo resolver org_id (faltan params.org_id, operation_id, lead_id o created_by válidos)"
+    )
   }
 
-  const ledgerTable = clientToUse.from("ledger_movements") as any
+  const ledgerTable = supabase.from("ledger_movements") as any
 
   const { data, error } = await ledgerTable
     .insert({
@@ -171,6 +223,8 @@ export async function createLedgerMovement(
       receipt_number: params.receipt_number || null,
       notes: params.notes || null,
       created_by: params.created_by || null,
+      affects_balance: params.affects_balance ?? true,
+      org_id: orgId,
       // Fecha efectiva del movimiento: puede ser retroactiva (ej. 13/02).
       // Si no se provee, usa la fecha actual como fallback.
       movement_date: params.movement_date
@@ -253,26 +307,58 @@ export async function getAccountBalance(
   const initialBalance = parseFloat(account.initial_balance || "0")
   const accountCurrency = account.currency as "ARS" | "USD"
 
-  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria
-  // Usamos admin client para bypasear RLS en el SELECT (mismo fix que para INSERT)
-  const adminClient = await getAdminClient(supabase)
-  const { data: movements, error: movementsError } = await (adminClient
+  // Obtener subcategoría para determinar naturaleza de la cuenta (Debe/Haber natural)
+  let subcategory: string | null = null
+  if (account.chart_account_id) {
+    const { data: chartAccountFull } = await (supabase
+      .from("chart_of_accounts") as any)
+      .select("subcategory")
+      .eq("id", account.chart_account_id)
+      .maybeSingle()
+    subcategory = chartAccountFull?.subcategory || null
+  }
+
+  // OPTIMIZACIÓN: Traer solo los campos necesarios y calcular suma en memoria.
+  // Usa el client que recibe: si es server client, RLS acota por org_id del user.
+  const { data: movements, error: movementsError } = await (supabase
     .from("ledger_movements") as any)
-    .select("type, amount_original, amount_ars_equivalent")
+    .select("type, amount_original, amount_ars_equivalent, debit_amount, credit_amount")
     .eq("account_id", accountId)
+    .eq("affects_balance", true)
 
   if (movementsError) {
     throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
   }
 
-  // Calcular suma en memoria (optimizado: solo campos necesarios)
+  // Calcular suma en memoria — DUAL PATH:
+  // Si debit_amount/credit_amount están presentes → usar partida doble
+  // Si ambos son NULL → usar lógica legacy (type-based)
+  const { isDebitNaturalAccount } = await import("./account-codes")
+  const isDebitNatural = isDebitNaturalAccount(category || "ACTIVO", subcategory)
+
   const movementsSum = movements?.reduce((sum: number, m: any) => {
+    const hasDebitCredit = m.debit_amount !== null || m.credit_amount !== null
+
+    if (hasDebitCredit) {
+      // PATH NUEVO: Partida doble (Debe/Haber)
+      const debit = parseFloat(m.debit_amount || "0")
+      const credit = parseFloat(m.credit_amount || "0")
+      if (isDebitNatural) {
+        // ACTIVO, COSTOS, GASTOS: Debe aumenta, Haber disminuye
+        return sum + debit - credit
+      } else {
+        // PASIVO, PATRIMONIO, INGRESOS: Haber aumenta, Debe disminuye
+        return sum + credit - debit
+      }
+    }
+
+    // PATH LEGACY: type-based (movimientos sin debit/credit)
     const amount = parseFloat(
-      accountCurrency === "USD" 
+      accountCurrency === "USD"
         ? (m.amount_original || "0")
         : (m.amount_ars_equivalent || "0")
     )
-    
+
     if (category === "PASIVO") {
       if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
         return sum + amount
@@ -281,7 +367,7 @@ export async function getAccountBalance(
       }
       return sum
     }
-    
+
     if (m.type === "INCOME" || m.type === "FX_GAIN") {
       return sum + amount
     } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
@@ -329,19 +415,21 @@ export async function getAccountBalancesBatch(
     throw new Error(`Error obteniendo cuentas: ${accountsError?.message || "Unknown error"}`)
   }
 
-  // Query separada batch para categorías del plan de cuentas
+  // Query separada batch para categorías y subcategorías del plan de cuentas
   const chartAccountIds = Array.from(new Set(
     accounts.map((a: any) => a.chart_account_id).filter(Boolean)
   )) as string[]
   const chartCategoryMap = new Map<string, string>()
+  const chartSubcategoryMap = new Map<string, string>()
   if (chartAccountIds.length > 0) {
     const { data: chartAccounts } = await (supabase
       .from("chart_of_accounts") as any)
-      .select("id, category")
+      .select("id, category, subcategory")
       .in("id", chartAccountIds)
     if (chartAccounts) {
       for (const ca of chartAccounts) {
         chartCategoryMap.set(ca.id, ca.category)
+        if (ca.subcategory) chartSubcategoryMap.set(ca.id, ca.subcategory)
       }
     }
   }
@@ -366,61 +454,99 @@ export async function getAccountBalancesBatch(
     return result
   }
 
-  // Obtener todos los movimientos para las cuentas que necesitan cálculo
-  // Usamos admin client para bypasear RLS en el SELECT
+  // Obtener sumas agrupadas por account_id y type usando SQL aggregation
+  // En vez de traer TODOS los movimientos individuales, traemos máximo N_cuentas × 6 filas
   const accountIdsToCalculate = accountsToCalculate.map((a: { id: string }) => a.id)
-  const adminClient = await getAdminClient(supabase)
-  const { data: movements, error: movementsError } = await (adminClient
-    .from("ledger_movements") as any)
-    .select("account_id, type, amount_original, amount_ars_equivalent")
-    .in("account_id", accountIdsToCalculate)
 
-  if (movementsError) {
-    throw new Error(`Error obteniendo movimientos: ${movementsError.message}`)
+  const accountIdsSQL = accountIdsToCalculate.map((id: string) => `'${id}'`).join(",")
+  // IMPORTANTE: la agrupación separa movements "legacy" (sin debit/credit seteados) de
+  // los de partida doble. Antes se usaba has_debit_credit a nivel de (account_id, type)
+  // y eso descartaba los legacy cuando cualquier movement del mismo tipo tenía d/c,
+  // desapareciendo plata del balance (~$227M en Caja ARS era el síntoma visible).
+  // Ahora las dos subpoblaciones se suman por separado y se combinan aditivamente.
+  //
+  // Post-mig 141: execute_readonly_query es SECURITY INVOKER, así que respeta RLS
+  // del caller — cada org ve solo sus rows. Con esto los balances son per-tenant.
+  const { data: aggregatedData, error: aggError } = await (supabase as any).rpc("execute_readonly_query", {
+    query_text: `SELECT account_id, type,
+      SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_original::numeric ELSE 0 END) AS legacy_original,
+      SUM(CASE WHEN debit_amount IS NULL AND credit_amount IS NULL THEN amount_ars_equivalent::numeric ELSE 0 END) AS legacy_ars,
+      SUM(COALESCE(debit_amount, 0)::numeric) AS total_debit,
+      SUM(COALESCE(credit_amount, 0)::numeric) AS total_credit
+      FROM ledger_movements
+      WHERE account_id IN (${accountIdsSQL}) AND affects_balance = true
+      GROUP BY account_id, type`
+  })
+
+  if (aggError) {
+    throw new Error(`Error obteniendo sumas de movimientos: ${aggError.message}`)
   }
 
-  // Agrupar movimientos por cuenta
-  const movementsByAccount = new Map<string, typeof movements>()
-  for (const movement of movements || []) {
-    const accountId = movement.account_id
-    if (!movementsByAccount.has(accountId)) {
-      movementsByAccount.set(accountId, [])
+  // Parsear resultados agrupados
+  const sumRows: Array<{ account_id: string; type: string; legacy_original: number; legacy_ars: number; total_debit: number; total_credit: number }> =
+    Array.isArray(aggregatedData) ? aggregatedData : (aggregatedData || [])
+
+  // Indexar sumas por account_id → type → { legacy_original, legacy_ars, total_debit, total_credit }
+  const sumsByAccount = new Map<string, Map<string, { legacy_original: number; legacy_ars: number; total_debit: number; total_credit: number }>>()
+  for (const row of sumRows) {
+    if (!sumsByAccount.has(row.account_id)) {
+      sumsByAccount.set(row.account_id, new Map())
     }
-    movementsByAccount.get(accountId)!.push(movement)
+    sumsByAccount.get(row.account_id)!.set(row.type, {
+      legacy_original: Number(row.legacy_original || 0),
+      legacy_ars: Number(row.legacy_ars || 0),
+      total_debit: Number(row.total_debit || 0),
+      total_credit: Number(row.total_credit || 0),
+    })
   }
 
-  // Calcular balance para cada cuenta
+  // Calcular balance para cada cuenta usando las sumas agrupadas.
+  // DUAL ADITIVO: aplicamos partida doble a los movements con d/c Y legacy a los que no tienen.
+  // Ambas subpoblaciones se suman — antes eran excluyentes, lo que descartaba plata cuando
+  // coexistían ambos estilos en el mismo (account_id, type).
+  const { isDebitNaturalAccount } = await import("./account-codes")
+
   for (const account of accountsToCalculate) {
     const initialBalance = parseFloat(account.initial_balance || "0")
     const accountCurrency = account.currency as "ARS" | "USD"
     const category = account.chart_account_id
       ? chartCategoryMap.get(account.chart_account_id) || "ACTIVO"
       : "ACTIVO"
-    const accountMovements = movementsByAccount.get(account.id) || []
+    const subcategory = account.chart_account_id
+      ? chartSubcategoryMap.get(account.chart_account_id) || null
+      : null
+    const isDebitNatural = isDebitNaturalAccount(category, subcategory)
+    const typeSums = sumsByAccount.get(account.id) || new Map()
 
-    const movementsSum = accountMovements.reduce((sum: number, m: any) => {
-      const amount = parseFloat(
-        accountCurrency === "USD" 
-          ? (m.amount_original || "0")
-          : (m.amount_ars_equivalent || "0")
-      )
-      
-      if (category === "PASIVO") {
-        if (m.type === "EXPENSE" || m.type === "OPERATOR_PAYMENT" || m.type === "FX_LOSS") {
-          return sum + amount
-        } else if (m.type === "INCOME" || m.type === "FX_GAIN") {
-          return sum - amount
+    let movementsSum = 0
+    typeSums.forEach((sums, type) => {
+      // (A) Partida doble — movements que tienen debit_amount o credit_amount seteados.
+      // Si ambos son 0 el delta es 0 (no afecta).
+      if (isDebitNatural) {
+        movementsSum += sums.total_debit - sums.total_credit
+      } else {
+        movementsSum += sums.total_credit - sums.total_debit
+      }
+
+      // (B) Legacy — movements con ambos debit_amount y credit_amount NULL.
+      // amount_original para USD, amount_ars_equivalent para ARS (convención existente).
+      const legacyAmount = accountCurrency === "USD" ? sums.legacy_original : sums.legacy_ars
+      if (legacyAmount !== 0) {
+        if (category === "PASIVO") {
+          if (type === "EXPENSE" || type === "OPERATOR_PAYMENT" || type === "FX_LOSS") {
+            movementsSum += legacyAmount
+          } else if (type === "INCOME" || type === "FX_GAIN") {
+            movementsSum -= legacyAmount
+          }
+        } else {
+          if (type === "INCOME" || type === "FX_GAIN") {
+            movementsSum += legacyAmount
+          } else if (type === "EXPENSE" || type === "FX_LOSS" || type === "COMMISSION" || type === "OPERATOR_PAYMENT") {
+            movementsSum -= legacyAmount
+          }
         }
-        return sum
       }
-      
-      if (m.type === "INCOME" || m.type === "FX_GAIN") {
-        return sum + amount
-      } else if (m.type === "EXPENSE" || m.type === "FX_LOSS" || m.type === "COMMISSION" || m.type === "OPERATOR_PAYMENT") {
-        return sum - amount
-      }
-      return sum
-    }, 0)
+    })
 
     const finalBalance = initialBalance + movementsSum
     result[account.id] = finalBalance
@@ -448,8 +574,7 @@ export async function transferLeadToOperation(
   operationId: string,
   supabase: SupabaseClient<Database>
 ): Promise<{ transferred: number }> {
-  const adminClient = await getAdminClient(supabase)
-  const ledgerTable = adminClient.from("ledger_movements") as any
+  const ledgerTable = supabase.from("ledger_movements") as any
 
   // Actualizar todos los movimientos con lead_id para que tengan operation_id
   const { data, error } = await ledgerTable
@@ -498,8 +623,7 @@ export async function getLeadMovements(
   leadId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const adminClient = await getAdminClient(supabase)
-  const { data, error } = await (adminClient.from("ledger_movements") as any)
+  const { data, error } = await (supabase.from("ledger_movements") as any)
     .select("*")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false })
@@ -518,8 +642,7 @@ export async function getOperationMovements(
   operationId: string,
   supabase: SupabaseClient<Database>
 ) {
-  const adminClient = await getAdminClient(supabase)
-  const { data, error } = await (adminClient.from("ledger_movements") as any)
+  const { data, error } = await (supabase.from("ledger_movements") as any)
     .select("*")
     .eq("operation_id", operationId)
     .order("created_at", { ascending: false })
@@ -556,8 +679,7 @@ export async function getLedgerMovements(
   const limit = filters.limit ?? 1000
   const offset = filters.offset ?? 0
 
-  const adminClientForLedger = await getAdminClient(supabase)
-  let query = (adminClientForLedger.from("ledger_movements") as any)
+  let query = (supabase.from("ledger_movements") as any)
     .select(
       `
       *,
@@ -722,8 +844,9 @@ export async function isAccountingOnlyAccount(
     .maybeSingle()
 
   const accountCode = chartAccount?.account_code
-  // Cuentas por Cobrar: 1.1.03, Cuentas por Pagar: 2.1.01
-  return accountCode === "1.1.03" || accountCode === "2.1.01"
+  // Cuentas por Cobrar / Cuentas por Pagar — no deben aparecer en selectores de pago
+  const { ACCOUNT_CODES } = await import("./account-codes")
+  return accountCode === ACCOUNT_CODES.CUENTAS_POR_COBRAR || accountCode === ACCOUNT_CODES.CUENTAS_POR_PAGAR
 }
 
 /**

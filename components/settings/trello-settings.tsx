@@ -4,10 +4,11 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
+import { Link2, Key, ArrowRightLeft, Webhook, RefreshCw as SyncIcon } from "lucide-react"
 import {
   Table,
   TableBody,
@@ -409,13 +410,18 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
   const selectedAgencyName = agencies.find((a) => a.id === selectedAgencyId)?.name || ""
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-semibold">Configuración Trello</h2>
-          {selectedAgencyName && (
-            <p className="text-sm text-muted-foreground">Configurando para: {selectedAgencyName}</p>
-          )}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-primary/10">
+            <Link2 className="h-4 w-4 text-primary" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-semibold tracking-tight">Configuración Trello</h2>
+            {selectedAgencyName && (
+              <p className="text-sm text-muted-foreground">Configurando para: {selectedAgencyName}</p>
+            )}
+          </div>
         </div>
         {agencies.length > 0 && (
           <div className="flex items-center gap-2">
@@ -463,14 +469,14 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
         </TabsList>
 
         <TabsContent value="credentials">
-          <Card>
-            <CardHeader>
-              <CardTitle>Credenciales de Trello</CardTitle>
-              <CardDescription>
-                Ingresa tus credenciales de API de Trello para sincronizar tarjetas
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <Key className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Credenciales de Trello</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">Ingresa tus credenciales de API de Trello para sincronizar tarjetas</p>
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(handleSaveCredentials)} className="space-y-4">
                   <FormField
@@ -513,10 +519,10 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                     )}
                   />
                   <div className="flex gap-2">
-                    <Button type="button" onClick={handleTestConnection} disabled={loading}>
+                    <Button type="button" size="sm" onClick={handleTestConnection} disabled={loading}>
                       {loading ? "Probando..." : "Probar Conexión"}
                     </Button>
-                    <Button type="submit" variant="outline" disabled={loading}>
+                    <Button type="submit" size="sm" variant="outline" disabled={loading}>
                       Guardar
                     </Button>
                   </div>
@@ -527,28 +533,27 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                   )}
                 </form>
               </Form>
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="mapping">
           <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Mapeo de Estados</CardTitle>
-                <CardDescription>
-                  Configura cómo se mapean las listas de Trello a estados de leads
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Mapeo de Estados</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">Configura cómo se mapean las listas de Trello a estados de leads</p>
                 {lists.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Primero guarda las credenciales y prueba la conexión para cargar las listas.
                   </p>
                 ) : (
-                  <div className="rounded-md border">
+                  <div className="rounded-xl border border-border/40 overflow-hidden">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-muted/50">
                         <TableRow>
                           <TableHead>Lista de Trello</TableHead>
                           <TableHead>Estado</TableHead>
@@ -583,25 +588,24 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                     </Table>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Mapeo de Regiones</CardTitle>
-                <CardDescription>
-                  Configura cómo se mapean las listas de Trello a regiones
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
+            <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                  <ArrowRightLeft className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Mapeo de Regiones</h4>
+              </div>
+              <p className="text-sm text-muted-foreground">Configura cómo se mapean las listas de Trello a regiones</p>
                 {lists.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     Primero guarda las credenciales y prueba la conexión para cargar las listas.
                   </p>
                 ) : (
-                  <div className="rounded-md border">
+                  <div className="rounded-xl border border-border/40 overflow-hidden">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-muted/50">
                         <TableRow>
                           <TableHead>Lista de Trello</TableHead>
                           <TableHead>Región</TableHead>
@@ -636,12 +640,11 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                     </Table>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+            </div>
 
             {lists.length > 0 && (
               <div className="flex justify-end">
-                <Button
+                <Button size="sm"
                   onClick={async () => {
                     const values = form.getValues()
                     if (values.apiKey && values.token && values.boardId) {
@@ -657,14 +660,14 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
         </TabsContent>
 
         <TabsContent value="webhooks">
-          <Card>
-            <CardHeader>
-              <CardTitle>Webhooks en Tiempo Real</CardTitle>
-              <CardDescription>
-                Configura webhooks para sincronización automática en tiempo real. Cuando se crea, actualiza o mueve una tarjeta en Trello, se sincronizará automáticamente.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <Webhook className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Webhooks en Tiempo Real</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">Configura webhooks para sincronización automática en tiempo real. Cuando se crea, actualiza o mueve una tarjeta en Trello, se sincronizará automáticamente.</p>
               <div className="space-y-2">
                 <Label>URL del Webhook</Label>
                 <div className="flex gap-2">
@@ -673,7 +676,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                     onChange={(e) => setWebhookUrl(e.target.value)}
                     placeholder="https://tu-dominio.com/api/trello/webhook"
                   />
-                  <Button onClick={handleRegisterWebhook} disabled={webhookLoading || !webhookUrl}>
+                  <Button size="sm" onClick={handleRegisterWebhook} disabled={webhookLoading || !webhookUrl}>
                     {webhookLoading ? "Registrando..." : "Registrar Webhook"}
                   </Button>
                 </div>
@@ -685,9 +688,9 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
               {webhooks.length > 0 && (
                 <div className="space-y-2">
                   <Label>Webhooks Activos</Label>
-                  <div className="rounded-md border">
+                  <div className="rounded-xl border border-border/40 overflow-hidden">
                     <Table>
-                      <TableHeader>
+                      <TableHeader className="sticky top-0 bg-muted/50">
                         <TableRow>
                           <TableHead>URL</TableHead>
                           <TableHead>Estado</TableHead>
@@ -699,13 +702,13 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                           <TableRow key={webhook.id}>
                             <TableCell className="font-mono text-xs">{webhook.callbackURL}</TableCell>
                             <TableCell>
-                              <span className={webhook.active ? "text-amber-600" : "text-red-600"}>
+                              <span className={webhook.active ? "text-warning" : "text-destructive"}>
                                 {webhook.active ? "✅ Activo" : "❌ Inactivo"}
                               </span>
                             </TableCell>
                             <TableCell>
                               <Button
-                                className="text-red-600"
+                                className="text-destructive"
                                 size="sm"
                                 onClick={() => handleDeleteWebhook(webhook.id)}
                                 disabled={webhookLoading}
@@ -726,22 +729,23 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                   <AlertDescription>{testResult}</AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="sync">
-          <Card>
-            <CardHeader>
-              <CardTitle>Sincronización Manual</CardTitle>
-              <CardDescription>
-                {lastSyncAt 
-                  ? `Sincronización incremental: solo se actualizarán las tarjetas modificadas desde ${new Date(lastSyncAt).toLocaleString('es-AR')}`
-                  : "Ejecuta la sincronización manual con Trello. La primera vez sincronizará todas las tarjetas. Las siguientes serán incrementales (solo cambios)."
-                }
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <div className="rounded-xl border border-border/40 bg-muted/20 p-4 space-y-4">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center justify-center h-6 w-6 rounded-md bg-primary/10">
+                <SyncIcon className="h-3.5 w-3.5 text-primary" />
+              </div>
+              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-foreground/60">Sincronización Manual</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {lastSyncAt
+                ? `Sincronización incremental: solo se actualizarán las tarjetas modificadas desde ${new Date(lastSyncAt).toLocaleString('es-AR')}`
+                : "Ejecuta la sincronización manual con Trello. La primera vez sincronizará todas las tarjetas. Las siguientes serán incrementales (solo cambios)."
+              }
+            </p>
               <div className="flex items-center space-x-2">
                 <input
                   type="checkbox"
@@ -754,7 +758,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                   Forzar sincronización completa (ignorar checkpoint)
                 </label>
               </div>
-              <Button onClick={handleSync} disabled={syncing}>
+              <Button size="sm" onClick={handleSync} disabled={syncing}>
                 {syncing ? "Sincronizando..." : forceFullSync ? "Ejecutar Sincronización Completa" : "Ejecutar Sincronización"}
               </Button>
               
@@ -807,8 +811,7 @@ export function TrelloSettings({ agencies, defaultAgencyId }: TrelloSettingsProp
                   </AlertDescription>
                 </Alert>
               )}
-            </CardContent>
-          </Card>
+          </div>
         </TabsContent>
       </Tabs>
         </>

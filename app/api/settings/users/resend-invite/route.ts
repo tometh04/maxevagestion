@@ -23,11 +23,16 @@ export async function POST(request: Request) {
     // Obtener datos del usuario
     const { data: user, error: userError } = await supabase
       .from("users")
-      .select("id, auth_id, name, email, role")
+      .select("id, auth_id, name, email, role, org_id")
       .eq("id", userId)
       .single()
 
     if (userError || !user) {
+      return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
+    }
+
+    // Multi-tenant: solo permitir reenviar invite a users de la misma org.
+    if (currentUser.org_id && (user as any).org_id !== currentUser.org_id) {
       return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
     }
 

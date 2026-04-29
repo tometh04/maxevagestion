@@ -56,13 +56,10 @@ export async function GET(request: Request) {
         const afipConfig = await getAfipConfigForAgency(supabase, agency.id)
 
         if (!afipConfig) {
-          console.log(`[POS] Agencia ${agency.id} sin config AFIP`)
           return null
         }
 
         const hasCert = !!(afipConfig.cert && afipConfig.key)
-        console.log(`[POS] Agencia ${agency.id}: cert=${hasCert}, pv=${afipConfig.point_of_sale}, env=${afipConfig.environment}`)
-
         // Obtener puntos de venta desde AFIP
         let activePointsOfSale: Array<{ numero: number; tipo: string; bloqueado: boolean }> = []
         let getSalesError: string | null = null
@@ -79,7 +76,6 @@ export async function GET(request: Request) {
                 tipo: (pv.tipo || '').toUpperCase().trim(),
                 bloqueado: false,
               }))
-            console.log(`[POS] AFIP devolvió ${result.data.length} PVs, ${activePointsOfSale.length} con WS`)
           } else {
             getSalesError = result.error || 'Sin datos de AFIP'
             console.error(`[POS] getSalesPoints falló: ${getSalesError}`)
@@ -91,7 +87,6 @@ export async function GET(request: Request) {
 
         // FALLBACK: si no hay PVs de AFIP pero hay cert+PV configurado en DB, usarlo
         if (activePointsOfSale.length === 0 && afipConfig.point_of_sale && hasCert) {
-          console.log(`[POS] Usando PV de fallback desde DB: ${afipConfig.point_of_sale}`)
           activePointsOfSale = [{
             numero: afipConfig.point_of_sale,
             tipo: 'CAE',

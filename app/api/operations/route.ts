@@ -8,19 +8,36 @@ import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operat
 import { canPerformAction } from "@/lib/permissions-api"
 import { revalidateTag, CACHE_TAGS } from "@/lib/cache"
 import { generateMessagesFromAlerts } from "@/lib/whatsapp/alert-messages"
-import { getExchangeRate, getLatestExchangeRate } from "@/lib/accounting/exchange-rates"
+import { getExchangeRate, getLatestExchangeRate, getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 import { sendCustomerNotifications } from "@/lib/customers/customer-service"
+import { logAudit, getClientIP } from "@/lib/audit"
+import { enforceUserRateLimit } from "@/lib/rate-limit"
+import { checkLimit } from "@/lib/billing/limits"
 
 export async function POST(request: Request) {
   try {
     const { user } = await getCurrentUser()
-    
+
     // Verificar permiso de escritura
     if (!canPerformAction(user, "operations", "write")) {
       return NextResponse.json({ error: "No tiene permiso para crear operaciones" }, { status: 403 })
     }
 
+    // Rate limit por usuario: creación de operación dispara side effects
+    // contables (ledger, IVA, operator_payments). Evita doble-submit/bot.
+    const rateLimitBlock = enforceUserRateLimit(user.id, "/api/operations:POST", "WRITE")
+    if (rateLimitBlock) return rateLimitBlock
+
     const supabase = await createServerClient()
+
+    // SaaS Pilar 7 — enforce límite de operaciones/mes del plan del tenant.
+    // Si la org está SUSPENDED o alcanzó el tope del plan, 403 con motivo.
+    if ((user as any).org_id) {
+      const limit = await checkLimit(supabase, (user as any).org_id, "max_operations_per_month")
+      if (!limit.ok) {
+        return NextResponse.json({ error: limit.message }, { status: 403 })
+      }
+    }
     const body = await request.json()
 
     const {
@@ -34,6 +51,7 @@ export async function POST(request: Request) {
       customer_id, // Cliente seleccionado directamente
       origin,
       destination,
+      destination_id,
       operation_date,
       departure_date,
       return_date,
@@ -53,6 +71,8 @@ export async function POST(request: Request) {
       commission_split, // Split de comisión entre vendedor principal y secundario
       reservation_code_air,
       reservation_code_hotel,
+      airline_name,
+      hotel_name,
     } = body
 
     // Obtener configuración de operaciones
@@ -196,6 +216,7 @@ export async function POST(request: Request) {
       product_type: inferredProductType,
       origin: origin || null,
       destination,
+      destination_id: destination_id || null,
       operation_date: operation_date || new Date().toISOString().split("T")[0], // Fecha de operación (hoy por defecto)
       departure_date,
       return_date: return_date || null,
@@ -217,6 +238,54 @@ export async function POST(request: Request) {
       billing_margin_percentage: billingMarginPercentage,
       reservation_code_air: reservation_code_air || null,
       reservation_code_hotel: reservation_code_hotel || null,
+      airline_name: airline_name || null,
+      hotel_name: hotel_name || null,
+    }
+
+    // ============================================
+    // CAS LOCK: evitar race condition lead→operation (fix A.3 auditoría)
+    // Si la operación se crea desde un lead, bloqueamos el lead primero
+    // pasándolo a WON en una sola query atómica (.eq("status", ...)).
+    // Si otro request ya lo convirtió, este UPDATE retorna 0 filas → 409.
+    // Si la creación de la operación falla más abajo, rollbackeamos el
+    // lead a su estado anterior para que se pueda reintentar.
+    // ============================================
+    let leadPreviousStatus: string | null = null
+    if (lead_id) {
+      // Guardamos el estado actual del lead para rollback si algo falla
+      const { data: leadSnap } = await (supabase.from("leads") as any)
+        .select("status")
+        .eq("id", lead_id)
+        .maybeSingle()
+      leadPreviousStatus = leadSnap?.status || null
+
+      const { data: lockedLead } = await (supabase.from("leads") as any)
+        .update({ status: "WON" })
+        .eq("id", lead_id)
+        .in("status", ["NEW", "IN_PROGRESS", "QUOTED"])
+        .select("id")
+        .maybeSingle()
+
+      if (!lockedLead) {
+        // No pudo adquirir el lock: o ya está WON/LOST, o no existe.
+        // Si ya hay una operación vinculada, devolvemos 409 con la referencia.
+        const { data: existingOp } = await (supabase.from("operations") as any)
+          .select("id")
+          .eq("lead_id", lead_id)
+          .limit(1)
+          .maybeSingle()
+
+        if (existingOp) {
+          return NextResponse.json(
+            { error: "Este lead ya fue convertido a operación", existingOperationId: existingOp.id },
+            { status: 409 }
+          )
+        }
+        return NextResponse.json(
+          { error: "El lead no está en un estado convertible (debe estar NEW, IN_PROGRESS o QUOTED)" },
+          { status: 409 }
+        )
+      }
     }
 
     const { data: operation, error: operationError } = await (supabase.from("operations") as any)
@@ -226,10 +295,31 @@ export async function POST(request: Request) {
 
     if (operationError) {
       console.error("Error creating operation:", operationError)
+      // Rollback del CAS lock: devolver el lead a su estado anterior
+      if (lead_id && leadPreviousStatus && leadPreviousStatus !== "WON") {
+        try {
+          await (supabase.from("leads") as any)
+            .update({ status: leadPreviousStatus })
+            .eq("id", lead_id)
+        } catch (rollbackError) {
+          console.error("Error rollbackeando lead status tras fallo en creación:", rollbackError)
+        }
+      }
       // Pasar el mensaje real del error de Supabase para que el UI lo muestre
       const errorMsg = operationError.message || operationError.details || operationError.hint || "Error al crear operación"
       return NextResponse.json({ error: errorMsg }, { status: 500 })
     }
+
+    // Audit log for operation creation
+    logAudit(supabase, {
+      user_id: user.id,
+      user_email: user.email,
+      action: "CREATE",
+      entity_type: "operation",
+      entity_id: operation.id,
+      details: { type, destination, sale_amount_total, currency },
+      ip_address: getClientIP(request) || undefined,
+    })
 
     // Auto-generate file_code after operation is created (so we can use the real ID)
     const op = operation as any
@@ -240,6 +330,26 @@ export async function POST(request: Request) {
     
     // Update operation object with file_code
     op.file_code = fileCode
+
+    // Calcular comisiones automáticamente al crear la operación
+    try {
+      const { calculateCommission, createOrUpdateCommissionRecords } = await import("@/lib/commissions/calculate")
+      const commissionOp = {
+        ...op,
+        seller_id: op.seller_primary_id || op.seller_id || seller_id,
+        seller_secondary_id: op.seller_secondary_id || seller_secondary_id || null,
+        sale_amount_total: Number(op.sale_amount_total) || 0,
+        operator_cost: Number(op.operator_cost) || totalOperatorCost || 0,
+        margin_amount: Number(op.margin_amount) || marginAmount || 0,
+        margin_percentage: Number(op.margin_percentage) || marginPercentage || 0,
+      }
+      const commissionData = await calculateCommission(commissionOp)
+      if (commissionData.totalCommission > 0) {
+        await createOrUpdateCommissionRecords(commissionOp, commissionData)
+      }
+    } catch (error) {
+      console.error("Error calculating commission for new operation:", error)
+    }
 
     // Auto-generate IVA records
     try {
@@ -278,7 +388,6 @@ export async function POST(request: Request) {
           operatorCostForIVA // Pasar el costo del operador (convertido si es necesario) para calcular IVA sobre ganancia
         )
         const ganancia = sale_amount_total - operatorCostForIVA
-        console.log(`✅ Created sale IVA record for operation ${operation.id} (IVA sobre ganancia: ${ganancia} ${finalSaleCurrency})`)
       }
 
       // Crear IVA para cada operador (si hay operadores)
@@ -294,7 +403,6 @@ export async function POST(request: Request) {
                 operatorData.cost_currency as "ARS" | "USD",
           departure_date
         )
-              console.log(`✅ Created purchase IVA record for operator ${operatorData.operator_id} in operation ${operation.id}`)
             } catch (error) {
               console.error(`Error creating IVA for operator ${operatorData.operator_id}:`, error)
             }
@@ -324,7 +432,6 @@ export async function POST(request: Request) {
         if (opOpError) {
           console.error("Error creating operation_operators:", opOpError)
         } else {
-          console.log(`✅ Created ${operatorsList.length} operation_operators records for operation ${op.id}`)
         }
       } catch (error) {
         console.error("Error creating operation_operators:", error)
@@ -352,7 +459,6 @@ export async function POST(request: Request) {
           op.id, // operationId
           `Pago automático generado para operación ${operation.id}`
         )
-            console.log(`✅ Created operator payment for operator ${operatorData.operator_id} in operation ${operation.id}, due: ${dueDate}`)
       } catch (error) {
             console.error(`Error creating operator payment for ${operatorData.operator_id}:`, error)
         // No lanzamos error para no romper la creación de la operación
@@ -372,11 +478,13 @@ export async function POST(request: Request) {
 
       if (accountsReceivableChart) {
         // Buscar o crear financial_account asociada a esta cuenta del plan
-        let accountsReceivableFinancialAccount = await (supabase.from("financial_accounts") as any)
+        const { data: existingReceivableFA } = await (supabase.from("financial_accounts") as any)
           .select("id")
           .eq("chart_account_id", accountsReceivableChart.id)
+          .eq("currency", finalSaleCurrency)
           .eq("is_active", true)
           .maybeSingle()
+        let accountsReceivableFinancialAccount = existingReceivableFA
 
         if (!accountsReceivableFinancialAccount) {
           // Crear financial_account para cuentas por cobrar si no existe
@@ -398,11 +506,8 @@ export async function POST(request: Request) {
         // Calcular ARS equivalent para la venta
         let saleExchangeRate: number | null = null
         if (finalSaleCurrency === "USD") {
-          saleExchangeRate = await getExchangeRate(supabase, new Date(departure_date))
-          if (!saleExchangeRate) {
-            saleExchangeRate = await getLatestExchangeRate(supabase)
-          }
-          if (!saleExchangeRate) saleExchangeRate = 1450
+          const rateResult = await getExchangeRateWithFallback(supabase, new Date(departure_date), "operations-create")
+          saleExchangeRate = rateResult.rate
         }
         const saleAmountARS = calculateARSEquivalent(sale_amount_total, finalSaleCurrency as "ARS" | "USD", saleExchangeRate)
 
@@ -427,7 +532,6 @@ export async function POST(request: Request) {
           },
           supabase
         )
-        console.log(`✅ Registered sale in chart of accounts (Accounts Receivable) for operation ${op.id}`)
       }
 
       // 2. Registrar costos de operadores en "Cuentas por Pagar"
@@ -440,11 +544,13 @@ export async function POST(request: Request) {
 
         if (accountsPayableChart) {
           // Buscar o crear financial_account asociada
-          let accountsPayableFinancialAccount = await (supabase.from("financial_accounts") as any)
+          const { data: existingPayableFA } = await (supabase.from("financial_accounts") as any)
             .select("id")
             .eq("chart_account_id", accountsPayableChart.id)
+            .eq("currency", finalOperatorCostCurrency)
             .eq("is_active", true)
             .maybeSingle()
+          let accountsPayableFinancialAccount = existingPayableFA
 
           if (!accountsPayableFinancialAccount) {
             const { data: newFA } = await (supabase.from("financial_accounts") as any)
@@ -498,7 +604,6 @@ export async function POST(request: Request) {
             },
             supabase
           )
-          console.log(`✅ Registered operator costs in chart of accounts (Accounts Payable) for operation ${op.id}`)
         }
       }
     } catch (error) {
@@ -565,7 +670,6 @@ export async function POST(request: Request) {
           
           if (!customerError && newCustomer) {
             customerId = newCustomer.id
-            console.log(`✅ Created customer ${customerId} from lead ${lead_id}`)
           }
         }
           }
@@ -591,7 +695,6 @@ export async function POST(request: Request) {
             console.error(`❌ Error associating customer ${customerId} with operation ${operation.id}:`, operationCustomerError)
             // No lanzar error, pero loguear para debug
           } else {
-            console.log(`✅ Associated customer ${customerId} with operation ${operation.id}`, operationCustomerData)
             
             // Enviar notificación al cliente si está configurada
             try {
@@ -647,7 +750,6 @@ export async function POST(request: Request) {
                 .in("id", leadDocuments.map((d: any) => d.id))
               
               if (!updateDocsError) {
-                console.log(`✅ Transferred ${leadDocuments.length} documents from lead ${lead_id} to customer ${customerId}`)
               } else {
                 console.error("Error transferring documents:", updateDocsError)
               }
@@ -670,7 +772,6 @@ export async function POST(request: Request) {
                 .in("id", leadDocsForOp.map((d: any) => d.id))
               
               if (!updateDocsOpError) {
-                console.log(`✅ Transferred ${leadDocsForOp.length} documents from lead ${lead_id} to operation ${operation.id}`)
               } else {
                 console.error("Error transferring documents to operation:", updateDocsOpError)
               }
@@ -689,7 +790,6 @@ export async function POST(request: Request) {
       // Transfer all ledger_movements from lead to operation
       try {
         const result = await transferLeadToOperation(lead_id, operation.id, supabase)
-        console.log(`✅ Transferred ${result.transferred} ledger movements from lead ${lead_id} to operation ${operation.id}`)
       } catch (error) {
         console.error("Error transferring ledger movements:", error)
         // No lanzamos error para no romper la creación de la operación
@@ -742,7 +842,6 @@ export async function POST(request: Request) {
           status: "PENDING",
           date_calculated: new Date().toISOString(),
         })
-        console.log(`✅ Created commission record for operation ${operation.id}: ${commission_percentage}% = ${commissionAmount}`)
       } catch (error) {
         console.error("Error creating commission record:", error)
         // No lanzamos error para no romper la creación de la operación
@@ -751,6 +850,19 @@ export async function POST(request: Request) {
 
     // Invalidar caché del dashboard (los KPIs cambian al crear una operación)
     revalidateTag(CACHE_TAGS.DASHBOARD)
+
+    // Registrar en audit trail
+    try {
+      await (supabase.rpc as any)('log_audit_action', {
+        p_user_id: user.id,
+        p_action: 'OPERATION_CREATED',
+        p_entity_type: 'operation',
+        p_entity_id: operation.id,
+        p_details: { destination, sale_amount_total, currency: currency || 'USD' }
+      })
+    } catch (auditError) {
+      console.warn('Error logging audit action:', auditError)
+    }
 
     return NextResponse.json({ operation })
   } catch (error) {
@@ -775,6 +887,7 @@ export async function GET(request: Request) {
       .select(`
         *,
         sellers:seller_id(id, name, email),
+        sellers_secondary:seller_secondary_id(id, name, email),
         operators:operator_id(id, name),
         agencies:agency_id(id, name, city),
         leads:lead_id(id, contact_name, destination, trello_url, status),
@@ -872,11 +985,13 @@ export async function GET(request: Request) {
 
       if (operationIdsByCustomer.length > 0) {
         const idsFilter = `id.in.(${operationIdsByCustomer.join(",")})`
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,${idsFilter}`)
+        // Search también incluye airline_name + hotel_name (item 6 backlog Santi).
+        // RLS tenant_isolation acota a la org del user — no hay leak cross-org.
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%,${idsFilter}`)
       } else {
-        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
-        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%`)
+        query = query.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
+        countQuery = countQuery.or(`file_code.ilike.%${search}%,destination.ilike.%${search}%,airline_name.ilike.%${search}%,hotel_name.ilike.%${search}%`)
       }
     }
 
@@ -991,6 +1106,7 @@ export async function GET(request: Request) {
         .select(`
           *,
           sellers:seller_id(name),
+          sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
           leads:lead_id(contact_name, destination, trello_url),
@@ -1006,11 +1122,11 @@ export async function GET(request: Request) {
 
     // Si hay error y es porque operation_operators no existe, intentar sin esa relación
     if (error && (error.message?.includes("operation_operators") || error.message?.includes("relation") || error.code === "PGRST116")) {
-      console.log("operation_operators table not found, retrying without it...")
       const retryResult = await query
         .select(`
           *,
           sellers:seller_id(name),
+          sellers_secondary:seller_secondary_id(name),
           operators:operator_id(name),
           agencies:agency_id(name),
           leads:lead_id(contact_name, destination, trello_url),
@@ -1213,7 +1329,6 @@ async function generateDestinationRequirementAlerts(
   }
 
   if (matchingCodes.length === 0) {
-    console.log(`ℹ️ No se encontraron requisitos para destino: ${destination}`)
     return
   }
 
@@ -1225,7 +1340,6 @@ async function generateDestinationRequirementAlerts(
     .eq("is_required", true)
 
   if (error || !requirements || requirements.length === 0) {
-    console.log(`ℹ️ No hay requisitos obligatorios para: ${matchingCodes.join(", ")}`)
     return
   }
 
@@ -1255,14 +1369,12 @@ async function generateDestinationRequirementAlerts(
     if (insertError) {
       console.error("Error creando alertas de requisitos:", insertError)
     } else {
-      console.log(`✅ Creadas ${alertsToCreate.length} alertas de requisitos para operación ${operationId}`)
       
       // Generar mensajes de WhatsApp para las alertas creadas
       if (createdAlerts && createdAlerts.length > 0) {
         try {
           const messagesGenerated = await generateMessagesFromAlerts(supabase, createdAlerts)
           if (messagesGenerated > 0) {
-            console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para alertas de requisitos`)
           }
         } catch (error) {
           console.error("Error generando mensajes de WhatsApp para alertas de requisitos:", error)
@@ -1387,13 +1499,11 @@ async function generateOperationAlerts(
     if (insertError) {
       console.error("Error creando alertas de operación:", insertError)
     } else {
-      console.log(`✅ Creadas ${alertsToCreate.length} alertas de check-in/check-out para operación ${operationId}`)
       
       // Generar mensajes de WhatsApp para las alertas creadas
       try {
         const messagesGenerated = await generateMessagesFromAlerts(supabase, alertsToCreate)
         if (messagesGenerated > 0) {
-          console.log(`✅ Generados ${messagesGenerated} mensajes de WhatsApp para las alertas`)
         }
       } catch (error) {
         console.error("Error generando mensajes de WhatsApp:", error)

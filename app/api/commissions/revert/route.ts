@@ -64,7 +64,6 @@ export async function POST(request: Request) {
           await (supabase.from("ledger_movements") as any)
             .delete()
             .eq("id", lm.id)
-          console.log(`✅ Ledger movement ${lm.id} (COMMISSION) eliminado`)
         }
       }
     } catch (ledgerError) {
@@ -84,8 +83,6 @@ export async function POST(request: Request) {
       console.error("Error updating commission status:", updateError)
       return NextResponse.json({ error: "Error al revertir comisión" }, { status: 500 })
     }
-
-    console.log(`✅ Comisión ${commissionId} revertida a PENDING`)
 
     return NextResponse.json({
       success: true,

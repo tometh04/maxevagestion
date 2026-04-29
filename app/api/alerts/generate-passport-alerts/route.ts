@@ -20,7 +20,6 @@ export async function POST(request: Request) {
       )
     }
     
-    console.log("🔄 Generating passport expiry alerts manually...")
     const result = await generatePassportExpiryAlerts()
     
     return NextResponse.json({

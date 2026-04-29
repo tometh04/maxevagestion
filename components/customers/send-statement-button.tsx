@@ -107,10 +107,10 @@ export function SendStatementButton({
 
         {sent ? (
           <div className="flex flex-col items-center justify-center py-8">
-            <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center mb-4">
-              <Check className="h-6 w-6 text-green-600" />
+            <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center mb-4">
+              <Check className="h-6 w-6 text-success" />
             </div>
-            <p className="text-lg font-medium text-green-600">¡Email enviado!</p>
+            <p className="text-lg font-medium text-success">¡Email enviado!</p>
           </div>
         ) : (
           <>
