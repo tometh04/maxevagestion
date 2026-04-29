@@ -13,6 +13,7 @@ import { sendCustomerNotifications } from "@/lib/customers/customer-service"
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
+import { getSellerPercentage } from "@/lib/commissions/calculate"
 
 export async function POST(request: Request) {
   try {
@@ -68,7 +69,9 @@ export async function POST(request: Request) {
       sale_currency,
       operator_cost_currency, // Compatibilidad hacia atrás
       commission_percentage, // Porcentaje de comisión del vendedor
-      commission_split, // Split de comisión entre vendedor principal y secundario
+      commission_split, // Split de comisión entre vendedor principal y secundario (legacy)
+      commission_pct_primary, // Override absoluto del % de comisión del vendedor principal (29/04 — Tomi opción B)
+      commission_pct_secondary, // Override absoluto del % del vendedor secundario; suma ≤ principal pct
       reservation_code_air,
       reservation_code_hotel,
       airline_name,
@@ -100,6 +103,37 @@ export async function POST(request: Request) {
 
     if (settingsData?.require_operator && !operator_id && (!operators || operators.length === 0)) {
       return NextResponse.json({ error: "El operador es requerido" }, { status: 400 })
+    }
+
+    // Validación overrides de comisión (29/04 — Tomi opción B):
+    // Si vienen los dos campos absolutos, la suma no puede exceder el %
+    // que comisiona el vendedor principal. Sólo aplica con secundario.
+    if (
+      seller_secondary_id &&
+      commission_pct_primary != null &&
+      commission_pct_secondary != null
+    ) {
+      const primaryPctNum = Number(commission_pct_primary)
+      const secondaryPctNum = Number(commission_pct_secondary)
+
+      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
+        return NextResponse.json(
+          { error: "Las comisiones deben ser números no negativos" },
+          { status: 400 }
+        )
+      }
+
+      const principalPct = await getSellerPercentage(seller_id)
+      const sumOverrides = primaryPctNum + secondaryPctNum
+
+      if (sumOverrides > principalPct + 0.01) {
+        return NextResponse.json(
+          {
+            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // Procesar operadores: soportar formato nuevo (array) y formato antiguo (operator_id + operator_cost)
@@ -211,6 +245,8 @@ export async function POST(request: Request) {
       seller_id,
       seller_secondary_id: seller_secondary_id || null,
       commission_split: seller_secondary_id ? (commission_split ?? 50) : null,
+      commission_pct_primary: seller_secondary_id && commission_pct_primary != null ? Number(commission_pct_primary) : null,
+      commission_pct_secondary: seller_secondary_id && commission_pct_secondary != null ? Number(commission_pct_secondary) : null,
       operator_id: primaryOperatorId, // Operador principal (compatibilidad hacia atrás)
       type,
       product_type: inferredProductType,

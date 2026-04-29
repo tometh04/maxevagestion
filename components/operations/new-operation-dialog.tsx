@@ -70,6 +70,9 @@ const operationSchema = z.object({
   seller_id: z.string().min(1, "El vendedor es requerido"),
   seller_secondary_id: z.string().optional().nullable(),
   commission_split: z.coerce.number().min(0).max(100).optional().nullable(),
+  // Overrides absolutos (29/04 — Tomi opción B). Suma ≤ pct comisión del principal.
+  commission_pct_primary: z.coerce.number().min(0).max(100).optional().nullable(),
+  commission_pct_secondary: z.coerce.number().min(0).max(100).optional().nullable(),
   operator_id: z.string().optional().nullable(),
   operators: z.array(operatorSchema).optional(),
   type: z.enum(["FLIGHT", "HOTEL", "PACKAGE", "CRUISE", "TRANSFER", "MIXED", "ASSISTANCE"]),
@@ -169,7 +172,7 @@ interface NewOperationDialogProps {
   onOpenChange: (open: boolean) => void
   onSuccess: (operationId?: string) => void // Ahora puede recibir el ID de la operación creada
   agencies: Array<{ id: string; name: string }>
-  sellers: Array<{ id: string; name: string }>
+  sellers: Array<{ id: string; name: string; default_commission_percentage?: number | null }>
   operators: Array<{ id: string; name: string }>
   defaultAgencyId?: string
   defaultSellerId?: string
@@ -301,6 +304,8 @@ export function NewOperationDialog({
       operator_id: null,
       seller_secondary_id: null,
       commission_split: 50,
+      commission_pct_primary: null,
+      commission_pct_secondary: null,
       type: "PACKAGE",
       customer_id: null,
       origin: "Rosario", // Por defecto Rosario
@@ -492,6 +497,19 @@ export function NewOperationDialog({
         operators: useMultipleOperators && operatorList.length > 0 ? operatorList : undefined,
         seller_secondary_id: values.seller_secondary_id || null,
         commission_split: values.seller_secondary_id ? (values.commission_split ?? 50) : null,
+        // Overrides absolutos (29/04 — Tomi opción B): si hay secondary, persistir
+        // los valores absolutos. Si el usuario no tocó los inputs, fallback al
+        // halfDefault calculado del pct del principal (= split 50/50). Esto asegura
+        // que TODAS las operaciones nuevas usen el path nuevo, no el legacy.
+        ...(values.seller_secondary_id ? (() => {
+          const principalSellerForSubmit = sellers.find((s) => s.id === values.seller_id)
+          const principalPctForSubmit = Number(principalSellerForSubmit?.default_commission_percentage ?? 0)
+          const halfDefaultForSubmit = Math.round((principalPctForSubmit / 2) * 100) / 100
+          return {
+            commission_pct_primary: Number(values.commission_pct_primary ?? halfDefaultForSubmit),
+            commission_pct_secondary: Number(values.commission_pct_secondary ?? halfDefaultForSubmit),
+          }
+        })() : { commission_pct_primary: null, commission_pct_secondary: null }),
         origin: values.origin || null,
         customer_id: values.customer_id || null,
         return_date: values.return_date ? values.return_date.toISOString().split("T")[0] : null,
@@ -768,41 +786,76 @@ export function NewOperationDialog({
                 />
               </div>
 
-              {/* Split de comisión - solo visible con vendedor secundario */}
-              {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (
-                <div className="grid gap-x-6 gap-y-5 md:grid-cols-2 mt-4">
-                  {["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "") ? (
-                    <FormField
-                      control={form.control}
-                      name="commission_split"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Split comisión (% vendedor principal)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step={1}
-                              value={field.value ?? 50}
-                              onChange={(e) => field.onChange(Number(e.target.value))}
-                              onFocus={(e) => e.target.select()}
-                            />
-                          </FormControl>
-                          <p className="text-xs text-muted-foreground">
-                            Principal: {field.value ?? 50}% · Secundario: {100 - (field.value ?? 50)}%
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ) : (
-                    <div className="text-xs text-muted-foreground pt-2">
-                      Split comisión: {form.watch("commission_split") ?? 50}% / {100 - (form.watch("commission_split") ?? 50)}%
+              {/* Comisión compartida: dos inputs absolutos (29/04 — Tomi opción B).
+                  Default principalPct/2 cada uno. ADMIN/SUPER_ADMIN/CONTABLE pueden editar.
+                  Validación reactiva: suma ≤ pct del vendedor principal. */}
+              {form.watch("seller_secondary_id") && form.watch("seller_secondary_id") !== "none" && (() => {
+                const canEdit = ["SUPER_ADMIN", "ADMIN", "CONTABLE"].includes(userRole || "")
+                const principalSeller = sellers.find((seller) => seller.id === form.watch("seller_id"))
+                const principalPct = Number(principalSeller?.default_commission_percentage ?? 0)
+                const halfDefault = Math.round((principalPct / 2) * 100) / 100
+                const primaryVal = form.watch("commission_pct_primary")
+                const secondaryVal = form.watch("commission_pct_secondary")
+                const primaryNum = primaryVal != null ? Number(primaryVal) : halfDefault
+                const secondaryNum = secondaryVal != null ? Number(secondaryVal) : halfDefault
+                const sum = primaryNum + secondaryNum
+                const exceedsPrincipal = principalPct > 0 && sum > principalPct + 0.01
+
+                return (
+                  <div className="space-y-3 mt-4">
+                    <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+                      <FormField
+                        control={form.control}
+                        name="commission_pct_primary"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Comisión vendedor principal (%)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.01}
+                                value={field.value ?? halfDefault}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onFocus={(e) => e.target.select()}
+                                disabled={!canEdit}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="commission_pct_secondary"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Comisión vendedor secundario (%)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={0.01}
+                                value={field.value ?? halfDefault}
+                                onChange={(e) => field.onChange(Number(e.target.value))}
+                                onFocus={(e) => e.target.select()}
+                                disabled={!canEdit}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-                  )}
-                </div>
-              )}
+                    <div className={`text-xs ${exceedsPrincipal ? "text-destructive font-medium" : "text-muted-foreground"}`}>
+                      Suma: {sum.toFixed(2)}% · Comisión vendedor principal: {principalPct.toFixed(2)}%
+                      {exceedsPrincipal && " — la suma no puede superar la comisión del principal"}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
 
             <div className="border-t border-border/40 -mx-6" />

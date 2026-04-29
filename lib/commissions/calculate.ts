@@ -6,6 +6,12 @@ interface Operation {
   seller_id: string // mapped from seller_primary_id
   seller_secondary_id?: string | null
   commission_split?: number | null
+  // Override absoluto del % de comisión por vendedor en la operación.
+  // Cuando ambos están seteados (operaciones nuevas creadas con la UI
+  // post-29/04), se usan directamente y la suma se valida ≤ principal pct.
+  // Cuando son NULL (legacy), se cae al path basado en commission_split.
+  commission_pct_primary?: number | null
+  commission_pct_secondary?: number | null
   destination: string
   status: string
   sale_amount_total: number
@@ -28,7 +34,7 @@ interface Operation {
  *   3. commission_rules genérica (sin seller_id) — default del tenant.
  *   4. 0% con warning.
  */
-async function getSellerPercentage(sellerId: string): Promise<number> {
+export async function getSellerPercentage(sellerId: string): Promise<number> {
   try {
     const supabase = await createServerClient()
     const today = new Date().toISOString().split("T")[0]
@@ -110,23 +116,39 @@ export async function calculateCommission(operation: Operation): Promise<{
   const hasSecondary = !!operation.seller_secondary_id
 
   if (hasSecondary) {
-    // Cuando la comisión es compartida, cada vendedor recibe la mitad de SU porcentaje
-    // El commission_split (0-100) controla el factor de división (default 50 = mitad)
-    const splitFactor = (operation.commission_split ?? 50) / 100
+    let effectivePrimaryPct: number
+    let effectiveSecondaryPct: number
 
-    // Porcentaje efectivo de cada vendedor: su porcentaje × factor de split
-    const effectivePrimaryPct = primaryPercentage * splitFactor
+    const hasOverrides =
+      operation.commission_pct_primary != null &&
+      operation.commission_pct_secondary != null
+
+    if (hasOverrides) {
+      // Path nuevo (post-29/04): valores absolutos editados por ADMIN.
+      // La validación de la API garantiza que la suma ≤ principal pct.
+      effectivePrimaryPct = Number(operation.commission_pct_primary) || 0
+      effectiveSecondaryPct = Number(operation.commission_pct_secondary) || 0
+    } else {
+      // Path legacy: commission_split (0-100) interpretado como fracción
+      // del pct de CADA vendedor. Tiene un bug histórico cuando los pcts
+      // difieren (la suma puede exceder lo que el principal habría
+      // cobrado solo), pero se preserva tal cual: Tomi pidió que solo
+      // las operaciones nuevas usen la lógica corregida. Las legacy
+      // siguen así hasta que un admin las edite con la UI nueva.
+      const splitFactor = (operation.commission_split ?? 50) / 100
+      effectivePrimaryPct = primaryPercentage * splitFactor
+
+      const secondaryPercentage = await getSellerPercentage(operation.seller_secondary_id!)
+      effectiveSecondaryPct = secondaryPercentage * splitFactor
+    }
+
     const primaryCommission = Math.round((operation.margin_amount * effectivePrimaryPct) / 100 * 100) / 100
-
-    // Obtener porcentaje del vendedor secundario (su propia regla)
-    const secondaryPercentage = await getSellerPercentage(operation.seller_secondary_id!)
-    const effectiveSecondaryPct = secondaryPercentage * splitFactor
     const secondaryCommission = Math.round((operation.margin_amount * effectiveSecondaryPct) / 100 * 100) / 100
-
     const totalCommission = Math.round((primaryCommission + secondaryCommission) * 100) / 100
 
     return {
       totalCommission,
+      // `percentage` queda como el pct del principal (referencia, no del cálculo).
       percentage: Math.round(primaryPercentage * 100) / 100,
       primaryCommission,
       secondaryCommission,

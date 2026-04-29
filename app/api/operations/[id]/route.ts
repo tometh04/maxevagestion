@@ -207,6 +207,41 @@ export async function PATCH(
       return NextResponse.json({ error: "El costo de operador no puede ser negativo" }, { status: 400 })
     }
 
+    // Validación overrides de comisión (29/04 — Tomi opción B):
+    // Si vienen los dos absolutos y hay seller secondary efectivo (en el
+    // body o en la op actual), validar suma ≤ comisión del principal.
+    const effectiveSecondaryId =
+      body.seller_secondary_id !== undefined ? body.seller_secondary_id : currentOp.seller_secondary_id
+    if (
+      effectiveSecondaryId &&
+      body.commission_pct_primary != null &&
+      body.commission_pct_secondary != null
+    ) {
+      const primaryPctNum = Number(body.commission_pct_primary)
+      const secondaryPctNum = Number(body.commission_pct_secondary)
+
+      if (Number.isNaN(primaryPctNum) || Number.isNaN(secondaryPctNum) || primaryPctNum < 0 || secondaryPctNum < 0) {
+        return NextResponse.json(
+          { error: "Las comisiones deben ser números no negativos" },
+          { status: 400 }
+        )
+      }
+
+      const effectivePrimaryId = body.seller_id ?? currentOp.seller_id
+      const { getSellerPercentage } = await import("@/lib/commissions/calculate")
+      const principalPct = await getSellerPercentage(effectivePrimaryId)
+      const sumOverrides = primaryPctNum + secondaryPctNum
+
+      if (sumOverrides > principalPct + 0.01) {
+        return NextResponse.json(
+          {
+            error: `La suma de comisiones (${sumOverrides.toFixed(2)}%) no puede superar la comisión del vendedor principal (${principalPct.toFixed(2)}%)`,
+          },
+          { status: 400 }
+        )
+      }
+    }
+
     // Detectar cambio de moneda
     const oldCurrency = currentOp.sale_currency || currentOp.currency || "USD"
     const newCurrency = body.currency || body.sale_currency || oldCurrency
