@@ -22,6 +22,8 @@ export interface ImportConfig {
   agencyId: AgencyId
   exchangeRate: ExchangeRateConfig
   defaultStatus?: "RESERVED" | "CONFIRMED" | "CANCELLED" | "TRAVELLING" | "TRAVELLED"
+  /** ID of the user (public.users.id) running the import. Used as fallback for seller_id and user_id. */
+  userId?: string
 }
 
 export interface ImportError {

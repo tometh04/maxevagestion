@@ -212,13 +212,26 @@ export const operationsMasterPipeline: PipelineFn = async (
     const marginPercentage =
       saleAmountArs > 0 ? (marginAmount / saleAmountArs) * 100 : 0
 
-    // Vendedor (opcional)
-    const seller = row.seller_name
+    // Vendedor: si viene en CSV, busca; si no encuentra, fallback al usuario que importa
+    // (operations.seller_id es NOT NULL, así que necesita un fallback siempre)
+    const sellerFromCsv = row.seller_name
       ? await resolveSeller(supabase, config.agencyId, { name: row.seller_name })
       : null
 
-    if (!seller && row.seller_name) {
-      warnings.push({ rowNumber, message: `Vendedor no encontrado: ${row.seller_name}` })
+    if (!sellerFromCsv && row.seller_name) {
+      warnings.push({
+        rowNumber,
+        message: `Vendedor "${row.seller_name}" no encontrado, usando el user que importa como fallback`,
+      })
+    }
+
+    const sellerIdResolved = sellerFromCsv?.id ?? config.userId
+    if (!sellerIdResolved) {
+      errors.push({
+        rowNumber,
+        message: "No se pudo resolver seller_id (config.userId requerido)",
+      })
+      continue
     }
 
     // ─── Operación ───────────────────────────────
@@ -232,7 +245,7 @@ export const operationsMasterPipeline: PipelineFn = async (
         {
           agency_id: config.agencyId,
           file_code: fileCode,
-          seller_id: seller?.id ?? null,
+          seller_id: sellerIdResolved,
           type: "PACKAGE",
           product_type: "PAQUETE",
           destination: row.destination,

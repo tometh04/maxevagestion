@@ -16,6 +16,7 @@ const VALID_PIPELINES: ImportPipeline[] = [
   "operators",
   "payments-suelto",
   "cash-movements",
+  "users",
 ]
 
 const VALID_FX_MODES: ExchangeRateMode[] = [
@@ -86,6 +87,7 @@ export async function POST(request: Request) {
       {
         agencyId,
         exchangeRate: { mode: fxMode, manualRate },
+        userId: user.id,
       },
       { dryRun }
     )
