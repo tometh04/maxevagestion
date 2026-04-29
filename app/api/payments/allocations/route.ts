@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { hasPermission } from "@/lib/permissions"
-import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/payments/allocations?operationId=xxx
@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "operationId o paymentId requerido" }, { status: 400 })
   }
 
-  const supabase = createAdminClient()
+  const supabase = await createServerClient()
 
   let query = (supabase.from("payment_passenger_allocations") as any)
     .select(`
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Los montos asignados no pueden ser negativos" }, { status: 400 })
   }
 
-  const supabase = createAdminClient()
+  const supabase = await createServerClient()
 
   // Verify payment exists and get its amount
   const { data: payment, error: paymentError } = await supabase

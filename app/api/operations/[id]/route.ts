@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 import { getCurrentUser } from "@/lib/auth"
 import { updateSaleIVA, updatePurchaseIVA, deleteSaleIVA, deletePurchaseIVA, createPurchaseIVA } from "@/lib/accounting/iva"
 import { invalidateBalanceCache } from "@/lib/accounting/ledger"
@@ -99,15 +99,13 @@ export async function GET(
   // Extraer clientes de la operación (ya están incluidos en la query)
   const operationCustomers = (op.operation_customers || []) as any[]
 
-  const adminClient = createAdminClient()
-
   // OPTIMIZACIÓN: Paralelizar queries restantes (documentos, pagos, alertas)
   const [
     documents,
     paymentsResult,
     alertsResult
   ] = await Promise.all([
-    getOperationVisibleDocuments(adminClient, {
+    getOperationVisibleDocuments(supabase, {
       operationId,
       leadId: op.lead_id,
       operationCustomers,

@@ -15,7 +15,7 @@ import {
 } from "@/lib/receipts/receipt-data"
 import { buildReceiptFileName } from "@/lib/receipts/receipt-file"
 import { buildReceiptPassengerDetails } from "@/lib/receipts/receipt-passengers"
-import { createAdminClient, createServerClient } from "@/lib/supabase/server"
+import { createServerClient } from "@/lib/supabase/server"
 
 const SERVICE_LABELS: Record<string, string> = {
   HOTEL: "Hotel",
@@ -108,52 +108,8 @@ export async function GET(request: NextRequest) {
     }
 
     const receiptScope = getReceiptScope(payment.operation_service_id)
-    const adminClient = createAdminClient()
-    let operation = firstRelation((payment as any).operations) as any
-    let service = firstRelation((payment as any).operation_services) as any
-
-    if (!operation?.id && (payment as any).operation_id) {
-      const { data: adminOperation } = await (adminClient.from("operations") as any)
-        .select(`
-          id,
-          seller_id,
-          leads:lead_id (
-            contact_name
-          ),
-          file_code,
-          destination,
-          origin,
-          departure_date,
-          return_date,
-          sale_amount_total,
-          sale_currency,
-          currency,
-          adults,
-          children,
-          infants,
-          type,
-          agencies:agency_id (id, name, city),
-          operators:operator_id (id, name)
-        `)
-        .eq("id", (payment as any).operation_id)
-        .maybeSingle()
-      operation = adminOperation as any
-    }
-
-    if (!service?.id && payment.operation_service_id) {
-      const { data: adminService } = await (adminClient.from("operation_services") as any)
-        .select(`
-          id,
-          service_type,
-          description,
-          sale_amount,
-          sale_currency,
-          operators:operator_id (id, name)
-        `)
-        .eq("id", payment.operation_service_id)
-        .maybeSingle()
-      service = adminService as any
-    }
+    const operation = firstRelation((payment as any).operations) as any
+    const service = firstRelation((payment as any).operation_services) as any
 
     const lead = firstRelation(operation?.leads) as any
     const agency = firstRelation(operation?.agencies) as any
@@ -178,9 +134,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (operation?.id) {
-      // Los recibos deben resolver pasajeros aunque la relación haya sido creada
-      // con service role. El pago ya fue leído con RLS y el permiso se validó arriba.
-      const { data: operationCustomers } = await (adminClient.from("operation_customers") as any)
+      const { data: operationCustomers } = await (supabase.from("operation_customers") as any)
         .select(`
           role,
           customers:customer_id (first_name, last_name)
