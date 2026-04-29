@@ -84,6 +84,11 @@ interface Invoice {
     iva_importe: number
     total: number
   }>
+  afip_response?: {
+    error?: string
+    verification_status?: string
+    failed_at?: string
+  } | null
 }
 
 const statusLabels: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
@@ -582,15 +587,30 @@ export function InvoicesPageClient() {
                     </div>
                   </div>
                 </div>
-              ) : selectedInvoice.status === 'rejected' ? (
+              ) : (
+                  selectedInvoice.status === 'rejected' ||
+                  (selectedInvoice.status === 'draft' && selectedInvoice.afip_response?.error)
+                ) ? (
                 <div className="rounded-xl border border-red-200 dark:border-red-800/40 bg-red-50/50 dark:bg-red-950/20 p-4 space-y-3">
                   <div className="flex items-center gap-2">
                     <div className="flex items-center justify-center h-6 w-6 rounded-md bg-red-500/10">
                       <AlertCircle className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                     </div>
-                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">Rechazada por AFIP</h4>
+                    <h4 className="text-[11px] font-semibold uppercase tracking-widest text-red-700 dark:text-red-400">
+                      {selectedInvoice.status === 'draft' ? 'AFIP rechazó la autorización' : 'Rechazada por AFIP'}
+                    </h4>
                   </div>
-                  <p className="text-xs text-red-700 dark:text-red-300">Esta factura no fue autorizada. Creá una nueva con los datos corregidos.</p>
+                  <p className="text-xs text-red-700 dark:text-red-300 whitespace-pre-wrap break-words">
+                    {selectedInvoice.afip_response?.error ||
+                      (selectedInvoice.status === 'draft'
+                        ? 'La factura no pudo autorizarse en AFIP.'
+                        : 'Esta factura no fue autorizada. Creá una nueva con los datos corregidos.')}
+                  </p>
+                  {selectedInvoice.status === 'draft' && (
+                    <p className="text-[11px] text-red-700/80 dark:text-red-400/80">
+                      La factura quedó como borrador. Podés reintentar la autorización con el botón al pie del diálogo.
+                    </p>
+                  )}
                 </div>
               ) : null}
 
@@ -683,6 +703,25 @@ export function InvoicesPageClient() {
             <Button variant="outline" onClick={() => setSelectedInvoice(null)}>
               Cerrar
             </Button>
+            {(selectedInvoice?.status === 'draft' || selectedInvoice?.status === 'pending') && (
+              <Button
+                variant="default"
+                onClick={async () => {
+                  if (!selectedInvoice) return
+                  const id = selectedInvoice.id
+                  await authorizeInvoice(id)
+                  setSelectedInvoice(null)
+                }}
+                disabled={authorizing === selectedInvoice.id}
+              >
+                {authorizing === selectedInvoice.id ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                Reintentar autorización
+              </Button>
+            )}
             {selectedInvoice?.status === 'authorized' && (
               <Button
                 variant="outline"
