@@ -31,7 +31,7 @@ describe("cashMovementsPipeline", () => {
     const result = await cashMovementsPipeline(
       supabase,
       CSV_SAMPLE,
-      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id" }
+      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 } }
     )
 
     expect(result.totalRows).toBe(4)
@@ -54,7 +54,7 @@ describe("cashMovementsPipeline", () => {
     await cashMovementsPipeline(
       supabase,
       CSV_SAMPLE,
-      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id" }
+      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 } }
     )
 
     const calls = supabase.insert.mock.calls
@@ -69,7 +69,7 @@ describe("cashMovementsPipeline", () => {
     const result = await cashMovementsPipeline(
       supabase,
       CSV_SAMPLE,
-      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id" },
+      { agencyId: AGENCY_ID, exchangeRate: { mode: "manual_fixed", manualRate: 1450 } },
       { dryRun: true }
     )
 

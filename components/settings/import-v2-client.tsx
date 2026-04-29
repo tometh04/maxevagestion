@@ -46,7 +46,6 @@ type Pipeline =
   | "operators"
   | "payments-suelto"
   | "cash-movements"
-  | "users"
 
 type FxMode = "monthly_rates" | "manual_fixed" | "monthly_with_fallback"
 
@@ -74,7 +73,6 @@ interface ImportResult {
     operationsToCreate?: number
     paymentsToCreate?: number
     cashMovementsToCreate?: number
-    usersToCreate?: number
   }
 }
 
@@ -106,12 +104,6 @@ const PIPELINES: Array<{ id: Pipeline; name: string; description: string }> = [
     name: "Movimientos de Caja",
     description:
       "Movimientos sueltos de caja, opcionalmente vinculados a operaciones.",
-  },
-  {
-    id: "users",
-    name: "Usuarios / Vendedores",
-    description:
-      "Crear users con email + password. Cada fila del CSV genera un usuario nuevo y lo asocia a la agencia destino con su porcentaje de comisión por defecto.",
   },
 ]
 
@@ -447,11 +439,6 @@ export function ImportV2Client({ agencies }: Props) {
                   <Badge variant="secondary">
                     Movimientos caja:{" "}
                     {result.previewSummary.cashMovementsToCreate}
-                  </Badge>
-                )}
-                {result.previewSummary.usersToCreate !== undefined && (
-                  <Badge variant="secondary">
-                    Usuarios: {result.previewSummary.usersToCreate}
                   </Badge>
                 )}
               </div>

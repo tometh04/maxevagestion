@@ -95,17 +95,11 @@ export const cashMovementsPipeline: PipelineFn = async (
       continue
     }
 
-    if (!config.userId) {
-      errors.push({ rowNumber, message: "config.userId requerido para cash_movements" })
-      continue
-    }
-
     const inserted = await executeInsert(
       supabase,
       "cash_movements",
       {
         agency_id: config.agencyId,
-        user_id: config.userId,
         type,
         amount,
         currency,

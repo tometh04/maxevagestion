@@ -74,7 +74,7 @@ describe("operationsMasterPipeline", () => {
       csv,
       {
         agencyId: AGENCY_ID,
-        exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id",
+        exchangeRate: { mode: "manual_fixed", manualRate: 1450 },
       }
     )
 
@@ -114,7 +114,7 @@ describe("operationsMasterPipeline", () => {
       csv,
       {
         agencyId: AGENCY_ID,
-        exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id",
+        exchangeRate: { mode: "manual_fixed", manualRate: 1450 },
       },
       { dryRun: true }
     )
@@ -131,7 +131,7 @@ describe("operationsMasterPipeline", () => {
       csv,
       {
         agencyId: AGENCY_ID,
-        exchangeRate: { mode: "manual_fixed", manualRate: 1450 }, userId: "test-user-id",
+        exchangeRate: { mode: "manual_fixed", manualRate: 1450 },
       }
     )
 
