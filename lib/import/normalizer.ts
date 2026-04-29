@@ -1,10 +1,34 @@
 /**
- * Parsea string a número. Soporta formatos $1,234.56 (US) y 1234.56.
+ * Parsea string a número. Soporta formato US ($1,234.56) y AR (1.234,56).
+ * Detección: si la última coma está después del último punto → posible AR; si no → US.
  * Retorna null si no se puede parsear.
  */
 export function parseAmount(input: string): number | null {
   if (!input || !input.trim()) return null
-  const cleaned = input.replace(/[$\s,]/g, "")
+  let cleaned = input.replace(/[$\s]/g, "")
+  if (!cleaned) return null
+
+  const lastDot = cleaned.lastIndexOf(".")
+  const lastComma = cleaned.lastIndexOf(",")
+
+  if (lastComma > lastDot) {
+    // Comma is after the last dot (or no dot exists).
+    // Determine if this comma is an AR decimal separator or a US thousands separator.
+    // A US thousands separator always leaves exactly 3 digits after the comma with no decimal.
+    // An AR decimal separator leaves 1 or 2 digits after the comma (cents).
+    const afterComma = cleaned.slice(lastComma + 1)
+    if (lastDot === -1 && afterComma.length === 3 && !afterComma.includes(",")) {
+      // Looks like US thousands: e.g. "13,680" or "1,234,567"
+      cleaned = cleaned.replace(/,/g, "")
+    } else {
+      // AR format: dots are thousand separators, comma is decimal
+      cleaned = cleaned.replace(/\./g, "").replace(",", ".")
+    }
+  } else {
+    // US format: commas are thousand separators
+    cleaned = cleaned.replace(/,/g, "")
+  }
+
   if (!cleaned) return null
   const num = Number(cleaned)
   if (Number.isNaN(num)) return null
@@ -12,7 +36,8 @@ export function parseAmount(input: string): number | null {
 }
 
 /**
- * Parsea fecha. Soporta YYYY-MM-DD y DD/MM/YYYY (incluyendo D/M/YYYY).
+ * Parsea fecha. Soporta YYYY-MM-DD, DD/MM/YYYY y DD/MM/YY (2-digit year).
+ * Años 00-49 → 2000-2049. Años 50-99 → 1950-1999.
  * Retorna null si formato inválido.
  */
 export function parseDate(input: string): Date | null {
@@ -26,11 +51,15 @@ export function parseDate(input: string): Date | null {
     return makeDate(+year, +month, +day)
   }
 
-  // Formato DD/MM/YYYY
-  const dmyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  // Formato DD/MM/YYYY o DD/MM/YY
+  const dmyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/)
   if (dmyMatch) {
-    const [, day, month, year] = dmyMatch
-    return makeDate(+year, +month, +day)
+    const [, day, month, yearRaw] = dmyMatch
+    let year = +yearRaw
+    if (yearRaw.length === 2) {
+      year = year >= 50 ? 1900 + year : 2000 + year
+    }
+    return makeDate(year, +month, +day)
   }
 
   return null

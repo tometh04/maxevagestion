@@ -26,6 +26,18 @@ describe("parseAmount", () => {
     expect(parseAmount("$0")).toBe(0)
     expect(parseAmount("0")).toBe(0)
   })
+
+  it("parsea formato argentino (1.234,56)", () => {
+    expect(parseAmount("3.000,00")).toBe(3000)
+    expect(parseAmount("1.234,56")).toBe(1234.56)
+    expect(parseAmount("40,00")).toBe(40)
+    expect(parseAmount("$1.742,00")).toBe(1742)
+  })
+
+  it("formato sin separadores anda como número simple", () => {
+    expect(parseAmount("100")).toBe(100)
+    expect(parseAmount("0,5")).toBe(0.5) // AR: solo 1 decimal con coma
+  })
 })
 
 describe("parseDate", () => {
@@ -51,6 +63,18 @@ describe("parseDate", () => {
     expect(parseDate("")).toBeNull()
     expect(parseDate("not-a-date")).toBeNull()
     expect(parseDate("2026-13-45")).toBeNull()
+  })
+
+  it("acepta DD/MM/YY (year 2 dígitos, post-2000)", () => {
+    const d = parseDate("08/08/25")
+    expect(d).not.toBeNull()
+    expect(d!.toISOString().slice(0, 10)).toBe("2025-08-08")
+  })
+
+  it("acepta DD/MM/YY (year 2 dígitos, pre-2000)", () => {
+    const d = parseDate("15/06/95")
+    expect(d).not.toBeNull()
+    expect(d!.toISOString().slice(0, 10)).toBe("1995-06-15")
   })
 })
 
