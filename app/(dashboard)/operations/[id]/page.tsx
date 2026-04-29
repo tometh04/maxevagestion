@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server"
 import { getUserAgencyIds, resolveOperationAccessScope } from "@/lib/permissions-api"
 import { notFound } from "next/navigation"
 import { OperationDetailClient } from "@/components/operations/operation-detail-client"
+import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
 
 export default async function OperationDetailPage({
   params,
@@ -54,40 +55,15 @@ export default async function OperationDetailPage({
   // Limpiar operation_customers del objeto operation para evitar duplicación
   const { operation_customers, ...operationWithoutCustomers } = op
 
-  // Get documents (de la operación Y del lead asociado si existe)
+  // Get documents from the operation, its lead and linked customers.
   // Usar admin client porque los documentos se insertan con service role (bypasa RLS)
   // y el anon client no puede leerlos. El acceso del usuario ya fue verificado arriba.
   const adminClient = createAdminClient()
-
-  const { data: opDocs } = await adminClient
-    .from("documents")
-    .select("*")
-    .eq("operation_id", id)
-    .order("uploaded_at", { ascending: false })
-
-  const documents: Array<any> = opDocs ? [...opDocs] : []
-
-  // Si la operación tiene un lead asociado, traer también sus documentos
-  if (op.lead_id) {
-    const { data: leadDocs } = await adminClient
-      .from("documents")
-      .select("*")
-      .eq("lead_id", op.lead_id)
-      .order("uploaded_at", { ascending: false })
-    
-    if (leadDocs && leadDocs.length > 0) {
-      // Agregar documentos del lead que no estén ya en la operación
-      const leadDocsArray = leadDocs as any[]
-      for (const doc of leadDocsArray) {
-        if (!documents.find((d: any) => d.id === doc.id)) {
-          documents.push({ ...doc, fromLead: true })
-        }
-      }
-    }
-  }
-  
-  // Ordenar todos por fecha
-  documents.sort((a: any, b: any) => new Date(b.uploaded_at).getTime() - new Date(a.uploaded_at).getTime())
+  const documents = await getOperationVisibleDocuments(adminClient, {
+    operationId: id,
+    leadId: op.lead_id,
+    operationCustomers,
+  })
 
   // Get payments
   const { data: payments } = await supabase

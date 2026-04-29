@@ -129,7 +129,16 @@ export async function POST(
 
     if (!result.success) {
       await (supabase.from("invoices") as any)
-        .update({ status: "rejected" })
+        .update({
+          status: "draft",
+          verification_status: result.verification_status || "unverified",
+          afip_response: {
+            success: false,
+            error: result.error || "Error al autorizar factura",
+            verification_status: result.verification_status || "unverified",
+            failed_at: new Date().toISOString(),
+          },
+        })
         .eq("id", id)
       return NextResponse.json(
         {

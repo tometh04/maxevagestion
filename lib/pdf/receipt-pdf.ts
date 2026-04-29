@@ -724,12 +724,12 @@ export async function generateReceiptPdf(data: ReceiptPdfData): Promise<void> {
     "Datos del cliente",
     `Emitido en ${[data.agencyCity, data.fechaFormateada].filter(Boolean).join(", ")}`
   )
-  // Nombre completo: concatenar customerName (first_name) + customerLastName (last_name)
-  // que vienen separados desde la API. Antes solo se renderizaba customerName y faltaba el apellido.
-  const customerFullName = [data.customerName, data.customerLastName]
-    .map((s) => (s || "").trim())
-    .filter(Boolean)
-    .join(" ")
+  const customerName = (data.customerName || "").trim()
+  const customerLastName = (data.customerLastName || "").trim()
+  const customerFullName =
+    customerLastName && !customerName.toLocaleLowerCase().endsWith(customerLastName.toLocaleLowerCase())
+      ? `${customerName} ${customerLastName}`.trim()
+      : customerName
   drawInfoCard(
     normalizeText(customerFullName || data.customerName),
     [

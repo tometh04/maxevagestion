@@ -32,6 +32,11 @@ function parseDateValue(value: string): Date {
   return new Date(value.includes("T") ? value : `${value}T12:00:00`)
 }
 
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] || null
+  return value || null
+}
+
 // API para obtener datos del recibo - genera PDF en el cliente
 export async function GET(request: NextRequest) {
   try {
@@ -55,6 +60,7 @@ export async function GET(request: NextRequest) {
         reference,
         date_paid,
         date_due,
+        operation_id,
         operation_service_id,
         operations:operation_id (
           id,
@@ -102,7 +108,13 @@ export async function GET(request: NextRequest) {
     }
 
     const receiptScope = getReceiptScope(payment.operation_service_id)
-    const service = payment.operation_services as any
+    const operation = firstRelation((payment as any).operations) as any
+    const service = firstRelation((payment as any).operation_services) as any
+
+    const lead = firstRelation(operation?.leads) as any
+    const agency = firstRelation(operation?.agencies) as any
+    const operator = firstRelation(operation?.operators) as any
+    const serviceOperator = firstRelation(service?.operators) as any
 
     if (receiptScope === "SERVICE" && !service?.id) {
       return NextResponse.json(
@@ -117,17 +129,21 @@ export async function GET(request: NextRequest) {
     let customerCity = ""
     let passengerNamesText = "Cliente"
 
-    if (payment.operations?.id) {
+    if (user.role === "SELLER" && operation?.seller_id !== user.id) {
+      return NextResponse.json({ error: "No autorizado para ver este recibo" }, { status: 403 })
+    }
+
+    if (operation?.id) {
       const { data: operationCustomers } = await (supabase.from("operation_customers") as any)
         .select(`
           role,
-          customers:customer_id (first_name, last_name, address, city)
+          customers:customer_id (first_name, last_name)
         `)
-        .eq("operation_id", payment.operations.id)
+        .eq("operation_id", operation.id)
 
       const passengerDetails = buildReceiptPassengerDetails({
         operationCustomers,
-        leadContactName: payment.operations.leads?.contact_name || "",
+        leadContactName: lead?.contact_name || "",
       })
 
       customerName = passengerDetails.customerName
@@ -135,10 +151,6 @@ export async function GET(request: NextRequest) {
       customerAddress = passengerDetails.customerAddress
       customerCity = passengerDetails.customerCity
       passengerNamesText = passengerDetails.passengerNamesText
-    }
-
-    if (user.role === "SELLER" && payment.operations?.seller_id !== user.id) {
-      return NextResponse.json({ error: "No autorizado para ver este recibo" }, { status: 403 })
     }
 
     let totalOperacion = 0
@@ -154,16 +166,16 @@ export async function GET(request: NextRequest) {
     }> = []
 
     const receiptCurrency = getCustomerIncomeReferenceCurrency({
-      operation: payment.operations,
+      operation,
       service: service || null,
     })
 
-    if (payment.operations?.id) {
+    if (operation?.id) {
       const { data: paymentsData } = await (supabase.from("payments") as any)
         .select(
           "id, amount, amount_usd, currency, exchange_rate, date_paid, status, payer_type, direction, reference, operation_service_id"
         )
-        .eq("operation_id", payment.operations.id)
+        .eq("operation_id", operation.id)
         .eq("payer_type", "CUSTOMER")
         .eq("direction", "INCOME")
         .eq("status", "PAID")
@@ -177,7 +189,7 @@ export async function GET(request: NextRequest) {
       totalOperacion =
         receiptScope === "SERVICE"
           ? Number(service?.sale_amount) || 0
-          : Number(payment.operations.sale_amount_total) || 0
+          : Number(operation.sale_amount_total) || 0
 
       const summary = buildReceiptPaymentSummary({
         payments: scopedPayments,
@@ -197,8 +209,6 @@ export async function GET(request: NextRequest) {
         amountInReceiptCurrency: historyPayment.amountInReceiptCurrency,
       }))
     }
-
-    const agency = payment.operations?.agencies
 
     const { data: orgSettingsData } = await (supabase.from("organization_settings") as any).select(
       "key, value"
@@ -236,8 +246,8 @@ export async function GET(request: NextRequest) {
     if (!concepto && receiptScope === "SERVICE" && serviceLabel) {
       concepto = `Pago servicio ${serviceLabel}${service?.description ? ` - ${service.description}` : ""}`
     }
-    if (!concepto && payment.operations?.destination) {
-      concepto = `Pago viaje ${payment.operations.destination}`
+    if (!concepto && operation?.destination) {
+      concepto = `Pago viaje ${operation.destination}`
     }
     if (!concepto) {
       concepto = "Pago de servicios turisticos"
@@ -274,20 +284,20 @@ export async function GET(request: NextRequest) {
       totalOperacion,
       totalPagado,
       saldoRestante,
-      destination: payment.operations?.destination || "",
-      fileCode: payment.operations?.file_code || "",
-      origin: payment.operations?.origin || "",
-      departureDate: payment.operations?.departure_date || null,
-      returnDate: payment.operations?.return_date || null,
-      adults: payment.operations?.adults || 0,
-      children: payment.operations?.children || 0,
-      infants: payment.operations?.infants || 0,
-      operationType: payment.operations?.type || "",
-      operatorName: payment.operations?.operators?.name || "",
+      destination: operation?.destination || "",
+      fileCode: operation?.file_code || "",
+      origin: operation?.origin || "",
+      departureDate: operation?.departure_date || null,
+      returnDate: operation?.return_date || null,
+      adults: operation?.adults || 0,
+      children: operation?.children || 0,
+      infants: operation?.infants || 0,
+      operationType: operation?.type || "",
+      operatorName: operator?.name || "",
       serviceType: service?.service_type || "",
       serviceLabel,
       serviceDescription: service?.description || "",
-      serviceOperatorName: service?.operators?.name || "",
+      serviceOperatorName: serviceOperator?.name || "",
       paymentHistory,
     })
   } catch (error: any) {

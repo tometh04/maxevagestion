@@ -212,6 +212,8 @@ export function OperationDetailClient({
   }
 
   // Separar pagos de la operación base de pagos de servicios adicionales
+  const operationCurrency = operation.sale_currency || operation.currency || "USD"
+  const operationCostCurrency = operation.operator_cost_currency || operationCurrency
   const operationBasePayments = (payments || []).filter((p: any) => !p.operation_service_id)
   const servicePayments = (payments || []).filter((p: any) => p.operation_service_id)
   const payableOperators = useMemo(
@@ -559,10 +561,10 @@ export function OperationDetailClient({
           {/* ── Row 2: Financiero (full width) ── */}
           {canViewFinancialTabs && (() => {
             const serviceSaleTotal = operationServices
-              .filter(s => s.sale_currency === operation.currency)
+              .filter(s => s.sale_currency === operationCurrency)
               .reduce((sum, s) => sum + (s.sale_amount || 0), 0)
             const serviceCostTotal = operationServices
-              .filter(s => s.cost_currency === operation.currency)
+              .filter(s => s.cost_currency === operationCostCurrency)
               .reduce((sum, s) => sum + (s.cost_amount || 0), 0)
             const totalSale = operation.sale_amount_total + serviceSaleTotal
             const totalCost = operation.operator_cost + serviceCostTotal
@@ -592,19 +594,19 @@ export function OperationDetailClient({
                   <div className="rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200/50 dark:border-blue-800/50 p-4">
                     <p className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">💵 Venta Total</p>
                     <p className="text-xl font-bold text-blue-700 dark:text-blue-300 mt-1">
-                      {operation.currency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operationCurrency} {totalSale.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="rounded-xl bg-orange-50 dark:bg-orange-950/30 border border-orange-200/50 dark:border-orange-800/50 p-4">
                     <p className="text-xs font-medium text-orange-600 dark:text-orange-400 uppercase tracking-wide">📦 Costo Total</p>
                     <p className="text-xl font-bold text-orange-700 dark:text-orange-300 mt-1">
-                      {operation.currency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operationCostCurrency} {totalCost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200/50 dark:border-green-800/50 p-4">
                     <p className="text-xs font-medium text-green-600 dark:text-green-400 uppercase tracking-wide">📊 Margen</p>
                     <p className="text-xl font-bold text-green-700 dark:text-green-300 mt-1">
-                      {operation.currency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
+                      {operationCurrency} {totalMargin.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div className="rounded-xl bg-purple-50 dark:bg-purple-950/30 border border-purple-200/50 dark:border-purple-800/50 p-4">
@@ -624,15 +626,15 @@ export function OperationDetailClient({
                     <div className="flex items-center gap-6 text-sm">
                       <div className="text-right">
                         <span className="text-xs text-muted-foreground">Venta</span>
-                        <p className="font-semibold">{operation.currency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-semibold">{operationCurrency} {operation.sale_amount_total.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-muted-foreground">Costo</span>
-                        <p className="font-semibold">{operation.currency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-semibold">{operationCostCurrency} {operation.operator_cost.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                       </div>
                       <div className="text-right">
                         <span className="text-xs text-muted-foreground">Margen</span>
-                        <p className="font-semibold text-green-600">{operation.currency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
+                        <p className="font-semibold text-green-600">{operationCurrency} {operation.margin_amount.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</p>
                       </div>
                     </div>
                   </div>
@@ -711,8 +713,8 @@ export function OperationDetailClient({
           <OperationPaymentsSection
             operationId={operation.id}
             payments={operationBasePayments}
-            currency={operation.currency}
-            saleCurrency={operation.sale_currency || operation.currency}
+            currency={operationCurrency}
+            saleCurrency={operationCurrency}
             saleAmount={operation.sale_amount_total}
             operatorCost={operation.operator_cost}
             userRole={userRole}
@@ -725,7 +727,7 @@ export function OperationDetailClient({
             operationId={operation.id}
             customers={customers}
             payments={operationBasePayments}
-            currency={operation.currency}
+            currency={operationCurrency}
             saleAmount={operation.sale_amount_total}
           />
         </TabsContent>
@@ -735,7 +737,7 @@ export function OperationDetailClient({
             <PurchaseInvoicesSection
               operationId={operation.id}
               operators={operators}
-              currency={operation.currency || "USD"}
+              currency={operationCostCurrency}
               agencyId={(operation as any).agency_id ?? null}
             />
             <OperationSaleInvoicesSection operationId={operation.id} />
@@ -749,7 +751,7 @@ export function OperationDetailClient({
               operationId={operation.id}
               saleAmount={operation.sale_amount_total || 0}
               operatorCost={operation.operator_cost || 0}
-              currency={operation.currency || "USD"}
+              currency={operationCurrency}
               commissionPercent={
                 commissionRecords.length > 0 && commissionRecords[0]?.percentage
                   ? commissionRecords[0].percentage
@@ -856,7 +858,7 @@ export function OperationDetailClient({
             canManagePayments={canManageServicePayments}
             showFinancialColumns={!isSupportMode && userRole !== "SELLER"}
             servicePayments={servicePayments}
-            operationCurrency={operation.currency}
+            operationCurrency={operationCurrency}
             operationData={{
               destination: operation.destination || "",
               departure_date: operation.departure_date || "",
