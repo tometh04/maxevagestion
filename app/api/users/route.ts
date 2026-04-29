@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
     // Query de usuarios - columnas reales: id, auth_id, name, email, role, is_active, created_at, updated_at
     let query = (supabase.from("users") as any)
-      .select("id, name, email, role, is_active, created_at")
+      .select("id, name, email, role, is_active, created_at, default_commission_percentage")
       .in("id", userIds)
       .eq("is_active", true)
 
