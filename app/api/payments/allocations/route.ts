@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { hasPermission } from "@/lib/permissions"
-import { createServerClient } from "@/lib/supabase/server"
+import { createAdminClient, createServerClient } from "@/lib/supabase/server"
 
 /**
  * GET /api/payments/allocations?operationId=xxx
@@ -102,13 +102,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Pago no encontrado" }, { status: 404 })
   }
 
-  const rows = allocations
-    .map((allocation: any) => ({
-      operationCustomerId: allocation.operationCustomerId,
-      amount: Number(allocation.amount || 0),
-      notes: allocation.notes || null,
-    }))
-    .filter((allocation: any) => allocation.amount > 0)
+  const rowsByCustomer = new Map<string, { operationCustomerId: string; amount: number; notes: string | null }>()
+
+  for (const allocation of allocations) {
+    const operationCustomerId = allocation.operationCustomerId
+    const amount = Number(allocation.amount || 0)
+    if (!operationCustomerId || amount <= 0) continue
+
+    const existing = rowsByCustomer.get(operationCustomerId)
+    rowsByCustomer.set(operationCustomerId, {
+      operationCustomerId,
+      amount: (existing?.amount || 0) + amount,
+      notes: allocation.notes || existing?.notes || null,
+    })
+  }
+
+  const rows = Array.from(rowsByCustomer.values())
 
   if (rows.some((allocation: any) => !allocation.operationCustomerId || Number.isNaN(allocation.amount))) {
     return NextResponse.json({ error: "Asignaciones inválidas" }, { status: 400 })
@@ -148,8 +157,17 @@ export async function POST(request: Request) {
     }, { status: 400 })
   }
 
+  // Use service role after permission/access checks. RLS can otherwise hide
+  // existing allocation rows from DELETE, causing duplicate-key failures.
+  const admin = createAdminClient()
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)
+  const { data: creator } = isUuid
+    ? await (admin.from("users") as any).select("id").eq("id", user.id).maybeSingle()
+    : { data: null }
+  const createdBy = creator?.id || null
+
   // Delete existing allocations for this payment
-  const { error: deleteError } = await (supabase.from("payment_passenger_allocations") as any)
+  const { error: deleteError } = await (admin.from("payment_passenger_allocations") as any)
     .delete()
     .eq("payment_id", paymentId)
 
@@ -167,12 +185,12 @@ export async function POST(request: Request) {
         amount: allocation.amount,
         currency: (payment as any).currency || "ARS",
         notes: allocation.notes,
-        created_by: user.id,
+        created_by: createdBy,
       }))
 
     if (allocationRows.length > 0) {
-      const { error: insertError } = await (supabase.from("payment_passenger_allocations") as any)
-        .insert(allocationRows)
+      const { error: insertError } = await (admin.from("payment_passenger_allocations") as any)
+        .upsert(allocationRows, { onConflict: "payment_id,operation_customer_id" })
 
       if (insertError) {
         console.error("[Allocations] Insert error:", insertError)
