@@ -7,6 +7,17 @@ import { getAfipServiceForOrg } from "@/lib/afip/afip-service"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
+function formatLocalDate(date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function parseLocalDate(date: string): Date {
+  return new Date(`${date}T12:00:00`)
+}
+
 /**
  * POST /api/invoices/[id]/authorize
  *
@@ -95,9 +106,37 @@ export async function POST(
       )
     }
 
+    const fechaEmision = invoice.fecha_emision || formatLocalDate()
+    const invoiceDatePatch: Record<string, string> = {}
+
+    if (!invoice.fecha_emision) {
+      invoiceDatePatch.fecha_emision = fechaEmision
+      invoice.fecha_emision = fechaEmision
+    }
+
+    if (invoice.concepto === 2 || invoice.concepto === 3) {
+      const fchServDesde = invoice.fch_serv_desde || fechaEmision
+      const fchServHasta = invoice.fch_serv_hasta || fchServDesde
+      const fechaVtoPago = invoice.fecha_vto_pago || fchServHasta
+
+      if (!invoice.fch_serv_desde) invoiceDatePatch.fch_serv_desde = fchServDesde
+      if (!invoice.fch_serv_hasta) invoiceDatePatch.fch_serv_hasta = fchServHasta
+      if (!invoice.fecha_vto_pago) invoiceDatePatch.fecha_vto_pago = fechaVtoPago
+
+      invoice.fch_serv_desde = fchServDesde
+      invoice.fch_serv_hasta = fchServHasta
+      invoice.fecha_vto_pago = fechaVtoPago
+    }
+
+    if (Object.keys(invoiceDatePatch).length > 0) {
+      await (supabase.from("invoices") as any)
+        .update(invoiceDatePatch)
+        .eq("id", invoice.id)
+    }
+
     // Pre-check de cotización USD
     if (invoice.moneda === "DOL") {
-      const oficial = await afipService.getAfipRate("DOL", new Date(invoice.fecha_emision))
+      const oficial = await afipService.getAfipRate("DOL", parseLocalDate(invoice.fecha_emision))
       const user_rate = Number(invoice.cotizacion) || 0
 
       if (!user_rate || user_rate <= 1) {

@@ -199,7 +199,7 @@ export class AfipService {
       ImpIVA: draft.imp_iva,
       DocNro: Number(draft.receptor_doc_nro),
       DocTipo: draft.receptor_doc_tipo,
-      CbteFch: this.formatDate(draft.fecha_emision),
+      CbteFch: this.formatDate(draft.fecha_emision || new Date()),
       CbteDesde: voucherNumber,
       CbteHasta: voucherNumber,
     }
@@ -302,7 +302,7 @@ export class AfipService {
       ImpIVA: inv.imp_iva,
       DocNro: Number(inv.receptor_doc_nro),
       DocTipo: inv.receptor_doc_tipo,
-      CbteFch: this.formatDate(inv.fecha_emision),
+      CbteFch: this.formatDate(inv.fecha_emision || new Date()),
       CbteDesde: inv.cbte_nro,
       CbteHasta: inv.cbte_nro,
     }
@@ -467,9 +467,13 @@ export class AfipService {
     if (ivaArray.length > 0) payload.Iva = ivaArray
 
     if (draft.concepto === 2 || draft.concepto === 3) {
-      payload.FchServDesde = this.formatDate(draft.fch_serv_desde)
-      payload.FchServHasta = this.formatDate(draft.fch_serv_hasta)
-      payload.FchVtoPago = this.formatDate(draft.fch_vto_pago || draft.fch_serv_hasta)
+      const serviceFrom = draft.fch_serv_desde || draft.fecha_emision || new Date()
+      const serviceTo = draft.fch_serv_hasta || serviceFrom
+      const paymentDue = draft.fecha_vto_pago || serviceTo
+
+      payload.FchServDesde = this.formatDate(serviceFrom)
+      payload.FchServHasta = this.formatDate(serviceTo)
+      payload.FchVtoPago = this.formatDate(paymentDue)
     }
 
     return payload

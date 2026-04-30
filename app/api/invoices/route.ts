@@ -8,6 +8,13 @@ import { z } from "zod"
 
 export const dynamic = 'force-dynamic'
 
+function formatLocalDate(date = new Date()): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
 // Schema de validación para crear factura
 const createInvoiceSchema = z.object({
   operation_id: z.string().uuid().optional().nullable(),
@@ -212,6 +219,11 @@ export async function POST(request: Request) {
     }
 
     // Crear factura
+    const fechaEmision = formatLocalDate()
+    const fchServDesde = validatedData.fch_serv_desde || (validatedData.concepto === 2 || validatedData.concepto === 3 ? fechaEmision : undefined)
+    const fchServHasta = validatedData.fch_serv_hasta || fchServDesde
+    const fechaVtoPago = validatedData.fecha_vto_pago || fchServHasta
+
     const { data: invoice, error: invoiceError } = await (supabase.from("invoices") as any)
       .insert({
         agency_id: validatedData.agency_id, // Usar la agencia del punto de venta
@@ -236,9 +248,10 @@ export async function POST(request: Request) {
         imp_trib: calculatedInvoice.totals.imp_trib,
         moneda: validatedData.moneda,
         cotizacion: validatedData.cotizacion,
-        fch_serv_desde: validatedData.fch_serv_desde,
-        fch_serv_hasta: validatedData.fch_serv_hasta,
-        fecha_vto_pago: validatedData.fecha_vto_pago,
+        fecha_emision: fechaEmision,
+        fch_serv_desde: fchServDesde,
+        fch_serv_hasta: fchServHasta,
+        fecha_vto_pago: fechaVtoPago,
         notes: validatedData.notes,
         status: 'draft',
         created_by: user.id,
