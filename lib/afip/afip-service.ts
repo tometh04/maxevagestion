@@ -10,6 +10,7 @@ import type { AfipConfig } from "./afip-config"
 import { isAfipConfigValid } from "./afip-config"
 import { afipRateCache } from "./rate-cache"
 import { diffVoucher, type VoucherFields, type VoucherDiff } from "./diff"
+import { getExchangeRateWithFallback } from "@/lib/accounting/exchange-rates"
 
 type AfipSdkInstance = {
   ElectronicBilling: {
@@ -17,7 +18,8 @@ type AfipSdkInstance = {
     getLastVoucher: (pv: number, cbte: number) => Promise<number>
     getVoucherInfo: (nro: number, pv: number, cbte: number) => Promise<any | null>
     getSalesPoints: () => Promise<any>
-    getExchangeRate: (monId: string, date: string) => Promise<any>
+    getExchangeRate?: (monId: string, date: string) => Promise<any>
+    executeRequest?: (operation: string, params?: any) => Promise<any>
   }
   RegisterScopeThirteen?: {
     getTaxpayerDetails: (cuit: number) => Promise<any>
@@ -357,14 +359,30 @@ export class AfipService {
     const cached = afipRateCache.get(cacheKey)
     if (cached !== undefined) return cached
 
-    const response = await this.afip.ElectronicBilling.getExchangeRate(currency, dateStr)
+    let response: any = null
+
+    if (typeof this.afip.ElectronicBilling.getExchangeRate === "function") {
+      response = await this.afip.ElectronicBilling.getExchangeRate(currency, dateStr)
+    } else if (typeof this.afip.ElectronicBilling.executeRequest === "function") {
+      response = await this.afip.ElectronicBilling.executeRequest("FEParamGetCotizacion", {
+        MonId: currency,
+      })
+    }
+
+    const result = response?.ResultGet ?? response
     const rate =
-      typeof response === "number"
-        ? response
-        : Number(response?.MonCotiz ?? response?.cotizacion ?? 0)
+      typeof result === "number"
+        ? result
+        : Number(result?.MonCotiz ?? result?.cotizacion ?? 0)
 
     if (!rate || rate <= 0) {
-      throw new Error(`AFIP no devolvió cotización válida para ${currency} el ${dateStr}`)
+      const fallback = await getExchangeRateWithFallback(
+        this.supabase as any,
+        d,
+        `afip-rate-${this.orgId}-${currency}`
+      )
+      afipRateCache.set(cacheKey, fallback.rate)
+      return fallback.rate
     }
 
     afipRateCache.set(cacheKey, rate)

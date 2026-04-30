@@ -826,9 +826,11 @@ export default function NewInvoicePage() {
           pto_vta: formData.pto_vta, // Requerido: punto de venta seleccionado
           amount_entry_mode: amountEntryMode,
           moneda: invoiceCurrency === 'PES' ? 'PES' : 'DOL',
-          cotizacion: invoiceCurrency === 'PES' && selectedOperation?.sale_currency === 'USD'
-            ? exchangeRate
-            : 1,
+          cotizacion: invoiceCurrency === 'DOL'
+            ? (cotizacionAfip || exchangeRate || 1)
+            : selectedOperation?.sale_currency === 'USD'
+              ? exchangeRate
+              : 1,
           fch_serv_desde: formData.fecha_servicio_desde,
           fch_serv_hasta: formData.fecha_servicio_hasta,
           items,
