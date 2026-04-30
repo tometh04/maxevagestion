@@ -246,6 +246,7 @@
   .section-aura {
     position: relative;
     isolation: isolate;
+    overflow: hidden;
   }
   .section-aura::before {
     content: "";
@@ -262,6 +263,7 @@
   .section-aura-alt {
     position: relative;
     isolation: isolate;
+    overflow: hidden;
   }
   .section-aura-alt::before {
     content: "";

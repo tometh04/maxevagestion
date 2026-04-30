@@ -8,9 +8,10 @@ import { RegisterForm } from "@/components/register-form"
 export default function RegisterPage() {
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
-      <div className="bg-hero relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center p-12 overflow-hidden">
-        <div className="absolute inset-0 grid-bg opacity-40" />
-        <div className="absolute inset-0 noise opacity-[0.04]" />
+      <div className="bg-signature-gradient relative hidden lg:flex lg:flex-col lg:items-center lg:justify-center p-12 overflow-hidden">
+        {/* Vignette para legibilidad del texto blanco sobre los stops más claros */}
+        <div className="absolute inset-0 bg-gradient-to-br from-ink/30 via-ink/10 to-transparent" />
+        <div className="absolute inset-0 noise opacity-[0.06]" />
         <div className="relative z-10 text-center text-white space-y-10">
           <div className="flex justify-center">
             <Image
