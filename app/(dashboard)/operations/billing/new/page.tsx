@@ -177,7 +177,7 @@ export default function NewInvoicePage() {
   const [loadingExchangeRate, setLoadingExchangeRate] = useState(false)
   const [cotizacionAfip, setCotizacionAfip] = useState<number | null>(null)
   const [cotizacionLoading, setCotizacionLoading] = useState(false)
-  const [marginRemaining, setMarginRemaining] = useState<number | null>(null)
+  const [invoiceRemaining, setInvoiceRemaining] = useState<number | null>(null)
   const amountEntryMode = getRecommendedAmountEntryMode(formData.cbte_tipo, formData.receptor_condicion_iva)
   const calculatedInvoice = calculateInvoice(items, amountEntryMode)
   const shouldHideTaxBreakdown = shouldHideInvoiceTaxBreakdown({
@@ -188,6 +188,7 @@ export default function NewInvoicePage() {
   const activeCurrency = invoiceCurrency === 'DOL' ? 'DOL' : 'PES'
   const formatMoney = (value: number) => formatInvoiceMoney(value, activeCurrency)
   const getDefaultTaxTreatment = (cbteTipo: number): ItemTaxTreatment => cbteTipo === 19 ? 'EXENTO' : 'GRAVADO'
+  const roundMoney = (value: number) => Math.round(value * 100) / 100
   const createDefaultItem = (cbteTipo: number): InvoiceItem => {
     const taxTreatment = getDefaultTaxTreatment(cbteTipo)
     return {
@@ -197,6 +198,39 @@ export default function NewInvoicePage() {
       iva_porcentaje: taxTreatment === 'GRAVADO' ? 21 : 0,
       tax_treatment: taxTreatment,
     }
+  }
+  const buildOperationInvoiceItems = (summary: any, cbteTipo: number): InvoiceItem[] => {
+    const operation = summary.operation || {}
+    const saleTotal = Number(operation.sale_amount_total || 0)
+    const operatorCost = Number(operation.operator_cost || 0)
+    const taxableDifference = roundMoney(Math.max(0, saleTotal - operatorCost))
+    const destinationLabel = operation.destination || selectedOperation?.destination || 'Operacion'
+    const fileCode = operation.file_code || selectedOperation?.file_code || ''
+    const suffix = fileCode ? ` - ${destinationLabel} (${fileCode})` : ` - ${destinationLabel}`
+
+    const nextItems: InvoiceItem[] = []
+
+    if (operatorCost > 0) {
+      nextItems.push({
+        descripcion: `Costo de venta no gravado${suffix}`,
+        cantidad: 1,
+        precio_unitario: roundMoney(Math.min(operatorCost, saleTotal || operatorCost)),
+        iva_porcentaje: 0,
+        tax_treatment: 'NO_GRAVADO',
+      })
+    }
+
+    if (taxableDifference > 0) {
+      nextItems.push({
+        descripcion: `Diferencia gravada 10.5%${suffix}`,
+        cantidad: 1,
+        precio_unitario: taxableDifference,
+        iva_porcentaje: 10.5,
+        tax_treatment: 'GRAVADO',
+      })
+    }
+
+    return nextItems.length > 0 ? nextItems : [createDefaultItem(cbteTipo)]
   }
 
   useEffect(() => {
@@ -425,6 +459,7 @@ export default function NewInvoicePage() {
         operation_id: '',
       }))
       setSelectedOperation(null)
+      setInvoiceRemaining(null)
       setItems([createDefaultItem(formData.cbte_tipo)])
       return
     }
@@ -498,11 +533,11 @@ export default function NewInvoicePage() {
             }))
           }
 
-          // SP-2: fetch margin summary y precargar 1 ítem único con margen restante
-          // (reemplaza la precarga vieja de 2 items: venta + costo operador)
+          // Traer datos de facturación de la operación y precargar venta total:
+          // costo como no gravado + diferencia gravada al 10.5%.
           const summaryRes = await fetch(`/api/operations/${operationId}/margin-summary`)
           if (!summaryRes.ok) {
-            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar margen" }))
+            const err = await summaryRes.json().catch(() => ({ error: "Error al cargar operación" }))
             toast({
               title: "No se puede facturar esta operación",
               description: err.error || "Error al cargar",
@@ -512,12 +547,10 @@ export default function NewInvoicePage() {
           }
           const summary = await summaryRes.json()
 
-          if (!summary.summary.can_invoice) {
+          if (summary.summary.reason_disabled === 'no_customer' || summary.summary.reason_disabled === 'no_afip') {
             const reasonText: Record<string, string> = {
-              no_margin: "La operación no tiene margen facturable",
               no_customer: "La operación no tiene cliente asignado",
               no_afip: "AFIP no está configurado para esta organización",
-              already_fully_invoiced: "La operación ya está facturada completa",
             }
             toast({
               title: "No se puede facturar",
@@ -527,21 +560,23 @@ export default function NewInvoicePage() {
             return
           }
 
-          // Guardar max permitido para validación UI
-          setMarginRemaining(summary.summary.remaining)
+          const authorizedTotal = (summary.invoices || [])
+            .filter((invoice: any) => invoice.status === 'authorized')
+            .reduce((sum: number, invoice: any) => sum + Number(invoice.imp_total || 0), 0)
+          const operationSaleTotal = Number(summary.operation?.sale_amount_total || 0)
+          const remainingToInvoice = roundMoney(Math.max(0, operationSaleTotal - authorizedTotal))
 
-          // Precargar UN solo item con el margen restante
-          const taxTreatment = getDefaultTaxTreatment(formData.cbte_tipo)
-          const newItems: InvoiceItem[] = [
-            {
-              descripcion: `Comisión por intermediación turística - ${summary.operation.destination} (${summary.operation.file_code})`,
-              cantidad: 1,
-              precio_unitario: summary.summary.remaining,
-              iva_porcentaje: taxTreatment === "GRAVADO" ? 21 : 0,
-              tax_treatment: taxTreatment,
-            },
-          ]
-          setItems(newItems)
+          if (remainingToInvoice <= 0) {
+            toast({
+              title: "No se puede facturar",
+              description: "La operación ya está facturada completa",
+              variant: "destructive",
+            })
+            return
+          }
+
+          setInvoiceRemaining(remainingToInvoice)
+          setItems(buildOperationInvoiceItems(summary, formData.cbte_tipo))
         }
       } catch (error) {
         console.error('Error loading operation details:', error)
@@ -553,6 +588,7 @@ export default function NewInvoicePage() {
       }
     } else {
       setSelectedOperation(null)
+      setInvoiceRemaining(null)
       setFormData(prev => ({
         ...prev,
         operation_id: '',
@@ -765,16 +801,13 @@ export default function NewInvoicePage() {
         return
       }
 
-      // SP-2: validación cliente-side del cap de margen
-      if (marginRemaining !== null) {
-        const totalFinal = items.reduce((acc, i) => acc + i.precio_unitario * i.cantidad, 0)
-        if (totalFinal > marginRemaining + 0.01) {
+      // Validación cliente-side: no facturar por encima de la venta restante de la operación.
+      if (invoiceRemaining !== null) {
+        const totalFinal = calculatedInvoice.totals.imp_total
+        if (totalFinal > invoiceRemaining + 0.01) {
           toast({
             title: "No se puede facturar",
-            description: `Excede el margen restante (${new Intl.NumberFormat("es-AR", {
-              style: "currency",
-              currency: "ARS",
-            }).format(marginRemaining)})`,
+            description: `Excede el total vendido restante (${formatMoney(invoiceRemaining)})`,
             variant: "destructive",
           })
           setSaving(false)

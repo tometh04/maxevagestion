@@ -162,11 +162,11 @@ export async function POST(request: Request) {
       )
     }
 
-    // SP-2: Si la factura está atada a una operación, validar que no se exceda
-    // el margen restante (suma de authorized + new <= margin_amount).
+    // Si la factura está atada a una operación, validar que no se exceda
+    // el total vendido restante (suma de authorized + new <= sale_amount_total).
     if (validatedData.operation_id) {
       const { data: operation, error: opErr } = await (supabase.from("operations") as any)
-        .select("id, org_id, margin_amount")
+        .select("id, org_id, sale_amount_total")
         .eq("id", validatedData.operation_id)
         .single()
 
@@ -195,15 +195,15 @@ export async function POST(request: Request) {
         (acc: number, i: any) => acc + Number(i.imp_total),
         0
       )
-      const margin = Number(operation.margin_amount)
-      const remaining = Math.round((margin - alreadyInvoiced) * 100) / 100
+      const saleTotal = Number(operation.sale_amount_total)
+      const remaining = Math.round((saleTotal - alreadyInvoiced) * 100) / 100
       const newTotal = Number(calculatedInvoice.totals.imp_total)
 
       // Tolerancia 1 cent para float precision
       if (newTotal > remaining + 0.01) {
         return NextResponse.json(
           {
-            error: `No se puede facturar $${newTotal.toFixed(2)}: el margen restante de la operación es $${remaining.toFixed(2)}`,
+            error: `No se puede facturar $${newTotal.toFixed(2)}: el total vendido restante de la operación es $${remaining.toFixed(2)}`,
             max_remaining: remaining,
           },
           { status: 400 }

@@ -552,9 +552,9 @@ export function OperationsTable({
             <DataTableColumnHeader column={column} title="A cobrar" className="justify-end" />
           ),
           cell: ({ row }) => {
-            const pending = row.original.pending_amount || 0
+            const pending = row.original.pending_amount
             const total = row.original.sale_amount_total || 0
-            const pendingCalc = pending > 0 ? pending : Math.max(0, total - (row.original.paid_amount || 0))
+            const pendingCalc = pending ?? Math.max(0, total - (row.original.paid_amount || 0))
             return (
               <div className="text-xs text-warning font-medium text-right">
                 {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
@@ -582,9 +582,9 @@ export function OperationsTable({
             <DataTableColumnHeader column={column} title="A pagar" className="justify-end" />
           ),
           cell: ({ row }) => {
-            const operatorPending = row.original.operator_pending_amount || 0
+            const operatorPending = row.original.operator_pending_amount
             const operatorCost = row.original.operator_cost || 0
-            const pendingCalc = operatorPending > 0 ? operatorPending : Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
+            const pendingCalc = operatorPending ?? Math.max(0, operatorCost - (row.original.operator_paid_amount || 0))
             return (
               <div className="text-xs text-destructive font-medium text-right">
                 {row.original.currency} {Math.round(pendingCalc).toLocaleString("es-AR")}
@@ -662,10 +662,10 @@ export function OperationsTable({
             }
             const sale = op.sale_amount_total || 0
             const paid = op.paid_amount || 0
-            const pendingAmt = op.pending_amount || Math.max(0, sale - paid)
+            const pendingAmt = op.pending_amount ?? Math.max(0, sale - paid)
             const opPaid = op.operator_paid_amount || 0
             const opCost = op.operator_cost || 0
-            const opPending = op.operator_pending_amount || Math.max(0, opCost - opPaid)
+            const opPending = op.operator_pending_amount ?? Math.max(0, opCost - opPaid)
             const margin = op.margin_amount || 0
             acc[currency].sale += sale
             acc[currency].paid += paid

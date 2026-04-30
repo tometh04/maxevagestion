@@ -14,6 +14,7 @@ import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { checkLimit } from "@/lib/billing/limits"
 import { getSellerPercentage } from "@/lib/commissions/calculate"
+import { calculateOperationBalances } from "@/lib/operations/operation-financials"
 
 export async function POST(request: Request) {
   try {
@@ -1296,14 +1297,22 @@ export async function GET(request: Request) {
         operator_pending: 0,
         currency: op.currency || "ARS" 
       }
+      const balances = calculateOperationBalances({
+        saleAmount: op.sale_amount_total,
+        operatorCost: op.operator_cost,
+        customerPaid: paymentData.customer_paid,
+        operatorPaid: paymentData.operator_paid,
+      })
       
       return {
         ...op,
         customer_name: customerName,
         paid_amount: paymentData.customer_paid, // Monto Cobrado
-        pending_amount: paymentData.customer_pending, // A cobrar
+        scheduled_pending_amount: paymentData.customer_pending,
+        pending_amount: balances.customerPending, // A cobrar
         operator_paid_amount: paymentData.operator_paid, // Pagado (a operadores)
-        operator_pending_amount: paymentData.operator_pending, // A pagar (a operadores)
+        scheduled_operator_pending_amount: paymentData.operator_pending,
+        operator_pending_amount: balances.operatorPending, // A pagar (a operadores)
       }
     })
 

@@ -8,6 +8,7 @@ import { createOperatorPayment, calculateDueDate } from "@/lib/accounting/operat
 import { logAudit, getClientIP } from "@/lib/audit"
 import { enforceUserRateLimit } from "@/lib/rate-limit"
 import { getOperationVisibleDocuments } from "@/lib/documents/operation-documents"
+import { sumOperationOperatorCosts } from "@/lib/operations/operation-financials"
 
 type IncomingOperatorPayload = {
   operator_id: string
@@ -165,6 +166,10 @@ export async function PATCH(
     // Type assertion for operation
     const currentOp = currentOperation as any
 
+    const { data: existingOperationOperators } = await (supabase.from("operation_operators") as any)
+      .select("operator_id, cost, cost_currency, product_type, notes")
+      .eq("operation_id", operationId)
+
     // Check permissions
     const userRole = user.role as string
     if (userRole === "SELLER" && currentOp.seller_id !== user.id) {
@@ -277,6 +282,11 @@ export async function PATCH(
     )
     const synchronizedOperators = normalizedIncomingOperators || []
     const usesIncomingOperators = Array.isArray(normalizedIncomingOperators)
+    const existingOperatorRows = (existingOperationOperators || []) as Array<{
+      operator_id?: string | null
+      cost?: number | string | null
+      cost_currency?: string | null
+    }>
     const totalIncomingOperatorCost = usesIncomingOperators
       ? synchronizedOperators.reduce((sum, operatorData) => sum + Number(operatorData.cost || 0), 0)
       : null
@@ -301,6 +311,17 @@ export async function PATCH(
       if (primaryIncomingOperator?.cost_currency) {
         updateData.operator_cost_currency = primaryIncomingOperator.cost_currency
       }
+    } else if (existingOperatorRows.length > 0) {
+      // En operaciones con tabla de operadores, el costo agregado es derivado.
+      // Evita que una edición de venta re-guarde un costo viejo del formulario.
+      updateData.operator_id = existingOperatorRows[0]?.operator_id || currentOp.operator_id || null
+      updateData.operator_cost = sumOperationOperatorCosts(existingOperatorRows)
+      updateData.operator_cost_currency =
+        existingOperatorRows[0]?.cost_currency ||
+        currentOp.operator_cost_currency ||
+        currentOp.sale_currency ||
+        currentOp.currency ||
+        "USD"
     }
 
     // Si se actualiza currency pero no sale_currency, sincronizarlos para evitar inconsistencias
@@ -322,6 +343,32 @@ export async function PATCH(
     }
 
     updateData.updated_at = new Date().toISOString()
+
+    let operatorRowsReplaced = false
+    if (usesIncomingOperators) {
+      const operatorsPayload = synchronizedOperators.map((operatorData) => ({
+        operator_id: operatorData.operator_id,
+        cost: operatorData.cost || 0,
+        cost_currency: operatorData.cost_currency || "USD",
+        product_type: operatorData.product_type || null,
+        notes: operatorData.notes || null,
+      }))
+
+      const { error: rpcError } = await (supabase.rpc as any)("replace_operation_operators", {
+        p_operation_id: operationId,
+        p_operators: operatorsPayload,
+      })
+
+      if (rpcError) {
+        console.error("Error en RPC replace_operation_operators:", rpcError)
+        return NextResponse.json(
+          { error: "No se pudo sincronizar los operadores de la operación. No se guardaron los cambios." },
+          { status: 500 }
+        )
+      }
+
+      operatorRowsReplaced = true
+    }
 
     // Update operation
     const { data: operation, error: updateError } = await (supabase.from("operations") as any)
@@ -353,7 +400,7 @@ export async function PATCH(
     // ============================================
     // ACTUALIZAR OPERATION_OPERATORS SI SE ENVIARON
     // ============================================
-    if (usesIncomingOperators) {
+    if (usesIncomingOperators && !operatorRowsReplaced) {
       try {
         // Llamada atómica: DELETE + INSERT en una transacción SQL.
         // Si falla el insert, rollback automático → no perdemos los operadores viejos.
